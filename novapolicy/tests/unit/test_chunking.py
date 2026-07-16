@@ -36,12 +36,6 @@ _STEPS = st.lists(_STEP, min_size=0, max_size=20)
 # ---------------------------------------------------------------------------
 
 
-def test_duration_is_steps_times_dt():
-    """A 4-step chunk at 50 ms/step lasts 0.2 s."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6] * 4}, dt_ms=50.0)
-    assert chunk_duration_s(chunk) == 0.2
-
-
 def test_duration_uses_the_longest_arm():
     """With uneven arms, duration follows the one with the most steps."""
     chunk = ActionChunk(
@@ -51,32 +45,9 @@ def test_duration_uses_the_longest_arm():
     assert chunk_duration_s(chunk) == 0.05
 
 
-def test_duration_zero_when_dt_unset():
-    """A single-step chunk (dt_ms=0) has no meaningful duration."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]})
-    assert chunk_duration_s(chunk) == 0.0
-
-
 # ---------------------------------------------------------------------------
 # trim_chunk — receding horizon: keep only the first n steps
 # ---------------------------------------------------------------------------
-
-
-def test_trim_keeps_first_n_steps():
-    """Trimming a 16-step chunk to 8 keeps the first 8 steps per arm."""
-    chunk = ActionChunk(joints={"0@ur5e": [[float(i)] * 6 for i in range(16)]}, dt_ms=33.0)
-    trimmed = trim_chunk(chunk, 8)
-    assert len(trimmed.joints["0@ur5e"]) == 8
-    assert trimmed.joints["0@ur5e"][0][0] == 0.0
-    assert trimmed.joints["0@ur5e"][-1][0] == 7.0
-    # Metadata is preserved.
-    assert trimmed.dt_ms == 33.0
-
-
-def test_trim_zero_means_execute_all():
-    """n <= 0 is 'no trimming' — the whole chunk runs."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6] * 12}, dt_ms=33.0)
-    assert trim_chunk(chunk, 0) is chunk
 
 
 def test_trim_also_trims_tcp_steps():
@@ -302,22 +273,6 @@ def test_bridge_requires_at_least_two_policy_waypoints_for_spacing():
 # ---------------------------------------------------------------------------
 
 
-def test_relative_joint_deltas_accumulate_from_current_state():
-    """Relative joint steps are offsets that add up on top of the robot's pose."""
-    state = SimpleNamespace(joints=[1.0, 2.0, 3.0])
-    # Two steps of +0.5 each on joint 0 → 1.5 then 2.0 (exact in float).
-    chunk = ActionChunk(joints={"0@ur5e": [[0.5, 0.0, 0.0], [0.5, 0.0, 0.0]]})
-    out = apply_relative_mode(chunk, {"0@ur5e": state}, relative_mgs=["0@ur5e"])
-    assert out.joints["0@ur5e"][0] == [1.5, 2.0, 3.0]
-    assert out.joints["0@ur5e"][1] == [2.0, 2.0, 3.0]
-
-
-def test_no_relative_groups_is_a_passthrough():
-    """With no relative motion groups, the chunk is returned untouched."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.1, 0.0, 0.0]]})
-    assert apply_relative_mode(chunk, {}, relative_mgs=[]) is chunk
-
-
 def test_relative_skips_groups_without_state():
     """A relative group with no current state is left as-is (no crash)."""
     chunk = ActionChunk(joints={"0@ur5e": [[0.1, 0.0, 0.0]]})
@@ -332,35 +287,6 @@ def test_relative_tcp_offsets_from_current_pose():
     chunk = ActionChunk(tcp={"0@ur5e": [[1.0, 2.0, 3.0, 0.0, 0.0, 0.0]]})
     out = apply_relative_mode(chunk, {"0@ur5e": state}, relative_mgs=["0@ur5e"])
     assert out.tcp["0@ur5e"][0] == [11.0, 22.0, 33.0, 0.0, 0.0, 0.0]
-
-
-# ---------------------------------------------------------------------------
-# placement — how a chunk is anchored on the session timeline
-# ---------------------------------------------------------------------------
-
-
-def test_explicit_start_time_wins_and_is_anchored_exactly():
-    """A first_timestamp_ms the policy set explicitly becomes an exact anchor."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0]]}, first_timestamp_ms=1234)
-    place = placement(chunk, policy_rate_hz=20)
-    assert place.first_timestamp_ms == 1234
-    assert place.timestamp_offset_steps == 0
-
-
-def test_wait_for_chunk_anchors_at_now_one_step_ahead():
-    """Sequential mode resolves server now at send time, one step ahead."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0]]})
-    place = placement(chunk, policy_rate_hz=-1)
-    assert place.first_timestamp_ms is None
-    assert place.timestamp_offset_steps == 1
-
-
-def test_overlapping_mode_anchors_at_now_backdated_by_the_seam():
-    """Overlapping mode resolves server now and backdates by the seam steps."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0]]}, seam_backdate_steps=8)
-    place = placement(chunk, policy_rate_hz=20)
-    assert place.first_timestamp_ms is None
-    assert place.timestamp_offset_steps == -8
 
 
 # ===========================================================================

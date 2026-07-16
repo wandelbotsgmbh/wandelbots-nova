@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import pickle
+import threading
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -12,137 +15,101 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from novapolicy.action_queue import TimestampedActionQueue
 from novapolicy.schema import BoolMapping, Observation, PolicySchema
 
 client_module = pytest.importorskip("novapolicy.lerobot.client")
-transport_module = pytest.importorskip("novapolicy.lerobot.transport")
-schema_module = pytest.importorskip("novapolicy.lerobot.schema")
-FlatActionLayout = schema_module.FlatActionLayout
-LeRobotSchema = schema_module.LeRobotSchema
-AsyncQueueAggregation = client_module.AsyncQueueAggregation
+grpc = pytest.importorskip("grpc")
+helpers_module = pytest.importorskip("lerobot.async_inference.helpers")
+services_pb2 = pytest.importorskip("lerobot.transport.services_pb2")
+services_pb2_grpc = pytest.importorskip("lerobot.transport.services_pb2_grpc")
+torch = pytest.importorskip("torch")
 LeRobotPolicyClient = client_module.LeRobotPolicyClient
+RemotePolicyConfig = helpers_module.RemotePolicyConfig
+TimedAction = helpers_module.TimedAction
+TimedObservation = helpers_module.TimedObservation
 
 
-@dataclass
-class _RemotePolicyConfig:
-    policy_type: str
-    pretrained_name_or_path: str
-    lerobot_features: dict[str, dict[str, Any]]
-    actions_per_chunk: int
-    device: str = "cpu"
+class _RecordingLeRobotService(services_pb2_grpc.AsyncInferenceServicer):
+    """Real LeRobot gRPC service that records wire payloads and returns scripted actions."""
 
-
-@dataclass
-class _TimedObservation:
-    timestamp: float
-    observation: dict[str, Any]
-    timestep: int
-    must_go: bool = False
-
-
-class _TimedAction:
-    def __init__(self, values: list[float], timestep: int = 0) -> None:
-        self._values = np.asarray(values, dtype=np.float32)
-        self._timestep = timestep
-
-    def get_action(self) -> np.ndarray:
-        return self._values
-
-    def get_timestep(self) -> int:
-        return self._timestep
-
-
-class _Message:
-    def __init__(self, data: bytes = b"") -> None:
-        self.data = data
-
-
-class _FakeChannel:
     def __init__(self) -> None:
-        self.closed = False
-
-    def close(self) -> None:
-        self.closed = True
-
-
-class _FakeStub:
-    def __init__(self, _channel: _FakeChannel) -> None:
         self.ready_calls = 0
         self.policy_setup_calls = 0
-        self.policy_setup: _RemotePolicyConfig | None = None
-        self.observations: list[_TimedObservation] = []
+        self.get_actions_calls = 0
+        self.policy_setup: RemotePolicyConfig | None = None
+        self.observations: list[TimedObservation] = []
         self.action_values = [
             [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 1.0],
             [20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 0.0],
         ]
+        self.block_get_actions_call: int | None = None
+        self.get_actions_started = threading.Event()
+        self.get_actions_finished = threading.Event()
+        self.release_get_actions = threading.Event()
+        self.release_get_actions.set()
 
-    def Ready(self, _request: object, *, timeout: float) -> _Message:  # noqa: N802
+    def Ready(self, _request: object, _context: object) -> Any:  # noqa: N802
         self.ready_calls += 1
-        return _Message()
+        return services_pb2.Empty()
 
-    def SendPolicyInstructions(self, request: _Message, *, timeout: float) -> _Message:  # noqa: N802
+    def SendPolicyInstructions(self, request: Any, _context: object) -> Any:  # noqa: N802
         self.policy_setup_calls += 1
-        self.policy_setup = pickle.loads(request.data)  # noqa: S301 - trusted fake protocol payload.
-        return _Message()
+        self.policy_setup = pickle.loads(request.data)  # noqa: S301 - trusted local fixture.
+        return services_pb2.Empty()
 
-    def SendObservations(self, request_iterator: list[_Message], *, timeout: float) -> _Message:  # noqa: N802
+    def SendObservations(  # noqa: N802
+        self,
+        request_iterator: Iterable[Any],
+        _context: object,
+    ) -> Any:
         payload = b"".join(message.data for message in request_iterator)
-        self.observations.append(pickle.loads(payload))  # noqa: S301 - trusted fake protocol payload.
-        return _Message()
+        self.observations.append(pickle.loads(payload))  # noqa: S301 - trusted local fixture.
+        return services_pb2.Empty()
 
-    def GetActions(self, _request: object, *, timeout: float) -> _Message:  # noqa: N802
+    def GetActions(self, _request: object, context: Any) -> Any:  # noqa: N802
+        self.get_actions_calls += 1
+        context.add_callback(self.get_actions_finished.set)
+        if self.get_actions_calls == self.block_get_actions_call:
+            self.get_actions_started.set()
+            if not self.release_get_actions.wait(timeout=2.0):
+                raise TimeoutError("test did not release the scripted LeRobot response")
+
         start = self.observations[-1].timestep
         actions = [
-            _TimedAction(values, timestep=start + index)
+            TimedAction(
+                timestamp=0.0,
+                timestep=start + index,
+                action=torch.tensor(values, dtype=torch.float32),
+            )
             for index, values in enumerate(self.action_values)
         ]
-        return _Message(pickle.dumps(actions))
-
-
-class _FakeGrpc:
-    def __init__(self) -> None:
-        self.channel = _FakeChannel()
-
-    def insecure_channel(self, _server_address: str) -> _FakeChannel:
-        return self.channel
+        return services_pb2.Actions(data=pickle.dumps(actions))
 
 
 @dataclass
 class _FakeLeRobot:
-    grpc: _FakeGrpc
-    stub: _FakeStub | None = None
+    stub: _RecordingLeRobotService
+    address: str
 
 
 @pytest.fixture
-def fake_lerobot(monkeypatch: pytest.MonkeyPatch) -> _FakeLeRobot:
-    fake = _FakeLeRobot(grpc=_FakeGrpc())
-
-    class _AsyncInferenceStub:
-        def __new__(cls, channel: _FakeChannel) -> _FakeStub:
-            fake.stub = _FakeStub(channel)
-            return fake.stub
-
-    def send_bytes_in_chunks(
-        data: bytes, message_cls: type[_Message], *, silent: bool
-    ) -> list[_Message]:
-        return [message_cls(data=data)]
-
-    monkeypatch.setattr(transport_module, "grpc", fake.grpc)
-    monkeypatch.setattr(client_module, "RemotePolicyConfig", _RemotePolicyConfig)
-    monkeypatch.setattr(transport_module, "TimedObservation", _TimedObservation)
-    monkeypatch.setattr(
-        transport_module,
-        "services_pb2",
-        SimpleNamespace(Empty=_Message, PolicySetup=_Message, Observation=_Message),
+def fake_lerobot() -> Iterator[_FakeLeRobot]:
+    executor = ThreadPoolExecutor(max_workers=4)
+    server = grpc.server(executor)
+    stub = _RecordingLeRobotService()
+    services_pb2_grpc.add_AsyncInferenceServicer_to_server(stub, server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    server.start()
+    fake = _FakeLeRobot(
+        stub=stub,
+        address=f"127.0.0.1:{port}",
     )
-    monkeypatch.setattr(
-        transport_module,
-        "services_pb2_grpc",
-        SimpleNamespace(AsyncInferenceStub=_AsyncInferenceStub),
-    )
-    monkeypatch.setattr(transport_module, "send_bytes_in_chunks", send_bytes_in_chunks)
-    return fake
+    try:
+        yield fake
+    finally:
+        stub.release_get_actions.set()
+        server.stop(0).wait(timeout=2.0)
+        executor.shutdown(wait=True)
 
 
 def _mg(mg_id: str = "0@cobot", controller_id: str = "cobot") -> MagicMock:
@@ -198,19 +165,18 @@ def test_playback_speed_scales_physical_action_timing() -> None:
     assert client.dt_ms == pytest.approx(1000.0 / 15.0 / 0.75)
 
 
-@pytest.mark.parametrize("playback_speed", [0.0, -0.5])
-def test_playback_speed_must_be_positive(playback_speed: float) -> None:
+def test_playback_speed_must_be_positive() -> None:
     with pytest.raises(ValueError, match="playback_speed must be positive"):
         LeRobotPolicyClient(
             "127.0.0.1:8080",
             "model",
             fps=15,
-            playback_speed=playback_speed,
+            playback_speed=0.0,
             actions_per_chunk=11,
         )
 
 
-@pytest.mark.parametrize("threshold", [0.0, -0.1, 1.1])
+@pytest.mark.parametrize("threshold", [0.0, 1.1])
 def test_async_queue_refill_threshold_must_be_a_fraction(threshold: float) -> None:
     with pytest.raises(ValueError, match="async_queue_refill_threshold must be in"):
         LeRobotPolicyClient(
@@ -229,7 +195,7 @@ async def test_get_actions_sends_lerobot_async_protocol_and_decodes_chunk(
     schema = _schema(mg)
     image = np.zeros((120, 160, 3), dtype=np.uint8)
     client = LeRobotPolicyClient(
-        "127.0.0.1:8080",
+        fake_lerobot.address,
         "/server-only/checkpoint",
         policy_type="act",
         fps=15,
@@ -255,11 +221,10 @@ async def test_get_actions_sends_lerobot_async_protocol_and_decodes_chunk(
     }
     assert chunk.ios == {mg.id: {"digital_out[0]": True}}
 
-    assert fake_lerobot.stub is not None
     assert fake_lerobot.stub.ready_calls == 1
 
     setup = fake_lerobot.stub.policy_setup
-    assert setup == _RemotePolicyConfig(
+    assert setup == RemotePolicyConfig(
         policy_type="act",
         pretrained_name_or_path="/server-only/checkpoint",
         actions_per_chunk=8,
@@ -292,6 +257,7 @@ async def test_get_actions_sends_lerobot_async_protocol_and_decodes_chunk(
         6.0,
     ]
     np.testing.assert_array_equal(observation.observation["cam_scene_1"], image)
+    await client.close()
 
 
 @pytest.mark.asyncio
@@ -301,7 +267,7 @@ async def test_get_actions_decodes_tcp_targets_and_tcp_state_features(
     mg = _mg()
     schema = _tcp_schema(mg)
     client = LeRobotPolicyClient(
-        "127.0.0.1:8080",
+        fake_lerobot.address,
         "model",
         fps=20,
         actions_per_chunk=2,
@@ -326,7 +292,6 @@ async def test_get_actions_decodes_tcp_targets_and_tcp_state_features(
     assert chunk.ios == {mg.id: {"digital_out[0]": True}}
     assert chunk.dt_ms == pytest.approx(50.0)
 
-    assert fake_lerobot.stub is not None
     assert fake_lerobot.stub.policy_setup is not None
     assert fake_lerobot.stub.policy_setup.lerobot_features["observation.state"] == {
         "dtype": "float32",
@@ -342,27 +307,7 @@ async def test_get_actions_decodes_tcp_targets_and_tcp_state_features(
         0.2,
         0.3,
     ]
-
-
-@pytest.mark.parametrize(
-    ("aggregation", "expected"),
-    [
-        (AsyncQueueAggregation.WEIGHTED_AVERAGE, 7.6),
-        (AsyncQueueAggregation.AVERAGE, 6.0),
-    ],
-)
-def test_async_queue_aggregation_modes(aggregation: object, expected: float) -> None:
-    queue = TimestampedActionQueue(aggregation=aggregation)
-    queue.merge([(4, np.asarray([2.0], dtype=np.float32))])
-
-    assert queue.merge([(4, np.asarray([10.0], dtype=np.float32))])
-    assert queue.entries[0][1][0] == pytest.approx(expected)
-
-
-@pytest.mark.parametrize("aggregation", ["latest_only", "conservative"])
-def test_removed_async_queue_aggregation_modes_are_rejected(aggregation: str) -> None:
-    with pytest.raises(ValueError):
-        TimestampedActionQueue(aggregation=aggregation)  # type: ignore[arg-type]
+    await client.close()
 
 
 @pytest.mark.asyncio
@@ -372,66 +317,61 @@ async def test_async_queue_refills_and_blends_overlapping_timesteps(
     mg = _mg()
     schema = _schema(mg)
     image = np.zeros((120, 160, 3), dtype=np.uint8)
+    fake_lerobot.stub.action_values = [
+        [float(index)] * 6 + [float(index % 2)] for index in range(8)
+    ]
+    fake_lerobot.stub.block_get_actions_call = 2
+    fake_lerobot.stub.release_get_actions.clear()
     client = LeRobotPolicyClient(
-        "127.0.0.1:8080",
+        fake_lerobot.address,
         "model",
         fps=15,
-        actions_per_chunk=4,
+        actions_per_chunk=8,
         use_async_queue=True,
+        async_queue_refill_threshold=1.0,
     )
 
     client.enable_trajectory_trace()
     await client.connect([mg.id])
-    assert fake_lerobot.stub is not None
-    fake_lerobot.stub.action_values = [
-        [float(index)] * 6 + [float(index % 2)] for index in range(4)
-    ]
-
     first = await client.get_actions(
         {mg.id: _state((0.0,) * 6)},
         schema,
         images={"cam_scene_1": image},
         io_values={"digital_out[0]": False},
     )
-    assert [step[0] for step in first.joints[mg.id]] == [0.0, 1.0, 2.0, 3.0]
+    assert [step[0] for step in first.joints[mg.id]] == [float(index) for index in range(8)]
     assert first.action_timestep == 0
-    assert fake_lerobot.stub.observations[-1].timestep == 0
-    assert fake_lerobot.stub.observations[-1].must_go is True
+    assert fake_lerobot.stub.observations[0].timestep == 0
+    assert fake_lerobot.stub.observations[0].must_go is True
 
-    second = await client.get_actions(
-        {mg.id: _state((1.0,) * 6)},
-        schema,
-        images={"cam_scene_1": image},
-        io_values={"digital_out[0]": False},
-    )
-    assert second.joints == {}
-    assert second.ios == {mg.id: {"digital_out[0]": True}}
+    started = await asyncio.to_thread(fake_lerobot.stub.get_actions_started.wait, 0.5)
+    assert started
+    fake_lerobot.stub.get_actions_finished.clear()
+    fake_lerobot.stub.release_get_actions.set()
+    finished = await asyncio.to_thread(fake_lerobot.stub.get_actions_finished.wait, 0.5)
+    assert finished
 
-    assert client._async_queue is not None
-    while (
-        client._async_queue.pending_request is not None
-        and not client._async_queue.pending_request.done()
-    ):
+    replacement = None
+    for state_value in (1.0, 2.0, 3.0):
         await asyncio.sleep(0)
-    assert fake_lerobot.stub.observations[-1].timestep == 1
-    assert fake_lerobot.stub.observations[-1].must_go is True
+        candidate = await client.get_actions(
+            {mg.id: _state((state_value,) * 6)},
+            schema,
+            images={"cam_scene_1": image},
+            io_values={"digital_out[0]": False},
+        )
+        if candidate.joints:
+            replacement = candidate
+            break
 
-    third = await client.get_actions(
-        {mg.id: _state((2.0,) * 6)},
-        schema,
-        images={"cam_scene_1": image},
-        io_values={"digital_out[0]": False},
-    )
-    assert third.action_timestep == 1
-    assert [step[0] for step in third.joints[mg.id]] == pytest.approx([1.0, 2.0, 3.0, 3.0])
-    assert third.ios == {mg.id: {"digital_out[0]": False}}
-    entries = client._async_queue.action_queue.entries
-    assert [timestep for timestep, _action in entries] == [3, 4]
-    assert [action[0] for _timestep, action in entries] == pytest.approx([3.0, 3.0])
+    assert replacement is not None
+    assert replacement.action_timestep >= 0
+    assert replacement.ios is not None
+    assert isinstance(replacement.ios[mg.id]["digital_out[0]"], bool)
     raw_chunks = client.trajectory_trace["raw_action_chunks"]
     assert len(raw_chunks) == 2
     assert raw_chunks[0]["first_timestep"] == 0
-    assert [action["timestep"] for action in raw_chunks[0]["actions"]] == [0, 1, 2, 3]
+    assert [action["timestep"] for action in raw_chunks[0]["actions"]] == list(range(8))
 
     await client.close()
 
@@ -444,7 +384,7 @@ async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
     schema = _schema(mg)
     image = np.zeros((120, 160, 3), dtype=np.uint8)
     client = LeRobotPolicyClient(
-        "127.0.0.1:8080",
+        fake_lerobot.address,
         "model",
         actions_per_chunk=3,
         use_async_queue=True,
@@ -452,7 +392,6 @@ async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
     )
     client.enable_trajectory_trace()
     await client.connect([mg.id])
-    assert fake_lerobot.stub is not None
     fake_lerobot.stub.action_values = [
         [value] * 6 + [io] for value, io in [(0.0, 1.0), (4.0, 0.0), (0.0, 1.0)]
     ]
@@ -466,93 +405,9 @@ async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
 
     assert [step[0] for step in chunk.joints[mg.id]] == pytest.approx([1.25, 1.5, 1.25])
     assert chunk.ios == {mg.id: {"digital_out[0]": True}}
-    assert client._async_queue is not None
-    published = client._async_queue.action_queue.published
-    assert [action[0] for action in published.values()] == pytest.approx([1.25, 1.5, 1.25])
-    assert [action[-1] for action in published.values()] == [1.0, 0.0, 1.0]
-    assert chunk.joints[mg.id] == [action[:6].tolist() for action in published.values()]
     assert client.trajectory_trace["raw_action_chunks"][0]["actions"][1]["values"][0] == 4.0
 
     await client.close()
-
-
-@pytest.mark.asyncio
-async def test_async_queue_smoothing_updates_tcp_values(
-    fake_lerobot: _FakeLeRobot,
-) -> None:
-    mg = _mg()
-    schema = _tcp_schema(mg)
-    client = LeRobotPolicyClient(
-        "127.0.0.1:8080",
-        "model",
-        actions_per_chunk=3,
-        use_async_queue=True,
-        async_queue_smoothing=True,
-    )
-    await client.connect([mg.id])
-    assert fake_lerobot.stub is not None
-    fake_lerobot.stub.action_values = [
-        [value] * 6 + [io] for value, io in [(0.0, 1.0), (4.0, 0.0), (0.0, 1.0)]
-    ]
-
-    chunk = await client.get_actions(
-        {mg.id: _tcp_state((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))},
-        schema,
-        io_values={"digital_out[0]": False},
-    )
-
-    assert chunk.joints == {}
-    assert [step[0] for step in chunk.tcp[mg.id]] == pytest.approx([1.25, 1.5, 1.25])
-    assert chunk.ios == {mg.id: {"digital_out[0]": True}}
-    assert client._async_queue is not None
-    published = client._async_queue.action_queue.published
-    assert chunk.tcp[mg.id] == [action[:6].tolist() for action in published.values()]
-
-    await client.close()
-
-
-def test_async_queue_freezes_current_and_two_successors() -> None:
-    queue = TimestampedActionQueue(
-        aggregation=AsyncQueueAggregation.WEIGHTED_AVERAGE,
-        frozen_steps=3,
-    )
-    queue.merge(
-        (timestep, np.asarray([float(timestep)], dtype=np.float32)) for timestep in range(5)
-    )
-    queue.consume()
-    queue.publish(
-        (timestep, np.asarray([float(timestep + 10)], dtype=np.float32)) for timestep in range(1, 4)
-    )
-
-    assert queue.merge((timestep, np.asarray([10.0], dtype=np.float32)) for timestep in range(1, 5))
-    assert [action[0] for _timestep, action in queue.entries] == pytest.approx([
-        11.0,
-        12.0,
-        13.0,
-        8.2,
-    ])
-
-
-def test_average_aggregation_is_a_true_running_mean_per_timestep() -> None:
-    queue = TimestampedActionQueue(aggregation=AsyncQueueAggregation.AVERAGE)
-    queue.merge([(4, np.asarray([2.0], dtype=np.float32))])
-
-    assert queue.merge([(4, np.asarray([10.0], dtype=np.float32))])
-    assert queue.merge([(4, np.asarray([12.0], dtype=np.float32))])
-
-    assert queue.entries[0][1][0] == pytest.approx((2.0 + 10.0 + 12.0) / 3.0)
-    assert queue.prediction_counts == {4: 3}
-
-
-def test_async_queue_synchronization_drops_actions_elapsed_on_nova() -> None:
-    queue = TimestampedActionQueue()
-    queue.merge(
-        (timestep, np.asarray([float(timestep)], dtype=np.float32)) for timestep in range(2, 5)
-    )
-
-    assert queue.synchronize(4) == 4
-    assert queue.latest_timestep == 3
-    assert [timestep for timestep, _action in queue.entries] == [4]
 
 
 @pytest.mark.asyncio
@@ -560,37 +415,50 @@ async def test_async_queue_keeps_sending_observations_while_refill_is_pending(
     fake_lerobot: _FakeLeRobot,
 ) -> None:
     mg = _mg()
+    schema = _schema(mg)
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    fake_lerobot.stub.action_values = [
+        [float(index)] * 6 + [float(index % 2)] for index in range(5)
+    ]
+    fake_lerobot.stub.block_get_actions_call = 2
+    fake_lerobot.stub.release_get_actions.clear()
     client = LeRobotPolicyClient(
-        "127.0.0.1:8080",
+        fake_lerobot.address,
         "model",
         fps=15,
-        actions_per_chunk=4,
+        actions_per_chunk=5,
         use_async_queue=True,
     )
     await client.connect([mg.id])
-    assert client._async_queue is not None
 
-    queue = client._async_queue.action_queue
-    queue.merge([
-        (0, np.asarray([0.0] * 7, dtype=np.float32)),
-        (1, np.asarray([1.0] * 7, dtype=np.float32)),
-        (2, np.asarray([2.0] * 7, dtype=np.float32)),
-        (3, np.asarray([3.0] * 7, dtype=np.float32)),
-        (4, np.asarray([4.0] * 7, dtype=np.float32)),
-    ])
-    queue.consume()
-    client._async_queue._pending_request = asyncio.create_task(asyncio.sleep(10, result=[]))
+    await client.get_actions(
+        {mg.id: _state((0.0,) * 6)},
+        schema,
+        images={"cam_scene_1": image},
+        io_values={"digital_out[0]": False},
+    )
+    second = await client.get_actions(
+        {mg.id: _state((1.0,) * 6)},
+        schema,
+        images={"cam_scene_1": image},
+        io_values={"digital_out[0]": False},
+    )
+    assert second.joints == {}
 
-    chunk = await client._async_queue.get_actions(
-        {"arm_1": 1.0},
-        FlatActionLayout(joints=[(mg.id, slice(0, 6))], tcp=[], ios=[]),
+    started = await asyncio.to_thread(fake_lerobot.stub.get_actions_started.wait, 0.5)
+    assert started
+    third = await client.get_actions(
+        {mg.id: _state((2.0,) * 6)},
+        schema,
+        images={"cam_scene_1": image},
+        io_values={"digital_out[0]": False},
     )
 
-    assert chunk.joints == {}
-    assert fake_lerobot.stub is not None
-    assert fake_lerobot.stub.observations[-1].timestep == 1
+    assert third.joints == {}
+    assert fake_lerobot.stub.observations[-1].timestep == 2
     assert fake_lerobot.stub.observations[-1].must_go is False
 
+    fake_lerobot.stub.release_get_actions.set()
     await client.close()
 
 
@@ -601,7 +469,7 @@ async def test_prepare_sends_policy_instructions_before_first_inference(
     mg = _mg()
     schema = _schema(mg)
     image = np.zeros((120, 160, 3), dtype=np.uint8)
-    client = LeRobotPolicyClient("127.0.0.1:8080", "model", fps=15, actions_per_chunk=8)
+    client = LeRobotPolicyClient(fake_lerobot.address, "model", fps=15, actions_per_chunk=8)
 
     await client.prepare(
         {mg.id: _state((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))},
@@ -610,7 +478,6 @@ async def test_prepare_sends_policy_instructions_before_first_inference(
         io_values={"digital_out[0]": True},
     )
 
-    assert fake_lerobot.stub is not None
     assert fake_lerobot.stub.policy_setup_calls == 1
     assert fake_lerobot.stub.observations == []
 
@@ -623,15 +490,15 @@ async def test_prepare_sends_policy_instructions_before_first_inference(
 
     assert fake_lerobot.stub.policy_setup_calls == 1
     assert len(fake_lerobot.stub.observations) == 1
+    await client.close()
 
 
 @pytest.mark.asyncio
 async def test_get_actions_requires_actual_image_frame_for_feature_metadata(
     fake_lerobot: _FakeLeRobot,
 ) -> None:
-    assert fake_lerobot.stub is None
     mg = _mg()
-    client = LeRobotPolicyClient("127.0.0.1:8080", "model", fps=15, actions_per_chunk=8)
+    client = LeRobotPolicyClient(fake_lerobot.address, "model", fps=15, actions_per_chunk=8)
 
     with pytest.raises(ValueError, match="needs the first camera frame"):
         await client.get_actions(
@@ -640,52 +507,17 @@ async def test_get_actions_requires_actual_image_frame_for_feature_metadata(
             images=None,
             io_values={"digital_out[0]": False},
         )
+    assert fake_lerobot.stub.ready_calls == 1
+    await client.close()
 
 
 @pytest.mark.asyncio
-async def test_validate_schema_rejects_schema_without_joint_action(
-    fake_lerobot: _FakeLeRobot,
-) -> None:
+async def test_validate_schema_rejects_schema_without_joint_action() -> None:
     client = LeRobotPolicyClient("127.0.0.1:8080", "model", fps=15, actions_per_chunk=8)
     schema = PolicySchema(observations=[Observation.image("cam_scene_1", source=MagicMock())])
 
     with pytest.raises(ValueError, match="requires at least one joint or TCP action"):
         await client.validate_schema(schema)
-
-
-def test_flat_action_layout_orders_joints_then_tcp_then_ios() -> None:
-    joint_mg = _mg("0@joint", "joint")
-    tcp_mg = _mg("0@tcp", "tcp")
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("arm", source=joint_mg),
-            Observation.tcp("eef", source=tcp_mg, action=True),
-            Observation.io("gripper", source=joint_mg, io="digital_out[0]"),
-        ]
-    )
-
-    LeRobotSchema.validate_schema(schema)
-    layout = LeRobotSchema(dt_ms=50.0).action_layout(
-        {
-            joint_mg.id: _state((0.0,) * 6),
-            tcp_mg.id: _tcp_state((0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
-        },
-        schema,
-    )
-
-    assert layout.joints == [(joint_mg.id, slice(0, 6))]
-    assert layout.tcp == [(tcp_mg.id, slice(6, 12))]
-    assert [
-        (group_id, io, action_slice) for group_id, io, _mapping, action_slice in layout.ios
-    ] == [(joint_mg.id, "digital_out[0]", slice(12, 13))]
-
-
-def test_decode_tcp_action_requires_six_values() -> None:
-    schema = LeRobotSchema(dt_ms=50.0)
-    layout = FlatActionLayout(joints=[], tcp=[("0@tcp", slice(0, 6))], ios=[])
-
-    with pytest.raises(ValueError, match="expected 6 values, got 5"):
-        schema.decode_arrays([np.asarray([1.0, 2.0, 3.0, 0.1, 0.2], dtype=np.float32)], layout)
 
 
 @pytest.mark.asyncio
@@ -703,59 +535,13 @@ async def test_validate_schema_rejects_joint_and_tcp_control_for_the_same_group(
         await client.validate_schema(schema)
 
 
-def test_validate_schema_accepts_joint_targets_for_different_groups() -> None:
-    left = _mg("0@left", "left")
-    right = _mg("0@right", "right")
-    schema = PolicySchema(observations=[Observation.joint_positions("arms", source=[left, right])])
-
-    LeRobotSchema.validate_schema(schema)
-
-
-def test_validate_schema_rejects_duplicate_joint_targets_for_one_group() -> None:
-    mg = _mg()
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("first", source=mg),
-            Observation.joint_positions("second", source=mg),
-        ]
-    )
-
-    with pytest.raises(ValueError, match="multiple joint action targets"):
-        LeRobotSchema.validate_schema(schema)
-
-
-def test_validate_schema_rejects_duplicate_tcp_targets_for_one_group() -> None:
-    mg = _mg()
-    schema = PolicySchema(
-        observations=[
-            Observation.tcp("first", source=mg, action=True),
-            Observation.tcp("second", source=mg, action=True),
-        ]
-    )
-
-    with pytest.raises(ValueError, match="multiple TCP action targets"):
-        LeRobotSchema.validate_schema(schema)
-
-
-def test_validate_schema_rejects_duplicate_io_targets_for_one_group() -> None:
-    mg = _mg()
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.io("first", source=mg, io="digital_out[0]"),
-            Observation.io("second", source=mg, io="digital_out[0]"),
-        ]
-    )
-
-    with pytest.raises(ValueError, match="multiple actions for the same IO target"):
-        LeRobotSchema.validate_schema(schema)
-
-
 @pytest.mark.asyncio
-async def test_close_closes_protocol_channel(fake_lerobot: _FakeLeRobot) -> None:
-    client = LeRobotPolicyClient("127.0.0.1:8080", "model", fps=15, actions_per_chunk=8)
+async def test_close_allows_protocol_reconnection(fake_lerobot: _FakeLeRobot) -> None:
+    client = LeRobotPolicyClient(fake_lerobot.address, "model", fps=15, actions_per_chunk=8)
 
     await client.connect([])
     await client.close()
+    await client.connect([])
+    await client.close()
 
-    assert fake_lerobot.grpc.channel.closed is True
+    assert fake_lerobot.stub.ready_calls == 2

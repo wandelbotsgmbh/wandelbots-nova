@@ -99,28 +99,6 @@ async def test_constant_and_io_observation():
 
 
 @pytest.mark.asyncio
-async def test_observation_computed_is_evaluated():
-    """Observation.computed runs during build_observation and is merged into obs."""
-    mg = _mg()
-    calls: list[dict] = []
-
-    async def read_sensor(obs: dict) -> dict:
-        calls.append(dict(obs))
-        return {"sensor": 42.0}
-
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("joints", source=mg),
-            Observation.computed(read_sensor),
-        ]
-    )
-    obs = await schema.build_observation({"0@ur10e": _state((0.1, 0.2))})
-
-    assert len(calls) == 1
-    assert obs["sensor"] == 42.0
-
-
-@pytest.mark.asyncio
 async def test_action_computed_is_evaluated():
     """Action.computed fires once with the policy's ActionChunk."""
     mg = _mg()

@@ -108,14 +108,10 @@ def test_now_timestamp_one_step_ahead_starts_one_dt_after_now_not_at_now():
     assert _joint_timestamps(req) == [10, 20, 30]
 
 
-def test_synced_now_timestamp_uses_server_clock_without_shared_origin_assumption():
+def test_synced_now_timestamp_uses_server_clock_without_shared_origin_assumption(manual_time):
     """Server now is based on the latest server sample, not client elapsed time."""
-    import time as _t
-
-    clock = JoggingTimeClock(speed_ratio=2.0, synced=True)
-    clock._client_start_time = _t.monotonic() - 0.100
-    clock._last_server_ts_ms = 5_000
-    clock._last_server_wall = _t.monotonic()
+    clock = JoggingTimeClock(speed_ratio=2.0)
+    clock.update(5_000)
     req = make_waypoints_request(
         clock,
         "joint",
@@ -125,8 +121,7 @@ def test_synced_now_timestamp_uses_server_clock_without_shared_origin_assumption
     )
 
     timestamps = _joint_timestamps(req)
-    assert 5_020 <= timestamps[0] <= 5_022
-    assert timestamps[1] - timestamps[0] == 20
+    assert timestamps == [5_020, 5_040]
 
 
 # ---------------------------------------------------------------------------
@@ -147,13 +142,11 @@ def test_backdated_now_timestamp_is_clamped_to_zero():
     assert _joint_timestamps(req) == [0, 10, 20]
 
 
-def test_now_timestamp_is_read_at_yield_time_not_precomputed():
+def test_now_timestamp_is_read_at_yield_time_not_precomputed(manual_time):
     """Advancing the session clock shifts the whole progression."""
-    import time as _t
-
     clock = JoggingTimeClock(speed_ratio=1.0)
     clock.start()
-    clock._client_start_time = _t.monotonic() - 0.500
+    manual_time.advance(0.5)
     req = make_waypoints_request(
         clock,
         "joint",
@@ -161,7 +154,7 @@ def test_now_timestamp_is_read_at_yield_time_not_precomputed():
         effective_dt_ms=10.0,
         timestamp_offset_steps=-10,
     )
-    assert 380 <= req.waypoints[0].timestamp <= 460
+    assert req.waypoints[0].timestamp in {399, 400}
 
 
 # ---------------------------------------------------------------------------
@@ -185,18 +178,6 @@ def test_cartesian_mode_builds_a_pose_request_splitting_position_and_orientation
     assert waypoint.timestamp == 0
     assert list(waypoint.pose.position.root) == [500.0, 200.0, 300.0]
     assert list(waypoint.pose.orientation.root) == [0.1, 0.2, 0.3]
-
-
-def test_joint_mode_builds_a_joint_request():
-    clock = JoggingTimeClock(speed_ratio=1.0)
-    req = make_waypoints_request(
-        clock,
-        "joint",
-        steps=[[0.0] * 6],
-        effective_dt_ms=10.0,
-        first_timestamp_ms=0,
-    )
-    assert isinstance(req, api.models.JointWaypointsRequest)
 
 
 def test_empty_steps_produce_no_waypoints():

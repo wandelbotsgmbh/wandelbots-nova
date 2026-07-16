@@ -148,6 +148,7 @@ junit_family = "xunit2"
 norecursedirs = "develop .ipynb_checkpoints .venv .tox *.egg"
 testpaths = """
     nova
+    novapolicy/tests
     wandelscript
     tests
 """
@@ -278,7 +279,7 @@ upload_to_vcs_release = true
 
 
 [tool.ruff.lint.isort]
-known-first-party = ["nova", "nova_rerun_bridge", "novax"]
+known-first-party = ["nova", "nova_rerun_bridge", "novapolicy", "novax"]
 
 
 

@@ -19,19 +19,10 @@ import numpy as np
 import pytest
 
 from novapolicy.gr00t import Gr00tMsgSerializer, Gr00tPolicyClient
-from novapolicy.gr00t.client import _extract_modality_keys
 from novapolicy.schema import Observation, PolicySchema
 from novapolicy.types import ActionChunk
 
 zmq = pytest.importorskip("zmq")
-
-
-def test_modality_metadata_requires_as_json_payload() -> None:
-    with pytest.raises(TypeError, match="as_json"):
-        _extract_modality_keys(
-            {"state": {"modality_keys": ["arm"]}},
-            "state",
-        )
 
 
 def _find_free_port() -> int:
@@ -764,6 +755,25 @@ async def test_validate_schema_passes_when_state_key_is_io_observation() -> None
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect(["0@ur10e"])
         await client.validate_schema(schema)  # should not raise
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_validate_schema_rejects_malformed_modality_metadata() -> None:
+    """Remote modality entries must expose LeRobot's serialized as_json payload."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server._modality_config = {"state": {"modality_keys": ["arm"]}}
+    server.start()
+    try:
+        mg = _mg()
+        schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect([mg.id])
+        with pytest.raises(TypeError, match="as_json"):
+            await client.validate_schema(schema)
         await client.close()
     finally:
         server.close()

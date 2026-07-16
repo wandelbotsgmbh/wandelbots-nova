@@ -240,23 +240,14 @@ def test_tcp_jogging_streams_a_chunk_of_future_poses():
 
 
 @pytest.mark.asyncio
-async def test_entering_the_context_starts_every_session_and_waits_ready():
-    """`async with jog_joints(...)` starts each robot and waits until it's ready."""
+async def test_context_starts_waits_for_and_stops_every_session():
+    """The context owns the complete lifecycle of every robot session."""
     jogger, (left, right), sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
     with _no_estop_no_rerun():
         async with jogger:
             for mg in (left, right):
                 sessions[mg].start.assert_awaited_once()
                 sessions[mg].wait_ready.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_exiting_the_context_stops_every_session():
-    """Leaving the context tears down each robot's jogging session."""
-    jogger, (left, right), sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
-    with _no_estop_no_rerun():
-        async with jogger:
-            pass
     for mg in (left, right):
         sessions[mg].stop.assert_awaited_once()
 

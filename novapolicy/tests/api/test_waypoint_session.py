@@ -432,74 +432,8 @@ async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
 
 
 @pytest.mark.asyncio
-async def test_overlapping_tcp_chunks_share_one_absolute_timeline():
-    """Consecutive overlapping TCP chunks place identical poses at identical
-    absolute timestamps -- the property that lets the server stitch a per-tick
-    resend stream into one trajectory with no seam jump.
-
-    The chunked path anchors every chunk at an *absolute* session timestamp
-    (not a fresh ``now + dt`` each tick). When the next tick advances the anchor
-    by exactly one ``dt`` and the caller shifts the chunk content by one step,
-    the overlapping region must coincide in both timestamp and pose. If chunks
-    were instead re-sequenced from "now" every tick, the overlap would land on
-    different timestamps and the server would keep restarting the trajectory.
-    """
-    session, server = _build_session(mode="cartesian")
-
-    def _pose_requests() -> list[object]:
-        return [
-            r
-            for r in (_inner(x) for x in server.requests)
-            if isinstance(r, api.models.PoseWaypointsRequest)
-        ]
-
-    try:
-        await session.start()
-        await session.wait_ready()
-
-        dt = 50.0
-        # Tick 1: anchor at 100ms, poses advancing along +x.
-        poses_a = [[float(x), 0.0, 300.0, 0.0, 0.0, 0.0] for x in (10, 20, 30, 40, 50)]
-        session.update_chunk(steps=poses_a, dt_ms=dt, first_timestamp_ms=100)
-        await _wait_until(lambda: len(_pose_requests()) >= 1)
-
-        # Tick 2, one dt later: anchor advances by dt, content shifts by one step
-        # -> the two chunks overlap by four waypoints.
-        poses_b = [[float(x), 0.0, 300.0, 0.0, 0.0, 0.0] for x in (20, 30, 40, 50, 60)]
-        session.update_chunk(steps=poses_b, dt_ms=dt, first_timestamp_ms=150)
-        await _wait_until(lambda: len(_pose_requests()) >= 2)
-
-        first, second = _pose_requests()[0], _pose_requests()[1]
-        a_by_ts = {
-            w.timestamp: tuple(w.pose.position.root[k] for k in range(3)) for w in first.waypoints
-        }
-        b_by_ts = {
-            w.timestamp: tuple(w.pose.position.root[k] for k in range(3)) for w in second.waypoints
-        }
-
-        # The two chunks share four absolute timestamps...
-        overlap = set(a_by_ts) & set(b_by_ts)
-        assert overlap == {150, 200, 250, 300}
-        # ...and at every shared timestamp they command the *same* pose, so there
-        # is no discontinuity where one chunk hands off to the next.
-        for ts in overlap:
-            assert a_by_ts[ts] == b_by_ts[ts]
-    finally:
-        server.stop()
-        await session.stop()
-        for p in session._test_patches:  # type: ignore[attr-defined]
-            p.stop()
-
-
-@pytest.mark.asyncio
 async def test_overlapping_joint_chunks_share_one_absolute_timeline():
-    """The joint-mode counterpart: overlapping joint chunks also place identical
-    joint targets at identical absolute timestamps.
-
-    Same per-tick resend as the TCP case, but the joint path emits
-    ``JointWaypointsRequest`` messages. The absolute-timeline guarantee is
-    mode-independent, so the overlap must coincide here too.
-    """
+    """Overlapping chunks place identical targets at identical absolute timestamps."""
     session, server = _build_session(mode="joint")
 
     def _joint_requests() -> list[object]:

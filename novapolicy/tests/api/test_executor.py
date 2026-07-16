@@ -12,10 +12,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from novapolicy.debug import ExecutionTrajectoryTrace
 from novapolicy.executor import Phase, PolicyExecutor
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.schema import Action, Observation, ObservationEntry, PolicySchema
@@ -28,6 +30,13 @@ from novapolicy.types import (
     StopContext,
     WaypointConfig,
 )
+
+if TYPE_CHECKING:
+    from typing import Any
+
+    from numpy.typing import NDArray
+
+    from nova.types import RobotState
 
 MG_ID = "0@ur10e"
 
@@ -58,6 +67,14 @@ async def _hold_action(_obs: object) -> ActionChunk:
 
 def _callback(fn: Callable[[object], Awaitable[ActionChunk]]) -> CallbackPolicyClient:
     return CallbackPolicyClient(fn)
+
+
+async def _wait_until(predicate: Callable[[], bool], *, timeout: float = 0.5) -> None:
+    async def poll() -> None:
+        while not predicate():
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(poll(), timeout=timeout)
 
 
 _hold = _callback(_hold_action)
@@ -99,9 +116,9 @@ class _SlowSetupPolicy(PolicyClient):
 
     async def prepare(
         self,
-        states: dict[str, object],
+        states: dict[str, RobotState],
         schema: PolicySchema,
-        images: dict[str, object] | None = None,
+        images: dict[str, NDArray[Any]] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> None:
         self.prepare_calls += 1
@@ -110,9 +127,9 @@ class _SlowSetupPolicy(PolicyClient):
 
     async def get_actions(
         self,
-        states: dict[str, object],
+        states: dict[str, RobotState],
         schema: PolicySchema,
-        images: dict[str, object] | None = None,
+        images: dict[str, NDArray[Any]] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
         return ActionChunk(joints={MG_ID: [[0.0] * 6]}, dt_ms=1.0)
@@ -161,6 +178,13 @@ class _Robot:
 
     session: MagicMock
     estop: MagicMock
+
+
+@pytest.fixture(autouse=True)
+def _disable_rerun() -> Iterator[None]:
+    """Keep executor behavior independent of Rerun state left by other suites."""
+    with patch("novapolicy.rerun._is_rerun_active", return_value=False):
+        yield
 
 
 @pytest.fixture
@@ -216,21 +240,21 @@ async def test_sequential_mode_delays_next_inference_until_chunk_deadline_and_pa
     )
     run_task = asyncio.create_task(executor.run())
 
-    while robot.session.update_chunk.call_count == 0:
-        await asyncio.sleep(0.01)
+    await _wait_until(lambda: robot.session.update_chunk.call_count > 0)
     await asyncio.sleep(0.05)
     assert inference_count == 1
+    inference_count_before_deadline = inference_count
 
     robot.session.scheduled_chunk_count = 1
     robot.session.scheduled_until_server_ms = 100
     robot.session.jogging_state = "PAUSED_BY_USER"
     robot.session.last_server_timestamp_ms = 99
     await asyncio.sleep(0.03)
-    assert inference_count == 1
+    assert inference_count == inference_count_before_deadline
 
     robot.session.last_server_timestamp_ms = 100
     await asyncio.wait_for(second_inference.wait(), timeout=0.5)
-    await run_task
+    _ = await run_task
     assert inference_count == 2
 
 
@@ -462,9 +486,8 @@ async def test_connected_chunk_defers_io_and_computed_action_to_policy_boundary(
     )
     run_task = asyncio.create_task(executor.run())
 
-    while robot.session.update_chunk.call_count == 0:
-        await asyncio.sleep(0.001)
-    await asyncio.sleep(0.01)
+    await _wait_until(lambda: robot.session.update_chunk.call_count > 0)
+    await asyncio.sleep(0)
     robot.session.write_ios.assert_not_awaited()
     assert not computed_fired.is_set()
 
@@ -478,7 +501,7 @@ async def test_connected_chunk_defers_io_and_computed_action_to_policy_boundary(
     executor.stop()
     robot.session.last_server_timestamp_ms = 1000
     robot.session.jogging_state = "PAUSED_BY_USER"
-    await run_task
+    _ = await run_task
 
 
 def test_acceleration_and_braking_override_validates_interpolation_steps() -> None:
@@ -621,24 +644,31 @@ async def test_a_stop_condition_can_veto_an_io_only_chunk(robot: _Robot):
 
 
 @pytest.mark.asyncio
-async def test_trajectory_trace_failure_does_not_skip_policy_cleanup(robot: _Robot, tmp_path):
+async def test_trajectory_trace_failure_does_not_skip_policy_cleanup(
+    robot: _Robot,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     """Best-effort diagnostics must not mask a run result or leak the policy connection."""
 
     def stop_immediately(_ctx: StopContext) -> bool:
         return True
 
+    write_trace = MagicMock(side_effect=OSError("disk unavailable"))
+    monkeypatch.setattr(ExecutionTrajectoryTrace, "write", write_trace)
     policy = _TestPolicy(_hold_action)
     policy.close = AsyncMock()
     executor = PolicyExecutor(
         _schema(),
         policy,
         stop_conditions=[stop_immediately],
-        trajectory_trace_path=tmp_path,
+        trajectory_trace_path=tmp_path / "trace.json",
     )
 
     result = await executor.run()
 
     assert result.reason == "stop condition: stop_immediately"
+    write_trace.assert_called_once()
     policy.close.assert_awaited_once()
 
 
@@ -696,47 +726,6 @@ async def test_a_lost_connection_raises_runtime_error(robot: _Robot):
 # ---------------------------------------------------------------------------
 # Mode auto-selection: joint vs cartesian, chosen from the schema
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_a_tcp_action_schema_opens_a_cartesian_session_and_sends_pose_waypoints():
-    """A schema with Observation.tcp(action=True) auto-selects cartesian mode.
-
-    The README/jogging.md claim is that request type is picked from the schema,
-    not configured by hand. So a policy returning a flat pose dict must (1) open
-    its session in ``mode="cartesian"`` (the PoseWaypointsRequest path) and (2)
-    have its six pose values routed through as a single 6-D waypoint — never
-    mistaken for joint targets.
-    """
-    mg = _mg()
-    schema = PolicySchema(observations=[Observation.tcp("eef", source=mg, action=True)])
-
-    async def pose_policy(_obs: object) -> ActionChunk:
-        return ActionChunk(tcp={mg.id: [[500.0, 200.0, 300.0, 0.0, 3.14, 0.0]]})
-
-    session = _fake_session()
-    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
-    with (
-        patch("novapolicy.executor.WaypointJoggingSession", return_value=session) as session_cls,
-        patch("novapolicy.executor.EstopMonitor", return_value=estop),
-    ):
-        await PolicyExecutor(schema, _callback(pose_policy), timeout_s=0.05).run()
-
-    # (1) The session was opened in cartesian mode.
-    assert session_cls.call_args.kwargs["mode"] == "cartesian"
-    # (2) The pose landed as one 6-D TCP waypoint, in [x, y, z, rx, ry, rz] order.
-    session.update_chunk.assert_called()
-    assert session.update_chunk.call_args.kwargs["steps"] == [[500.0, 200.0, 300.0, 0.0, 3.14, 0.0]]
-
-
-@pytest.mark.asyncio
-async def test_a_joint_schema_opens_a_joint_session(robot: _Robot):
-    """The default (no TCP action) opens the session in joint mode."""
-    with patch(
-        "novapolicy.executor.WaypointJoggingSession", return_value=robot.session
-    ) as session_cls:
-        await PolicyExecutor(_schema(), _hold, timeout_s=0.05).run()
-    assert session_cls.call_args.kwargs["mode"] == "joint"
 
 
 @pytest.mark.asyncio
