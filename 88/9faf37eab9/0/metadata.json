@@ -1,0 +1,67 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "889faf37eab9",
+  "session_id": "965e5d9e-2b27-4475-b11b-a23514eb5a94",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-17T13:45:56.971842Z",
+  "branch": "fix/nova-app-template",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "examples/your-nova-app/Dockerfile",
+    "examples/your-nova-app/README.md",
+    "examples/your-nova-app/programs/start_here.py",
+    "examples/your-nova-app/skaffold.yaml",
+    "examples/your-nova-app/your_nova_app/register_programs.py",
+    "examples/your-nova-app/your_nova_app/start_here.py"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "9e4c5b060d8a",
+  "checkpoint_transcript_start": 729,
+  "transcript_lines_at_start": 729,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 19
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-17T13:45:56.956247Z",
+    "agent_lines": 125,
+    "agent_removed": 128,
+    "human_added": 0,
+    "human_modified": 1,
+    "human_removed": 0,
+    "total_committed": 126,
+    "total_lines_changed": 254,
+    "agent_percentage": 99.60629921259843,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 14,
+      "agent_lines_removed": 9
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4,
+      "agent_lines_removed": 6
+    }
+  ]
+}

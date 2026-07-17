@@ -1,0 +1,59 @@
+[wait-for-nats] OK JetStream | memory=0B memory_pct=0%;75;90 storage=11061B storage_pct=0%;75;90 streams=4 streams_pct=0% consumers=60 consumers_pct=0% replicas_ok=4 replicas_no_leader=0 replicas_missing_replicas=0 replicas_lagged=0;;200 replicas_not_seen=0.0000s;;5.0000 replicas_fail=0
+[wait-for-nats] NATS server is responding!
+[app] 2026-07-17 13:26:33 [INFO] nova: Extracted app name 'your-nova-app' from BASE_PATH '/cell/your-nova-app'
+[app] Traceback (most recent call last):
+[app]   File "<frozen runpy>", line 198, in _run_module_as_main
+[app]   File "<frozen runpy>", line 88, in _run_code
+[app]   File "/app/your_nova_app/__main__.py", line 1, in <module>
+[app]     from your_nova_app.register_programs import main
+[app]   File "/app/your_nova_app/register_programs.py", line 25, in <module>
+[app]     novax = Novax(app, programs_dir="programs")
+[app]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app] TypeError: Novax.__init__() got an unexpected keyword argument 'programs_dir'
+[app] 2026-07-17 13:26:41 [INFO] nova: Extracted app name 'your-nova-app' from BASE_PATH '/cell/your-nova-app'
+[app] Traceback (most recent call last):
+[app]   File "<frozen runpy>", line 198, in _run_module_as_main
+[app]   File "<frozen runpy>", line 88, in _run_code
+[app]   File "/app/your_nova_app/__main__.py", line 1, in <module>
+[app]     from your_nova_app.register_programs import main
+[app]   File "/app/your_nova_app/register_programs.py", line 25, in <module>
+[app]     novax = Novax(app, programs_dir="programs")
+[app]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app] TypeError: Novax.__init__() got an unexpected keyword argument 'programs_dir'
+[app] 2026-07-17 13:27:00 [INFO] nova: Extracted app name 'your-nova-app' from BASE_PATH '/cell/your-nova-app'
+[app] Traceback (most recent call last):
+[app]   File "<frozen runpy>", line 198, in _run_module_as_main
+[app]   File "<frozen runpy>", line 88, in _run_code
+[app]   File "/app/your_nova_app/__main__.py", line 1, in <module>
+[app]     from your_nova_app.register_programs import main
+[app]   File "/app/your_nova_app/register_programs.py", line 25, in <module>
+[app]     novax = Novax(app, programs_dir="programs")
+[app]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app] TypeError: Novax.__init__() got an unexpected keywo
+
+getting this now for skaffold dev
+
+---
+
+# becomes ``Novax(app, programs_dir=PROGRAMS_DIR)``.)
+# See https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/README.md#novax for more information
+novax = Novax(app)
+for program_file in sorted(Path(PROGRAMS_DIR).glob("*.py")):
+    if not program_file.name.startswith("_"):
+        novax.register_module(str(program_file))
+
+no, just keep it programs for now. 
+
+for program_file in sorted(Path(PROGRAMS_DIR).glob("*.py")):
+    if not program_file.name.startswith("_"):
+        novax.register_module(str(program_file))
+
+can we remove those lines?
+
+---
+
+CANT YOU JUST GO WITH THE OLD programs= where it was working?
+
+---
+
+ok, then go with the old import route, and add a comment that dir scanning will follow
