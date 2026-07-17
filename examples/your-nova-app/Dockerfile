@@ -21,6 +21,7 @@ RUN --mount=from=uv,source=/uv,target=/bin/uv \
 
 COPY static static
 COPY README.md ./
+COPY programs programs
 COPY your_nova_app your_nova_app
 
 # Set INSTALL_DEV=true (e.g. via Skaffold) to include the dev dependency group

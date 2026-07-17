@@ -270,6 +270,21 @@ def test_scan_programs_is_recursive(tmp_path):
     assert "scan_deep" in registered
 
 
+def test_scan_programs_same_filename_in_different_subdirs(tmp_path):
+    # Two files sharing a stem ("prog") must both register: scanning names each
+    # module after its location, so the second does not collide with the first
+    # in ``sys.modules`` and get silently skipped.
+    programs_dir = tmp_path / "programs"
+    _write_program(programs_dir / "a", "prog.py", "scan_a_prog")
+    _write_program(programs_dir / "b", "prog.py", "scan_b_prog")
+
+    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
+    registered = novax.scan_programs()
+
+    assert "scan_a_prog" in registered
+    assert "scan_b_prog" in registered
+
+
 def test_scan_programs_missing_directory_returns_empty(tmp_path):
     novax = Novax(app_name="novax_scan_test", programs=str(tmp_path / "does_not_exist"))
 

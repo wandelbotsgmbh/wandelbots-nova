@@ -60,9 +60,8 @@ class Novax:
         self._app: FastAPI | None = None
 
         if app is not None:
-            self.scan_programs()
             self.include_programs_router(app)
-            self.auto_register()
+            self.scan_programs()
 
     @property
     def program_manager(self) -> ProgramManager:
@@ -101,35 +100,34 @@ class Novax:
         return self.auto_register()
 
     def scan_programs(self, directory: str | Path | None = None) -> list[str]:
-        """Import every program module under a directory so their ``@nova.program``
-        functions register themselves.
+        """Import every program module under a directory, then register all programs.
 
         By default this scans the directory configured on the instance (``programs``
         unless overridden via ``Novax(programs=...)``). Every ``.py`` file under it is
-        imported recursively; files whose name starts with ``_`` (e.g. ``__init__.py``)
-        are skipped. A missing directory is ignored so the convention stays opt-in.
-        Programs imported anywhere else are unaffected and still registered.
+        imported recursively so its ``@nova.program`` functions self-register; files
+        whose name starts with ``_`` (e.g. ``__init__.py``) are skipped. A missing or
+        disabled (``None``) directory imports nothing, so the convention stays opt-in.
+
+        Either way this finishes by calling :meth:`auto_register`, so programs imported
+        anywhere else are picked up too and a single ``scan_programs()`` call is enough.
 
         Args:
             directory: Directory to scan recursively. Defaults to the instance's
-                configured programs directory. When that is ``None`` (scanning
-                disabled) this is a no-op.
+                configured programs directory. When that is ``None`` nothing is imported.
 
         Returns:
-            The list of all registered program IDs after the scan.
+            The list of all registered program IDs.
         """
         target = directory if directory is not None else self._programs
-        if target is None:
-            return []
-        root = Path(target)
-        if not root.is_dir():
-            return []
-        for py_file in sorted(root.rglob("*.py")):
-            if py_file.name.startswith("_"):
-                continue
-            rel = py_file.relative_to(root).with_suffix("")
-            module_name = "novax._scanned_programs." + ".".join(rel.parts)
-            _import_module(str(py_file), name=module_name)
+        if target is not None:
+            root = Path(target)
+            if root.is_dir():
+                for py_file in sorted(root.rglob("*.py")):
+                    if py_file.name.startswith("_"):
+                        continue
+                    rel = py_file.relative_to(root).with_suffix("")
+                    module_name = "novax._scanned_programs." + ".".join(rel.parts)
+                    _import_module(str(py_file), name=module_name)
         return self.auto_register()
 
     def deregister_program(self, program_id: str):
@@ -333,7 +331,6 @@ class Novax:
         app = self.create_app(title=title, version=version, root_path=root_path)
         self.include_programs_router(app)
         self.scan_programs()
-        self.auto_register()
 
         if static_dir is not None:
             from fastapi.staticfiles import StaticFiles

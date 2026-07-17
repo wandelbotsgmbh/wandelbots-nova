@@ -13,6 +13,9 @@ Key robotics concepts:
 - Joint movement (jnt): Move by specifying joint angles in radians
 - Point-to-point movement (ptp): Move to a specific position/orientation (x,y,z, rotation angle in radians)
 - Pose: Position (x,y,z) and orientation (rx,ry,rz) in 3D space
+
+Drop a file like this into the ``programs`` directory and NOVAx picks it up
+automatically -- no manual import needed.
 """
 
 import asyncio
@@ -27,9 +30,9 @@ from nova.types import MotionSettings, Pose
 @nova.program()
 async def p2(ctx: nova.ProgramContext, count: int = 3):
     for i in range(count):
-        print(f"Iteration {i + 1}/{count}")
+        print(f"Hello World {i + 1}/{count}")
         await asyncio.sleep(1)  # Simulate some work being done
-    return "Hello Worl"
+    return "Hello World"
 
 
 # Configure the robot program

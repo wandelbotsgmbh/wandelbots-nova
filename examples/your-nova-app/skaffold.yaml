@@ -17,8 +17,11 @@ build:
       platforms: ["linux/amd64"]
       sync:
         # Copy changed program files straight into the running pod (no rebuild).
-        # your_nova_app/foo.py -> /app/your_nova_app/foo.py (matches the image layout).
+        # programs/foo.py -> /app/programs/foo.py, your_nova_app/foo.py -> /app/your_nova_app/foo.py
+        # (both match the image layout, and uvicorn --reload watches these dirs).
         manual:
+          - src: "programs/**/*.py"
+            dest: /app
           - src: "your_nova_app/**/*.py"
             dest: /app
 manifests:
