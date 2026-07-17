@@ -20,7 +20,7 @@ from novax.program_manager import ProgramManager
 # Default directory scanned for ``@nova.program`` modules.
 DEFAULT_PROGRAMS_DIR = "programs"
 
-# Sentinel so ``serve(programs=...)`` can tell "not passed" apart from ``None`` (disable).
+# Sentinel so ``serve(programs_dir=...)`` can tell "not passed" apart from ``None`` (disable).
 _UNSET: Any = object()
 
 
@@ -30,7 +30,7 @@ class Novax:
         app: FastAPI | None = None,
         *,
         app_name: str | None = None,
-        programs: str | Path | None = DEFAULT_PROGRAMS_DIR,
+        programs_dir: str | Path | None = DEFAULT_PROGRAMS_DIR,
     ):
         """Initialize the Novax class.
 
@@ -39,7 +39,7 @@ class Novax:
                 and all imported ``@nova.program`` functions are auto-registered, so
                 ``Novax(app)`` is all you need.
             app_name (str | None, optional): This one is read from the environment variable APP_NAME. Only change it for development purposes. Defaults to None.
-            programs: Directory scanned for ``@nova.program`` modules. Every ``.py``
+            programs_dir: Directory scanned for ``@nova.program`` modules. Every ``.py``
                 file under it is imported so its programs self-register -- drop a file
                 in and it is picked up, no manual import required. Files whose name
                 starts with ``_`` (e.g. ``__init__.py``) are skipped, and a missing
@@ -52,7 +52,7 @@ class Novax:
         nova = Nova()
         self._nova = nova
         self._cell = self._nova.cell(cell_id=CELL_NAME)
-        self._programs = programs
+        self._programs_dir = programs_dir
 
         self._program_manager: ProgramManager = ProgramManager(
             cell_id=CELL_NAME, app_name=app_name, nova_config=nova.config
@@ -103,7 +103,7 @@ class Novax:
         """Import every program module under a directory, then register all programs.
 
         By default this scans the directory configured on the instance (``programs``
-        unless overridden via ``Novax(programs=...)``). Every ``.py`` file under it is
+        unless overridden via ``Novax(programs_dir=...)``). Every ``.py`` file under it is
         imported recursively so its ``@nova.program`` functions self-register; files
         whose name starts with ``_`` (e.g. ``__init__.py``) are skipped. A missing or
         disabled (``None``) directory imports nothing, so the convention stays opt-in.
@@ -118,7 +118,7 @@ class Novax:
         Returns:
             The list of all registered program IDs.
         """
-        target = directory if directory is not None else self._programs
+        target = directory if directory is not None else self._programs_dir
         if target is not None:
             root = Path(target)
             if root.is_dir():
@@ -300,7 +300,7 @@ class Novax:
         title: str = "Novax API",
         version: str = "1.0.0",
         root_path: str = "",
-        programs: str | Path | None = _UNSET,
+        programs_dir: str | Path | None = _UNSET,
         static_dir: str | Path | None = None,
     ) -> None:
         """Build the app, register all decorated programs and run the server.
@@ -316,7 +316,7 @@ class Novax:
             title: Title of the generated API. Defaults to ``"Novax API"``.
             version: Version of the generated API. Defaults to ``"1.0.0"``.
             root_path: ASGI root path (e.g. when served behind a proxy prefix).
-            programs: Overrides the programs directory to scan for this run. When
+            programs_dir: Overrides the programs directory to scan for this run. When
                 omitted the instance's configured directory is used; pass ``None`` to
                 disable scanning.
             static_dir: Optional directory served under ``/static`` (e.g. for an app
@@ -325,8 +325,8 @@ class Novax:
         import uvicorn
         from fastapi.middleware.cors import CORSMiddleware
 
-        if programs is not _UNSET:
-            self._programs = programs
+        if programs_dir is not _UNSET:
+            self._programs_dir = programs_dir
 
         app = self.create_app(title=title, version=version, root_path=root_path)
         self.include_programs_router(app)

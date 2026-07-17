@@ -237,7 +237,7 @@ def test_scan_programs_registers_files_in_directory(tmp_path):
     _write_program(programs_dir, "first.py", "scan_first")
     _write_program(programs_dir, "second.py", "scan_second")
 
-    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
+    novax = Novax(app_name="novax_scan_test", programs_dir=str(programs_dir))
     registered = novax.scan_programs()
 
     assert "scan_first" in registered
@@ -252,7 +252,7 @@ def test_scan_programs_skips_underscore_files(tmp_path):
     _write_program(programs_dir, "_hidden.py", "scan_hidden")
     _write_program(programs_dir, "__init__.py", "scan_init")
 
-    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
+    novax = Novax(app_name="novax_scan_test", programs_dir=str(programs_dir))
     registered = novax.scan_programs()
 
     assert "scan_visible" in registered
@@ -264,7 +264,7 @@ def test_scan_programs_is_recursive(tmp_path):
     programs_dir = tmp_path / "programs"
     _write_program(programs_dir / "nested", "deep.py", "scan_deep")
 
-    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
+    novax = Novax(app_name="novax_scan_test", programs_dir=str(programs_dir))
     registered = novax.scan_programs()
 
     assert "scan_deep" in registered
@@ -278,7 +278,7 @@ def test_scan_programs_same_filename_in_different_subdirs(tmp_path):
     _write_program(programs_dir / "a", "prog.py", "scan_a_prog")
     _write_program(programs_dir / "b", "prog.py", "scan_b_prog")
 
-    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
+    novax = Novax(app_name="novax_scan_test", programs_dir=str(programs_dir))
     registered = novax.scan_programs()
 
     assert "scan_a_prog" in registered
@@ -286,7 +286,7 @@ def test_scan_programs_same_filename_in_different_subdirs(tmp_path):
 
 
 def test_scan_programs_missing_directory_returns_empty(tmp_path):
-    novax = Novax(app_name="novax_scan_test", programs=str(tmp_path / "does_not_exist"))
+    novax = Novax(app_name="novax_scan_test", programs_dir=str(tmp_path / "does_not_exist"))
 
     assert novax.scan_programs() == []
 
@@ -295,7 +295,7 @@ def test_scan_programs_disabled_when_programs_none(tmp_path):
     programs_dir = tmp_path / "programs"
     _write_program(programs_dir, "ignored.py", "scan_ignored")
 
-    novax = Novax(app_name="novax_scan_test", programs=None)
+    novax = Novax(app_name="novax_scan_test", programs_dir=None)
 
     assert novax.scan_programs() == []
     assert not novax.program_manager.has_program("scan_ignored")
@@ -305,7 +305,7 @@ def test_scan_programs_directory_argument_overrides_default(tmp_path):
     programs_dir = tmp_path / "custom"
     _write_program(programs_dir, "custom.py", "scan_custom")
 
-    novax = Novax(app_name="novax_scan_test", programs=None)
+    novax = Novax(app_name="novax_scan_test", programs_dir=None)
     registered = novax.scan_programs(programs_dir)
 
     assert "scan_custom" in registered
@@ -320,7 +320,7 @@ def test_scan_programs_keeps_imported_programs_registered(tmp_path):
     programs_dir = tmp_path / "programs"
     _write_program(programs_dir, "scanned.py", "scan_scanned")
 
-    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
+    novax = Novax(app_name="novax_scan_test", programs_dir=str(programs_dir))
     registered = novax.scan_programs()
 
     assert "scan_imported" in registered
@@ -332,6 +332,6 @@ def test_constructor_with_app_scans_programs_directory(tmp_path):
     _write_program(programs_dir, "ctor_scanned.py", "scan_ctor")
 
     app = Novax(app_name="novax_scan_test").create_app()
-    novax = Novax(app, app_name="novax_scan_test", programs=str(programs_dir))
+    novax = Novax(app, app_name="novax_scan_test", programs_dir=str(programs_dir))
 
     assert novax.program_manager.has_program("scan_ctor")

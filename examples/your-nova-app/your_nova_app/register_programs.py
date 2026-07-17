@@ -22,7 +22,7 @@ app = FastAPI(
 # ``programs`` directory and imports each file, so dropping a new program in
 # ``programs/`` is enough -- no manual import required.
 # See https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/README.md#novax for more information
-novax = Novax(app)
+novax = Novax(app, programs_dir="programs")
 
 app.add_middleware(
     CORSMiddleware,

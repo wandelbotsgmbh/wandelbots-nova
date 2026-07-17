@@ -205,7 +205,7 @@ nova app create "your-nova-app" -g python_app
 
 For more information on using NOVAx see the [README](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/README.md). Explore [this example](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/your-nova-app/app.py) to use the NOVAx entry point.
 
-> **Important:** When using NOVAx, you must import the actual program functions from their respective Python files. Only importing the program files won't suffice. This ensures proper function registration and execution within the NOVAx runtime environment.
+> **Important:** A `@nova.program` function is registered once the module that defines it is imported. NOVAx handles this for you when you use directory scanning (the default) — see [Registering programs](#registering-programs) below.
 
 ### Registering programs
 
@@ -216,9 +216,9 @@ Programs register themselves with a global registry when decorated with `@nova.p
   ```python
   from nova import Novax
 
-  Novax(app, programs="programs")  # default; scans ./programs
-  Novax(app, programs="my_pkg/robot_programs")  # custom directory
-  Novax(app, programs=None)  # disable scanning
+  Novax(app, programs_dir="programs")  # default; scans ./programs
+  Novax(app, programs_dir="my_pkg/robot_programs")  # custom directory
+  Novax(app, programs_dir=None)  # disable scanning
   ```
 
 - **Plain import:** any program imported elsewhere (inside or outside `programs/`) is still registered.
