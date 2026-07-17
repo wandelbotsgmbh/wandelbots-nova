@@ -17,6 +17,8 @@ pip-delete-this-directory.txt
 # Project-specific
 docs/
 tests/
+k8s/
+skaffold.yaml
 *.yml
 Dockerfile
 *.dockerfile

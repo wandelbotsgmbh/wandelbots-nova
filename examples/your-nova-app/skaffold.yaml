@@ -1,0 +1,36 @@
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: your-nova-app
+build:
+  local:
+    push: true # remote cell cluster -> the image must be pushed
+    useBuildkit: true
+  artifacts:
+    - image: your-nova-app
+      context: .
+      docker:
+        dockerfile: Dockerfile
+        buildArgs:
+          # Include the dev group (watchfiles) so uvicorn --reload works in-cluster.
+          INSTALL_DEV: "true"
+      platforms: ["linux/amd64"]
+      sync:
+        # Copy changed program files straight into the running pod (no rebuild).
+        # your_nova_app/foo.py -> /app/your_nova_app/foo.py (matches the image layout).
+        manual:
+          - src: "your_nova_app/**/*.py"
+            dest: /app
+manifests:
+  rawYaml:
+    - k8s/app.yaml
+# Skaffold's default image detection only covers built-in kinds, so tell it where
+# the image reference lives in the custom App resource. It rewrites `.spec.image`
+# with the built + pushed tag on each deploy.
+resourceSelector:
+  allow:
+    - groupKind: "App.wandelbots.com"
+      image: [".spec.image"]
+deploy:
+  kubectl:
+    defaultNamespace: cell

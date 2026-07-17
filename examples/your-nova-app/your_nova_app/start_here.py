@@ -29,14 +29,14 @@ async def p2(ctx: nova.ProgramContext, count: int = 3):
     for i in range(count):
         print(f"Iteration {i + 1}/{count}")
         await asyncio.sleep(1)  # Simulate some work being done
-    return 'Hello World'
+    return "Hello Worl"
 
 
 # Configure the robot program
 @nova.program(
     id="start_here",  # Unique identifier of the program. If not provided, the function name will be used.
     name="Start Here",  # Readable name of the program
-    viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization
+    # viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization (headless in-cluster: leave disabled)
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(

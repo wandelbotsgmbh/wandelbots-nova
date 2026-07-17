@@ -23,9 +23,12 @@ COPY static static
 COPY README.md ./
 COPY your_nova_app your_nova_app
 
+# Set INSTALL_DEV=true (e.g. via Skaffold) to include the dev dependency group
+# (adds watchfiles, which powers uvicorn --reload for the hot-reload dev loop).
+ARG INSTALL_DEV=false
 RUN --mount=from=uv,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
+    sh -c 'if [ "$INSTALL_DEV" = "true" ]; then uv sync --locked; else uv sync --locked --no-dev; fi'
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"

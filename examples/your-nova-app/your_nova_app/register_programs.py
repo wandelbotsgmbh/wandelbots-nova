@@ -1,10 +1,10 @@
 import uvicorn
-import your_nova_app.start_here  # noqa: F401  (import registers the program)
 from decouple import config
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 
+import your_nova_app.start_here  # noqa: F401  (import registers the program)
 from nova import Novax
 
 CELL_ID = config("CELL_ID", default="cell", cast=str)
@@ -69,6 +69,21 @@ async def get_app_icon():
 
 
 def main(host: str = "0.0.0.0", port: int = 3000):
+    # In-cluster dev (Skaffold sets DEV_RELOAD=true) runs uvicorn with --reload so
+    # synced program files hot-reload. The app-operator owns the Deployment and uses
+    # the image's default command, so reload is opted into via env instead of args.
+    if config("DEV_RELOAD", default=False, cast=bool):
+        uvicorn.run(
+            "your_nova_app.register_programs:app",
+            host=host,
+            port=port,
+            reload=True,
+            reload_dirs=["/app/your_nova_app"],
+            log_level="info",
+            proxy_headers=True,
+            forwarded_allow_ips="*",
+        )
+        return
     uvicorn.run(
         app,
         host=host,

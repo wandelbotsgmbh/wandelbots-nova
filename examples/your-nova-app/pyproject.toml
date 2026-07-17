@@ -16,6 +16,8 @@ app = "your_nova_app.register_programs:main"
 [dependency-groups]
 dev = [
     "ruff>=0.15.21",
+    # Enables fast file watching for `uvicorn --reload` (Skaffold hot-reload loop).
+    "watchfiles>=0.24",
 ]
 
 [tool.uv]
