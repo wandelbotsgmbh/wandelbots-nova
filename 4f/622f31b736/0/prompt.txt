@@ -1,0 +1,892 @@
+write me a good PR description for that PR. put it into a copyable component
+
+---
+
+review if we should any tests for the branch changes
+
+---
+
+why do we have scan programs and auto register?
+
+---
+
+can we simplify this?
+
+---
+
+[Terminal 99c0fa2e-405a-4261-80c4-f3e48fd432fb notification: command completed. The terminal has been cleaned up.]
+Terminal output:
+a.helm.sh/release-namespace":"cell"}
+
+wandelbots-nova on  fix/nova-app-template [$!+?⇡] is 📦 v5.7.4 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  cat /Users/cbiering/home/dev/wandelbots/wandelbots-nova/examples/your-nova-app/your_nova_app/__main__.py 2>&1; echo '=== skaffold resourceSelector support check ==='; skaffold version 2>&1
+from your_nova_app.register_programs import main
+
+if __name__ == "__main__":
+    main()
+=== skaffold resourceSelector support check ===
+v2.23.0
+
+wandelbots-nova on  fix/nova-app-template [$!+?⇡] is 📦 v5.7.4 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  KUBECONFIG=/Users/cbiering/Downloads/kubeconfig kubectl get crd apps.wandelbots.com -o json 2>&1 | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+s=d['spec']['versions'][0]['schema']['openAPIV3Schema']['properties']['spec']
+print('required:', s.get('required'))
+for k in ('appIcon','healthPath','diagnosisPath','port'):
+    p=s['properties'].get(k,{})
+    print(k, 'default=', p.get('default'), 'desc=', p.get('description'))
+"
+required: ['appIcon', 'cellName', 'image', 'port']
+appIcon default= None desc= AppIcon is the icon displayed in the UI.
+healthPath default= None desc= HealthPath is the HTTP path for health checks.
+diagnosisPath default= None desc= DiagnosisPath is the HTTP path for diagnosis information.
+port default= None desc= Port is the port the app listens on.
+
+wandelbots-nova on  fix/nova-app-template [$!+?⇡] is 📦 v5.7.4 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  cd /Users/cbiering/home/dev/wandelbots/wandelbots-nova/examples/your-nova-app && skaffold diagnose --yaml-only 2>&1 | head -60
+apiVersion: skaffold/v4beta14
+kind: Config
+metadata:
+  name: your-nova-app
+build:
+  artifacts:
+    - image: your-nova-app
+      context: /Users/cbiering/home/dev/wandelbots/wandelbots-nova/examples/your-nova-app
+      sync:
+        manual:
+          - src: your_nova_app/**/*.py
+            dest: /app
+      docker:
+        dockerfile: Dockerfile
+        buildArgs:
+          INSTALL_DEV: "true"
+      platforms:
+        - linux/amd64
+  tagPolicy:
+    gitCommit: {}
+  local:
+    push: true
+    useBuildkit: true
+    concurrency: 1
+manifests:
+  rawYaml:
+    - /Users/cbiering/home/dev/wandelbots/wandelbots-nova/examples/your-nova-app/k8s/app.yaml
+deploy:
+  kubectl:
+    defaultNamespace: cell
+  logs:
+    prefix: container
+resourceSelector:
+  allow:
+    - groupKind: App.wandelbots.com
+      image:
+        - .spec.image
+
+wandelbots-nova/examples/your-nova-app on  fix/nova-app-template [$!+?⇡] is 📦 v0.0.1 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  rm -f k8s/deployment.yaml k8s/service.yaml && ls -la k8s/
+total 8
+drwxr-xr-x   3 cbiering  staff    96 Jul 17 14:01 .
+drwxr-xr-x@ 19 cbiering  staff   608 Jul 16 12:50 ..
+-rw-r--r--   1 cbiering  staff  1817 Jul 17 13:51 app.yaml
+
+wandelbots-nova/examples/your-nova-app on  fix/nova-app-template [$✘!+?⇡] is 📦 v0.0.1 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  cd /Users/cbiering/home/dev/wandelbots/wandelbots-nova && git --no-pager diff --stat HEAD 2>&1; echo '=== branch ==='; git branch --show-current; echo '=== untracked ==='; git status --porcelain
+=== branch ===
+fix/nova-app-template
+=== untracked ===
+
+wandelbots-nova on  fix/nova-app-template [$] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  git --no-pager log --oneline origin/main..HEAD 2>/dev/null | head -30; echo '=== diffstat vs main ==='; git --no-pager diff --stat origin/main...HEAD 2>/dev/null | tail -40
+b71df95 fix: added skaffold
+2fa384d fix: novax improvements
+2cbf3a7 fix: fixed nova app template to latest SDK version
+=== diffstat vs main ===
+ README.md                                          |   69 +-
+ examples/your-nova-app/.dockerignore               |    3 +-
+ examples/your-nova-app/.env.example                |   12 +
+ examples/your-nova-app/Dockerfile                  |    6 +-
+ examples/your-nova-app/README.md                   |   39 +-
+ examples/your-nova-app/k8s/app.yaml                |   41 +
+ examples/your-nova-app/pyproject.toml              |   11 +-
+ examples/your-nova-app/skaffold.env                |    3 +
+ examples/your-nova-app/skaffold.yaml               |   36 +
+ examples/your-nova-app/uv.lock                     | 1784 ++++++++++++++++++++
+ .../your_nova_app/register_programs.py             |   17 +-
+ examples/your-nova-app/your_nova_app/start_here.py |  122 +-
+ novax/cli.py                                       |   19 +-
+ novax/novax.py                                     |  102 +-
+ tests/novax/test_auto_register.py                  |  104 ++
+ 15 files changed, 2275 insertions(+), 93 deletions(-)
+
+wandelbots-nova on  fix/nova-app-template [$] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  git --no-pager diff origin/main...HEAD -- novax/novax.py novax/cli.py tests/novax/test_auto_register.py 2>/dev/null | head -320
+diff --git a/novax/cli.py b/novax/cli.py
+index 8539543..0e1c4e1 100644
+--- a/novax/cli.py
++++ b/novax/cli.py
+@@ -1,10 +1,12 @@
+ """Command-line entry point for serving Novax programs during development.
+ 
+ Usage:
+-    novax run <module-or-file> [--host HOST] [--port PORT] [--cell CELL]
++    novax run [module-or-file] [--host HOST] [--port PORT] [--cell CELL]
+ 
+-Imports the given module/file (which defines ``@nova.program`` functions), registers
+-all of them and serves them against a live NOVA — no Docker build required.
++Imports the given module/file (which defines ``@nova.program`` functions) if provided,
++scans the ``programs`` directory, registers all discovered programs and serves them
++against a live NOVA — no Docker build required. With no target it just scans
++``programs``.
+ """
+ 
+ import argparse
+@@ -16,7 +18,13 @@ def main() -> None:
+     sub = parser.add_subparsers(dest="command", required=True)
+ 
+     run = sub.add_parser("run", help="Import programs and serve them locally")
+-    run.add_argument("target", help="Dotted module path or path to a .py file with programs")
++    run.add_argument(
++        "target",
++        nargs="?",
++        default=None,
++        help="Optional dotted module path or path to a .py file with programs. "
++        "When omitted, the 'programs' directory is scanned.",
++    )
+     run.add_argument("--host", default="0.0.0.0", help="Host to bind (default: 0.0.0.0)")
+     run.add_argument("--port", type=int, default=3000, help="Port to bind (default: 3000)")
+     run.add_argument("--cell", default=None, help="NOVA cell to register programs in")
+@@ -32,7 +40,8 @@ def main() -> None:
+         from nova import Novax
+         from novax.novax import _import_module
+ 
+-        _import_module(args.target)
++        if args.target:
++            _import_module(args.target)
+         novax = Novax()
+         novax.serve(host=args.host, port=args.port)
+ 
+diff --git a/novax/novax.py b/novax/novax.py
+index 7a6b1f9..09a432b 100644
+--- a/novax/novax.py
++++ b/novax/novax.py
+@@ -4,7 +4,7 @@ import sys
+ from contextlib import asynccontextmanager
+ from pathlib import Path
+ from types import ModuleType
+-from typing import AsyncIterator, Optional
++from typing import Any, AsyncIterator, Optional
+ 
+ from fastapi import APIRouter, FastAPI
+ 
+@@ -17,9 +17,21 @@ from nova.program.store import ProgramStore
+ from novax.config import APP_NAME, CELL_NAME
+ from novax.program_manager import ProgramManager
+ 
++# Default directory scanned for ``@nova.program`` modules.
++DEFAULT_PROGRAMS_DIR = "programs"
++
++# Sentinel so ``serve(programs=...)`` can tell "not passed" apart from ``None`` (disable).
++_UNSET: Any = object()
++
+ 
+ class Novax:
+-    def __init__(self, app: FastAPI | None = None, *, app_name: str | None = None):
++    def __init__(
++        self,
++        app: FastAPI | None = None,
++        *,
++        app_name: str | None = None,
++        programs: str | Path | None = DEFAULT_PROGRAMS_DIR,
++    ):
+         """Initialize the Novax class.
+ 
+         Args:
+@@ -27,12 +39,20 @@ class Novax:
+                 and all imported ``@nova.program`` functions are auto-registered, so
+                 ``Novax(app)`` is all you need.
+             app_name (str | None, optional): This one is read from the environment variable APP_NAME. Only change it for development purposes. Defaults to None.
++            programs: Directory scanned for ``@nova.program`` modules. Every ``.py``
++                file under it is imported so its programs self-register -- drop a file
++                in and it is picked up, no manual import required. Files whose name
++                starts with ``_`` (e.g. ``__init__.py``) are skipped, and a missing
++                directory is ignored so the convention stays opt-in. Defaults to
++                ``"programs"``; set to ``None`` to disable scanning. Programs imported
++                anywhere else are still registered as well.
+         """
+         app_name = app_name or APP_NAME
+ 
+         nova = Nova()
+         self._nova = nova
+         self._cell = self._nova.cell(cell_id=CELL_NAME)
++        self._programs = programs
+ 
+         self._program_manager: ProgramManager = ProgramManager(
+             cell_id=CELL_NAME, app_name=app_name, nova_config=nova.config
+@@ -40,6 +60,7 @@ class Novax:
+         self._app: FastAPI | None = None
+ 
+         if app is not None:
++            self.scan_programs()
+             self.include_programs_router(app)
+             self.auto_register()
+ 
+@@ -79,6 +100,38 @@ class Novax:
+             _import_module(module)
+         return self.auto_register()
+ 
++    def scan_programs(self, directory: str | Path | None = None) -> list[str]:
++        """Import every program module under a directory so their ``@nova.program``
++        functions register themselves.
++
++        By default this scans the directory configured on the instance (``programs``
++        unless overridden via ``Novax(programs=...)``). Every ``.py`` file under it is
++        imported recursively; files whose name starts with ``_`` (e.g. ``__init__.py``)
++        are skipped. A missing directory is ignored so the convention stays opt-in.
++        Programs imported anywhere else are unaffected and still registered.
++
++        Args:
++            directory: Directory to scan recursively. Defaults to the instance's
++                configured programs directory. When that is ``None`` (scanning
++                disabled) this is a no-op.
++
++        Returns:
++            The list of all registered program IDs after the scan.
++        """
++        target = directory if directory is not None else self._programs
++        if target is None:
++            return []
++        root = Path(target)
++        if not root.is_dir():
++            return []
++        for py_file in sorted(root.rglob("*.py")):
++            if py_file.name.startswith("_"):
++                continue
++            rel = py_file.relative_to(root).with_suffix("")
++            module_name = "novax._scanned_programs." + ".".join(rel.parts)
++            _import_module(str(py_file), name=module_name)
++        return self.auto_register()
++
+     def deregister_program(self, program_id: str):
+         """
+         Deregister a program
+@@ -249,19 +302,46 @@ class Novax:
+         title: str = "Novax API",
+         version: str = "1.0.0",
+         root_path: str = "",
++        programs: str | Path | None = _UNSET,
++        static_dir: str | Path | None = None,
+     ) -> None:
+         """Build the app, register all decorated programs and run the server.
+ 
+-        This is the one-call entry point for development: it creates the FastAPI app,
+-        wires the programs router, auto-registers every imported ``@nova.program`` and
+-        starts uvicorn. CORS is open so the NOVA frontend can reach it.
++        This is the one-call entry point for development and deployment: it creates the
++        FastAPI app, wires the programs router, scans the configured ``programs``
++        directory, auto-registers every imported ``@nova.program`` and starts uvicorn.
++        CORS is open so the NOVA frontend can reach it.
++
++        Args:
++            host: Host to bind. Defaults to ``0.0.0.0``.
++            port: Port to bind. Defaults to ``3000``.
++            title: Title of the generated API. Defaults to ``"Novax API"``.
++            version: Version of the generated API. Defaults to ``"1.0.0"``.
++            root_path: ASGI root path (e.g. when served behind a proxy prefix).
++            programs: Overrides the programs directory to scan for this run. When
++                omitted the instance's configured directory is used; pass ``None`` to
++                disable scanning.
++            static_dir: Optional directory served under ``/static`` (e.g. for an app
++                icon). Ignored when the directory does not exist.
+         """
+         import uvicorn
+         from fastapi.middleware.cors import CORSMiddleware
+ 
++        if programs is not _UNSET:
++            self._programs = programs
++
+         app = self.create_app(title=title, version=version, root_path=root_path)
+         self.include_programs_router(app)
++        self.scan_programs()
+         self.auto_register()
++
++        if static_dir is not None:
++            from fastapi.staticfiles import StaticFiles
++
++            static_path = Path(static_dir)
++            if static_path.is_dir():
++                app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
++
+         app.add_middleware(
+             CORSMiddleware,
+             allow_origins=["*"],
+@@ -274,11 +354,17 @@ class Novax:
+         )
+ 
+ 
+-def _import_module(module: str) -> ModuleType:
+-    """Import a module by dotted path or a path to a ``.py`` file."""
++def _import_module(module: str, name: str | None = None) -> ModuleType:
++    """Import a module by dotted path or a path to a ``.py`` file.
++
++    Args:
++        module: Dotted module path or filesystem path to a ``.py`` file.
++        name: Optional module name to register a file under. Lets callers give scanned
++            files unique, collision-free names based on their location.
++    """
+     path = Path(module)
+     if path.suffix == ".py" and path.exists():
+-        spec = importlib.util.spec_from_file_location(path.stem, path)
++        spec = importlib.util.spec_from_file_location(name or path.stem, path)
+         if spec is None or spec.loader is None:
+             raise ImportError(f"Cannot import program file: {module}")
+         # Reuse an already-loaded module to avoid duplicate instances on repeated imports.
+diff --git a/tests/novax/test_auto_register.py b/tests/novax/test_auto_register.py
+index 60921e0..34d0c3e 100644
+--- a/tests/novax/test_auto_register.py
++++ b/tests/novax/test_auto_register.py
+@@ -216,3 +216,107 @@ def test_import_module_file_path_reuses_cached_instance():
+ def test_import_module_unknown_raises():
+     with pytest.raises(ModuleNotFoundError):
+         _import_module("tests.novax.does_not_exist_module")
++
++
++# --- Novax.scan_programs --------------------------------------------------
++
++
++def _write_program(directory: Path, filename: str, program_id: str) -> None:
++    """Create a ``.py`` file under ``directory`` defining a single @nova.program."""
++    directory.mkdir(parents=True, exist_ok=True)
++    (directory / filename).write_text(
++        "import nova\n\n\n"
++        f"@nova.program(id={program_id!r})\n"
++        "async def prog(ctx: nova.ProgramContext):\n"
++        "    pass\n"
++    )
++
++
++def test_scan_programs_registers_files_in_directory(tmp_path):
++    programs_dir = tmp_path / "programs"
++    _write_program(programs_dir, "first.py", "scan_first")
++    _write_program(programs_dir, "second.py", "scan_second")
++
++    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
++    registered = novax.scan_programs()
++
++    assert "scan_first" in registered
++    assert "scan_second" in registered
++    assert novax.program_manager.has_program("scan_first")
++    assert novax.program_manager.has_program("scan_second")
++
++
++def test_scan_programs_skips_underscore_files(tmp_path):
++    programs_dir = tmp_path / "programs"
++    _write_program(programs_dir, "visible.py", "scan_visible")
++    _write_program(programs_dir, "_hidden.py", "scan_hidden")
++    _write_program(programs_dir, "__init__.py", "scan_init")
++
++    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
++    registered = novax.scan_programs()
++
++    assert "scan_visible" in registered
++    assert "scan_hidden" not in registered
++    assert "scan_init" not in registered
++
++
++def test_scan_programs_is_recursive(tmp_path):
++    programs_dir = tmp_path / "programs"
++    _write_program(programs_dir / "nested", "deep.py", "scan_deep")
++
++    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
++    registered = novax.scan_programs()
++
++    assert "scan_deep" in registered
++
++
++def test_scan_programs_missing_directory_returns_empty(tmp_path):
++    novax = Novax(app_name="novax_scan_test", programs=str(tmp_path / "does_not_exist"))
++
++    assert novax.scan_programs() == []
++
++
++def test_scan_programs_disabled_when_programs_none(tmp_path):
++    programs_dir = tmp_path / "programs"
++    _write_program(programs_dir, "ignored.py", "scan_ignored")
++
++    novax = Novax(app_name="novax_scan_test", programs=None)
++
++    assert novax.scan_programs() == []
++    assert not novax.program_manager.has_program("scan_ignored")
++
++
++def test_scan_programs_directory_argument_overrides_default(tmp_path):
++    programs_dir = tmp_path / "custom"
++    _write_program(programs_dir, "custom.py", "scan_custom")
++
++    novax = Novax(app_name="novax_scan_test", programs=None)
++    registered = novax.scan_programs(programs_dir)
++
++    assert "scan_custom" in registered
++
++
++def test_scan_programs_keeps_imported_programs_registered(tmp_path):
++    # A program defined/imported outside the scanned directory.
++    @nova.program(id="scan_imported")
++    async def imported(ctx: nova.ProgramContext):
++        pass
++
++    programs_dir = tmp_path / "programs"
++    _write_program(programs_dir, "scanned.py", "scan_scanned")
++
++    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
++    registered = novax.scan_programs()
++
+
+wandelbots-nova on  fix/nova-app-template [$] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  git --no-pager diff origin/main...HEAD -- README.md examples/your-nova-app/pyproject.toml examples/your-nova-app/Dockerfile examples/your-nova-app/.env.example 2>/dev/null | head -180
+diff --git a/README.md b/README.md
+index f604268..11223a4 100644
+--- a/README.md
++++ b/README.md
+@@ -15,21 +15,31 @@ The SDK will help you to build your own apps and services using Python on top of
+ 
+ ## Table of Contents
+ 
+-- [Overview](#overview)
+-- [Prerequisites](#prerequisites)
+-- [Quickstart](#quickstart)
+-- [Installation](#installation)
+-  - [Install with pip](#install-with-pip)
+-  - [Install with uv and rerun visualization](#install-with-uv-and-rerun-visualization)
+-  - [Configure environment variables](#configure-environment-variables)
+-- [Using the SDK](#using-the-sdk)
+-  - [API essentials](#api-essentials)
+-  - [Example gallery](#example-gallery)
+-- [Wandelscript](#wandelscript)
+-- [NOVAx](#novax)
+-- [Development](#development)
+-- [Release process](#release-process)
+-- [Additional resources](#additional-resources)
++- [wandelbots-nova (Python SDK)](#wandelbots-nova-python-sdk)
++  - [Table of Contents](#table-of-contents)
++  - [Overview](#overview)
++  - [Prerequisites](#prerequisites)
++  - [Quickstart](#quickstart)
++  - [Installation](#installation)
++    - [Install with pip](#install-with-pip)
++    - [Install with uv and rerun visualization](#install-with-uv-and-rerun-visualization)
++    - [Configure Environment Variables](#configure-environment-variables)
++  - [Using the SDK](#using-the-sdk)
++    - [API essentials](#api-essentials)
++    - [Example gallery](#example-gallery)
++  - [Wandelscript (deprecated)](#wandelscript-deprecated)
++  - [NOVAx](#novax)
++    - [Registering programs](#registering-programs)
++  - [Development](#development)
++    - [Formatting](#formatting)
++    - [Yaml linting](#yaml-linting)
++    - [Branch versions for testing](#branch-versions-for-testing)
++  - [Release process](#release-process)
++    - [Branch behaviour overview](#branch-behaviour-overview)
++    - [Stable releases from `main`](#stable-releases-from-main)
++    - [LTS releases from `release/\*`](#lts-releases-from-release)
++    - [Create a dev build (manual)](#create-a-dev-build-manual)
++  - [Additional resources](#additional-resources)
+ 
+ ## Overview
+ 
+@@ -197,6 +207,35 @@ For more information on using NOVAx see the [README](https://github.com/wandelbo
+ 
+ > **Important:** When using NOVAx, you must import the actual program functions from their respective Python files. Only importing the program files won't suffice. This ensures proper function registration and execution within the NOVAx runtime environment.
+ 
++### Registering programs
++
++Programs register themselves with a global registry when decorated with `@nova.program`, so NOVAx just needs the modules that define them to be imported. There are three ways to get them registered, and they can be combined:
++
++- **Directory scanning (default):** NOVAx scans a `programs` directory and imports every `.py` file under it (recursively), so dropping a new file in `programs/` is enough — no manual import needed. Files whose name starts with `_` (e.g. `__init__.py`) are skipped, and a missing directory is ignored. Configure or disable it via the constructor:
++
++  ```python
++  from nova import Novax
++
++  Novax(app, programs="programs")  # default; scans ./programs
++  Novax(app, programs="my_pkg/robot_programs")  # custom directory
++  Novax(app, programs=None)  # disable scanning
++  ```
++
++- **Plain import:** any program imported elsewhere (inside or outside `programs/`) is still registered.
++
++  ```python
++  import my_pkg.special_program  # noqa: F401  (registers on import)
++  ```
++
++- **Explicit:** `novax.register_module("my_pkg.programs")` imports a module/file and registers its programs on demand.
++
++For local development you can serve everything without any FastAPI boilerplate:
++
++```bash
++novax run                       # scan ./programs and serve
++novax run my_pkg/one_program.py # also import a specific file, then scan ./programs
++```
++
+ ## Development
+ 
+ To install development dependencies, run
+diff --git a/examples/your-nova-app/.env.example b/examples/your-nova-app/.env.example
+new file mode 100644
+index 0000000..738b0b3
+--- /dev/null
++++ b/examples/your-nova-app/.env.example
+@@ -0,0 +1,12 @@
++# provide the host where the nova api is running (e.g. your virtual dev instance)
++NOVA_API=
++CELL_NAME="cell"
++LOG_LEVEL=info
++
++###
++# SECRETS
++#
++# These should never be defined in the .env file, only in the gitignored .env.local or
++# in the environment variables of the deployment.
++###
++NOVA_ACCESS_TOKEN=""
+diff --git a/examples/your-nova-app/Dockerfile b/examples/your-nova-app/Dockerfile
+index 5f0c726..e27f06c 100644
+--- a/examples/your-nova-app/Dockerfile
++++ b/examples/your-nova-app/Dockerfile
+@@ -20,11 +20,15 @@ RUN --mount=from=uv,source=/uv,target=/bin/uv \
+     uv sync --no-install-project --no-dev
+ 
+ COPY static static
++COPY README.md ./
+ COPY your_nova_app your_nova_app
+ 
++# Set INSTALL_DEV=true (e.g. via Skaffold) to include the dev dependency group
++# (adds watchfiles, which powers uvicorn --reload for the hot-reload dev loop).
++ARG INSTALL_DEV=false
+ RUN --mount=from=uv,source=/uv,target=/bin/uv \
+     --mount=type=cache,target=/root/.cache/uv \
+-    uv sync --locked --no-dev
++    sh -c 'if [ "$INSTALL_DEV" = "true" ]; then uv sync --locked; else uv sync --locked --no-dev; fi'
+ 
+ # Place executables in the environment at the front of the path
+ ENV PATH="/app/.venv/bin:$PATH"
+diff --git a/examples/your-nova-app/pyproject.toml b/examples/your-nova-app/pyproject.toml
+index 26c78f7..be0dd05 100644
+--- a/examples/your-nova-app/pyproject.toml
++++ b/examples/your-nova-app/pyproject.toml
+@@ -5,18 +5,23 @@ description = ""
+ requires-python = ">=3.12"
+ readme = "README.md"
+ dependencies = [
+-    "wandelbots-nova[novax,nova-rerun-bridge]>=3.5.3,<4",
++    "wandelbots-nova[novax,nova-rerun-bridge]>=5.7.4,<6",
+     "python-decouple~=3.8",
+     "requests>=2.32.3,<3",
+ ]
+ 
++[project.scripts]
++app = "your_nova_app.register_programs:main"
++
+ [dependency-groups]
+ dev = [
+-    "ruff>=0.14.1",
++    "ruff>=0.15.21",
++    # Enables fast file watching for `uvicorn --reload` (Skaffold hot-reload loop).
++    "watchfiles>=0.24",
+ ]
+ 
+ [tool.uv]
+-package = false
++package = true
+ 
+ [build-system]
+ requires = ["hatchling"]
+
+wandelbots-nova on  fix/nova-app-template [$] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  echo '=== novax test files ==='; ls tests/novax/ 2>&1; echo '=== config/nats tests ==='; git --no-pager diff --stat origin/main...HEAD -- tests/ 2>/dev/null; echo '=== existing CLI/serve/static tests ==='; grep -rln "scan_programs\|def main\|novax run\|static_dir\|def serve\|_import_module" tests/ 2>/dev/null
+=== novax test files ===
+__pycache__              fixtures_autodiscover.py test_program_manager.py
+api                      serve.py
+conftest.py              test_auto_register.py
+=== config/nats tests ===
+ tests/novax/test_auto_register.py | 104 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 104 insertions(+)
+=== existing CLI/serve/static tests ===
+tests/novax/__pycache__/test_auto_register.cpython-312-pytest-9.0.3.pyc
+tests/novax/test_auto_register.py
+
+wandelbots-nova on  fix/nova-app-template [$] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  echo '=== serve.py ==='; sed -n '1,60p' tests/novax/serve.py 2>&1; echo '=== any cli test? ==='; grep -rln "cli\|argparse\|novax.cli" tests/ 2>/dev/null; echo '=== _import_module name param usages in tests ==='; grep -rn "name=" tests/novax/test_auto_register.py 2>/dev/null
+=== serve.py ===
+import asyncio
+
+import nova
+from examples.plan_and_execute import plan_and_execute
+
+
+@nova.program(id="test1")
+async def test(ctx: nova.ProgramContext):
+    print("Hello, world!")
+
+
+@nova.program(
+    id="simple_program",
+    name="Simple Program",
+    description="Simple program that prints 'Hello World!' and then sleeps a bit.",
+)
+async def simple_program(ctx: nova.ProgramContext, number_of_steps: int = 30):
+    """Simple program that prints "Hello World!" and then sleeps a bit."""
+    print("Hello World!")
+
+    for i in range(number_of_steps):
+        print(f"Step: {i}")
+        await asyncio.sleep(1)
+
+    print("Finished Hello World!")
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    from novax import Novax
+
+    novax = Novax()
+    app = novax.create_app()
+    novax.include_programs_router(app)
+
+    novax.register_program(test)
+    novax.register_program(simple_program)
+    novax.register_program(plan_and_execute)
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        reload=False,
+        log_level="info",
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+    )
+=== any cli test? ===
+tests/core/__pycache__/test_io.cpython-312-pytest-8.3.5.pyc
+tests/core/__pycache__/test_io.cpython-312-pytest-8.3.4.pyc
+tests/core/__pycache__/test_io.cpython-312-pytest-8.4.2.pyc
+tests/core/__pycache__/test_io.cpython-312-pytest-8.4.0.pyc
+tests/core/__pycache__/test_io.cpython-312-pytest-8.4.1.pyc
+tests/core/__pycache__/test_motion_group_task_cancelation.py.cpython-312-pytest-8.4.2.pyc
+tests/core/__pycache__/test_motion_group.cpython-312-pytest-8.4.1.pyc
+tests/core/__pycache__/test_motion_group.cpython-312-pytest-8.4.0.pyc
+tests/core/__pycache__/test_motion_group.cpython-312-pytest-8.4.2.pyc
+tests/core/__pycache__/test_motion_group.cpython-312-pytest-8.3.5.pyc
+tests/nova/utils/test_motion_group_setup.py
+tests/nova/utils/__pycache__/test_collision_setup.cpython-312-pytest-9.0.3.pyc
+tests/nova/utils/__pycache__/test_motion_group_setup.cpython-312-pytest-9.0.3.pyc
+tests/nova/cell/motion_group/__pycache__/test_payload.cpython-312-pytest-9.0.3.pyc
+tests/nova/cell/motion_group/__pycache__/test_trajectory_cursor_integration.cpython-312-pytest-9.0.3.pyc
+tests/nova/cell/motion_group/test_payload.py
+tests/nova/cell/motion_group/test_trajectory_cursor_integration.py
+tests/nova/helper_scripts/test_create_motion_group_models.py
+tests/test_import_performance.py
+tests/__pycache__/test_config.cpython-312-pytest-8.4.2.pyc
+tests/__pycache__/test_config.cpython-312-pytest-9.0.3.pyc
+tests/__pycache__/test_import_performance.cpython-312-pytest-9.0.3.pyc
+tests/__pycache__/test_import_performance.cpython-312-pytest-8.4.2.pyc
+tests/__pycache__/test_import_performance.cpython-312-pytest-8.4.0.pyc
+tests/__pycache__/test_import_performance.cpython-312-pytest-8.4.1.pyc
+tests/cell/test_plan_limits.py
+tests/cell/test_optional_tcp.py
+tests/cell/__pycache__/test_io.cpython-312-pytest-8.4.2.pyc
+tests/cell/__pycache__/test_io.cpython-312-pytest-9.0.3.pyc
+tests/cell/__pycache__/test_optional_tcp.cpython-312-pytest-8.4.2.pyc
+tests/cell/__pycache__/test_optional_tcp.cpython-312-pytest-9.0.3.pyc
+tests/cell/__pycache__/test_motion_group.cpython-312-pytest-9.0.3.pyc
+tests/cell/__pycache__/test_motion_group.cpython-312-pytest-8.4.2.pyc
+tests/cell/__pycache__/test_plan_limits.cpython-312-pytest-9.0.3.pyc
+tests/cell/test_io.py
+tests/cell/test_motion_group.py
+tests/nova_rerun_bridge/__pycache__/test_nova_rerun_bridge.cpython-312-pytest-8.4.1.pyc
+tests/nova_rerun_bridge/__pycache__/test_nova_rerun_bridge.cpython-312-pytest-9.0.3.pyc
+tests/nova_rerun_bridge/__pycache__/test_nova_rerun_bridge.cpython-312-pytest-8.4.2.pyc
+tests/nova_rerun_bridge/test_nova_rerun_bridge.py
+tests/test_config.py
+tests/actions/test_action_wait.py
+tests/actions/__pycache__/test_action_wait.cpython-312-pytest-8.3.5.pyc
+tests/actions/__pycache__/test_action_wait.cpython-312-pytest-8.4.1.pyc
+tests/actions/__pycache__/test_action_wait.cpython-312-pytest-8.4.0.pyc
+tests/actions/__pycache__/test_action_wait.cpython-312-pytest-9.0.3.pyc
+tests/actions/__pycache__/test_action_wait.cpython-312-pytest-8.4.2.pyc
+tests/program/__pycache__/test_function_inputs.cpython-312-pytest-9.0.3.pyc
+tests/program/__pycache__/test_function_inputs.cpython-312-pytest-8.4.2.pyc
+tests/program/test_function_inputs.py
+tests/events/__pycache__/test_cycle.cpython-312-pytest-8.4.2.pyc
+tests/events/__pycache__/test_cycle.cpython-312-pytest-9.0.3.pyc
+tests/events/test_cycle.py
+tests/novax/__pycache__/conftest.cpython-312-pytest-8.4.1.pyc
+tests/novax/api/test_program_run.py
+tests/novax/api/test_program_cycle.py
+tests/novax/api/__pycache__/test_program_run.cpython-312-pytest-9.0.3.pyc
+tests/novax/api/__pycache__/test_program_run.cpython-312-pytest-8.4.2.pyc
+tests/novax/api/__pycache__/test_programs.cpython-312-pytest-8.4.1.pyc
+tests/novax/api/__pycache__/test_program_registry.cpython-312-pytest-8.4.2.pyc
+tests/novax/api/__pycache__/test_programs.cpython-312-pytest-8.4.2.pyc
+tests/novax/api/__pycache__/test_programs.cpython-312-pytest-9.0.3.pyc
+tests/novax/api/__pycache__/test_program_registry.cpython-312-pytest-9.0.3.pyc
+tests/novax/api/__pycache__/test_program_cycle.cpython-312-pytest-8.4.2.pyc
+tests/novax/api/__pycache__/test_program_cycle.cpython-312-pytest-9.0.3.pyc
+tests/novax/api/test_program_registry.py
+tests/novax/api/test_programs.py
+=== _import_module name param usages in tests ===
+tests/novax/test_auto_register.py:89:    novax = Novax(app_name="novax_auto_test")
+tests/novax/test_auto_register.py:99:    novax = Novax(app_name="novax_auto_test")
+tests/novax/test_auto_register.py:109:    novax = Novax(app_name="novax_auto_test")
+tests/novax/test_auto_register.py:121:    @nova.program(id="update_prog", name="Original")
+tests/novax/test_auto_register.py:125:    novax = Novax(app_name="novax_auto_test")
+tests/novax/test_auto_register.py:130:    @nova.program(id="update_prog", name="Updated")
+tests/novax/test_auto_register.py:144:    app = Novax(app_name="novax_ctor_test").create_app()
+tests/novax/test_auto_register.py:145:    novax = Novax(app, app_name="novax_ctor_test")
+tests/novax/test_auto_register.py:158:    novax = Novax(app_name="novax_module_test")
+tests/novax/test_auto_register.py:171:    novax = Novax(app_name="novax_module_test")
+tests/novax/test_auto_register.py:183:    novax = Novax(app_name="novax_module_test")
+tests/novax/test_auto_register.py:240:    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
+tests/novax/test_auto_register.py:255:    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
+tests/novax/test_auto_register.py:267:    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
+tests/novax/test_auto_register.py:274:    novax = Novax(app_name="novax_scan_test", programs=str(tmp_path / "does_not_exist"))
+tests/novax/test_auto_register.py:283:    novax = Novax(app_name="novax_scan_test", programs=None)
+tests/novax/test_auto_register.py:293:    novax = Novax(app_name="novax_scan_test", programs=None)
+tests/novax/test_auto_register.py:308:    novax = Novax(app_name="novax_scan_test", programs=str(programs_dir))
+tests/novax/test_auto_register.py:319:    app = Novax(app_name="novax_scan_test").create_app()
+tests/novax/test_auto_register.py:320:    novax = Novax(app, app_name="novax_scan_test", programs=str(programs_dir))
+
+wandelbots-nova on  fix/nova-app-template [$] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+❯  PYTHONPATH=. uv run pytest -rs -q tests/novax/test_cli.py tests/novax/test_auto_register.py 2>&1 | tail -30
+   Building wandelbots-nova @ file:///Users/cbiering/home/dev/wandelbots/wandelbots-nova
+Downloading virtualenv (5.3MiB)
+Downloading pillow (4.6MiB)
+      Built wandelbots-nova @ file:///Users/cbiering/home/dev/wandelbots/wandelbots-nova
+ Downloaded virtualenv
+ Downloaded pillow
+Uninstalled 3 packages in 28ms
+Installed 5 packages in 11ms
+error: Failed to spawn: `pytest`
+  Caused by: No such file or directory (os error 2)
+
+wandelbots-nova on  fix/nova-app-template [$!?] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com took 2s 
+󰂃 10% ❯  uv run --with pytest pytest -rs -q tests/novax/test_cli.py tests/novax/test_auto_register.py 2>&1 | tail -30
+error: Failed to spawn: `pytest`
+  Caused by: No such file or directory (os error 2)
+
+wandelbots-nova on  fix/nova-app-template [$!?] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+󰂃 10% ❯  uv sync --extra nova-rerun-bridge >/dev/null 2>&1; PYTHONPATH=. uv run pytest -rs -q tests/novax/test_cli.py tests/novax/test_auto_register.py 2>&1 | tail -30
+error: Failed to spawn: `pytest`
+  Caused by: No such file or directory (os error 2)
+
+wandelbots-nova on  fix/nova-app-template [$!?] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+󰂃 10% ❯  grep -nE "pytest|dependency-groups|\[tool.uv\]|dev =|dev-dependencies|optional-dependencies" pyproject.toml | head -40
+38:[project.optional-dependencies]
+97:[dependency-groups]
+98:dev = [
+100:    "pytest>=8.4.1",
+101:    "pytest-asyncio>=1.1.0",
+109:    "pytest-xdist>=3.8.0",
+111:    "pytest-timeout>=2.3.1",
+124:[tool.pytest.ini_options]
+132:    --junitxml=reports/pytest.xml
+
+wandelbots-nova on  fix/nova-app-template [$!?] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+󰂃 10% ❯  uv sync --group dev >/dev/null 2>&1; PYTHONPATH=. uv run --group dev pytest -rs -q tests/novax/test_cli.py tests/novax/test_auto_register.py 2>&1 | tail -30
+error: Failed to spawn: `pytest`
+  Caused by: No such file or directory (os error 2)
+
+wandelbots-nova on  fix/nova-app-template [$!?] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+󰂃 10% ❯  uv sync --group dev 2>&1 | tail -20
+Resolved 130 packages in 9ms
+Checked 98 packages in 5ms
+
+wandelbots-nova on  fix/nova-app-template [$!?] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+󰂃 9% ❯  ls .venv/bin/ | grep -i pytest; echo "exit=$?"; uv run python -c "import pytest, sys; print('pytest', pytest.__version__); print(sys.executable)" 2>&1 | tail
+pytest
+exit=0
+pytest 9.0.3
+/Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/bin/python3
+
+wandelbots-nova on  fix/nova-app-template [$!?] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+󰂃 9% ❯  PYTHONPATH=. uv run python -m pytest -rs -q tests/novax/test_cli.py tests/novax/test_auto_register.py 2>&1 | tail -30
+ImportError while loading conftest '/Users/cbiering/home/dev/wandelbots/wandelbots-nova/tests/novax/conftest.py'.
+/Users/cbiering/home/dev/wandelbots/github/wandelbots-nova/tests/novax/conftest.py:6: in <module>
+    ???
+novax/__init__.py:7: in <module>
+    raise ImportError(
+E   ImportError: The 'novax' package requires the optional 'novax' extra, which is not installed.
+E   Install it with one of:
+E     uv sync --extra novax
+E     uv pip install 'wandelbots-nova[novax]'
+E     pip install 'wandelbots-nova[novax]'
+
+wandelbots-nova on  fix/nova-app-template [$!?] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com took 3s 
+󰂃 8% ❯  uv sync --extra novax --extra nova-rerun-bridge 2>&1 | tail -5; PYTHONPATH=. uv run python -m pytest -rs -q tests/novax/test_cli.py tests/novax/test_auto_register.py 2>&1 | tail -30
+ + rerun-sdk==0.34.0
+ + starlette==1.3.1
+ + trimesh==4.12.2
+ + tzlocal==5.3.1
+ + uvicorn==0.49.0
+    class MotionSettings(pydantic.BaseModel):
+
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+nova/types/motion_settings.py:86
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/nova/types/motion_settings.py:86: DeprecationWarning: deprecated
+    return self.position_zone_radius
+
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+nova/types/motion_settings.py:91
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/nova/types/motion_settings.py:91: DeprecationWarning: deprecated
+    return self.min_blending_velocity
+
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+29 passed, 18 warnings in 0.98s
+
+wandelbots-nova on  fix/nova-app-template [$!?] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com took 6s 
+󰂃 8% ❯  uv run ruff format tests/novax/test_cli.py tests/novax/test_auto_register.py 2>&1; uv run ruff check tests/novax/test_cli.py tests/novax/test_auto_register.py 2>&1 | tail -15
+2 files left unchanged
+All checks passed!
+
+wandelbots-nova on  fix/nova-app-template [$!?] is 📦 v5.7.6 via 🐍 v3.14.6 on ☁️  lucy.cbiering@gmail.com 
+󰂃 7% ❯  PYTHONPATH=. uv run python -m pytest -rs -q tests/novax/ 2>&1 | tail -15 
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/_pytest/python.py", line 166, in pytest_pyfunc_call
+    result = testfunction(**testargs)
+  File "/Users/cbiering/home/dev/wandelbots/wandelbots-nova/.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py", line 905, in inner
+    runner.run(coro, context=context)
+  File "/Users/cbiering/.local/share/uv/python/cpython-3.12.4-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File "/Users/cbiering/.local/share/uv/python/cpython-3.12.4-macos-aarch64-none/lib/python3.12/asyncio/base_events.py", line 674, in run_until_complete
+    self.run_forever()
+  File "/Users/cbiering/.local/share/uv/python/cpython-3.12.4-macos-aarch64-none/lib/python3.12/asyncio/base_events.py", line 641, in run_forever
+    self._run_once()
+  File "/Users/cbiering/.local/share/uv/python/cpython-3.12.4-macos-aarch64-none/lib/python3.12/asyncio/base_events.py", line 1949, in _run_once
+    event_list = self._selector.select(timeout)
+  File "/Users/cbiering/.local/share/uv/python/cpython-3.12.4-macos-aarch64-none/lib/python3.12/selectors.py", line 566, in select
+    kev_list = self._selector.control(None, max_ev, timeout)
++++++++++++++++++++++++++++++++++++ Timeout ++++++++++++++++++++++++++++++++++++
+
+---
+
+check the rest of the PR review, if anything of this is valid
+
+---
+
+yes do this
