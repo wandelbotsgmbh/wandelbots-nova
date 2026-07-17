@@ -1,0 +1,375 @@
+[app] 2026-07-17 11:08:59 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:01 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:03 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:05 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:07 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:09 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:11 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:13 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:15 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:17 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:19 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:21 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:23 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:25 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:27 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:29 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:31 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:33 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:35 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:37 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:39 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:41 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:43 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] 2026-07-17 11:09:45 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+[app] ERROR:    Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/starlette/routing.py", line 638, in lifespan
+[app]     async with self.lifespan_context(app) as maybe_state:
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/usr/local/lib/python3.12/contextlib.py", line 210, in __aenter__
+[app]     return await anext(self.gen)
+[app]            ^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 233, in merged_lifespan
+[app]     async with nested_context(app) as maybe_nested_state:
+[app]                ^^^^^^^^^^^^^^^^^^^
+[app]   File "/usr/local/lib/python3.12/contextlib.py", line 210, in __aenter__
+[app]     return await anext(self.gen)
+[app]            ^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/novax/novax.py", line 97, in program_store_lifespan
+[app]     await self._nova.open()
+[app]   File "/app/.venv/lib/python3.12/site-packages/nova/core/nova.py", line 64, in open
+[app]     await self.nats.connect(**(self._config.nats_client_config or {}))
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 566, in connect
+[app]     raise e
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 556, in connect
+[app]     await self._select_next_server()
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1485, in _select_next_server
+[app]     raise errors.NoServersError
+[app] nats.errors.NoServersError: nats: no servers available for connection
+[app] 
+[app] ERROR:    Application startup failed. Exiting.
+[app] 2026-07-17T11:09:46.473411Z ERROR re_sdk::recording_stream: Failed to flush previous sink: gRPC has been unable to connect for 126s, uri: rerun+http://127.0.0.1:9876/proxy
+[app] 2026-07-17T11:09:47.473600Z ERROR re_grpc_client::write: Failed to flush gRPC messages during shutdown: gRPC has been unable to connect for 127s, uri: rerun+http://127.0.0.1:9876/proxy
+
+getting this error here, why? rerun is not needed here
+
+---
+
+I think nats broker is bascially this: NATS_BROKER=ws://<host>/api/nats
+
+---
+
+Deployments stabilized in 2.443 seconds
+Listing files to watch...
+ - your-nova-app
+Press Ctrl+C to exit
+Watching for changes...
+[app] INFO:     Will watch for changes in these directories: ['/app/your_nova_app']
+[app] INFO:     Uvicorn running on http://0.0.0.0:3000 (Press CTRL+C to quit)
+[app] INFO:     Started reloader process [1] using WatchFiles
+[app] 2026-07-17 11:26:36 [INFO] nova: Extracted app name 'your-nova-app' from BASE_PATH '/your-nova-app'
+[app] INFO:     Started server process [8]
+[app] INFO:     Waiting for application startup.
+[app] 2026-07-17T11:26:37.651990Z  INFO re_perf_telemetry::telemetry: Telemetry initialized enabled=false service=rerun trace_mode="off" traces=off logs=off metrics=off tracy=false
+[app] Error: winit EventLoopError: os error at /usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/winit-0.30.13/src/platform_impl/linux/mod.rs:765: neither WAYLAND_DISPLAY nor WAYLAND_SOCKET nor DISPLAY is set.
+[app] 2026-07-17T11:26:43.621390Z  WARN re_sdk::spawn: Spawned Rerun Viewer did not bind to port 9876 in time. Connections to it may fail.
+[app] 2026-07-17 11:26:48 [ERROR] nats.aio.client: nats: encountered error
+[app] Traceback (most recent call last):
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1501, in _select_next_server
+[app]     await self._connect_to_server(s)
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1470, in _connect_to_server
+[app]     await self._transport.connect(
+[app]   File "/app/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 205, in connect
+[app]     self._ws = await self._client.ws_connect(uri.geturl(), timeout=connect_timeout, headers=headers, max_msg_size=0)
+[app]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]   File "/app/.venv/lib/python3.12/site-packages/aiohttp/client.py", line 1261, in _ws_connect
+[app]     raise WSServerHandshakeError(
+[app] aiohttp.client_exceptions.WSServerHandshakeError: 404, message='Invalid response status', url='ws://api-gateway.wandelbots.svc.cluster.local:8080/api/nats'
+
+check the other errors. the nats should be dervied from the NOVA_API
+
+---
+
+the main issue is that I dont even see the app on the home screen. why?
+
+---
+
+whats the correct nats internal route?
+
+---
+
+in ../novaflow I also dont need to do nova app install . before getting a new action node on the homescreen with skaffold dev
+
+---
+
+yes lets do that
+
+---
+
+- The old k8s/deployment.yaml / k8s/service.yaml are now unreferenced (kept as reference). Say the word if you want them deleted.
+
+yes cleanup unused stuff

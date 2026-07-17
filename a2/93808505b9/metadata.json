@@ -3,14 +3,18 @@
   "checkpoint_id": "a293808505b9",
   "strategy": "manual-commit",
   "branch": "fix/nova-app-template",
-  "checkpoints_count": 8,
+  "checkpoints_count": 16,
   "files_touched": [
     "examples/your-nova-app/.dockerignore",
     "examples/your-nova-app/Dockerfile",
     "examples/your-nova-app/README.md",
+    "examples/your-nova-app/k8s/app.yaml",
     "examples/your-nova-app/pyproject.toml",
     "examples/your-nova-app/skaffold.env",
-    "examples/your-nova-app/skaffold.yaml"
+    "examples/your-nova-app/skaffold.yaml",
+    "examples/your-nova-app/uv.lock",
+    "examples/your-nova-app/your_nova_app/register_programs.py",
+    "examples/your-nova-app/your_nova_app/start_here.py"
   ],
   "sessions": [
     {
@@ -18,6 +22,12 @@
       "transcript": "/a2/93808505b9/0/full.jsonl",
       "content_hash": "/a2/93808505b9/0/content_hash.txt",
       "prompt": "/a2/93808505b9/0/prompt.txt"
+    },
+    {
+      "metadata": "/a2/93808505b9/1/metadata.json",
+      "transcript": "/a2/93808505b9/1/full.jsonl",
+      "content_hash": "/a2/93808505b9/1/content_hash.txt",
+      "prompt": "/a2/93808505b9/1/prompt.txt"
     }
   ],
   "token_usage": {

@@ -1,0 +1,126 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "a293808505b9",
+  "session_id": "965e5d9e-2b27-4475-b11b-a23514eb5a94",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-17T12:03:26.699241Z",
+  "branch": "fix/nova-app-template",
+  "checkpoints_count": 8,
+  "files_touched": [
+    "examples/your-nova-app/.dockerignore",
+    "examples/your-nova-app/Dockerfile",
+    "examples/your-nova-app/README.md",
+    "examples/your-nova-app/k8s/app.yaml",
+    "examples/your-nova-app/pyproject.toml",
+    "examples/your-nova-app/skaffold.yaml",
+    "examples/your-nova-app/uv.lock",
+    "examples/your-nova-app/your_nova_app/register_programs.py",
+    "examples/your-nova-app/your_nova_app/start_here.py"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "c299d85633fa",
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-17T12:03:26.676331Z",
+    "agent_lines": 60,
+    "agent_removed": 1,
+    "human_added": 89,
+    "human_modified": 4,
+    "human_removed": 0,
+    "total_committed": 153,
+    "total_lines_changed": 154,
+    "agent_percentage": 39.61038961038961,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 141,
+      "user_lines_removed": 1,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "examples/your-nova-app/.dockerignore": 2,
+        "examples/your-nova-app/Dockerfile": 4,
+        "examples/your-nova-app/README.md": 36,
+        "examples/your-nova-app/k8s/deployment.yaml": 50,
+        "examples/your-nova-app/k8s/service.yaml": 14,
+        "examples/your-nova-app/pyproject.toml": 2,
+        "examples/your-nova-app/skaffold.env": 3,
+        "examples/your-nova-app/skaffold.yaml": 30
+      },
+      "user_removed_per_file": {
+        "examples/your-nova-app/Dockerfile": 1
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 141,
+      "agent_lines_removed": 1
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 141,
+      "agent_lines_removed": 1
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 142,
+      "agent_lines_removed": 2
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 142,
+      "agent_lines_removed": 2
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 146,
+      "agent_lines_removed": 2
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 146,
+      "agent_lines_removed": 2
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 93,
+      "user_lines_removed": 3,
+      "agent_lines_added": 212,
+      "agent_lines_removed": 2,
+      "user_added_per_file": {
+        "examples/your-nova-app/uv.lock": 91,
+        "examples/your-nova-app/your_nova_app/register_programs.py": 1,
+        "examples/your-nova-app/your_nova_app/start_here.py": 1
+      },
+      "user_removed_per_file": {
+        "examples/your-nova-app/uv.lock": 1,
+        "examples/your-nova-app/your_nova_app/register_programs.py": 1,
+        "examples/your-nova-app/your_nova_app/start_here.py": 1
+      }
+    }
+  ]
+}
