@@ -1,0 +1,16 @@
+Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Run actions/dependency-review-action@v4
+Vulnerabilities
+Scorecard
+Dependency Changes
+0s0s
+
+please fix this
+
+---
+
+novax = Novax(app, programs="programs")
+
+call the parameter programs_dir=... 
+
+also check the readme in the app and for the general novax if everything is up to date. also the new skaffold dev flow.
