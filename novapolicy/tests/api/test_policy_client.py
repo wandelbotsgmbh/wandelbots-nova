@@ -45,9 +45,7 @@ async def test_callback_client_uses_explicit_no_op_capabilities() -> None:
     await client.validate_schema(PolicySchema(observations=[]))
     await client.prepare({}, PolicySchema(observations=[]))
     client.synchronize_action_timestep(4)
-    client.enable_trajectory_trace()
     await client.close()
 
     assert client.requires_first_waypoint_bridge is False
     assert client.rtc is None
-    assert client.trajectory_trace is None

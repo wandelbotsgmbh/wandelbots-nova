@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from typing import Any
 
+    from numpy.typing import NDArray
+
     from nova.types import RobotState
     from novapolicy.schema import PolicySchema
 
@@ -268,7 +270,7 @@ class Gr00tPolicyClient(PolicyClient):
         configs = action_metadata.get("action_configs", [])
         if isinstance(configs, list):
             action_configs = [
-                {key: str(value) for key, value in config.items()}
+                {str(key): str(value) for key, value in config.items()}
                 for config in configs
                 if isinstance(config, dict)
             ]
@@ -381,8 +383,9 @@ class Gr00tPolicyClient(PolicyClient):
             arr = action.get(key)
             if not isinstance(arr, np.ndarray) or arr.ndim != _ACTION_NDIM:
                 continue
+            typed_arr = cast("NDArray[np.float32]", arr)
             for mg in mgs:
-                joint_data = arr[0].astype(np.float32)
+                joint_data = typed_arr[0].astype(np.float32)
                 actual_dof = self._actual_dof.get(mg.id)
                 if actual_dof and joint_data.shape[1] > actual_dof:
                     joint_data = joint_data[:, :actual_dof]
@@ -404,7 +407,8 @@ class Gr00tPolicyClient(PolicyClient):
         for key, mg in schema.tcp_action_keys:
             arr = action.get(key)
             if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
-                tcp_targets[mg.id] = arr[0].astype(np.float32).tolist()
+                typed_arr = cast("NDArray[np.float32]", arr)
+                tcp_targets[mg.id] = typed_arr[0].astype(np.float32).tolist()
 
         dt_ms = float(cast("float", info.get("dt_ms", self._dt_ms)))
         return ActionChunk(joints=joints, tcp=tcp_targets, ios=ios or None, dt_ms=dt_ms)

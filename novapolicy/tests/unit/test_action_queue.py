@@ -13,7 +13,8 @@ def test_weighted_aggregation_blends_old_and_new_predictions() -> None:
     queue.merge([(4, np.asarray([2.0], dtype=np.float32))])
 
     assert queue.merge([(4, np.asarray([10.0], dtype=np.float32))])
-    assert queue.entries[0][1][0] == pytest.approx(7.6)
+    _timestep, action = queue.consume()
+    assert action[0] == pytest.approx(7.6)
 
 
 def test_current_and_two_successors_are_frozen() -> None:
@@ -30,7 +31,7 @@ def test_current_and_two_successors_are_frozen() -> None:
     )
 
     assert queue.merge((timestep, np.asarray([10.0], dtype=np.float32)) for timestep in range(1, 5))
-    assert [action[0] for _timestep, action in queue.entries] == pytest.approx([
+    assert [queue.consume()[1][0] for _index in range(4)] == pytest.approx([
         11.0,
         12.0,
         13.0,
@@ -45,8 +46,8 @@ def test_average_aggregation_is_a_true_running_mean_per_timestep() -> None:
     assert queue.merge([(4, np.asarray([10.0], dtype=np.float32))])
     assert queue.merge([(4, np.asarray([12.0], dtype=np.float32))])
 
-    assert queue.entries[0][1][0] == pytest.approx((2.0 + 10.0 + 12.0) / 3.0)
-    assert queue.prediction_counts == {4: 3}
+    _timestep, action = queue.consume()
+    assert action[0] == pytest.approx((2.0 + 10.0 + 12.0) / 3.0)
 
 
 def test_synchronization_drops_actions_elapsed_on_nova() -> None:
@@ -57,4 +58,5 @@ def test_synchronization_drops_actions_elapsed_on_nova() -> None:
 
     assert queue.synchronize(4) == 4
     assert queue.latest_timestep == 3
-    assert [timestep for timestep, _action in queue.entries] == [4]
+    timestep, _action = queue.consume()
+    assert timestep == 4

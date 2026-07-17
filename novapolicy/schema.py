@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from novapolicy._sdk import get_controller_id
 
@@ -99,7 +99,11 @@ class _ObsJoints:
 
     @property
     def sources(self) -> list[MotionGroup]:
-        return self.source if isinstance(self.source, list) else [self.source]
+        return (
+            cast("list[MotionGroup]", self.source)
+            if isinstance(self.source, list)
+            else [self.source]
+        )
 
 
 @dataclass(slots=True)
@@ -237,7 +241,11 @@ class _ActJoints:
 
     @property
     def targets(self) -> list[MotionGroup]:
-        return self.target if isinstance(self.target, list) else [self.target]
+        return (
+            cast("list[MotionGroup]", self.target)
+            if isinstance(self.target, list)
+            else [self.target]
+        )
 
 
 @dataclass(slots=True)

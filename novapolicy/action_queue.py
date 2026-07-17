@@ -49,18 +49,6 @@ class TimestampedActionQueue:
     def latest_timestep(self) -> int:
         return self._latest_timestep
 
-    @property
-    def entries(self) -> tuple[tuple[int, NDArray[np.float32]], ...]:
-        return tuple(self._actions)
-
-    @property
-    def published(self) -> dict[int, NDArray[np.float32]]:
-        return self._published
-
-    @property
-    def prediction_counts(self) -> dict[int, int]:
-        return self._prediction_counts
-
     def clear(self) -> None:
         self._actions.clear()
         self._prediction_counts.clear()

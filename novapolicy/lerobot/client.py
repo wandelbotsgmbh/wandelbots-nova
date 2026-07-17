@@ -107,18 +107,6 @@ class LeRobotPolicyClient(PolicyClient):
         return self._dt_ms
 
     @property
-    def trajectory_trace(self) -> dict[str, object]:
-        """Raw pre-aggregation predictions when debug tracing is enabled."""
-        if self._async_queue is None:
-            return {"raw_action_chunks": []}
-        return self._async_queue.trajectory_trace
-
-    def enable_trajectory_trace(self) -> None:
-        """Enable raw asynchronous prediction tracing for the next episode."""
-        if self._async_queue is not None:
-            self._async_queue.enable_trajectory_trace()
-
-    @property
     def requires_first_waypoint_bridge(self) -> bool:
         """Whether continuous execution needs one measured-state bridge."""
         return self._async_queue is not None

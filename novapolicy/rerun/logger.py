@@ -38,10 +38,19 @@ class PolicyRerunLogger:
         camera_names: list[str] | None = None,
         *,
         use_tcp_offset_for_joint_actions: bool = False,
+        state_sample_interval_ms: float | None = None,
     ) -> None:
         self._motion_groups = motion_groups
         self._camera_names = camera_names or []
         self._use_tcp_offset_for_joint_actions = use_tcp_offset_for_joint_actions
+        if state_sample_interval_ms is None:
+            from nova.viewers import Rerun, get_viewer_manager  # noqa: PLC0415
+
+            viewer = get_viewer_manager().get_viewer(Rerun)
+            state_sample_interval_ms = (
+                viewer.state_sample_interval_ms if viewer is not None else 1000.0 / 30.0
+            )
+        self._state_sample_interval_ms = state_sample_interval_ms
         self._dh_robots: dict[str, Any] = {}
         self._tcp_offsets: dict[str, Any] = {}  # mg_id -> 4x4 flange->TCP matrix
         self._visualizers: dict[str, Any] = {}  # mg_id -> RobotVisualizer
@@ -355,6 +364,7 @@ class PolicyRerunLogger:
             max_trail_points=self._max_trail_points,
             recording=self._recording,
             image_reader=image_reader,
+            state_sample_interval_ms=self._state_sample_interval_ms,
         )
         self._streamer.start(sessions)
 

@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any
 
 from novapolicy.action_queue import TimestampedActionQueue
 from novapolicy.chunking import smooth_action_chunk
-from novapolicy.debug import RawActionChunkTrace
 from novapolicy.lerobot.schema import FlatActionLayout
 
 if TYPE_CHECKING:
@@ -44,28 +43,10 @@ class LeRobotAsyncActionQueue:
         self._refill_threshold = refill_threshold
         self._smoothing = smoothing
         self._pending_request: asyncio.Task[list[Any]] | None = None
-        self._trace: RawActionChunkTrace | None = None
-
-    @property
-    def pending_request(self) -> asyncio.Task[list[Any]] | None:
-        return self._pending_request
-
-    @property
-    def action_queue(self) -> TimestampedActionQueue:
-        return self._queue
-
-    @property
-    def trajectory_trace(self) -> dict[str, object]:
-        return self._trace.data if self._trace is not None else {"raw_action_chunks": []}
-
-    def enable_trajectory_trace(self) -> None:
-        self._trace = RawActionChunkTrace()
 
     def reset(self) -> None:
         self._queue.clear()
         self._pending_request = None
-        if self._trace is not None:
-            self._trace.clear()
 
     async def close(self) -> None:
         pending = self._pending_request
@@ -187,6 +168,4 @@ class LeRobotAsyncActionQueue:
             )
             for timed_action in actions
         ]
-        if self._trace is not None:
-            self._trace.record(decoded)
         return self._queue.merge(decoded)

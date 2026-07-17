@@ -74,15 +74,11 @@ def log_joint_tcp_tracking(
     position_error = [target_position[i] - actual_position[i] for i in range(3)]
 
     _set_time(step, start_time, recording)
-    for name, value in zip(("x", "y", "z"), target_position, strict=True):
-        rr.log(f"policy/{mg_id}/tcp_target/position/{name}", rr.Scalars(value), recording=recording)
-    for name, value in zip(("x", "y", "z"), actual_position, strict=True):
-        rr.log(f"policy/{mg_id}/tcp_actual/position/{name}", rr.Scalars(value), recording=recording)
-    for name, value in zip(("dx", "dy", "dz"), position_error, strict=True):
-        rr.log(f"policy/{mg_id}/tcp_error/position/{name}", rr.Scalars(value), recording=recording)
-    rr.log(
-        f"policy/{mg_id}/tcp_error/position_norm_mm",
-        rr.Scalars(math.dist(target_position, actual_position)),
+    _log_tcp_position_series(
+        mg_id,
+        target_position=target_position,
+        actual_position=actual_position,
+        position_error=position_error,
         recording=recording,
     )
     _log_tcp_3d(
@@ -149,33 +145,51 @@ def _log_tcp_scalar_series(
     orientation_error: list[float],
     recording: RecordingStream | None,
 ) -> None:
-    for name, value in zip(("x", "y", "z"), target_position, strict=True):
-        rr.log(f"policy/{mg_id}/tcp_target/position/{name}", rr.Scalars(value), recording=recording)
+    _log_tcp_position_series(
+        mg_id,
+        target_position=target_position,
+        actual_position=actual_position,
+        position_error=position_error,
+        recording=recording,
+    )
     for name, value in zip(("rx", "ry", "rz"), target_orientation, strict=True):
         rr.log(
             f"policy/{mg_id}/tcp_target/orientation/{name}", rr.Scalars(value), recording=recording
         )
-    for name, value in zip(("x", "y", "z"), actual_position, strict=True):
-        rr.log(f"policy/{mg_id}/tcp_actual/position/{name}", rr.Scalars(value), recording=recording)
     for name, value in zip(("rx", "ry", "rz"), actual_orientation, strict=True):
         rr.log(
             f"policy/{mg_id}/tcp_actual/orientation/{name}", rr.Scalars(value), recording=recording
         )
-    for name, value in zip(("dx", "dy", "dz"), position_error, strict=True):
-        rr.log(f"policy/{mg_id}/tcp_error/position/{name}", rr.Scalars(value), recording=recording)
     for name, value in zip(("drx", "dry", "drz"), orientation_error, strict=True):
         rr.log(
             f"policy/{mg_id}/tcp_error/orientation/{name}", rr.Scalars(value), recording=recording
         )
 
     rr.log(
-        f"policy/{mg_id}/tcp_error/position_norm_mm",
-        rr.Scalars(math.dist(target_position, actual_position)),
-        recording=recording,
-    )
-    rr.log(
         f"policy/{mg_id}/tcp_error/orientation_norm_rad",
         rr.Scalars(math.dist(target_orientation, actual_orientation)),
+        recording=recording,
+    )
+
+
+def _log_tcp_position_series(
+    mg_id: str,
+    *,
+    target_position: list[float],
+    actual_position: list[float],
+    position_error: list[float],
+    recording: RecordingStream | None,
+) -> None:
+    """Log the position components shared by joint- and TCP-target tracking."""
+    for name, value in zip(("x", "y", "z"), target_position, strict=True):
+        rr.log(f"policy/{mg_id}/tcp_target/position/{name}", rr.Scalars(value), recording=recording)
+    for name, value in zip(("x", "y", "z"), actual_position, strict=True):
+        rr.log(f"policy/{mg_id}/tcp_actual/position/{name}", rr.Scalars(value), recording=recording)
+    for name, value in zip(("dx", "dy", "dz"), position_error, strict=True):
+        rr.log(f"policy/{mg_id}/tcp_error/position/{name}", rr.Scalars(value), recording=recording)
+    rr.log(
+        f"policy/{mg_id}/tcp_error/position_norm_mm",
+        rr.Scalars(math.dist(target_position, actual_position)),
         recording=recording,
     )
 

@@ -7,6 +7,7 @@ users interact with ``Gr00tPolicyClient``.
 
 from __future__ import annotations
 
+import importlib
 import io
 from typing import TYPE_CHECKING, Any, cast
 
@@ -15,13 +16,15 @@ import numpy as np
 if TYPE_CHECKING:
     from types import ModuleType
 
+_msgpack: ModuleType | None
 try:
-    import msgpack as _msgpack
+    _msgpack = importlib.import_module("msgpack")
 except ImportError:  # pragma: no cover
     _msgpack = None
 
+_zmq: ModuleType | None
 try:
-    import zmq as _zmq
+    _zmq = importlib.import_module("zmq")
 except ImportError:  # pragma: no cover
     _zmq = None
 
@@ -63,7 +66,7 @@ class Gr00tMsgSerializer:
         if not isinstance(obj, np.ndarray):
             return obj
         output = io.BytesIO()
-        np.save(output, obj, allow_pickle=False)
+        np.save(output, cast("Any", obj), allow_pickle=False)
         return {"__ndarray_class__": True, "as_npy": output.getvalue()}
 
 
@@ -153,7 +156,8 @@ class Gr00tZmqTransport:
 
         response = Gr00tMsgSerializer.from_bytes(message)
         if isinstance(response, dict) and "error" in response:
-            msg = f"GR00T server error: {response['error']}"
+            error = cast("dict[str, object]", response)["error"]
+            msg = f"GR00T server error: {error}"
             raise RuntimeError(msg)
         return response
 

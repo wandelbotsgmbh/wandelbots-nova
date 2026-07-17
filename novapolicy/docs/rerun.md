@@ -16,7 +16,10 @@ from nova import viewers
 from novapolicy import SequentialExecution
 
 
-@nova.program(id="my_policy", viewer=viewers.Rerun())
+@nova.program(
+    id="my_policy",
+    viewer=viewers.Rerun(state_sample_interval_ms=10.0),  # 100 Hz live state
+)
 async def run(ctx):
     ...
     executor = PolicyExecutor(
@@ -38,7 +41,7 @@ to fetch robot meshes.
 | `observation.py`  | Robot joint state per step (drives the 3D robot model).                                                                                                 |
 | `action_chunk.py` | The action chunk as a 3D TCP path (executed steps as a gradient line strip, discarded receding-horizon tail in dim gray) plus an inspectable text dump. |
 | `images.py`       | JPEG-compressed camera frames.                                                                                                                          |
-| `streaming.py`    | Background task that streams robot state at 30 Hz and the latest camera frames at 15 Hz.                                                               |
+| `streaming.py`    | Background task that streams robot state at the viewer's configured rate (30 Hz by default) and the latest camera frames at 15 Hz.                       |
 | `blueprint.py`    | The viewer layout (panels for 3D scene, cameras, action text).                                                                                          |
 | `logger.py`       | `PolicyRerunLogger` — the single entry point the executor talks to; ties the above together.                                                            |
 | `constants.py`    | Colors / widths / thresholds for the chunk visuals.                                                                                                     |
@@ -53,3 +56,9 @@ Rerun reads the latest WebRTC frames between policy chunks. Other camera backend
 continue to log at policy-observation cadence unless they expose a compatible
 `get_latest_frame(max_age_s=...)` method. Camera images are JPEG-compressed before transport
 to keep the live viewer responsive.
+
+`state_sample_interval_ms` controls actual robot-state samples used by the 3D mesh,
+TCP trail, and joint plots. It does not change the policy or jogging command cadence;
+configure policy timing or `WaypointConfig` separately when commands themselves need
+a shorter interval. `trajectory_sample_interval_ms` independently controls sampling
+of planned trajectories.

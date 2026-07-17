@@ -271,7 +271,11 @@ def _log_text(
     rr.set_time("policy_time", duration=elapsed, recording=recording)
     rr.set_time("policy_step", sequence=step, recording=recording)
 
-    lines = [f"Step {step} | dt_ms={chunk.dt_ms}"]
+    lines = [
+        f"Step {step} | action_timestep={chunk.action_timestep} | dt_ms={chunk.dt_ms} | "
+        f"first_timestamp_ms={chunk.first_timestamp_ms} | "
+        f"seam_backdate_steps={chunk.seam_backdate_steps}"
+    ]
 
     for mg_id, steps in chunk.joints.items():
         n_steps = len(steps)

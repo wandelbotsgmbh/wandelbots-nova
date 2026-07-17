@@ -725,10 +725,13 @@ def jog_joints(
             async for state in jogger:
                 jogger.set_target([0.1, -1.5, 1.0, -0.5, 0.0, 0.0])
     """
-    if not isinstance(motion_groups, list):
-        motion_groups = [motion_groups]
+    groups = (
+        cast("list[MotionGroup]", motion_groups)
+        if isinstance(motion_groups, list)
+        else [motion_groups]
+    )
     return JointJogger(
-        motion_groups,
+        groups,
         config=config,
         stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,
@@ -808,7 +811,7 @@ def jog_tcp(
     """
     if isinstance(motion_groups, dict):
         return TcpJogger(
-            motion_groups,
+            cast("dict[MotionGroup, str]", motion_groups),
             config=config,
             stop_conditions=stop_conditions,
             start_joint_position=start_joint_position,

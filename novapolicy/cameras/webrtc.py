@@ -13,23 +13,28 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from dataclasses import dataclass
+import importlib
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import requests
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     from aiortc import MediaStreamTrack
+    from av import VideoFrame
     from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
 # Optional imports — aiortc is heavy and not always needed
+_aiortc: ModuleType | None
 try:
-    import aiortc as _aiortc
+    _aiortc = importlib.import_module("aiortc")
     import av.logging
 
     av.logging.set_level(av.logging.ERROR)
@@ -191,7 +196,7 @@ class WebRTCConnection:
 
         try:  # noqa: PLW0717
             while True:
-                frame = await track.recv()
+                frame = cast("VideoFrame", await track.recv())
                 img = frame.to_ndarray(format="rgb24")
 
                 with self._frame_lock:

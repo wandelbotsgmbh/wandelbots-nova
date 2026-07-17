@@ -162,7 +162,7 @@ markers = """
 python-version = "3.11"
 
 [tool.ty.src]
-include = ["nova", "examples", "tests", "wandelscript", "novax", "nova_rerun_bridge"]
+include = ["nova", "examples", "tests", "wandelscript", "novax", "nova_rerun_bridge", "novapolicy"]
 exclude = [
     "wandelscript/grammar",
     "wandelscript/motions.py",
@@ -187,6 +187,7 @@ not-subscriptable = "ignore"
 unknown-argument = "ignore"
 missing-argument = "ignore"
 unsupported-operator = "ignore"
+no-matching-overload = "ignore"
 unused-type-ignore-comment = "ignore"
 
 # Wandelscript is a dynamically typed DSL interpreter built on ANTLR. Its parse
@@ -207,11 +208,12 @@ unused-type-ignore-comment = "ignore"
 # Example scripts are illustrative samples rather than shipped library code, so
 # the same runtime-dynamic relaxations as for tests apply.
 [[tool.ty.overrides]]
-include = ["examples/**", "nova_rerun_bridge/examples/**"]
+include = ["examples/**", "nova_rerun_bridge/examples/**", "novapolicy/examples/**"]
 
 [tool.ty.overrides.rules]
 invalid-argument-type = "ignore"
 unresolved-attribute = "ignore"
+not-subscriptable = "ignore"
 missing-argument = "ignore"
 
 [tool.semantic_release]

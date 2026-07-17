@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from novapolicy.debug import ExecutionTrajectoryTrace
 from novapolicy.executor import Phase, PolicyExecutor
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.schema import Action, Observation, ObservationEntry, PolicySchema
@@ -635,35 +634,6 @@ async def test_a_stop_condition_can_veto_an_io_only_chunk(robot: _Robot):
     assert result.reason == "stop condition: forbids_output_7"
     robot.session.update_chunk.assert_not_called()
     robot.session.write_ios.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_trajectory_trace_failure_does_not_skip_policy_cleanup(
-    robot: _Robot,
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """Best-effort diagnostics must not mask a run result or leak the policy connection."""
-
-    def stop_immediately(_ctx: StopContext) -> bool:
-        return True
-
-    write_trace = MagicMock(side_effect=OSError("disk unavailable"))
-    monkeypatch.setattr(ExecutionTrajectoryTrace, "write", write_trace)
-    policy = _TestPolicy(_hold_action)
-    policy.close = AsyncMock()
-    executor = PolicyExecutor(
-        _schema(),
-        policy,
-        stop_conditions=[stop_immediately],
-        trajectory_trace_path=tmp_path / "trace.json",
-    )
-
-    result = await executor.run()
-
-    assert result.reason == "stop condition: stop_immediately"
-    write_trace.assert_called_once()
-    policy.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -331,7 +331,6 @@ async def test_async_queue_refills_and_blends_overlapping_timesteps(
         async_queue_refill_threshold=1.0,
     )
 
-    client.enable_trajectory_trace()
     await client.connect([mg.id])
     first = await client.get_actions(
         {mg.id: _state((0.0,) * 6)},
@@ -368,10 +367,6 @@ async def test_async_queue_refills_and_blends_overlapping_timesteps(
     assert replacement.action_timestep >= 0
     assert replacement.ios is not None
     assert isinstance(replacement.ios[mg.id]["digital_out[0]"], bool)
-    raw_chunks = client.trajectory_trace["raw_action_chunks"]
-    assert len(raw_chunks) == 2
-    assert raw_chunks[0]["first_timestep"] == 0
-    assert [action["timestep"] for action in raw_chunks[0]["actions"]] == list(range(8))
 
     await client.close()
 
@@ -390,7 +385,6 @@ async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
         use_async_queue=True,
         async_queue_smoothing=True,
     )
-    client.enable_trajectory_trace()
     await client.connect([mg.id])
     fake_lerobot.stub.action_values = [
         [value] * 6 + [io] for value, io in [(0.0, 1.0), (4.0, 0.0), (0.0, 1.0)]
@@ -405,7 +399,6 @@ async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
 
     assert [step[0] for step in chunk.joints[mg.id]] == pytest.approx([1.25, 1.5, 1.25])
     assert chunk.ios == {mg.id: {"digital_out[0]": True}}
-    assert client.trajectory_trace["raw_action_chunks"][0]["actions"][1]["values"][0] == 4.0
 
     await client.close()
 

@@ -80,3 +80,47 @@ async def test_state_streamer_logs_latest_camera_frames_between_policy_chunks(
 
     assert read_count >= 2
     assert log_images.call_count == read_count
+
+
+@pytest.mark.asyncio
+async def test_state_streamer_logs_controller_and_waypoint_timing_to_rerun(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    waypoint_logged = asyncio.Event()
+    log = MagicMock()
+
+    def capture_log(entity_path: str, *args: object, **kwargs: object) -> None:
+        log(entity_path, *args, **kwargs)
+        if entity_path == "policy/waypoint_requests":
+            waypoint_logged.set()
+
+    session = MagicMock(
+        current_state=None,
+        last_server_timestamp_ms=125,
+        scheduled_chunk_count=1,
+        scheduled_waypoint_timestamps=(200, 250, 300),
+        scheduled_action_timestep=7,
+        scheduled_at_server_ms=125,
+    )
+    streamer = StateStreamer(
+        start_time=time.monotonic(),
+        dh_robots={},
+        visualizers={},
+        tcp_trail={},
+        max_trail_points=10,
+    )
+    monkeypatch.setattr(rr, "set_time", MagicMock())
+    monkeypatch.setattr(rr, "log", capture_log)
+
+    streamer.start({"0@ur10e": session})
+    try:
+        await asyncio.wait_for(waypoint_logged.wait(), timeout=0.5)
+    finally:
+        await streamer.stop()
+
+    logged_paths = [call.args[0] for call in log.call_args_list]
+    assert "policy/0@ur10e/controller/server_timestamp_ms" in logged_paths
+    assert "policy/0@ur10e/waypoint_request/action_timestep" in logged_paths
+    assert "policy/0@ur10e/waypoint_request/first_timestamp_ms" in logged_paths
+    assert "policy/0@ur10e/waypoint_request/last_timestamp_ms" in logged_paths
+    assert "policy/waypoint_requests" in logged_paths

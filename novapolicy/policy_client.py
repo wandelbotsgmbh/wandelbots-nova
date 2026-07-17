@@ -64,14 +64,6 @@ class PolicyClient(ABC):
         """Model-side RTC configuration, or ``None`` when RTC is disabled."""
         return None
 
-    def enable_trajectory_trace(self) -> None:  # noqa: B027
-        """Enable optional policy-client diagnostics."""
-
-    @property
-    def trajectory_trace(self) -> dict[str, object] | None:
-        """Return optional JSON-serializable policy diagnostics."""
-        return None
-
 
 class CallbackPolicyClient(PolicyClient):
     """Explicit adapter for a local asynchronous policy callback."""

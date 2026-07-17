@@ -21,7 +21,6 @@ from novapolicy.chunking import (
     placement,
     trim_chunk,
 )
-from novapolicy.debug import ExecutionTrajectoryTrace
 from novapolicy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
 from novapolicy.io import IOStreamManager
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
@@ -38,8 +37,6 @@ from novapolicy.types import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.rerun import PolicyRerunLogger
@@ -114,7 +111,6 @@ class PolicyExecutor:
         execution: ExecutionMode = _DEFAULT_EXECUTION,
         n_action_steps: int = 0,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
-        trajectory_trace_path: str | Path | None = None,
     ) -> None:
         """Create a policy executor.
 
@@ -138,9 +134,6 @@ class PolicyExecutor:
                 which remains available to asynchronous policy clients.
             start_joint_position: Optional mapping of motion group to joint pose
                 to PTP-move to before starting waypoint jogging.
-            trajectory_trace_path: Optional JSON output containing every policy
-                chunk, exact waypoint request, and controller-timestamped state
-                sample for offline trajectory reconstruction.
         """
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
@@ -152,13 +145,6 @@ class PolicyExecutor:
 
         self._motion = motion
         self._start_joint_position = start_joint_position
-        self._trajectory_trace = (
-            ExecutionTrajectoryTrace(trajectory_trace_path)
-            if trajectory_trace_path is not None
-            else None
-        )
-        if self._trajectory_trace is not None:
-            self._trajectory_trace.enable_policy_client(self._policy)
         self._stop_conditions = stop_conditions or []
         self._timeout_s = timeout_s
         if not isinstance(execution, ExecutionMode):
@@ -219,8 +205,6 @@ class PolicyExecutor:
         """
         self._stop_event.clear()
         self._policy_timelines.clear()
-        if self._trajectory_trace is not None:
-            self._trajectory_trace.clear()
         self.result = None
         self.status = ExecutorStatus(phase=Phase.CONNECTING, message="Connecting...")
         try:
@@ -260,11 +244,6 @@ class PolicyExecutor:
         for session in self._sessions.values():
             with contextlib.suppress(MotionError, EmergencyStopError, OSError, RuntimeError):
                 await session.stop()
-
-        try:
-            self._write_trajectory_trace()
-        except (OSError, TypeError, ValueError):
-            logger.exception("Failed to write policy trajectory trace")
 
         # Wait for pending IO tasks
         if self._io_tasks:
@@ -418,7 +397,7 @@ class PolicyExecutor:
                 self.status.message = "Running policy..."
 
             # Query policy → send to robot
-            action = await self._get_policy_actions(robot_states, images, step=step + 1)
+            action = await self._get_policy_actions(robot_states, images)
             self._log_observation_to_first_waypoint(
                 action,
                 robot_states,
@@ -468,10 +447,8 @@ class PolicyExecutor:
         self,
         robot_states: dict[str, RobotState],
         images: dict[str, Any] | None,
-        *,
-        step: int,
     ) -> ActionChunk:
-        """Synchronize a queue, request its action, and retain exact trace data."""
+        """Synchronize a queue, request its action, and apply relative targets."""
         self._synchronize_policy_action_timestep()
         action = await self._policy.get_actions(
             robot_states,
@@ -479,9 +456,7 @@ class PolicyExecutor:
             images,
             self._all_io_values or None,
         )
-        action = self._apply_relative_mode(action, robot_states)
-        self._record_policy_chunk(action, robot_states, step=step)
-        return action
+        return self._apply_relative_mode(action, robot_states)
 
     def _synchronize_policy_action_timestep(self) -> None:
         """Advance a queue policy to the first safely replaceable NOVA action.
@@ -994,11 +969,6 @@ class PolicyExecutor:
             tcp=tcp,
             stop_conditions=self._stop_conditions,
             mode=mode,
-            trajectory_trace=(
-                self._trajectory_trace.create_session_trace(mg.id, mode)
-                if self._trajectory_trace is not None
-                else None
-            ),
         )
 
     @property
@@ -1034,39 +1004,6 @@ class PolicyExecutor:
             use_tcp_offset_for_joint_actions=True,
         )
         await self._rerun.initialize()
-
-    def _record_policy_chunk(
-        self,
-        action: ActionChunk,
-        robot_states: dict[str, RobotState],
-        *,
-        step: int,
-    ) -> None:
-        """Collect policy output and controller samples when tracing is enabled."""
-        if self._trajectory_trace is None:
-            return
-        self._trajectory_trace.record_policy_chunk(
-            action,
-            robot_states,
-            {
-                group_id: session.last_server_timestamp_ms
-                for group_id, session in self._sessions.items()
-            },
-            step=step,
-        )
-
-    def _write_trajectory_trace(self) -> None:
-        """Write optional diagnostics after control loops have stopped."""
-        if self._trajectory_trace is None:
-            return
-        result = self.result
-        self._trajectory_trace.write(
-            reason=result.reason if result is not None else None,
-            steps=result.steps if result is not None else None,
-            duration_s=result.duration_s if result is not None else None,
-            policy=self._policy,
-        )
-        logger.info("Wrote trajectory trace to %s", self._trajectory_trace.path)
 
     def _log_completion(self) -> None:
         """Log execution result to Rerun."""

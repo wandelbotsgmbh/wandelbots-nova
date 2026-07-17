@@ -27,7 +27,6 @@ import pytest
 
 from nova import api
 from nova.types import Pose
-from novapolicy.debug import WaypointTrajectoryTrace
 from novapolicy.jogging import jog_tcp
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.types import JoggingNotSupportedError, MotionError, WaypointConfig
@@ -56,10 +55,10 @@ def _motion_error(message: str = "joint_limit") -> object:
 class FakeJoggingServer:
     """Consumes the session's request generator and replays scripted responses.
 
-    The session yields an ``InitializeJoggingRequest`` first, then one waypoint
-    request per response it receives (once a chunk is queued). We keep emitting
-    ``_ok()`` responses on a short cadence until stopped, recording every
-    request the session produces.
+    The session yields an ``InitializeJoggingRequest`` first, then waypoint
+    requests independently of response latency. We keep emitting ``_ok()``
+    responses on a configurable cadence until stopped, recording every request
+    the session produces.
     """
 
     def __init__(
@@ -138,7 +137,6 @@ def _build_session(
     states: Sequence[object] = (),
     stop_conditions: list[object] | None = None,
     mode: str = "joint",
-    trace_trajectory: bool = False,
     config: WaypointConfig | None = None,
     response_delay: float = 0.003,
 ) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
@@ -165,18 +163,13 @@ def _build_session(
     gateway = MagicMock()
     gateway.jogging_api.execute_waypoint_jogging = server.execute_waypoint_jogging
 
-    trajectory_trace = (
-        WaypointTrajectoryTrace(motion_group_id=mg.id, mode=mode) if trace_trajectory else None
-    )
     session = WaypointJoggingSession(
         motion_group=mg,
         config=config or WaypointConfig(),
         tcp="Flange",
         mode=mode,
         stop_conditions=stop_conditions,
-        trajectory_trace=trajectory_trace,
     )
-    session._test_trajectory_trace = trajectory_trace  # type: ignore[attr-defined]
 
     patches = [
         patch(f"{_SESSION}.get_api_gateway", return_value=gateway),
@@ -227,10 +220,7 @@ async def test_it_initializes_the_jogging_session_before_any_waypoints():
 @pytest.mark.asyncio
 async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
     """update_chunk(step) reaches the server as a JointWaypointsRequest."""
-    session, server = _build_session(
-        trace_trajectory=True,
-        config=WaypointConfig(min_buffer_ms=0),
-    )
+    session, server = _build_session(config=WaypointConfig(min_buffer_ms=0))
     try:
         await session.start()
         await session.wait_ready()
@@ -249,20 +239,8 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
         sent = waypoint_req.waypoints[0]
         assert list(sent.joints.root) == target
         assert sent.timestamp == 0  # absolute anchor at 0, single step
-        trace = session._test_trajectory_trace  # type: ignore[attr-defined]
-        assert trace.requests == [
-            {
-                "sequence": 1,
-                "action_timestep": 7,
-                "policy_dt_ms": 50.0,
-                "first_timestamp_ms": 0,
-                "timestamp_offset_steps": 0,
-                "server_dt_ms": None,
-                "server_sample_ms": 0,
-                "timestamps_ms": [0],
-                "steps": [target],
-            }
-        ]
+        assert session.scheduled_action_timestep == 7
+        assert session.scheduled_waypoint_timestamps == (0,)
     finally:
         server.stop()
         await session.stop()
@@ -292,10 +270,10 @@ async def test_a_short_chunk_holds_its_final_target_to_fill_the_buffer():
 
 
 @pytest.mark.asyncio
-async def test_live_updates_are_coalesced_while_a_request_is_in_flight():
+async def test_live_updates_are_sent_without_waiting_for_the_next_response():
     session, server = _build_session(
         config=WaypointConfig(min_buffer_ms=0),
-        response_delay=0.05,
+        response_delay=0.2,
     )
     first = [0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
     stale = [0.2, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -307,12 +285,11 @@ async def test_live_updates_are_coalesced_while_a_request_is_in_flight():
         session.update_chunk(steps=[first], dt_ms=100.0)
         await _wait_until(lambda: len(server.requests) >= 2)
 
+        # Back-to-back updates coalesce to the freshest pending target, and it
+        # is sent before the deliberately slow next server acknowledgement.
         session.update_chunk(steps=[stale], dt_ms=100.0)
-        await asyncio.sleep(0.01)
-        assert len(server.requests) == 2
-
         session.update_chunk(steps=[freshest], dt_ms=100.0)
-        await _wait_until(lambda: len(server.requests) >= 3)
+        await _wait_until(lambda: len(server.requests) >= 3, timeout=0.1)
 
         sent = _inner(server.requests[2])
         assert isinstance(sent, api.models.JointWaypointsRequest)
