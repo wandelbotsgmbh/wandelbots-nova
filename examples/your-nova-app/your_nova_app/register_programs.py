@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 
+import your_nova_app.start_here  # noqa: F401  (import registers the @nova.program)
 from nova import Novax
 
 CELL_ID = config("CELL_ID", default="cell", cast=str)
@@ -18,11 +19,12 @@ app = FastAPI(
     root_path=BASE_PATH,
 )
 
-# Include the programs router and register every @nova.program. NOVAx scans the
-# ``programs`` directory and imports each file, so dropping a new program in
-# ``programs/`` is enough -- no manual import required.
+# Include the programs router and register every imported @nova.program. Importing
+# the program module above is enough -- the decorator self-registers on import.
+# TODO: switch to directory scanning (``Novax(app, programs_dir="programs")``) once
+# that SDK feature is released, so new programs are picked up without a manual import.
 # See https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/README.md#novax for more information
-novax = Novax(app, programs_dir="programs")
+novax = Novax(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -78,7 +80,7 @@ def main(host: str = "0.0.0.0", port: int = 3000):
             host=host,
             port=port,
             reload=True,
-            reload_dirs=["/app/programs", "/app/your_nova_app"],
+            reload_dirs=["/app/your_nova_app"],
             log_level="info",
             proxy_headers=True,
             forwarded_allow_ips="*",

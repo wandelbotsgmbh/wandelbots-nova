@@ -3,9 +3,10 @@
 This template contains a simple python app served by [fastapi](https://github.com/tiangolo/fastapi) provided via NOVAx.
 It shows you how to use the [NOVA Python SDK](https://github.com/wandelbotsgmbh/wandelbots-nova) and build a basic app with it.
 
-Robot programs live in the `programs/` directory — every `@nova.program` there is
-discovered and registered automatically, so adding a new program is just dropping a
-`.py` file in `programs/` (no manual import needed).
+Robot programs are defined with `@nova.program` (see `your_nova_app/start_here.py`) and
+registered by importing their module in `your_nova_app/register_programs.py`. Add a new
+program by creating its module and importing it there. (Automatic directory scanning
+will follow once that SDK feature is released.)
 
 Use the following steps for development:
 
@@ -19,13 +20,11 @@ Use the following steps for development:
 
 ## quick run (no app needed)
 
-To iterate on a program from dev without scaffolding an app, use the `novax` CLI. With
-no arguments it scans the `programs/` directory; you can also point it at a specific
-file — either way the `@nova.program` functions auto-register:
+To iterate on a program from dev without scaffolding an app, point the `novax` CLI at a
+file with `@nova.program` functions — they auto-register:
 
 ```bash
-uv run novax run --cell cell                          # scan ./programs and serve
-uv run novax run programs/start_here.py --cell cell   # or serve a specific file
+uv run novax run your_nova_app/start_here.py --cell cell
 ```
 
 
