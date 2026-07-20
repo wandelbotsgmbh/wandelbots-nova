@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.8.0 (2026-07-20)
+
+### Features
+
+- **NDX-817**: Make it possible to hot-reload novax programs on changes on the instance (#452)
+  ([#452](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/452),
+  [`774006c`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/774006cdc6fc415f30c9867b0da96f4da03f568e))
+
+
 ## v5.7.6 (2026-07-16)
 
 ### Chores
