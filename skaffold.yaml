@@ -1,0 +1,13 @@
+apiVersion: skaffold/v4beta14
+kind: Config
+metadata:
+  name: wandelbots-nova
+build:
+  artifacts:
+    - image: your-nova-app
+      context: examples/your-nova-app
+      docker:
+        dockerfile: Dockerfile
+manifests:
+  rawYaml:
+    - examples/your-nova-app/k8s/app.yaml
