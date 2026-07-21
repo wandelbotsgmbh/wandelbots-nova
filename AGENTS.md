@@ -82,3 +82,20 @@ torque/velocity/acceleration/jerk limits — use the `nova-api-v2` skill**
 client, the planning data flow, and the key limits/torque rules (e.g. `torque` is a
 motion-group-global per-joint limit with no per-segment override, and controller-reported torque
 is already forwarded to the planner via `global_limits`).
+
+## Programs & NOVAx
+
+`docs/programs.md` is the public quickstart for writing `@nova.program` functions and deploying
+them with NOVAx. It is linked from other apps, so **keep it up to date whenever program or NOVAx
+behavior changes.** Update it when you touch any of:
+
+- The `@nova.program` decorator or `ProgramContext` (`nova/program/`) — e.g. required parameters,
+  the input-schema derivation, preconditions.
+- NOVAx registration, scanning, or serving (`novax/novax.py`, `novax/cli.py`, `novax/config.py`) —
+  e.g. `Novax(...)` options, `programs_dir` scanning rules, `serve()`, the `novax run` CLI.
+- Relevant environment variables (`NOVA_API`, `NOVA_ACCESS_TOKEN`, `CELL_NAME`, `BASE_PATH`).
+- Deployment flow (`nova app create` / `nova app install`, Skaffold hot reload) or the
+  `examples/your-nova-app/` scaffold it mirrors.
+
+Verify example code and commands against the current SDK before editing, and keep them consistent
+with `examples/your-nova-app/`.
