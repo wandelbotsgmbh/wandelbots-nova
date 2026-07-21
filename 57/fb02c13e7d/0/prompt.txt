@@ -1,0 +1,9 @@
+write me a little md file on quickstart to deploy programs with novax. ensure its complete. I will link to this guide from other apps. put it under docs/programs.md
+
+---
+
+dont we need to use uv run ... here
+
+---
+
+ensure in the AGENTS.md that this docuemtn stays up-todate if something changes around the program
