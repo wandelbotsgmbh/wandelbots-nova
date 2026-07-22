@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "87ff5e0827a9",
+  "strategy": "manual-commit",
+  "branch": "feat/program-docs",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "examples/your-nova-app/.vscode/launch.json",
+    "examples/your-nova-app/Dockerfile",
+    "examples/your-nova-app/README.md",
+    "examples/your-nova-app/app/__init__.py",
+    "examples/your-nova-app/app/__main__.py",
+    "examples/your-nova-app/app/programs/start_here.py",
+    "examples/your-nova-app/app/register_programs.py",
+    "examples/your-nova-app/k8s/app.yaml",
+    "examples/your-nova-app/pyproject.toml",
+    "examples/your-nova-app/skaffold.yaml",
+    "examples/your-nova-app/uv.lock",
+    "examples/your-nova-app/your_nova_app/__init__.py",
+    "examples/your-nova-app/your_nova_app/__main__.py",
+    "examples/your-nova-app/your_nova_app/register_programs.py",
+    "examples/your-nova-app/your_nova_app/start_here.py",
+    "novax/novax.py",
+    "uv.lock"
+  ],
+  "sessions": [
+    {
+      "metadata": "/87/ff5e0827a9/0/metadata.json",
+      "transcript": "/87/ff5e0827a9/0/full.jsonl",
+      "content_hash": "/87/ff5e0827a9/0/content_hash.txt",
+      "prompt": "/87/ff5e0827a9/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}

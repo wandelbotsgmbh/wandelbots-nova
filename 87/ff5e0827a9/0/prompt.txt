@@ -1,0 +1,34 @@
+/home/dev/wandelbots/wandelbots-nova/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+2026-07-22 10:59:13 [INFO] nova: Extracted app name 'novax' from BASE_PATH '/default/novax'
+INFO:     Started server process [49411]
+INFO:     Waiting for application startup.
+2026-07-22 10:59:13 [INFO] nova: Novax: Connected to Nova API
+2026-07-22 10:59:13 [INFO] nova: Novax: Starting program discovery and registration to store
+2026-07-22 10:59:13 [INFO] nova: Novax: 0 programs discovered and synced to store on startup
+2026-07-22 10:59:13 [INFO] nova: Novax: Programs registered to store on startup
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:3000 (Press CTRL+C to quit)
+
+I put a program in programs/ but novax did not find it on startup. why?
+
+---
+
+novax = Novax(app, programs_dir="your_nova_app/programs")
+
+is this best practice. are we sure that the deployed app has the correct entrypoint?
+
+---
+
+yes do this
+
+---
+
+ok rename the src folder your_nova_app to just app
+
+---
+
+Try Again
+
+---
+
+Try Again

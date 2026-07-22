@@ -1,0 +1,131 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "87ff5e0827a9",
+  "session_id": "1b3cea73-56a3-4b4e-bc95-4cf5aacc5ef6",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-22T11:07:44.588331Z",
+  "branch": "feat/program-docs",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "examples/your-nova-app/.vscode/launch.json",
+    "examples/your-nova-app/Dockerfile",
+    "examples/your-nova-app/README.md",
+    "examples/your-nova-app/app/__init__.py",
+    "examples/your-nova-app/app/__main__.py",
+    "examples/your-nova-app/app/programs/start_here.py",
+    "examples/your-nova-app/app/register_programs.py",
+    "examples/your-nova-app/k8s/app.yaml",
+    "examples/your-nova-app/pyproject.toml",
+    "examples/your-nova-app/skaffold.yaml",
+    "examples/your-nova-app/uv.lock",
+    "examples/your-nova-app/your_nova_app/__init__.py",
+    "examples/your-nova-app/your_nova_app/__main__.py",
+    "examples/your-nova-app/your_nova_app/register_programs.py",
+    "examples/your-nova-app/your_nova_app/start_here.py",
+    "novax/novax.py",
+    "uv.lock"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "7c8ad138d587",
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-22T11:07:44.583302Z",
+    "agent_lines": 135,
+    "agent_removed": 145,
+    "human_added": 0,
+    "human_modified": 9,
+    "human_removed": 112,
+    "total_committed": 144,
+    "total_lines_changed": 401,
+    "agent_percentage": 69.82543640897757,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 111,
+      "user_lines_removed": 2,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "examples/your-nova-app/your_nova_app/programs/test.py": 110,
+        "uv.lock": 1
+      },
+      "user_removed_per_file": {
+        "examples/your-nova-app/your_nova_app/register_programs.py": 1,
+        "uv.lock": 1
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 117,
+      "user_lines_removed": 117,
+      "agent_lines_added": 1,
+      "agent_lines_removed": 2,
+      "user_added_per_file": {
+        "examples/your-nova-app/pyproject.toml": 1,
+        "examples/your-nova-app/uv.lock": 4,
+        "examples/your-nova-app/your_nova_app/programs/start_here.py": 110,
+        "examples/your-nova-app/your_nova_app/register_programs.py": 1,
+        "novax/novax.py": 1
+      },
+      "user_removed_per_file": {
+        "examples/your-nova-app/pyproject.toml": 1,
+        "examples/your-nova-app/uv.lock": 4,
+        "examples/your-nova-app/your_nova_app/register_programs.py": 1,
+        "examples/your-nova-app/your_nova_app/start_here.py": 110,
+        "novax/novax.py": 1
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 110,
+      "user_lines_removed": 0,
+      "agent_lines_added": 8,
+      "agent_lines_removed": 119,
+      "user_added_per_file": {
+        "examples/your-nova-app/your_nova_app/programs/start_here.py": 110
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 110,
+      "user_lines_removed": 0,
+      "agent_lines_added": 14,
+      "agent_lines_removed": 123,
+      "user_added_per_file": {
+        "examples/your-nova-app/your_nova_app/programs/start_here.py": 110
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 110,
+      "user_lines_removed": 0,
+      "agent_lines_added": 15,
+      "agent_lines_removed": 124,
+      "user_added_per_file": {
+        "examples/your-nova-app/your_nova_app/programs/start_here.py": 110
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 110,
+      "user_lines_removed": 0,
+      "agent_lines_added": 15,
+      "agent_lines_removed": 124,
+      "user_added_per_file": {
+        "examples/your-nova-app/your_nova_app/programs/start_here.py": 110
+      }
+    }
+  ]
+}
