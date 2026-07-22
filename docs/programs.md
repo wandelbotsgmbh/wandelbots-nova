@@ -128,7 +128,7 @@ You can also run a single program directly as a script, without any server:
 from nova import run_program
 
 if __name__ == "__main__":
-    run_program(hello_robot, offset=150.0)
+    run_program(hello_robot, inputs={"offset": 150.0})
 ```
 
 ## 3. Scaffold a NOVAx app
@@ -189,7 +189,7 @@ During development:
 
 ```bash
 uv run app            # runs the app defined by the scaffold
-# docs available at http://localhost:3000
+# docs available at http://localhost:3000/docs
 ```
 
 Or serve directly from a `Novax` instance without extra FastAPI boilerplate:
