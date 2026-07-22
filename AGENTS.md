@@ -91,8 +91,8 @@ behavior changes.** Update it when you touch any of:
 
 - The `@nova.program` decorator or `ProgramContext` (`nova/program/`) — e.g. required parameters,
   the input-schema derivation, preconditions.
-- NOVAx registration, scanning, or serving (`novax/novax.py`, `novax/cli.py`, `novax/config.py`) —
-  e.g. `Novax(...)` options, `programs_dir` scanning rules, `serve()`, the `novax run` CLI.
+- NOVAx registration, scanning, or serving (`novax/novax.py`, `novax/config.py`) —
+  e.g. `Novax(...)` options, `programs_dir` scanning rules, `serve()`.
 - Relevant environment variables (`NOVA_API`, `NOVA_ACCESS_TOKEN`, `CELL_NAME`, `BASE_PATH`).
 - Deployment flow (`nova app create` / `nova app install`, Skaffold hot reload) or the
   `examples/your-nova-app/` scaffold it mirrors.

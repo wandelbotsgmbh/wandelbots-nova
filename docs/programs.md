@@ -111,16 +111,19 @@ Key points:
 
 ## 2. Run it locally (no app needed)
 
-To iterate quickly, point the `novax` CLI at a file (or let it scan the `programs`
-directory). Decorated programs auto-register and are served against your live NOVA:
+To iterate quickly without scaffolding an app, serve your programs straight from a short
+script — no FastAPI boilerplate:
 
-```bash
-uv run novax run programs/hello_robot.py --cell cell
-# or scan the whole ./programs directory:
-uv run novax run --cell cell
+```python
+from nova import Novax
+
+if __name__ == "__main__":
+    novax = Novax(programs_dir="programs")  # scan ./programs
+    novax.serve(port=3000)                  # register programs and run uvicorn
 ```
 
-Then open the API docs at `http://localhost:3000` and execute the program from there.
+Run it against your live NOVA, then open the API docs at `http://localhost:3000` and
+execute the program from there.
 
 You can also run a single program directly as a script, without any server:
 
@@ -143,32 +146,35 @@ nova app create "your-nova-app" -g python_app
 This creates a FastAPI app wired to NOVAx. The important line is:
 
 ```python
+from pathlib import Path
+
 from fastapi import FastAPI
 from nova import Novax
 
 app = FastAPI(title="your-nova-app")
 
-# Include the programs router and auto-register every discovered @nova.program.
-novax = Novax(app)
+# Include the programs router and scan a directory for @nova.program modules.
+novax = Novax(app, programs_dir=Path(__file__).parent / "programs")
 ```
 
-`Novax(app)` includes the programs router, scans the `programs` directory, and
-auto-registers everything it finds.
+`Novax(app)` includes the programs router and auto-registers every already-imported
+``@nova.program``. Pass ``programs_dir`` to also scan a directory for programs; without
+it no directory is scanned.
 
 ## 4. Register programs
 
 A program is only available once the module defining it has been imported. There are
 three ways to make that happen — they can be combined:
 
-- **Directory scanning (default).** NOVAx recursively imports every `.py` file under the
-  `programs` directory, so **dropping a new file into `programs/` is enough** — no manual
+- **Directory scanning.** When you pass ``programs_dir``, NOVAx recursively imports every
+  `.py` file under it, so **dropping a new file into that directory is enough** — no manual
   import. Files whose name starts with `_` (e.g. `__init__.py`) are skipped; a missing
   directory is ignored.
 
   ```python
-  Novax(app, programs_dir="programs")          # default; scans ./programs
-  Novax(app, programs_dir="my_pkg/robot_progs")  # custom directory
-  Novax(app, programs_dir=None)                 # disable scanning
+  Novax(app)                                     # no scanning (default)
+  Novax(app, programs_dir="my_pkg/robot_progs")  # scan a directory
+  Novax(app, programs_dir=None)                  # explicit: no scanning
   ```
 
 - **Plain import.** Any program imported anywhere is registered:
@@ -197,7 +203,7 @@ Or serve directly from a `Novax` instance without extra FastAPI boilerplate:
 ```python
 from nova import Novax
 
-novax = Novax()          # scans ./programs by default
+novax = Novax(programs_dir="programs")  # scan ./programs
 novax.serve(port=3000)   # builds the app, registers programs, runs uvicorn
 ```
 
@@ -246,16 +252,16 @@ Common `Novax` options:
 
 | API                                  | Description                                              |
 | ------------------------------------ | ------------------------------------------------------- |
-| `Novax(app)`                         | Wire router, scan `programs`, auto-register.            |
-| `Novax(app, programs_dir=...)`       | Set/disable (`None`) the scanned directory.             |
+| `Novax(app)`                         | Wire router and auto-register imported programs (no scan). |
+| `Novax(app, programs_dir=...)`       | Also scan a directory; `None` disables it (the default). |
 | `novax.serve(host=..., port=...)`    | Build the app and run uvicorn in one call.              |
 | `novax.register_module(mod)`         | Import a module/file and register its programs.         |
 | `novax.scan_programs(directory)`     | Import a directory's programs and register them.        |
 
 ## Troubleshooting
 
-- **Program not showing up?** Make sure its module is imported — put the file under the
-  scanned `programs` directory, import it explicitly, or call `register_module`.
+- **Program not showing up?** Make sure its module is imported — put the file under a
+  directory passed as `programs_dir`, import it explicitly, or call `register_module`.
 - **`ImportError` about the `novax` extra.** Install it with
   `uv pip install 'wandelbots-nova[novax]'` (or `uv sync --extra novax`).
 - **Programs run locally but don't appear in NOVA.** Set `CELL_NAME` so NOVAx syncs them

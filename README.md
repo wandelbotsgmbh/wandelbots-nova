@@ -205,20 +205,20 @@ nova app create "your-nova-app" -g python_app
 
 For more information on using NOVAx see the [README](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/README.md). Explore [this example](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/your-nova-app/app.py) to use the NOVAx entry point.
 
-> **Important:** A `@nova.program` function is registered once the module that defines it is imported. NOVAx handles this for you when you use directory scanning (the default) — see [Registering programs](#registering-programs) below.
+> **Important:** A `@nova.program` function is registered once the module that defines it is imported. NOVAx handles this for you when you enable directory scanning via `programs_dir` — see [Registering programs](#registering-programs) below.
 
 ### Registering programs
 
 Programs register themselves with a global registry when decorated with `@nova.program`, so NOVAx just needs the modules that define them to be imported. There are three ways to get them registered, and they can be combined:
 
-- **Directory scanning (default):** NOVAx scans a `programs` directory and imports every `.py` file under it (recursively), so dropping a new file in `programs/` is enough — no manual import needed. Files whose name starts with `_` (e.g. `__init__.py`) are skipped, and a missing directory is ignored. Configure or disable it via the constructor:
+- **Directory scanning:** when you pass `programs_dir`, NOVAx scans that directory and imports every `.py` file under it (recursively), so dropping a new file in is enough — no manual import needed. Files whose name starts with `_` (e.g. `__init__.py`) are skipped, and a missing directory is ignored. It is off by default; configure it via the constructor:
 
   ```python
   from nova import Novax
 
-  Novax(app, programs_dir="programs")  # default; scans ./programs
-  Novax(app, programs_dir="my_pkg/robot_programs")  # custom directory
-  Novax(app, programs_dir=None)  # disable scanning
+  Novax(app)  # no scanning (default)
+  Novax(app, programs_dir="my_pkg/robot_programs")  # scan a directory
+  Novax(app, programs_dir=None)  # explicit: no scanning
   ```
 
 - **Plain import:** any program imported elsewhere (inside or outside `programs/`) is still registered.
@@ -229,11 +229,12 @@ Programs register themselves with a global registry when decorated with `@nova.p
 
 - **Explicit:** `novax.register_module("my_pkg.programs")` imports a module/file and registers its programs on demand.
 
-For local development you can serve everything without any FastAPI boilerplate:
+For local development you can serve everything from a short script without any FastAPI boilerplate:
 
-```bash
-novax run                       # scan ./programs and serve
-novax run my_pkg/one_program.py # also import a specific file, then scan ./programs
+```python
+from nova import Novax
+
+Novax(programs_dir="programs").serve(port=3000)  # scan ./programs and serve
 ```
 
 ## Development

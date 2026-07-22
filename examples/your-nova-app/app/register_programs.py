@@ -25,7 +25,7 @@ app = FastAPI(
 # manual import required. The path is anchored to this file (not the working directory)
 # so it resolves correctly both locally and in the deployed container.
 # See https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/README.md#novax for more information
-novax = Novax(app, programs_dir=Path(__file__).parent / "programs")
+novax = Novax(app)
 
 app.add_middleware(
     CORSMiddleware,

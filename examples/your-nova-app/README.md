@@ -17,16 +17,6 @@ Use the following steps for development:
     * access the docs on `http://localhost:3000/docs`
 * build, push and install the app with `nova app install`
 
-## quick run (no app needed)
-
-To iterate on a program from dev without scaffolding an app, point the `novax` CLI at a
-file with `@nova.program` functions — they auto-register:
-
-```bash
-uv run novax run app/programs/start_here.py --cell cell
-```
-
-
 ## hot reload on a Nova instance (Skaffold)
 
 When you need the program actually registered **on a Nova instance** (not just run
