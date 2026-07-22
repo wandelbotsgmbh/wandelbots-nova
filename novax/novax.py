@@ -18,7 +18,7 @@ from novax.config import APP_NAME, CELL_NAME
 from novax.program_manager import ProgramManager
 
 # Default directory scanned for ``@nova.program`` modules.
-DEFAULT_PROGRAMS_DIR = "programs"
+DEFAULT_PROGRAMS_DIR = "app/programs"
 
 # Sentinel so ``serve(programs_dir=...)`` can tell "not passed" apart from ``None`` (disable).
 _UNSET: Any = object()

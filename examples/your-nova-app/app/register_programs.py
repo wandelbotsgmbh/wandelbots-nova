@@ -1,10 +1,11 @@
+from pathlib import Path
+
 import uvicorn
 from decouple import config
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 
-import your_nova_app.start_here  # noqa: F401  (import registers the @nova.program)
 from nova import Novax
 
 CELL_ID = config("CELL_ID", default="cell", cast=str)
@@ -13,18 +14,18 @@ BASE_PATH = config("BASE_PATH", default="", cast=str)
 # Create a new FastAPI app
 # See https://fastapi.tiangolo.com/ for more information
 app = FastAPI(
-    title="your_nova_app",
+    title="Your NOVA App",
     version="0.1.0",
     description="An application that serves your robot programs 🦾",
     root_path=BASE_PATH,
 )
 
-# Include the programs router and register every imported @nova.program. Importing
-# the program module above is enough -- the decorator self-registers on import.
-# TODO: switch to directory scanning (``Novax(app, programs_dir="programs")``) once
-# that SDK feature is released, so new programs are picked up without a manual import.
+# Include the programs router and scan the ``programs`` directory: every @nova.program
+# module under it self-registers on import, so dropping in a new file is enough -- no
+# manual import required. The path is anchored to this file (not the working directory)
+# so it resolves correctly both locally and in the deployed container.
 # See https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/README.md#novax for more information
-novax = Novax(app)
+novax = Novax(app, programs_dir=Path(__file__).parent / "programs")
 
 app.add_middleware(
     CORSMiddleware,
@@ -76,11 +77,11 @@ def main(host: str = "0.0.0.0", port: int = 3000):
     # the image's default command, so reload is opted into via env instead of args.
     if config("DEV_RELOAD", default=False, cast=bool):
         uvicorn.run(
-            "your_nova_app.register_programs:app",
+            "app.register_programs:app",
             host=host,
             port=port,
             reload=True,
-            reload_dirs=["/app/your_nova_app"],
+            reload_dirs=["/app/app"],
             log_level="info",
             proxy_headers=True,
             forwarded_allow_ips="*",

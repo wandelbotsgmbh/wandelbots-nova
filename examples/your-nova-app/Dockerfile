@@ -21,7 +21,7 @@ RUN --mount=from=uv,source=/uv,target=/bin/uv \
 
 COPY static static
 COPY README.md ./
-COPY your_nova_app your_nova_app
+COPY app app
 
 # Set INSTALL_DEV=true (e.g. via Skaffold) to include the dev dependency group
 # (adds watchfiles, which powers uvicorn --reload for the hot-reload dev loop).
@@ -33,4 +33,4 @@ RUN --mount=from=uv,source=/uv,target=/bin/uv \
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
-ENTRYPOINT ["python", "-m", "your_nova_app"]
+ENTRYPOINT ["python", "-m", "app"]

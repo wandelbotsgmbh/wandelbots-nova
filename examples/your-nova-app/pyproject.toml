@@ -1,17 +1,17 @@
 [project]
-name = "your_nova_app"
+name = "app"
 version = "0.0.1"
 description = ""
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
-    "wandelbots-nova[novax,nova-rerun-bridge]>=5.7.4,<6",
+    "wandelbots-nova[novax,nova-rerun-bridge]>=5.8.0,<6",
     "python-decouple~=3.8",
     "requests>=2.32.3,<3",
 ]
 
 [project.scripts]
-app = "your_nova_app.register_programs:main"
+app = "app.register_programs:main"
 
 [dependency-groups]
 dev = [

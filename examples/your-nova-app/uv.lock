@@ -198,6 +198,35 @@ wheels = [
 ]
 
 [[package]]
+name = "app"
+version = "0.0.1"
+source = { editable = "." }
+dependencies = [
+    { name = "python-decouple" },
+    { name = "requests" },
+    { name = "wandelbots-nova", extra = ["nova-rerun-bridge", "novax"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "ruff" },
+    { name = "watchfiles" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "python-decouple", specifier = "~=3.8" },
+    { name = "requests", specifier = ">=2.32.3,<3" },
+    { name = "wandelbots-nova", extras = ["novax", "nova-rerun-bridge"], specifier = ">=5.8.0,<6" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "ruff", specifier = ">=0.15.21" },
+    { name = "watchfiles", specifier = ">=0.24" },
+]
+
+[[package]]
 name = "apscheduler"
 version = "3.11.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1559,7 +1588,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "5.7.6"
+version = "5.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiostream" },
@@ -1582,9 +1611,9 @@ dependencies = [
     { name = "wandelbots-api-client" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/75/32/921bf3b83ad8efc08133bce154d4056903ae20fcafe07a871be1ca2b93ac/wandelbots_nova-5.7.6.tar.gz", hash = "sha256:80f03c5ab1a37a3f61f97dd13fed92cfabd577c41f4735a0f08e9d6c4940bda1", size = 12907524, upload-time = "2026-07-16T07:17:16.632Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/60/80/272a09c8156aca60f769bcfb788536add9751cca0523a78b108af747eef4/wandelbots_nova-5.8.0.tar.gz", hash = "sha256:9ae24708372eaf50c1c1dcbca5a390450ed5a574e14729aea699280047a34831", size = 12910653, upload-time = "2026-07-20T11:55:20.981Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/6c/a2e6e0198fafa097a54934d8f49ebd0ecce6f3d3b81915343547f3e59ce9/wandelbots_nova-5.7.6-py3-none-any.whl", hash = "sha256:2119373cc957a529720320c6c07a73d52ff617850dcf8d30b6de8ce205347c6b", size = 13072075, upload-time = "2026-07-16T07:17:14.022Z" },
+    { url = "https://files.pythonhosted.org/packages/41/eb/825632cd7f0b626498e354e176addaf7f208e50ffbcc5ea90cef2f3baf3f/wandelbots_nova-5.8.0-py3-none-any.whl", hash = "sha256:03463254518d2035852de285d805e871921e7bf8aed568500f52cdd010bc1615", size = 13075635, upload-time = "2026-07-20T11:55:18.451Z" },
 ]
 
 [package.optional-dependencies]
@@ -1806,33 +1835,4 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/be/f9f7594e23b5b93affff0318e4593c1920331bcaefda326cabcad94296a1/yarl-1.24.2-cp314-cp314t-win_amd64.whl", hash = "sha256:a7624b1ca46ca5d7b864ef0d2f8efe3091454085ee1855b4e992314529972215", size = 102980, upload-time = "2026-05-19T21:30:59.735Z" },
     { url = "https://files.pythonhosted.org/packages/65/a4/ba80dccd3593ff1f01051a818694d07b58cb8232677ee9a22a5a1f93a9fc/yarl-1.24.2-cp314-cp314t-win_arm64.whl", hash = "sha256:e434a45ce2e7a947f951fc5a8944c8cc080b7e59f9c50ae80fd39107cf88126d", size = 91219, upload-time = "2026-05-19T21:31:01.934Z" },
     { url = "https://files.pythonhosted.org/packages/fd/4d/4b880086bd0d3e034d25647be1d830afc3e3f610e98c4ab3490af6b1b6d5/yarl-1.24.2-py3-none-any.whl", hash = "sha256:2783d9226db8797636cd6896e4de81feed252d1db72265686c9558d97a4d94b9", size = 53576, upload-time = "2026-05-19T21:31:03.909Z" },
-]
-
-[[package]]
-name = "your-nova-app"
-version = "0.0.1"
-source = { editable = "." }
-dependencies = [
-    { name = "python-decouple" },
-    { name = "requests" },
-    { name = "wandelbots-nova", extra = ["nova-rerun-bridge", "novax"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "ruff" },
-    { name = "watchfiles" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "python-decouple", specifier = "~=3.8" },
-    { name = "requests", specifier = ">=2.32.3,<3" },
-    { name = "wandelbots-nova", extras = ["novax", "nova-rerun-bridge"], specifier = ">=5.7.4,<6" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "ruff", specifier = ">=0.15.21" },
-    { name = "watchfiles", specifier = ">=0.24" },
 ]
