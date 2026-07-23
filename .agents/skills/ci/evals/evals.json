@@ -1,0 +1,23 @@
+{
+  "skill_name": "ci",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "CI is red on my branch — can you check what's failing and fix it?",
+      "expected_output": "Agent reads gh pr view / run logs, lists failing checks, reproduces locally with uv run ruff/ty/pytest, fixes scoped issues (format/import order/lint/typecheck/tests), reports what to push.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "The Typecheck, Lint and Format job failed on ty check — here's the GitHub log snippet. Fix it.",
+      "expected_output": "Agent reproduces with `uv run ty check`, fixes the type error using modern type-hint syntax without silencing it via `# type: ignore`, and re-runs the check.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "The example run for examples/start_here.py failed in CI after my SDK change. Fix it.",
+      "expected_output": "Agent inspects the failing example run, identifies the API/SDK regression or the stale example, updates the example to the current SDK (or fixes the regression), and explains it needs a live NOVA instance to fully verify.",
+      "files": []
+    }
+  ]
+}
