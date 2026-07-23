@@ -249,11 +249,11 @@ class Pose(pydantic.BaseModel, Sized):
         if isinstance(other, Pose):
             transformed_matrix = np.dot(self.matrix, other.matrix)
             return self._matrix_to_pose(transformed_matrix)
+        if isinstance(other, api.models.ConfiguredPose):
+            return self.__matmul__(Pose.from_dataset_pose(other))
         if isinstance(other, Iterable):
             seq = tuple(other)
             return self.__matmul__(Pose(seq))
-        if isinstance(other, api.models.DatasetPose):
-            return self.__matmul__(Pose.from_dataset_pose(other))
 
         raise ValueError(f"Cannot multiply Pose with {type(other)}")
 
