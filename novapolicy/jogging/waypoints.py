@@ -17,9 +17,6 @@ if TYPE_CHECKING:
     from novapolicy.jogging.clock import JoggingTimeClock
     from novapolicy.types import JoggingMode
 
-NOW = -1
-"""Anchor sentinel: resolve the chunk's anchor to "now", at yield time."""
-
 
 @dataclass(slots=True, frozen=True)
 class PendingChunk:
@@ -31,8 +28,11 @@ class PendingChunk:
 
     steps: list[list[float]]
     dt_ms: float
-    anchor_ms: int = NOW
-    anchor_offset_steps: int = 0
+    first_timestamp_ms: int | None = None
+    timestamp_offset_steps: int = 0
+    server_dt_ms: float | None = None
+    action_timestep: int = -1
+    sequence: int = 0
 
 
 def make_waypoints_request(
@@ -41,32 +41,34 @@ def make_waypoints_request(
     *,
     steps: list[list[float]],
     effective_dt_ms: float,
-    anchor_ms: int = NOW,
-    anchor_offset_steps: int = 0,
-) -> object:
+    first_timestamp_ms: int | None = None,
+    timestamp_offset_steps: int = 0,
+    server_dt_ms: float | None = None,
+) -> api.models.JointWaypointsRequest | api.models.PoseWaypointsRequest:
     """Build a JointWaypointsRequest or PoseWaypointsRequest at stream-yield time.
 
     Every waypoint carries an absolute server-time timestamp laid out as
     ``base + i*dt``. The only decision is where ``base`` (step 0) sits:
 
-    * ``anchor_ms == NOW`` (default): ``base`` is "now", read *here* at yield
-      time so it cannot go stale while the chunk waits in the queue. "Now" is
-      acknowledged server progress (capped), not wall-clock, so a stalled link
-      freezes the anchor instead of racing ahead of the robot.
-    * ``anchor_ms >= 0``: an explicit absolute anchor (replay / scheduled
-      segments), used verbatim.
+    * ``first_timestamp_ms`` set: the exact raw NOVA jogger-session timestamp
+      for step zero on an existing controller timeline.
+    * ``first_timestamp_ms`` omitted: step zero is relative to server "now",
+      resolved here so it cannot go stale while the chunk waits in the queue.
+      "Now" is acknowledged server progress (capped), not wall-clock, so a
+      stalled link freezes the timestamp instead of racing ahead of the robot.
+    * ``server_dt_ms`` set: exact spacing in the raw controller timeline. This
+      bypasses client-wall clock-rate scaling for controller-timed policy queues.
 
-    ``anchor_offset_steps`` then shifts that anchor by whole ``dt`` steps:
-    ``+1`` places step 0 one dt into the future (live single targets, so the
-    server has time to reach it); a negative value backdates the anchor so an
-    already-passed step lands at "now" (RTC seam stitching); ``0`` anchors
-    exactly. All timestamps are scaled to server-time by the clock's speed
-    ratio (the policy sends in real time).
+    ``timestamp_offset_steps`` shifts the selected timestamp by whole ``dt``
+    steps: ``+1`` places step zero one interval in the future; a negative value
+    backdates an overlapping seam; ``0`` uses the timestamp exactly.
     """
-    scaled_dt_ms = clock.scale_dt(effective_dt_ms)
-    base_real_ms = clock.acknowledged_elapsed_ms if anchor_ms == NOW else anchor_ms
-    base_real_ms = max(0.0, base_real_ms + anchor_offset_steps * effective_dt_ms)
-    base_ms = clock.scale_timestamp(int(base_real_ms))
+    scaled_dt_ms = server_dt_ms if server_dt_ms is not None else clock.scale_dt(effective_dt_ms)
+    base_ms = (
+        clock.estimated_server_timestamp_ms if first_timestamp_ms is None else first_timestamp_ms
+    )
+    base_ms += int(timestamp_offset_steps * scaled_dt_ms)
+    base_ms = max(0, base_ms)
     timestamps = [base_ms + int(i * scaled_dt_ms) for i in range(len(steps))]
 
     if mode == "cartesian":
@@ -74,7 +76,9 @@ def make_waypoints_request(
     return _build_joint_request(timestamps, steps)
 
 
-def _build_joint_request(timestamps: list[int], steps: list[list[float]]) -> object:
+def _build_joint_request(
+    timestamps: list[int], steps: list[list[float]]
+) -> api.models.JointWaypointsRequest:
     """Build a JointWaypointsRequest from timestamps and joint steps.
 
     The request uses the array-of-structs layout: a single ``waypoints``
@@ -88,7 +92,9 @@ def _build_joint_request(timestamps: list[int], steps: list[list[float]]) -> obj
     )
 
 
-def _build_pose_request(timestamps: list[int], steps: list[list[float]]) -> object:
+def _build_pose_request(
+    timestamps: list[int], steps: list[list[float]]
+) -> api.models.PoseWaypointsRequest:
     """Build a PoseWaypointsRequest from timestamps and TCP pose steps.
 
     Each step is [x, y, z, rx, ry, rz] where position is in mm and
@@ -102,7 +108,6 @@ def _build_pose_request(timestamps: list[int], steps: list[list[float]]) -> obje
 
     waypoints = []
     for ts, step in zip(timestamps, steps, strict=True):
-        # step = [x, y, z, rx, ry, rz]
         pos = Vector3d(root=list(step[:3]))
         orient = RotationVector(root=list(step[3:6]))
         waypoints.append(

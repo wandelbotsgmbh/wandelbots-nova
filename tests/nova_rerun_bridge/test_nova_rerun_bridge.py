@@ -4,6 +4,7 @@ Tests focus on business logic, async operations, and Nova integration.
 Does not test rerun library functionality directly.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -24,6 +25,7 @@ class TestNovaRerunBridgeInit:
 
         assert bridge.nova == mock_nova
         assert isinstance(bridge._streaming_tasks, dict)
+        assert bridge.state_sample_interval_ms == pytest.approx(1000.0 / 30.0)
 
     @patch("nova_rerun_bridge.nova_rerun_bridge.rr")
     @patch("nova_rerun_bridge.nova_rerun_bridge.logger")
@@ -57,6 +59,15 @@ class TestNovaRerunBridgeInit:
         args, kwargs = mock_rr.init.call_args
         assert kwargs.get("recording_id") == custom_id
         assert kwargs.get("spawn") is True
+
+    @pytest.mark.parametrize("interval_ms", [0.0, -1.0, float("inf"), float("nan")])
+    @patch("nova_rerun_bridge.nova_rerun_bridge.rr")
+    @patch("nova_rerun_bridge.nova_rerun_bridge.logger")
+    def test_invalid_state_sample_interval_is_rejected(
+        self, mock_logger, mock_rr, interval_ms: float
+    ) -> None:
+        with pytest.raises(ValueError, match="positive finite"):
+            NovaRerunBridge(Mock(), spawn=False, state_sample_interval_ms=interval_ms)
 
 
 class TestSetupBlueprint:
@@ -142,6 +153,28 @@ class TestSetupBlueprint:
 
             # Should send blueprint with all motion groups
             mock_send.assert_called_once_with(["group1", "group2", "group3"], True)
+
+
+class TestStateStreaming:
+    @pytest.mark.asyncio
+    async def test_custom_state_sample_interval_controls_stream_frequency(self):
+        mock_nova = Mock()
+        motion_group = Mock()
+
+        with (
+            patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
+            patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
+            patch(
+                "nova_rerun_bridge.nova_rerun_bridge.stream_motion_group", new_callable=AsyncMock
+            ) as stream_motion_group,
+        ):
+            bridge = NovaRerunBridge(mock_nova, spawn=False, state_sample_interval_ms=10.0)
+            await bridge.start_streaming(motion_group)
+            await asyncio.sleep(0)
+
+        stream_motion_group.assert_awaited_once_with(
+            bridge, nova=mock_nova, motion_group=motion_group, tcp_name=None, target_frequency=100.0
+        )
 
 
 class TestCollisionSetups:

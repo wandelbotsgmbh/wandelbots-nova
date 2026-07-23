@@ -28,7 +28,7 @@ class RobotVisualizer:
         self,
         robot: DHRobot,
         robot_model_geometries: list[api.models.LinkChain],
-        tcp_geometries: dict[str, api.models.Collider] | list[api.models.Collider],
+        tcp_geometries: dict[str, api.models.Collider],
         static_transform: bool = True,
         base_entity_path: str = "robot",
         albedo_factor: list = [255, 255, 255],
@@ -38,13 +38,12 @@ class RobotVisualizer:
         show_collision_link_chain: bool = False,
         show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
+        recording: rr.RecordingStream | None = None,
     ):
         """
         :param robot: DHRobot instance
         :param robot_model_geometries: List of geometries for each link
-        :param tcp_geometries: TCP geometries as a dict mapping collider names to Collider objects.
-            A list is also accepted for backward compatibility and will be converted to a dict
-            with positional keys.
+        :param tcp_geometries: TCP geometries keyed by collider name.
         :param static_transform: If True, transforms are logged as static, else temporal.
         :param base_entity_path: A base path prefix for logging the entities (e.g. motion group name)
         :param albedo_factor: A list representing the RGB values [R, G, B] to apply as the albedo factor.
@@ -54,14 +53,11 @@ class RobotVisualizer:
         :param show_collision_link_chain: Whether to render robot collision mesh geometry
         :param show_collision_tool: Whether to render TCP tool collision geometry
         :param show_safety_link_chain: Whether to render robot safety geometry (from controller)
+        :param recording: Rerun recording that receives this visualizer's entities
         """
         self.robot = robot
         self.link_geometries: dict[int, list[api.models.Collider]] = {}
-        self.tcp_geometries: dict[str, api.models.Collider] = (
-            {f"geometry_{i}": geom for i, geom in enumerate(tcp_geometries)}
-            if isinstance(tcp_geometries, list)
-            else tcp_geometries
-        )
+        self.tcp_geometries = tcp_geometries
         self.logged_meshes: set[str] = set()
         self.static_transform = static_transform
         self.base_entity_path = base_entity_path.rstrip("/")
@@ -86,6 +82,7 @@ class RobotVisualizer:
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
+        self.recording = recording
 
         # This will hold the names of discovered joints (e.g. ["robot_J00", "robot_J01", ...])
         self.joint_names: list[str] = []
@@ -107,6 +104,9 @@ class RobotVisualizer:
         for link_chain in robot_model_geometries:
             for link_index, link in enumerate(link_chain.root or []):
                 self.link_geometries.setdefault(link_index, []).extend(link.root.values())
+
+    def _log(self, *args, **kwargs):
+        rr.log(*args, recording=self.recording, **kwargs)
 
     def discover_joints(self):
         """
@@ -328,7 +328,7 @@ class RobotVisualizer:
             if transformed_mesh.visual and hasattr(transformed_mesh.visual, "vertex_colors"):
                 vertex_colors = transformed_mesh.visual.vertex_colors
 
-            rr.log(
+            self._log(
                 entity_path,
                 rr.Mesh3D(
                     vertex_positions=transformed_mesh.vertices,
@@ -347,7 +347,7 @@ class RobotVisualizer:
             return
 
         if isinstance(collider.shape, api.models.Sphere):
-            rr.log(
+            self._log(
                 f"{entity_path}",
                 rr.Ellipsoids3D(
                     radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
@@ -357,7 +357,7 @@ class RobotVisualizer:
             )
 
         elif isinstance(collider.shape, api.models.Box):
-            rr.log(
+            self._log(
                 f"{entity_path}",
                 rr.Boxes3D(
                     centers=list(pose.position.to_tuple()),
@@ -400,7 +400,7 @@ class RobotVisualizer:
 
             if polygons:
                 line_segments = [p.tolist() for p in polygons]
-                rr.log(
+                self._log(
                     f"{entity_path}",
                     rr.LineStrips3D(
                         line_segments,
@@ -417,7 +417,7 @@ class RobotVisualizer:
 
             if polygons:
                 line_segments = [p.tolist() for p in polygons]
-                rr.log(
+                self._log(
                     f"{entity_path}",
                     rr.LineStrips3D(
                         line_segments, radii=rr.Radius.ui_points(1.5), colors=[colors.colors[2]]
@@ -427,7 +427,7 @@ class RobotVisualizer:
 
                 vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)  # type: ignore[assignment]
 
-                rr.log(
+                self._log(
                     f"{entity_path}",
                     rr.Mesh3D(
                         vertex_positions=vertices,
@@ -449,7 +449,7 @@ class RobotVisualizer:
         # Sphere geometry
         if isinstance(geometry.shape, api.models.Sphere):
             radius = geometry.shape.radius
-            rr.log(
+            self._log(
                 entity_path,
                 rr.Ellipsoids3D(
                     radii=[radius, radius, radius],
@@ -460,7 +460,7 @@ class RobotVisualizer:
             )
 
         elif isinstance(geometry.shape, api.models.Box):
-            rr.log(
+            self._log(
                 entity_path,
                 rr.Boxes3D(
                     centers=[0, 0, 0],
@@ -473,7 +473,7 @@ class RobotVisualizer:
         # Rectangle geometry
         elif isinstance(geometry.shape, api.models.Rectangle):
             # Create a flat box with minimal height
-            rr.log(
+            self._log(
                 entity_path,
                 rr.Boxes3D(
                     fill_mode=rr.components.FillMode.Solid,
@@ -496,7 +496,7 @@ class RobotVisualizer:
             cylinder = trimesh.creation.cylinder(radius=radius, height=height, sections=16)
             vertex_normals = cylinder.vertex_normals.tolist()
 
-            rr.log(
+            self._log(
                 entity_path,
                 rr.Mesh3D(
                     vertex_positions=cylinder.vertices.tolist(),
@@ -515,7 +515,7 @@ class RobotVisualizer:
             if polygons:
                 # First log wireframe outline
                 line_segments = [p.tolist() for p in polygons]
-                rr.log(
+                self._log(
                     f"{entity_path}/wireframe",
                     rr.LineStrips3D(
                         line_segments,
@@ -528,7 +528,7 @@ class RobotVisualizer:
                 # Then log solid mesh
                 vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)
 
-                rr.log(
+                self._log(
                     entity_path,
                     rr.Mesh3D(
                         vertex_positions=vertices,
@@ -553,7 +553,7 @@ class RobotVisualizer:
             cap_mesh = trimesh.creation.capsule(radius=radius, height=height)
             vertex_normals = cap_mesh.vertex_normals.tolist()
 
-            rr.log(
+            self._log(
                 entity_path,
                 rr.Mesh3D(
                     vertex_positions=cap_mesh.vertices.tolist(),
@@ -600,7 +600,7 @@ class RobotVisualizer:
             if polygons:
                 # Log wireframe outline
                 line_segments = [p.tolist() for p in polygons]
-                rr.log(
+                self._log(
                     f"{entity_path}/wireframe",
                     rr.LineStrips3D(
                         line_segments,
@@ -615,7 +615,7 @@ class RobotVisualizer:
                 # Log solid mesh
                 vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)
 
-                rr.log(
+                self._log(
                     entity_path,
                     rr.Mesh3D(
                         vertex_positions=vertices,
@@ -630,7 +630,7 @@ class RobotVisualizer:
         elif isinstance(geometry.shape, api.models.Plane):
             # Create a large, thin rectangle to represent an infinite plane
             size = 5000  # Large enough to seem infinite in the visualization
-            rr.log(
+            self._log(
                 entity_path,
                 rr.Boxes3D(
                     centers=[0, 0, 0],
@@ -642,7 +642,7 @@ class RobotVisualizer:
         # Default fallback for unsupported geometry types
         else:
             # Fallback to a box
-            rr.log(  # type: ignore[unreachable]
+            self._log(  # type: ignore[unreachable]
                 entity_path,
                 rr.Boxes3D(
                     half_sizes=[[50, 50, 50]],
@@ -659,7 +659,7 @@ class RobotVisualizer:
             translation = transform[:3, 3]
             Rm = transform[:3, :3]
             axis, angle = self.rotation_matrix_to_axis_angle(Rm)
-            rr.log(
+            self._log(
                 entity_path,
                 rr.InstancePoses3D(
                     translations=[translation.tolist()],

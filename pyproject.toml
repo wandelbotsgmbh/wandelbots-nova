@@ -53,9 +53,20 @@ wandelscript = [
 novax = ["fastapi>=0.115.6", "uvicorn>=0.34.0", "python-decouple>=3.8"]
 novapolicy = [
     "aiortc>=1.14.0",
+    "Pillow>=10.0.0",
+    "requests>=2.33.1",
+]
+novapolicy-gr00t = [
+    "aiortc>=1.14.0",
     "msgpack>=1.1.0,<2",
     "Pillow>=10.0.0",
     "pyzmq>=26.0.0,<27",
+    "requests>=2.33.1",
+]
+novapolicy-lerobot = [
+    "aiortc>=1.14.0",
+    "lerobot[async]>=0.6,<0.7; python_version >= '3.12'",
+    "Pillow>=10.0.0",
     "requests>=2.33.1",
 ]
 benchmark = [
@@ -137,6 +148,7 @@ junit_family = "xunit2"
 norecursedirs = "develop .ipynb_checkpoints .venv .tox *.egg"
 testpaths = """
     nova
+    novapolicy/tests
     wandelscript
     tests
 """
@@ -150,7 +162,7 @@ markers = """
 python-version = "3.11"
 
 [tool.ty.src]
-include = ["nova", "examples", "tests", "wandelscript", "novax", "nova_rerun_bridge"]
+include = ["nova", "examples", "tests", "wandelscript", "novax", "nova_rerun_bridge", "novapolicy"]
 exclude = [
     "wandelscript/grammar",
     "wandelscript/motions.py",
@@ -175,6 +187,7 @@ not-subscriptable = "ignore"
 unknown-argument = "ignore"
 missing-argument = "ignore"
 unsupported-operator = "ignore"
+no-matching-overload = "ignore"
 unused-type-ignore-comment = "ignore"
 
 # Wandelscript is a dynamically typed DSL interpreter built on ANTLR. Its parse
@@ -195,11 +208,12 @@ unused-type-ignore-comment = "ignore"
 # Example scripts are illustrative samples rather than shipped library code, so
 # the same runtime-dynamic relaxations as for tests apply.
 [[tool.ty.overrides]]
-include = ["examples/**", "nova_rerun_bridge/examples/**"]
+include = ["examples/**", "nova_rerun_bridge/examples/**", "novapolicy/examples/**"]
 
 [tool.ty.overrides.rules]
 invalid-argument-type = "ignore"
 unresolved-attribute = "ignore"
+not-subscriptable = "ignore"
 missing-argument = "ignore"
 
 [tool.semantic_release]
@@ -267,7 +281,7 @@ upload_to_vcs_release = true
 
 
 [tool.ruff.lint.isort]
-known-first-party = ["nova", "nova_rerun_bridge", "novax"]
+known-first-party = ["nova", "nova_rerun_bridge", "novapolicy", "novax"]
 
 
 

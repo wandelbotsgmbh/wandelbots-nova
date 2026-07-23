@@ -55,18 +55,23 @@ def _motion_error(message: str = "joint_limit") -> object:
 class FakeJoggingServer:
     """Consumes the session's request generator and replays scripted responses.
 
-    The session yields an ``InitializeJoggingRequest`` first, then one waypoint
-    request per response it receives (once a chunk is queued). We keep emitting
-    ``_ok()`` responses on a short cadence until stopped, recording every
-    request the session produces.
+    The session yields an ``InitializeJoggingRequest`` first, then waypoint
+    requests independently of response latency. We keep emitting ``_ok()``
+    responses on a configurable cadence until stopped, recording every request
+    the session produces.
     """
 
     def __init__(
-        self, *, fault: object | None = None, raise_exc: BaseException | None = None
+        self,
+        *,
+        fault: object | None = None,
+        raise_exc: BaseException | None = None,
+        response_delay: float = 0.003,
     ) -> None:
         self.requests: list[object] = []
         self._fault = fault
         self._raise_exc = raise_exc
+        self._response_delay = response_delay
         self._stop = asyncio.Event()
 
     async def execute_waypoint_jogging(
@@ -91,7 +96,7 @@ class FakeJoggingServer:
                 return
             while not self._stop.is_set():
                 yield _ok()
-                await asyncio.sleep(0.003)
+                await asyncio.sleep(self._response_delay)
 
         async for request in client_request_generator(responses()):
             self.requests.append(request)
@@ -132,8 +137,14 @@ def _build_session(
     states: Sequence[object] = (),
     stop_conditions: list[object] | None = None,
     mode: str = "joint",
+    config: WaypointConfig | None = None,
+    response_delay: float = 0.003,
 ) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
-    server = FakeJoggingServer(fault=fault, raise_exc=raise_exc)
+    server = FakeJoggingServer(
+        fault=fault,
+        raise_exc=raise_exc,
+        response_delay=response_delay,
+    )
 
     async def state_stream(**_kw: object) -> AsyncGenerator[object, None]:
         for s in states:
@@ -154,7 +165,7 @@ def _build_session(
 
     session = WaypointJoggingSession(
         motion_group=mg,
-        config=WaypointConfig(),
+        config=config or WaypointConfig(),
         tcp="Flange",
         mode=mode,
         stop_conditions=stop_conditions,
@@ -209,12 +220,17 @@ async def test_it_initializes_the_jogging_session_before_any_waypoints():
 @pytest.mark.asyncio
 async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
     """update_chunk(step) reaches the server as a JointWaypointsRequest."""
-    session, server = _build_session()
+    session, server = _build_session(config=WaypointConfig(min_buffer_ms=0))
     try:
         await session.start()
         await session.wait_ready()
         target = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
-        session.update_chunk(steps=[target], dt_ms=50.0, anchor_ms=0)
+        session.update_chunk(
+            steps=[target],
+            dt_ms=50.0,
+            first_timestamp_ms=0,
+            action_timestep=7,
+        )
 
         await _wait_until(lambda: len(server.requests) >= 2)
         waypoint_req = _inner(server.requests[1])
@@ -223,6 +239,61 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
         sent = waypoint_req.waypoints[0]
         assert list(sent.joints.root) == target
         assert sent.timestamp == 0  # absolute anchor at 0, single step
+        assert session.scheduled_action_timestep == 7
+        assert session.scheduled_waypoint_timestamps == (0,)
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_short_chunk_holds_its_final_target_to_fill_the_buffer():
+    session, server = _build_session(config=WaypointConfig(min_buffer_ms=100.0))
+    target = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    try:
+        await session.start()
+        await session.wait_ready()
+        session.update_chunk(steps=[target], dt_ms=50.0, first_timestamp_ms=0)
+
+        await _wait_until(lambda: len(server.requests) >= 2)
+        request = _inner(server.requests[1])
+        assert isinstance(request, api.models.JointWaypointsRequest)
+        assert [list(waypoint.joints.root) for waypoint in request.waypoints] == [target, target]
+        assert [waypoint.timestamp for waypoint in request.waypoints] == [0, 50]
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_live_updates_are_sent_without_waiting_for_the_next_response():
+    session, server = _build_session(
+        config=WaypointConfig(min_buffer_ms=0),
+        response_delay=0.2,
+    )
+    first = [0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
+    stale = [0.2, 0.0, 0.0, 0.0, 0.0, 0.0]
+    freshest = [0.3, 0.0, 0.0, 0.0, 0.0, 0.0]
+    try:
+        await session.start()
+        await session.wait_ready()
+
+        session.update_chunk(steps=[first], dt_ms=100.0)
+        await _wait_until(lambda: len(server.requests) >= 2)
+
+        # Back-to-back updates coalesce to the freshest pending target, and it
+        # is sent before the deliberately slow next server acknowledgement.
+        session.update_chunk(steps=[stale], dt_ms=100.0)
+        session.update_chunk(steps=[freshest], dt_ms=100.0)
+        await _wait_until(lambda: len(server.requests) >= 3, timeout=0.1)
+
+        sent = _inner(server.requests[2])
+        assert isinstance(sent, api.models.JointWaypointsRequest)
+        assert [list(waypoint.joints.root) for waypoint in sent.waypoints] == [freshest]
     finally:
         server.stop()
         await session.stop()
@@ -406,74 +477,8 @@ async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
 
 
 @pytest.mark.asyncio
-async def test_overlapping_tcp_chunks_share_one_absolute_timeline():
-    """Consecutive overlapping TCP chunks place identical poses at identical
-    absolute timestamps -- the property that lets the server stitch a per-tick
-    resend stream into one trajectory with no seam jump.
-
-    The chunked path anchors every chunk at an *absolute* session timestamp
-    (not a fresh ``now + dt`` each tick). When the next tick advances the anchor
-    by exactly one ``dt`` and the caller shifts the chunk content by one step,
-    the overlapping region must coincide in both timestamp and pose. If chunks
-    were instead re-sequenced from "now" every tick, the overlap would land on
-    different timestamps and the server would keep restarting the trajectory.
-    """
-    session, server = _build_session(mode="cartesian")
-
-    def _pose_requests() -> list[object]:
-        return [
-            r
-            for r in (_inner(x) for x in server.requests)
-            if isinstance(r, api.models.PoseWaypointsRequest)
-        ]
-
-    try:
-        await session.start()
-        await session.wait_ready()
-
-        dt = 50.0
-        # Tick 1: anchor at 100ms, poses advancing along +x.
-        poses_a = [[float(x), 0.0, 300.0, 0.0, 0.0, 0.0] for x in (10, 20, 30, 40, 50)]
-        session.update_chunk(steps=poses_a, dt_ms=dt, anchor_ms=100)
-        await _wait_until(lambda: len(_pose_requests()) >= 1)
-
-        # Tick 2, one dt later: anchor advances by dt, content shifts by one step
-        # -> the two chunks overlap by four waypoints.
-        poses_b = [[float(x), 0.0, 300.0, 0.0, 0.0, 0.0] for x in (20, 30, 40, 50, 60)]
-        session.update_chunk(steps=poses_b, dt_ms=dt, anchor_ms=150)
-        await _wait_until(lambda: len(_pose_requests()) >= 2)
-
-        first, second = _pose_requests()[0], _pose_requests()[1]
-        a_by_ts = {
-            w.timestamp: tuple(w.pose.position.root[k] for k in range(3)) for w in first.waypoints
-        }
-        b_by_ts = {
-            w.timestamp: tuple(w.pose.position.root[k] for k in range(3)) for w in second.waypoints
-        }
-
-        # The two chunks share four absolute timestamps...
-        overlap = set(a_by_ts) & set(b_by_ts)
-        assert overlap == {150, 200, 250, 300}
-        # ...and at every shared timestamp they command the *same* pose, so there
-        # is no discontinuity where one chunk hands off to the next.
-        for ts in overlap:
-            assert a_by_ts[ts] == b_by_ts[ts]
-    finally:
-        server.stop()
-        await session.stop()
-        for p in session._test_patches:  # type: ignore[attr-defined]
-            p.stop()
-
-
-@pytest.mark.asyncio
 async def test_overlapping_joint_chunks_share_one_absolute_timeline():
-    """The joint-mode counterpart: overlapping joint chunks also place identical
-    joint targets at identical absolute timestamps.
-
-    Same per-tick resend as the TCP case, but the joint path emits
-    ``JointWaypointsRequest`` messages. The absolute-timeline guarantee is
-    mode-independent, so the overlap must coincide here too.
-    """
+    """Overlapping chunks place identical targets at identical absolute timestamps."""
     session, server = _build_session(mode="joint")
 
     def _joint_requests() -> list[object]:
@@ -490,12 +495,12 @@ async def test_overlapping_joint_chunks_share_one_absolute_timeline():
         dt = 50.0
         # Tick 1: anchor at 100ms, j0 advancing.
         joints_a = [[v, 0.0, 0.0, 0.0, 0.0, 0.0] for v in (0.1, 0.2, 0.3, 0.4, 0.5)]
-        session.update_chunk(steps=joints_a, dt_ms=dt, anchor_ms=100)
+        session.update_chunk(steps=joints_a, dt_ms=dt, first_timestamp_ms=100)
         await _wait_until(lambda: len(_joint_requests()) >= 1)
 
         # Tick 2, one dt later: anchor +dt, content shifts one step -> 4 overlap.
         joints_b = [[v, 0.0, 0.0, 0.0, 0.0, 0.0] for v in (0.2, 0.3, 0.4, 0.5, 0.6)]
-        session.update_chunk(steps=joints_b, dt_ms=dt, anchor_ms=150)
+        session.update_chunk(steps=joints_b, dt_ms=dt, first_timestamp_ms=150)
         await _wait_until(lambda: len(_joint_requests()) >= 2)
 
         first, second = _joint_requests()[0], _joint_requests()[1]

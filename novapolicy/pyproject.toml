@@ -1,9 +1,12 @@
 # Metadata for the novapolicy extra package.
 # This is NOT an independently installable package — it ships as part of
-# wandelbots-nova and is activated via: pip install wandelbots-nova[novapolicy]
+# wandelbots-nova and is activated via extras such as:
+#   pip install wandelbots-nova[novapolicy]
+#   pip install wandelbots-nova[novapolicy-gr00t]
+#   pip install wandelbots-nova[novapolicy-lerobot]
 #
 # Dependencies are declared in the root pyproject.toml under
-# [project.optional-dependencies] novapolicy = [...]
+# [project.optional-dependencies].
 
 [project]
 name = "nova-policy"
@@ -20,11 +23,12 @@ classifiers = [
 # RUFF CONFIGURATION - MAXIMUM STRICTNESS
 # ============================================================
 [tool.ruff]
-target-version = "py312"
+target-version = "py311"
 line-length = 100
 indent-width = 4
 fix = true
 show-fixes = true
+preview = true
 
 [tool.ruff.lint]
 select = [
@@ -39,9 +43,12 @@ select = [
     "T20",    # flake8-print (no print statements)
     "SIM",    # flake8-simplify
     "N",      # pep8-naming
+    "Q",      # flake8-quotes
     "RUF",    # Ruff-specific rules
+    "ASYNC",  # flake8-async
     "S",      # flake8-bandit (security)
     "PTH",    # flake8-use-pathlib
+    "ERA",    # eradicate (commented-out code)
     "PL",     # pylint (includes PLR1702: too-many-nested-blocks)
     "PERF",   # perflint (performance)
     "ANN",    # flake8-annotations (require type hints)
@@ -65,23 +72,26 @@ max-nested-blocks = 3
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+"gr00t/__init__.py" = ["RUF067"]
+"rerun/__init__.py" = ["RUF067"]
 "**/tests/**" = [
-    "S101", "S105", "PLR2004", "ANN", "FBT", "T20",
-    "PLC0415", "PERF401", "SIM102", "SIM103", "SIM114",
-    "TC001", "TC003", "ARG", "B018",
+    "S101", "S105", "S403", "PLR2004", "PLR0917", "PLR1702", "PLR6301",
+    "ANN", "FBT", "T20", "PLC0415", "PLC2701", "PERF401",
+    "SIM102", "SIM103", "SIM114", "TC001", "TC003", "ARG", "B018", "B903",
+    "ASYNC109", "ASYNC110", "ASYNC251", "RUF029", "RUF069", "RUF076",
 ]
 "**/examples/**" = [
-    "S101", "S105", "S110", "PLR2004", "PLR0912", "PLR0915",
+    "S101", "S105", "S110", "PLR2004", "PLR0912", "PLR0914", "PLR0915",
     "PLW0602", "PLW0603", "ANN", "FBT", "T20",
     "PLC0415", "PERF401", "SIM102", "SIM103", "SIM114",
-    "TC001", "TC003", "ARG", "RUF003",
+    "TC001", "TC003", "ARG", "RUF003", "RUF029", "RUF069",
     "BLE001", "B008", "B905", "C901",
 ]
 "**/benchmarks/**" = [
-    "S101", "S105", "S110", "PLR2004", "PLR0912", "PLR0915",
+    "S101", "S105", "S110", "PLR2004", "PLR0912", "PLR0914", "PLR0915",
     "PLW0602", "PLW0603", "ANN", "FBT", "T20",
     "PLC0415", "PERF401", "SIM102", "SIM103", "SIM114",
-    "TC001", "TC003", "ARG", "RUF003",
+    "TC001", "TC003", "ARG", "RUF003", "RUF029", "RUF069",
     "BLE001", "B008", "B905", "C901",
 ]
 

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+import math
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
 import pydantic
 
@@ -19,6 +20,8 @@ ValueType = int | str | bool | float | Pose
 # Mode literals used across the package
 ActionMode = Literal["absolute", "relative"]
 JoggingMode = Literal["joint", "cartesian"]
+
+_MIN_ENDPOINT_RAMP_STEPS = 2
 
 
 class ActionChunk(pydantic.BaseModel, frozen=True):
@@ -73,6 +76,14 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
 
     Rule of thumb: overlapping/RTC ⇒ absolute; plain sequential ⇒ relative."""
 
+    action_timestep: int = -1
+    """Absolute policy-queue timestep of the first action, or ``-1`` if absent.
+
+    Fixed-rate queue clients use this to preserve one action timeline across
+    NOVA chunk replacements. The executor maps timestep zero to the initial
+    bridge boundary, then places later lookaheads at the corresponding absolute
+    session timestamps instead of re-anchoring each replacement to ``now``."""
+
     seam_backdate_steps: int = 0
     """RTC seam backdate, in steps, for connecting overlapping chunks.
 
@@ -86,7 +97,42 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     0 = no RTC / no backdate."""
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
+class EndpointRamp:
+    """Endpoint interpolation applied to each settled sequential chunk."""
+
+    interpolation_steps: int = 3
+    """Intervals replacing each endpoint interval. Must be at least two."""
+
+    def __post_init__(self) -> None:
+        if self.interpolation_steps < _MIN_ENDPOINT_RAMP_STEPS:
+            raise ValueError("interpolation_steps must be at least 2")
+
+
+@dataclass(frozen=True, slots=True)
+class SequentialExecution:
+    """Execute one complete chunk, reach standstill, then infer again."""
+
+    endpoint_ramp: EndpointRamp | None = EndpointRamp()
+    """Per-chunk acceleration/braking interpolation, or ``None`` to disable."""
+
+
+@dataclass(frozen=True, slots=True)
+class ContinuousExecution:
+    """Continuously replace the active lookahead without per-chunk braking."""
+
+    rate_hz: float | None = None
+    """Fixed inference rate, or ``None`` to run as fast as inference allows."""
+
+    def __post_init__(self) -> None:
+        if self.rate_hz is not None and (not math.isfinite(self.rate_hz) or self.rate_hz <= 0):
+            raise ValueError("rate_hz must be a positive finite value or None")
+
+
+ExecutionMode: TypeAlias = SequentialExecution | ContinuousExecution
+
+
+@dataclass(frozen=True, slots=True)
 class WaypointConfig:
     """Configuration for NOVA waypoint jogging.
 
@@ -99,6 +145,16 @@ class WaypointConfig:
 
     state_rate_ms: int = 10
     """State stream update rate."""
+
+    min_buffer_ms: float = 100.0
+    """Minimum waypoint horizon sent to the controller.
+
+    Chunks shorter than this are extended by repeating their final target. Set
+    to ``0`` to disable automatic extension.
+    """
+
+    single_step_dt_ms: float = 100.0
+    """Spacing used when a live jog target is sent as a single point."""
 
 
 @dataclass(slots=True)

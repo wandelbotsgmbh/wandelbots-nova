@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Sequence, TypeVar
 from weakref import WeakSet
 
 if TYPE_CHECKING:
@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 from .base import Viewer
 
 logger = logging.getLogger(__name__)
+
+ViewerT = TypeVar("ViewerT", bound=Viewer)
 
 
 class ViewerManager:
@@ -76,6 +78,10 @@ class ViewerManager:
             except Exception as e:
                 # Don't fail planning if logging fails
                 logger.warning("Failed to log planning error to viewer: %s", e)
+
+    def get_viewer(self, viewer_type: type[ViewerT]) -> ViewerT | None:
+        """Return the active viewer of the requested type, if present."""
+        return next((viewer for viewer in self._viewers if isinstance(viewer, viewer_type)), None)
 
     @property
     def has_active_viewers(self) -> bool:

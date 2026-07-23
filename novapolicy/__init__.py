@@ -12,7 +12,18 @@ the server handles velocity profiling, interpolation, and IK internally.
 
 from __future__ import annotations
 
+import importlib
+from typing import TYPE_CHECKING
+
 from novapolicy.cameras import CameraSource, WebRTCCameras
+from novapolicy.chunking import (
+    ConnectedActionChunk,
+    InterpolatedActionChunk,
+    connect_action_chunk,
+    create_bridge_chunk,
+    interpolate_action_chunk_ramps,
+    smooth_action_chunk,
+)
 from novapolicy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
 from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
 from novapolicy.jogging import JointJogger, TcpJogger, jog_joints, jog_tcp
@@ -27,14 +38,36 @@ from novapolicy.schema import (
 from novapolicy.types import (
     ActionChunk,
     ActionMode,
+    ContinuousExecution,
     EmergencyStopError,
+    EndpointRamp,
+    ExecutionMode,
     JoggingMode,
     JoggingNotSupportedError,
     MotionError,
+    SequentialExecution,
     StopCondition,
     StopContext,
     WaypointConfig,
 )
+
+if TYPE_CHECKING:
+    from novapolicy.lerobot import LeRobotPolicyClient
+
+
+def __getattr__(name: str) -> object:
+    """Load backend-specific clients only when requested."""
+    if name == "LeRobotPolicyClient":
+        try:
+            return importlib.import_module("novapolicy.lerobot").LeRobotPolicyClient
+        except ModuleNotFoundError as exc:
+            msg = (
+                "LeRobotPolicyClient requires the LeRobot policy extra. "
+                "Install with `python -m pip install 'wandelbots-nova[novapolicy-lerobot]'`."
+            )
+            raise ModuleNotFoundError(msg) from exc
+    raise AttributeError(name)
+
 
 __all__ = [
     "Action",
@@ -43,12 +76,18 @@ __all__ = [
     "BoolMapping",
     "CallbackPolicyClient",
     "CameraSource",
+    "ConnectedActionChunk",
+    "ContinuousExecution",
     "EmergencyStopError",
+    "EndpointRamp",
+    "ExecutionMode",
     "ExecutionResult",
     "ExecutorStatus",
     "Gr00tPolicyClient",
+    "InterpolatedActionChunk",
     "JoggingNotSupportedError",
     "JointJogger",
+    "LeRobotPolicyClient",
     "Mapping",
     "MotionError",
     "Observation",
@@ -57,11 +96,16 @@ __all__ = [
     "PolicyExecutor",
     "PolicySchema",
     "RTCConfig",
+    "SequentialExecution",
     "StopCondition",
     "StopContext",
     "TcpJogger",
     "WaypointConfig",
     "WebRTCCameras",
+    "connect_action_chunk",
+    "create_bridge_chunk",
+    "interpolate_action_chunk_ramps",
     "jog_joints",
     "jog_tcp",
+    "smooth_action_chunk",
 ]

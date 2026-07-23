@@ -58,6 +58,7 @@ class TestRerunViewer:
         assert viewer.show_safety_zones is True
         assert viewer.show_collision_scenes is True
         assert viewer.trajectory_sample_interval_ms == 50.0
+        assert viewer.state_sample_interval_ms == pytest.approx(1000.0 / 30.0)
 
     def test_rerun_viewer_custom_parameters(self):
         """Should accept custom parameters."""
@@ -68,6 +69,7 @@ class TestRerunViewer:
             show_safety_zones=False,
             tcp_tools={"gripper": "gripper.stl"},
             trajectory_sample_interval_ms=100.0,
+            state_sample_interval_ms=10.0,
         )
         assert viewer.show_collision_link_chain is True
         assert viewer.show_collision_tool is False
@@ -75,6 +77,12 @@ class TestRerunViewer:
         assert viewer.show_safety_zones is False
         assert viewer.tcp_tools == {"gripper": "gripper.stl"}
         assert viewer.trajectory_sample_interval_ms == 100.0
+        assert viewer.state_sample_interval_ms == 10.0
+
+    @pytest.mark.parametrize("interval_ms", [0.0, -1.0, float("inf"), float("nan")])
+    def test_rerun_viewer_rejects_invalid_state_sample_interval(self, interval_ms: float) -> None:
+        with pytest.raises(ValueError, match="positive finite"):
+            Rerun(state_sample_interval_ms=interval_ms)
 
     def test_rerun_viewer_auto_registers(self):
         """Should automatically register itself when created."""
@@ -106,6 +114,7 @@ class TestRerunViewer:
             show_collision_link_chain=False,
             show_collision_tool=True,
             show_safety_link_chain=False,
+            state_sample_interval_ms=pytest.approx(1000.0 / 30.0),
         )
         assert viewer._bridge is mock_bridge
 
@@ -283,6 +292,12 @@ class TestViewerManager:
         manager.register_viewer(viewer)
 
         assert viewer in manager._viewers
+        assert manager.get_viewer(Viewer) is viewer
+
+    def test_get_viewer_returns_none_when_type_is_not_active(self):
+        manager = ViewerManager()
+
+        assert manager.get_viewer(Rerun) is None
 
     def test_register_duplicate_viewer(self):
         """Should not register the same viewer twice."""

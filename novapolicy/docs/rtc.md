@@ -36,8 +36,8 @@ state between calls will *appear* to show no freezing — it's the decode, not R
 2. **Client legacy timestamp placement** — `PolicyExecutor` re-placed every
    chunk at "now" (legacy relative mode). The server's frozen waypoints only
    line up on the **absolute** timeline, so the executor now anchors overlapping
-   chunks on the session timeline (`anchor_ms = session.session_elapsed_ms`,
-   backdated by `seam_backdate_steps`) — see `novapolicy/chunking.py::placement`.
+   chunks on raw NOVA session timestamps, backdated by
+   `seam_backdate_steps` — see `novapolicy/chunking.py::placement`.
 
 ## What is RTC?
 
@@ -83,10 +83,15 @@ From [NVIDIA/Isaac-GR00T#320](https://github.com/NVIDIA/Isaac-GR00T/pull/320):
 
 ```python
 class RTCPolicyWrapper(BasePolicy):
-    def __init__(self, policy, control_freq, denoising_steps=8,
-                 max_rtc_overlap_factor=0.75, latency_queue_size=10,
-                 systematic_latency_offset=0.02):
-        ...
+    def __init__(
+        self,
+        policy,
+        control_freq,
+        denoising_steps=8,
+        max_rtc_overlap_factor=0.75,
+        latency_queue_size=10,
+        systematic_latency_offset=0.02,
+    ): ...
 
     def get_action(self, observation):
         # On subsequent calls: merge previous action INTO observation
@@ -106,10 +111,12 @@ class RTCPolicyWrapper(BasePolicy):
         executed_steps = int(self.control_freq * between_inference_time)
         max_rtc_steps = self._action_horizon * self._max_rtc_overlap_factor
 
-        overlap_steps = int(max(min(
-            self._action_horizon - executed_steps + frozen_steps,
-            max_rtc_steps
-        ), frozen_steps))
+        overlap_steps = int(
+            max(
+                min(self._action_horizon - executed_steps + frozen_steps, max_rtc_steps),
+                frozen_steps,
+            )
+        )
 
         return {
             "denoising_steps": self.denoising_steps,
@@ -180,11 +187,11 @@ Add RTC parameters to the client/executor:
 client = Gr00tPolicyClient(
     host="gpu-server",
     port=30555,
-    rtc=True,                      # Enable RTC
-    control_freq=20,               # Policy rate (Hz) — matches policy_rate_hz
-    max_rtc_overlap_factor=0.75,   # Max fraction of chunk to overlap
-    rtc_ramp_rate=3.0,             # Denoising ramp rate
-    denoising_steps=8,             # DiT denoising iterations
+    rtc=True,  # Enable RTC
+    control_freq=20,  # Policy rate (Hz) — matches ContinuousExecution.rate_hz
+    max_rtc_overlap_factor=0.75,  # Max fraction of chunk to overlap
+    rtc_ramp_rate=3.0,  # Denoising ramp rate
+    denoising_steps=8,  # DiT denoising iterations
 )
 ```
 
@@ -201,7 +208,7 @@ from gr00t.eval.robot.rtc_policy import RTCPolicyWrapper  # from PR #320
 base_policy = Gr00tPolicy(embodiment_tag=..., model_path=..., device="cuda:0")
 rtc_policy = RTCPolicyWrapper(
     base_policy,
-    control_freq=20,        # must match client policy_rate_hz
+    control_freq=20,  # must match ContinuousExecution.rate_hz
     denoising_steps=8,
     max_rtc_overlap_factor=0.75,
 )
@@ -236,7 +243,7 @@ This is what PR #320's design implies: the wrapper lives wherever latency is mea
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| `control_freq` | 20 | Matches our `policy_rate_hz=20` |
+| `control_freq` | 20 | Matches `ContinuousExecution(rate_hz=20)` |
 | `action_horizon` | 16 | GR00T N1.7 default |
 | `n_action_steps` | 8 | Receding horizon (only execute first 8 of 16) |
 | `denoising_steps` | 8 | Default; can try 4 for lower latency |

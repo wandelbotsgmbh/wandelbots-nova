@@ -181,9 +181,13 @@ benchmark_results
 policy/examples/apps/mock-camera-server/.venv/
 policy/benchmarks/output/
 DEV.md
+dev.md
 
 policy/examples/apps/gr00t/
 
 
-# Local-only clone examples (real-robot dry-runs, not for the repo)
+# Local-only clone/dev examples (real-robot dry-runs, not for the repo)
 policy/examples/**/*_clone.py
+novapolicy/examples/execute_lerobot_ur3.py
+novapolicy/examples/replay_lerobot_dataset_ur3.py
+novapolicy/examples/jogging/jogging_single_tcp_teleop_oscillation.py

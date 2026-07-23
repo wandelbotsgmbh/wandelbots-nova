@@ -52,6 +52,36 @@ async with jog_joints(mg) as jogger:
         jogger.set_target(chunk, dt_ms=33.0)
 ```
 
+Regenerate chunks at a stable cadence that leaves multiple future waypoints in
+the queue. Replacing a long lookahead on every state callback repeatedly resets
+the server profile; replacing too slowly lets the queue run dry. For finite
+motion, ramp the target to zero velocity and acceleration and keep sending its
+final hold until the lookahead has drained before closing the session. The
+chunked examples show this pattern.
+
+Rerun state visualization should not be configured faster than the controller
+state source. Logging duplicate states adds control-loop load without increasing
+trajectory fidelity; approximately 30 Hz is the safe default for live robot
+geometry.
+
+## Buffered teleop targets (`buffer_ms`)
+
+For live teleoperation, pass `buffer_ms` to `jog_joints(...)` or `jog_tcp(...)`.
+Keep calling `set_target(...)`; the jogger first fills a small time-based buffer,
+then sends a rolling chunk. This adds fixed latency but prevents the controller
+from running out of waypoints. The default `buffer_ms=0.0` preserves immediate
+one-target jogging.
+
+When `dt_ms` is omitted, input arrival time is used only while priming, because
+`jogger.elapsed` cannot advance before the first chunk is sent. After jogging
+starts, timing follows acknowledged controller time.
+
+```python
+async with jog_tcp(mg, tcp="Flange", buffer_ms=100.0) as jogger:
+    async for state in jogger:
+        jogger.set_target(read_controller_pose())
+```
+
 ## Timing targets (`jogger.elapsed`)
 
 For time-parameterised motion (e.g. a sinusoid), drive it with `jogger.elapsed`

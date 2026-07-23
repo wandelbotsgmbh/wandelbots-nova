@@ -1,4 +1,5 @@
 import asyncio
+import math
 import os
 from datetime import datetime
 from typing import Optional
@@ -34,6 +35,7 @@ class NovaRerunBridge:
     Args:
         nova (Nova): Instance of Nova client
         spawn (bool, optional): Whether to spawn Rerun viewer. Defaults to True.
+        state_sample_interval_ms: Target interval between live robot-state samples.
     """
 
     def __init__(
@@ -44,6 +46,7 @@ class NovaRerunBridge:
         show_collision_link_chain: bool = False,
         show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
+        state_sample_interval_ms: float = 1000.0 / 30.0,
     ) -> None:
         # Store the Nova instance for API calls
         self.nova = nova
@@ -53,6 +56,9 @@ class NovaRerunBridge:
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
+        if not math.isfinite(state_sample_interval_ms) or state_sample_interval_ms <= 0:
+            raise ValueError("state_sample_interval_ms must be a positive finite value")
+        self.state_sample_interval_ms = state_sample_interval_ms
 
         recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
@@ -396,7 +402,13 @@ class NovaRerunBridge:
             return
 
         task = asyncio.create_task(
-            stream_motion_group(self, nova=self.nova, motion_group=motion_group, tcp_name=None)
+            stream_motion_group(
+                self,
+                nova=self.nova,
+                motion_group=motion_group,
+                tcp_name=None,
+                target_frequency=1000.0 / self.state_sample_interval_ms,
+            )
         )
         self._streaming_tasks[motion_group] = task
 

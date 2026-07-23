@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -22,7 +25,7 @@ jobs:
       - name: Set up Python environment
         run: |
           pip install uv
-          uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
+          uv sync --extra "nova-rerun-bridge" --extra "novapolicy-gr00t" --extra "wandelscript" --extra "novax"
 
       - name: Check formatting with ruff
         run: uv run ruff format --check .
@@ -38,3 +41,28 @@ jobs:
 
       - name: Run tests
         run: PYTHONPATH=. LOG_LEVEL=WARNING uv run pytest -rs -v -m "not integration"
+
+  test-novapolicy-lerobot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up Python environment
+        run: |
+          pip install uv
+          uv sync --extra "novapolicy-lerobot"
+
+      - name: Verify the installed LeRobot integration
+        run: |
+          uv run python -c "import novapolicy.lerobot.client, novapolicy.lerobot.schema, novapolicy.lerobot.transport"
+
+      - name: Run LeRobot tests
+        run: |
+          uv run pytest -rs -v \
+            novapolicy/tests/api/test_lerobot_client.py \
+            novapolicy/tests/unit/test_lerobot_config.py \
+            novapolicy/tests/unit/test_lerobot_schema.py

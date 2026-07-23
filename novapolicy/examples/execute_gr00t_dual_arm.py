@@ -17,11 +17,13 @@ from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
 from novapolicy import (
+    ContinuousExecution,
     Gr00tPolicyClient,
     Observation,
     PolicyExecutor,
     PolicySchema,
     RTCConfig,
+    SequentialExecution,
     WebRTCCameras,
 )
 
@@ -119,18 +121,15 @@ async def gr00t_dual_arm(ctx: ProgramContext):
         f"horizon={info['action_horizon']}"
     )
 
-    # Run overlapping chunks ASAP (inference-bound). n_action_steps=16 sends the
-    # full horizon so the future window after the RTC frozen-head backdate is as
-    # large as possible. policy_rate_hz=0 = infer as fast as latency allows.
-    # Wait-for-chunk timing: send a chunk, let the robot execute it to
-    # completion (sleep the full chunk duration), THEN observe + infer the next
-    # one. This is the simple sequential (non-overlapping) mode. Use
-    # policy_rate_hz=0 (ASAP) only with RTC, where overlapping chunks connect.
+    # RTC continuously replaces chunks as fast as inference allows. Without
+    # RTC, execute each chunk to NOVA standstill before observing and inferring
+    # again. n_action_steps limits the executed prediction horizon in both modes.
+    execution = ContinuousExecution() if use_rtc else SequentialExecution()
     executor = PolicyExecutor(
         schema,
         client,
         timeout_s=TIMEOUT_S,
-        policy_rate_hz=-1,
+        execution=execution,
         n_action_steps=8,
     )
 

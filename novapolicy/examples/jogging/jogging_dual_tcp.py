@@ -44,22 +44,20 @@ async def main(ctx: nova.ProgramContext):
                 center2_x = start2.position[0] - radius
                 center2_z = start2.position[2]
             angle = 2 * math.pi * frequency * t
-            jogger.set_target(
-                {
-                    mg1: Pose(
-                        center1_x + radius * math.cos(angle),
-                        start1.position[1],
-                        center1_z + radius * math.sin(angle),
-                        *start1.orientation,
-                    ),
-                    mg2: Pose(
-                        center2_x + radius * math.cos(-angle),
-                        start2.position[1],
-                        center2_z + radius * math.sin(-angle),
-                        *start2.orientation,
-                    ),
-                }
-            )
+            jogger.set_target({
+                mg1: Pose(
+                    center1_x + radius * math.cos(angle),
+                    start1.position[1],
+                    center1_z + radius * math.sin(angle),
+                    *start1.orientation,
+                ),
+                mg2: Pose(
+                    center2_x + radius * math.cos(-angle),
+                    start2.position[1],
+                    center2_z + radius * math.sin(-angle),
+                    *start2.orientation,
+                ),
+            })
 
 
 if __name__ == "__main__":

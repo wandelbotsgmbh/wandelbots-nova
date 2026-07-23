@@ -8,23 +8,37 @@ Implements the same REQ/REP msgpack protocol as `gr00t.policy.server_client.Poli
 
 ```python
 from novapolicy import (
-    BoolMapping, Gr00tPolicyClient, Observation, PolicyExecutor, PolicySchema,
-    RTCConfig, TcpFormat, WaypointConfig,
+    BoolMapping,
+    ContinuousExecution,
+    Gr00tPolicyClient,
+    Observation,
+    PolicyExecutor,
+    PolicySchema,
+    RTCConfig,
+    TcpFormat,
 )
 
-schema = PolicySchema(observations=[
-    Observation.joint_positions("left_arm", source=mg_left),
-    Observation.tcp("left_eef_9d", source=mg_left, format=TcpFormat.ROT6D),
-    Observation.joint_positions("right_arm", source=mg_right),
-    Observation.tcp("right_eef_9d", source=mg_right, format=TcpFormat.ROT6D),
-    Observation.io("left_gripper", source=mg_left, io="digital_out[0]",
-                   mapping=BoolMapping(on=100.0)),
-    Observation.constant("language", value="Pick up the box."),
-])
+schema = PolicySchema(
+    observations=[
+        Observation.joint_positions("left_arm", source=mg_left),
+        Observation.tcp("left_eef_9d", source=mg_left, format=TcpFormat.ROT6D),
+        Observation.joint_positions("right_arm", source=mg_right),
+        Observation.tcp("right_eef_9d", source=mg_right, format=TcpFormat.ROT6D),
+        Observation.io(
+            "left_gripper", source=mg_left, io="digital_out[0]", mapping=BoolMapping(on=100.0)
+        ),
+        Observation.constant("language", value="Pick up the box."),
+    ]
+)
 
 client = Gr00tPolicyClient(host="gpu-server", port=5555, dt_ms=66.7, rtc=RTCConfig())
 
-executor = PolicyExecutor(schema, client, policy_rate_hz=20, motion=WaypointConfig(n_action_steps=8))
+executor = PolicyExecutor(
+    schema,
+    client,
+    execution=ContinuousExecution(rate_hz=20),
+    n_action_steps=8,
+)
 result = await executor.run()
 ```
 
@@ -57,24 +71,31 @@ sed -i 's/model_pred = self.model.get_action(\*\*collated_inputs)/model_pred = s
 ### Client-side usage
 
 ```python
-from novapolicy import Gr00tPolicyClient, RTCConfig, PolicyExecutor, WaypointConfig
+from novapolicy import ContinuousExecution, Gr00tPolicyClient, PolicyExecutor, RTCConfig
 
 # Enable RTC
 client = Gr00tPolicyClient(
-    host="gpu-server", port=30555, dt_ms=66.7,
+    host="gpu-server",
+    port=30555,
+    dt_ms=66.7,
     rtc=RTCConfig(),  # pass RTCConfig to enable, None (default) to disable
 )
 
-# Must use policy_rate_hz > 0 for overlapping chunks
-executor = PolicyExecutor(schema, client, policy_rate_hz=20, motion=WaypointConfig(n_action_steps=8))
+# RTC requires continuously replaced chunks.
+executor = PolicyExecutor(
+    schema,
+    client,
+    execution=ContinuousExecution(rate_hz=20),
+    n_action_steps=8,
+)
 ```
 
 RTC can be toggled at runtime:
 
 ```python
-client.rtc = None        # disable — next calls use pure diffusion from noise
-client.rtc = RTCConfig() # re-enable
-client.reset_rtc()       # clear stored action (call on episode/task boundaries)
+client.rtc = None  # disable — next calls use pure diffusion from noise
+client.rtc = RTCConfig()  # re-enable
+client.reset_rtc()  # clear stored action (call on episode/task boundaries)
 ```
 
 ### RTCConfig parameters
@@ -99,11 +120,9 @@ Uses the [GR00T REQ/REP msgpack protocol](https://github.com/NVIDIA/Isaac-GR00T/
 The `key` argument in each `Observation.*()` call becomes the GR00T state key:
 
 ```python
-Observation.joint_positions("left_arm", source=mg)     # → obs["state.left_arm"]
-Observation.tcp("left_eef_9d", source=mg,
-                format=TcpFormat.ROT6D)                 # → obs["state.left_eef_9d"]
-Observation.io("left_gripper", source=mg,
-               io="digital_out[0]")                     # → obs["state.left_gripper"]
+Observation.joint_positions("left_arm", source=mg)  # → obs["state.left_arm"]
+Observation.tcp("left_eef_9d", source=mg, format=TcpFormat.ROT6D)  # → obs["state.left_eef_9d"]
+Observation.io("left_gripper", source=mg, io="digital_out[0]")  # → obs["state.left_gripper"]
 ```
 
 ### Computed observations and actions
@@ -121,6 +140,7 @@ Before writing your schema, query the server to see what it expects:
 ```python
 import asyncio
 from novapolicy import Gr00tPolicyClient
+
 
 async def main():
     client = Gr00tPolicyClient(host="gpu-server", port=5555)
@@ -141,6 +161,7 @@ async def main():
     # }
 
     await client.close()
+
 
 asyncio.run(main())
 ```
@@ -169,6 +190,7 @@ _orig_get = client.get_actions
 _step_count = 0
 _last_time = time.monotonic()
 
+
 async def _logged_get(states, schema, images, io_values):
     global _step_count, _last_time
     _step_count += 1
@@ -182,7 +204,9 @@ async def _logged_get(states, schema, images, io_values):
     if hasattr(result, "joints") and result.joints:
         skip = inference_ms / result.dt_ms if result.dt_ms > 0 else 0
         n = len(next(iter(result.joints.values())))
-        print(f"Step {_step_count} | gap={gap:.2f}s | inference={inference_ms:.0f}ms | skip~{skip:.1f}/{n}")
+        print(
+            f"Step {_step_count} | gap={gap:.2f}s | inference={inference_ms:.0f}ms | skip~{skip:.1f}/{n}"
+        )
 
         for mg_id, steps in result.joints.items():
             obs = states.get(mg_id)
@@ -190,10 +214,15 @@ async def _logged_get(states, schema, images, io_values):
                 current = list(obs.joints)
                 snap = max(abs(math.degrees(steps[0][j] - current[j])) for j in range(len(current)))
                 eff_idx = min(int(skip), len(steps) - 1)
-                eff_delta = max(abs(math.degrees(steps[eff_idx][j] - current[j])) for j in range(len(current)))
-                print(f"  {mg_id}: snap={snap:.2f}\u00b0, effective[{eff_idx}] delta={eff_delta:.2f}\u00b0")
+                eff_delta = max(
+                    abs(math.degrees(steps[eff_idx][j] - current[j])) for j in range(len(current))
+                )
+                print(
+                    f"  {mg_id}: snap={snap:.2f}\u00b0, effective[{eff_idx}] delta={eff_delta:.2f}\u00b0"
+                )
 
     return result
+
 
 client.get_actions = _logged_get
 ```

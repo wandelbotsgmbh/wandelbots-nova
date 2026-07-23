@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from rerun import RecordingStream
 
 import rerun as rr
 import rerun.blueprint as rrb
@@ -11,6 +14,8 @@ import rerun.blueprint as rrb
 def send_blueprint(
     motion_group_ids: list[str],
     camera_names: list[str],
+    *,
+    recording: RecordingStream | None = None,
 ) -> None:
     """Send a Rerun blueprint with 3D view, camera panels, joints, and text logs."""
 
@@ -32,9 +37,32 @@ def send_blueprint(
         rrb.Spatial2DView(contents=[f"policy/cameras/{n}"], name=n) for n in camera_names
     ]
     joint_views = [
-        rrb.TimeSeriesView(contents=[f"policy/{mg_id}/joints/**"], name=f"Joints {mg_id}")
+        rrb.TimeSeriesView(
+            contents=[
+                f"policy/{mg_id}/joints/**",
+                f"policy/{mg_id}/joint_target/**",
+            ],
+            name=f"Joints target/actual {mg_id}",
+        )
         for mg_id in escaped_ids
     ]
+    tcp_tracking_views = []
+    for mg_id in escaped_ids:
+        tcp_tracking_views.extend([
+            rrb.TimeSeriesView(
+                contents=[
+                    f"policy/{mg_id}/tcp_target/position/**",
+                    f"policy/{mg_id}/tcp_target/orientation/**",
+                    f"policy/{mg_id}/tcp_actual/position/**",
+                    f"policy/{mg_id}/tcp_actual/orientation/**",
+                ],
+                name=f"TCP target/actual {mg_id}",
+            ),
+            rrb.TimeSeriesView(
+                contents=[f"policy/{mg_id}/tcp_error/**"],
+                name=f"TCP error {mg_id}",
+            ),
+        ])
     text_views = [
         rrb.TextLogView(
             contents=["policy/action_chunks", "policy/status"],
@@ -47,6 +75,8 @@ def send_blueprint(
         right_panels.append(rrb.Grid(*camera_views))
     if joint_views:
         right_panels.append(rrb.Vertical(*joint_views))
+    if tcp_tracking_views:
+        right_panels.append(rrb.Vertical(*tcp_tracking_views))
     if text_views:
         right_panels.append(rrb.Vertical(*text_views))
 
@@ -60,5 +90,6 @@ def send_blueprint(
             layout,
             rrb.TimePanel(state="expanded", timeline="policy_time"),
             collapse_panels=True,
-        )
+        ),
+        recording=recording,
     )

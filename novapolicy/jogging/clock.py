@@ -1,9 +1,9 @@
 """Server jogger-clock synchronization for waypoint jogging.
 
 The NOVA server exposes ``jogger_session_timestamp_ms`` in the state stream.
-``JoggingTimeClock`` observes it, compares to the client wall-clock, and derives
-a speed ratio used to scale outgoing waypoint timestamps so the robot moves at
-real-time speed regardless of the server's internal rate.
+``JoggingTimeClock`` observes it alongside the client monotonic clock and derives
+a clock-rate ratio from timestamp deltas. That ratio is used to extrapolate
+server "now" and scale waypoint intervals.
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ class JoggingTimeClock:
     (field on ``JoggingDetails``). It starts at 0 after ``InitializeJoggingRequest``
     and increments while waypoints are being executed.
 
-    This class observes that timestamp, compares it to the client's wall-clock
-    elapsed time, and derives the speed ratio (server_time / client_time).
+    This class observes that timestamp alongside client monotonic time and
+    derives the speed ratio from deltas between clock samples.
     The ratio is used to scale outgoing waypoint timestamps so that the
     robot moves at real-time speed regardless of the server's internal rate.
 
@@ -49,6 +49,8 @@ class JoggingTimeClock:
     _client_start_time: float = field(default=0.0, repr=False)
     _last_server_ts_ms: int = field(default=0, repr=False)
     _last_server_wall: float = field(default=0.0, repr=False)
+    _rate_reference_server_ts_ms: int = field(default=0, repr=False)
+    _rate_reference_wall: float = field(default=0.0, repr=False)
     _stalled: bool = field(default=False, repr=False)
 
     def start(self) -> None:
@@ -56,11 +58,32 @@ class JoggingTimeClock:
         self._client_start_time = time.monotonic()
 
     @property
+    def last_server_timestamp_ms(self) -> int:
+        """Latest acknowledged NOVA jogger-session timestamp."""
+        return self._last_server_ts_ms
+
+    @property
     def client_elapsed_ms(self) -> int:
         """Client wall-clock elapsed since session start."""
-        if self._client_start_time == 0.0:
+        if self._client_start_time <= 0.0:
             return 0
         return int((time.monotonic() - self._client_start_time) * 1000)
+
+    @property
+    def estimated_server_timestamp_ms(self) -> int:
+        """Estimate the server clock at the current wall-clock instant.
+
+        The latest state-stream timestamp is extrapolated with the measured
+        server-clock rate. This avoids treating an already-aged state sample as
+        server "now" when timestamping a waypoint request.
+        """
+        if not self.synced:
+            return self.scale_timestamp(self.client_elapsed_ms)
+        drift_ms = (time.monotonic() - self._last_server_wall) * 1000.0
+        if drift_ms >= self.max_lookahead_ms:
+            self._note_stall(drift_ms)
+        drift_ms = min(max(0.0, drift_ms), self.max_lookahead_ms)
+        return self._last_server_ts_ms + int(drift_ms * self.speed_ratio)
 
     @property
     def acknowledged_elapsed_ms(self) -> int:
@@ -85,12 +108,7 @@ class JoggingTimeClock:
         """
         if not self.synced or self.speed_ratio <= 0.0:
             return self.client_elapsed_ms
-        acknowledged_client_ms = self._last_server_ts_ms / self.speed_ratio
-        drift_ms = (time.monotonic() - self._last_server_wall) * 1000.0
-        if drift_ms >= self.max_lookahead_ms:
-            self._note_stall(drift_ms)
-        drift_ms = min(max(0.0, drift_ms), self.max_lookahead_ms)
-        return int(acknowledged_client_ms + drift_ms)
+        return int(self.estimated_server_timestamp_ms / self.speed_ratio)
 
     def _note_stall(self, drift_ms: float) -> None:
         """Warn once when the server timer stops advancing (edge-triggered).
@@ -112,11 +130,25 @@ class JoggingTimeClock:
         """Feed a new ``jogger_session_timestamp_ms`` reading from the state stream."""
         if timestamp_ms <= 0:
             return
+        sample_wall = time.monotonic()
         if not self.synced:
             self.synced = True
+            self._rate_reference_server_ts_ms = timestamp_ms
+            self._rate_reference_wall = sample_wall
             logger.info(
                 "Server time sync established (jogger_session_timestamp_ms=%d)", timestamp_ms
             )
+        elif timestamp_ms <= self._last_server_ts_ms:
+            # Repeated or out-of-order state samples do not move the clock
+            # reference forward. Aging the reference here would make the
+            # estimated server clock lag behind reality.
+            return
+        else:
+            server_delta_ms = timestamp_ms - self._rate_reference_server_ts_ms
+            wall_delta_ms = (sample_wall - self._rate_reference_wall) * 1000.0
+            if wall_delta_ms > 0.0:
+                self.speed_ratio = max(1.0, server_delta_ms / wall_delta_ms)
+
         if self._stalled:
             self._stalled = False
             logger.info(
@@ -124,16 +156,11 @@ class JoggingTimeClock:
                 "server time advancing again.",
                 timestamp_ms,
             )
-        # Record the latest acknowledged server time and when we saw it, so
-        # acknowledged_elapsed_ms can extrapolate from a real ack rather than
-        # from a free-running wall clock.
+        # Record both domains from the same sample. Future server "now" values
+        # are extrapolated from this pair rather than assuming that the client
+        # and server clocks started at the same instant.
         self._last_server_ts_ms = timestamp_ms
-        self._last_server_wall = time.monotonic()
-        # Use raw ratio (server_time / client_time) directly.
-        # Clamp >= 1.0 since the server is never slower than wall-clock.
-        client_ms = self.client_elapsed_ms
-        if client_ms > 0:
-            self.speed_ratio = max(1.0, timestamp_ms / client_ms)
+        self._last_server_wall = sample_wall
 
     def scale_timestamp(self, trajectory_time_ms: int) -> int:
         """Convert a trajectory-time timestamp to server-time."""

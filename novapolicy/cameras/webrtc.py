@@ -13,36 +13,39 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from dataclasses import dataclass
+import importlib
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import requests
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
+    from aiortc import MediaStreamTrack
+    from av import VideoFrame
     from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
 # Optional imports — aiortc is heavy and not always needed
-_aiortc_available = False
+_aiortc: ModuleType | None
 try:
-    from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
-    from aiortc.mediastreams import MediaStreamError
+    _aiortc = importlib.import_module("aiortc")
     import av.logging
 
     av.logging.set_level(av.logging.ERROR)
-    _aiortc_available = True
 except ImportError:
     # aiortc is an optional dependency; WebRTC camera support stays disabled.
-    pass
+    _aiortc = None
 
 
 def _require_aiortc() -> None:
     """Raise if aiortc is not installed."""
-    if not _aiortc_available:
+    if _aiortc is None:
         msg = "aiortc is required for WebRTC cameras. Install with: pip install aiortc"
         raise ModuleNotFoundError(msg)
 
@@ -140,13 +143,20 @@ class WebRTCConnection:
 
     async def _setup_webrtc(self, api_url: str, cfg: WebRTCCameraConfig) -> None:
         """WebRTC offer/answer exchange."""
+        _require_aiortc()
+        from aiortc import (  # noqa: PLC0415
+            RTCConfiguration,
+            RTCPeerConnection,
+            RTCSessionDescription,
+        )
+
         self._pc = RTCPeerConnection(
             configuration=RTCConfiguration(iceServers=[]),
         )
 
         @self._pc.on("track")
-        def on_track(track: object) -> None:
-            if hasattr(track, "kind") and track.kind == "video":
+        def on_track(track: MediaStreamTrack) -> None:
+            if track.kind == "video":
                 self._receive_task = asyncio.ensure_future(self._receive_frames(track))
 
         resp = await asyncio.to_thread(
@@ -180,11 +190,13 @@ class WebRTCConnection:
     # Frame reception
     # ------------------------------------------------------------------
 
-    async def _receive_frames(self, track: object) -> None:
+    async def _receive_frames(self, track: MediaStreamTrack) -> None:
         """Receive frames and store the latest (thread-safe)."""
-        try:
+        from aiortc.mediastreams import MediaStreamError  # noqa: PLC0415
+
+        try:  # noqa: PLW0717
             while True:
-                frame = await track.recv()  # type: ignore[union-attr]
+                frame = cast("VideoFrame", await track.recv())
                 img = frame.to_ndarray(format="rgb24")
 
                 with self._frame_lock:
@@ -209,7 +221,7 @@ def _resize_frame(frame: NDArray[Any], width: int, height: int) -> NDArray[Any]:
     from PIL import Image  # noqa: PLC0415
 
     img = Image.fromarray(frame)
-    img = img.resize((width, height), Image.LANCZOS)
+    img = img.resize((width, height), Image.Resampling.LANCZOS)
     return np.asarray(img)
 
 
@@ -248,6 +260,22 @@ class WebRTCDevice:
         Raises:
             RuntimeError: If not connected, no frame available, or frame is stale.
         """
+        frame = self._read_latest_frame(max_age_s)
+        if self._frame_history <= 1:
+            return frame
+
+        self._buffer.append(frame)
+        if len(self._buffer) > self._frame_history:
+            self._buffer.pop(0)
+        while len(self._buffer) < self._frame_history:
+            self._buffer.insert(0, self._buffer[0])
+        return np.stack(self._buffer, axis=0)
+
+    def get_latest_frame(self, max_age_s: float = 30.0) -> NDArray[Any]:
+        """Return the latest cached frame without advancing policy frame history."""
+        return self._read_latest_frame(max_age_s)
+
+    def _read_latest_frame(self, max_age_s: float) -> NDArray[Any]:
         if self._connection is None:
             msg = f"Camera '{self._config.device_id}' not connected"
             raise RuntimeError(msg)
@@ -264,16 +292,7 @@ class WebRTCDevice:
 
         if self._resize is not None:
             frame = _resize_frame(frame, self._resize[0], self._resize[1])
-
-        if self._frame_history <= 1:
-            return frame
-
-        self._buffer.append(frame)
-        if len(self._buffer) > self._frame_history:
-            self._buffer.pop(0)
-        while len(self._buffer) < self._frame_history:
-            self._buffer.insert(0, self._buffer[0])
-        return np.stack(self._buffer, axis=0)
+        return frame
 
     async def disconnect(self) -> None:
         """Disconnect from the camera stream."""

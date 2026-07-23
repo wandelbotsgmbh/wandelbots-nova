@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from nova.cell.motion_group import MotionGroup
+    from nova.core.gateway import ApiGateway
     from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 
 logger = logging.getLogger(__name__)
@@ -25,12 +26,10 @@ logger = logging.getLogger(__name__)
 # Safety states in which the robot is still operational. Anything else (e-stop,
 # protective stop, fault, violation, ...) is treated as a safety stop. Mirrors
 # nova's ProgramRunner estop check (single source of truth: SafetyStateType).
-_OPERATIONAL_SAFETY_STATES = frozenset(
-    {
-        api.models.SafetyStateType.SAFETY_STATE_NORMAL,
-        api.models.SafetyStateType.SAFETY_STATE_REDUCED,
-    }
-)
+_OPERATIONAL_SAFETY_STATES = frozenset({
+    api.models.SafetyStateType.SAFETY_STATE_NORMAL,
+    api.models.SafetyStateType.SAFETY_STATE_REDUCED,
+})
 
 
 # ---------------------------------------------------------------------------
@@ -127,10 +126,10 @@ class EstopMonitor:
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _watch(self, controller_id: str, api_client: object) -> None:
+    async def _watch(self, controller_id: str, api_client: ApiGateway) -> None:
         cell = get_cell(self._motion_groups[0])
         stream = None
-        try:
+        try:  # noqa: PLW0717
             stream = api_client.controller_api.stream_robot_controller_state(
                 cell=cell,
                 controller=controller_id,

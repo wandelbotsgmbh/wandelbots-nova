@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from nova.cell.io import IOAccess
 from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
@@ -23,6 +23,11 @@ if TYPE_CHECKING:
     from novapolicy.types import ValueType
 
 logger = logging.getLogger(__name__)
+
+
+class _IOValuesTarget(Protocol):
+    def set_io_values_ref(self, values: dict[str, object]) -> None:
+        raise NotImplementedError
 
 
 class IOStreamCache:
@@ -120,12 +125,12 @@ class IOStreamManager:
             self._caches.append(cache)
             await cache.start()
 
-    def wire_to_sessions(self, sessions: Mapping[str, object]) -> None:
+    def wire_to_sessions(self, sessions: Mapping[str, _IOValuesTarget]) -> None:
         """Give each session a live reference to its controller's IO values."""
         for cache in self._caches:
             session = sessions.get(cache.motion_group.id)
             if session is not None:
-                session.set_io_values_ref(cache.values)  # type: ignore[attr-defined]
+                session.set_io_values_ref(cache.values)
 
     async def stop(self) -> None:
         """Close all IO streams."""
@@ -165,7 +170,7 @@ class IOWriter:
         self._last_written: dict[str, ValueType] = {}
         self._lock = asyncio.Lock()
 
-    async def write(self, ios: dict[str, ValueType]) -> None:
+    async def write(self, ios: Mapping[str, ValueType]) -> None:
         """Write IO values, skipping unchanged ones."""
         async with self._lock:
             for key, value in ios.items():

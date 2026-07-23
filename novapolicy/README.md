@@ -49,18 +49,51 @@ The executor decides **when** to start and **when** to stop, and runs the softwa
 
 ## Install
 
+`novapolicy` is split into optional extras so users only install the policy transport they need.
+
+| Extra | Use when you need | Adds |
+| --- | --- | --- |
+| `novapolicy` | core `PolicyExecutor`, schema, waypoint jogging, WebRTC cameras, custom callback policies | `aiortc`, `Pillow`, `requests` |
+| `novapolicy-gr00t` | NVIDIA GR00T ZeroMQ policy client | core policy deps + `msgpack`, `pyzmq` |
+| `novapolicy-lerobot` | LeRobot async gRPC inference client/server integration | core policy deps + `lerobot[async]` |
+
+Install exactly one policy-client extra if you know which backend you use:
+
 ```bash
+# Core policy execution + WebRTC cameras only
 uv add wandelbots-nova --extra novapolicy
+
+# GR00T client support
+uv add wandelbots-nova --extra novapolicy-gr00t
+
+# LeRobot async-inference client support
+uv add wandelbots-nova --extra novapolicy-lerobot
 ```
+
+Extras can also be combined, for example when developing or testing multiple policy backends:
+
+```bash
+uv add wandelbots-nova --extra novapolicy-gr00t --extra novapolicy-lerobot
+```
+
+The GR00T and LeRobot clients keep their heavy transport dependencies optional. If a missing-extra
+error is raised at runtime, install the matching backend extra above.
 
 ## Quick Start
 
-A policy is just an async function: observations in, an action chunk out.
+A local policy callback is an async function wrapped by `CallbackPolicyClient`: observations in, an action chunk out.
 
 ```python
 import asyncio
 from nova import Nova
-from novapolicy import ActionChunk, Observation, PolicyExecutor, PolicySchema
+from novapolicy import (
+    ActionChunk,
+    CallbackPolicyClient,
+    Observation,
+    PolicyExecutor,
+    PolicySchema,
+    SequentialExecution,
+)
 
 
 async def my_policy(obs) -> ActionChunk:
@@ -78,11 +111,18 @@ async def main():
         ctrl = await cell.controller("ur10e")
         mg = ctrl[0]
 
-        schema = PolicySchema(observations=[
-            Observation.joint_positions("arm", source=mg),
-        ])
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+            ]
+        )
 
-        executor = PolicyExecutor(schema, my_policy, timeout_s=10.0)
+        executor = PolicyExecutor(
+            schema,
+            CallbackPolicyClient(my_policy),
+            execution=SequentialExecution(),
+            timeout_s=10.0,
+        )
         result = await executor.run()
         print(f"Done: {result.reason}, {result.steps} steps, {result.duration_s:.1f}s")
 
@@ -90,7 +130,7 @@ async def main():
 asyncio.run(main())
 ```
 
-Any async callable that maps a feature `dict` to an `ActionChunk` works: call a remote GPU server, run a local model, or replay a trajectory. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
+Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
 
 ## PolicySchema
 
@@ -99,14 +139,18 @@ Decouples the policy's **observations** from hardware topology. The policy sees 
 ```python
 from novapolicy import BoolMapping, Observation, PolicySchema
 
-schema = PolicySchema(observations=[
-    Observation.joint_positions("left", source=mg_left),
-    Observation.joint_positions("right", source=mg_right),
-    Observation.io("left_gripper", source=mg_left, io="digital_out[0]",
-                   mapping=BoolMapping(on=100.0)),
-    Observation.io("right_gripper", source=mg_right, io="digital_out[0]",
-                   mapping=BoolMapping(on=100.0)),
-])
+schema = PolicySchema(
+    observations=[
+        Observation.joint_positions("left", source=mg_left),
+        Observation.joint_positions("right", source=mg_right),
+        Observation.io(
+            "left_gripper", source=mg_left, io="digital_out[0]", mapping=BoolMapping(on=100.0)
+        ),
+        Observation.io(
+            "right_gripper", source=mg_right, io="digital_out[0]", mapping=BoolMapping(on=100.0)
+        ),
+    ]
+)
 ```
 
 This produces observations like:
@@ -133,11 +177,13 @@ from novapolicy import Observation, WebRTCCameras
 # Frames are resized to the policy's expected input size on read.
 cameras = WebRTCCameras(api_url="http://<nova-host>:8011/webrtc-streamer", resize=(224, 224))
 
-schema = PolicySchema(observations=[
-    Observation.joint_positions("arm", source=mg),
-    Observation.image("flange", source=cameras.device("315122271048")),
-    Observation.image("left", source=cameras.device("314522065367")),
-])
+schema = PolicySchema(
+    observations=[
+        Observation.joint_positions("arm", source=mg),
+        Observation.image("flange", source=cameras.device("315122271048")),
+        Observation.image("left", source=cameras.device("314522065367")),
+    ]
+)
 ```
 
 Images arrive as `numpy.ndarray` (H×W×3, uint8, RGB) in the observation dict.
@@ -150,13 +196,20 @@ synchronous check that runs on every tick; returning `True` ends the run normall
 IO stop signal: end the episode when an operator button or PLC sets an input:
 
 ```python
-from novapolicy import StopContext
+from novapolicy import SequentialExecution, StopContext
+
 
 def stop_on_io(ctx: StopContext) -> bool:
     """Stop the policy when digital_in[3] goes high."""
     return bool(ctx.io_values and ctx.io_values.get("digital_in[3]"))
 
-executor = PolicyExecutor(schema, policy, stop_conditions=[stop_on_io])
+
+executor = PolicyExecutor(
+    schema,
+    policy,
+    execution=SequentialExecution(),
+    stop_conditions=[stop_on_io],
+)
 result = await executor.run()
 # result.reason == "stop condition: stop_on_io"
 ```
@@ -177,9 +230,10 @@ arm, keyboard, gamepad, spacemouse) in your own script. See
 | Doc                                  | Covers                                                                                                                                                                 |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [docs/jogging.md](docs/jogging.md)   | Standalone jogging: `jog_joints` / `jog_tcp`, joint/TCP modes, chunked targets, dual-arm, and error handling                                                           |
-| [docs/executor.md](docs/executor.md) | Advanced: the `PolicyExecutor` loop (`policy_rate_hz`, RTC) and the client/server timestamp protocol                                                                   |
+| [docs/executor.md](docs/executor.md) | Advanced: explicit sequential/continuous execution modes, asynchronous inference, RTC, and the client/server timestamp protocol                                |
 | [docs/schema.md](docs/schema.md)     | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions                                                                             |
 | [docs/gr00t.md](docs/gr00t.md)       | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/rtc.md](docs/rtc.md) for real-time chunking) |
+| [lerobot/README.md](lerobot/README.md) | LeRobot async inference, checkpoint-derived `chunk_size` / `n_action_steps`, and remote-checkpoint configuration                                                        |
 | [docs/rerun.md](docs/rerun.md)       | Optional real-time 3D visualization of execution                                                                                                                       |
 
 ### Examples

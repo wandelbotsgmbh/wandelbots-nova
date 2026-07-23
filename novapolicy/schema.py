@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from novapolicy._sdk import get_controller_id
 
@@ -46,12 +46,17 @@ logger = logging.getLogger(__name__)
 class Mapping:
     """Identity mapping — passes values through unchanged."""
 
-    def to_policy(self, hardware_value: bool | int | float) -> float:  # noqa: FBT001
+    def to_policy(  # noqa: PLR6301
+        self,
+        hardware_value: bool | int | float,  # noqa: FBT001
+    ) -> float:
         if isinstance(hardware_value, bool):
             return 1.0 if hardware_value else 0.0
         return float(hardware_value)
 
-    def to_hardware(self, policy_value: float) -> bool | int | float | str:
+    def to_hardware(  # noqa: PLR6301
+        self, policy_value: float
+    ) -> bool | int | float | str:
         return policy_value
 
 
@@ -94,7 +99,11 @@ class _ObsJoints:
 
     @property
     def sources(self) -> list[MotionGroup]:
-        return self.source if isinstance(self.source, list) else [self.source]
+        return (
+            cast("list[MotionGroup]", self.source)
+            if isinstance(self.source, list)
+            else [self.source]
+        )
 
 
 @dataclass(slots=True)
@@ -232,7 +241,11 @@ class _ActJoints:
 
     @property
     def targets(self) -> list[MotionGroup]:
-        return self.target if isinstance(self.target, list) else [self.target]
+        return (
+            cast("list[MotionGroup]", self.target)
+            if isinstance(self.target, list)
+            else [self.target]
+        )
 
 
 @dataclass(slots=True)

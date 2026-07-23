@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import TYPE_CHECKING, Sequence, cast
 
 if TYPE_CHECKING:
@@ -65,6 +66,7 @@ class Rerun(Viewer):
         show_safety_link_chain: bool = True,
         tcp_tools: dict[str, str] | None = None,
         trajectory_sample_interval_ms: float = 50.0,
+        state_sample_interval_ms: float = 1000.0 / 30.0,
     ) -> None:
         """
         Initialize the Rerun viewer.
@@ -82,6 +84,10 @@ class Rerun(Viewer):
                 samples for visualization. Lower values = higher fidelity, higher values = better
                 performance. Sampling is adaptive, keeping more points at high-curvature regions.
                 (default: 50.0ms, equivalent to 20 samples/second)
+            state_sample_interval_ms: Target interval in milliseconds between live robot-state
+                samples logged to Rerun. This applies to NOVA, policy, and jogging state
+                visualization. Lower values increase fidelity and logging overhead.
+                (default: ~33.3ms, equivalent to 30 samples/second)
         """
         self.application_id: str | None = application_id
         self.spawn: bool = spawn
@@ -90,8 +96,12 @@ class Rerun(Viewer):
         self.show_collision_link_chain: bool = show_collision_link_chain
         self.show_collision_tool: bool = show_collision_tool
         self.show_safety_link_chain: bool = show_safety_link_chain
+        if not math.isfinite(state_sample_interval_ms) or state_sample_interval_ms <= 0:
+            raise ValueError("state_sample_interval_ms must be a positive finite value")
+
         self.tcp_tools: dict[str, str] = tcp_tools or {}
         self.trajectory_sample_interval_ms: float = trajectory_sample_interval_ms
+        self.state_sample_interval_ms: float = state_sample_interval_ms
         self._bridge: NovaRerunBridgeProtocol | None = None
         self._logged_safety_zones: set[str] = (
             set()
@@ -136,6 +146,7 @@ class Rerun(Viewer):
                 show_collision_link_chain=self.show_collision_link_chain,
                 show_collision_tool=self.show_collision_tool,
                 show_safety_link_chain=self.show_safety_link_chain,
+                state_sample_interval_ms=self.state_sample_interval_ms,
             )
             self._bridge = cast(NovaRerunBridgeProtocol, bridge)
         except ImportError:

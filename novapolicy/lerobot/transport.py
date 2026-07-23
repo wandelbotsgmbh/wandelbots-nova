@@ -1,0 +1,109 @@
+"""Trusted gRPC transport for LeRobot asynchronous inference."""
+
+from __future__ import annotations
+
+import pickle  # noqa: S403  # nosec: LeRobot uses trusted pickle payloads.
+import time
+from typing import Any, cast
+
+import grpc
+from lerobot.async_inference.helpers import TimedObservation
+from lerobot.transport.utils import send_bytes_in_chunks
+
+from lerobot.transport import services_pb2, services_pb2_grpc
+
+
+class LeRobotGrpcTransport:
+    """Own the LeRobot gRPC channel and protocol serialization."""
+
+    def __init__(self, server_address: str, *, timeout_s: float) -> None:
+        self._server_address = server_address
+        self._timeout_s = timeout_s
+        self._channel: grpc.Channel | None = None
+        self._stub: services_pb2_grpc.AsyncInferenceStub | None = None
+
+    @property
+    def connected(self) -> bool:
+        return self._stub is not None
+
+    def connect(self) -> None:
+        if self._channel is not None:
+            return
+        channel = grpc.insecure_channel(self._server_address)
+        self._channel = channel
+        self._stub = services_pb2_grpc.AsyncInferenceStub(channel)
+        protobuf = cast("Any", services_pb2)
+        self._stub.Ready(protobuf.Empty(), timeout=self._timeout_s)
+
+    def configure_policy(self, config: object) -> None:
+        protobuf = cast("Any", services_pb2)
+        self._require_stub().SendPolicyInstructions(
+            protobuf.PolicySetup(data=pickle.dumps(config)),
+            timeout=self._timeout_s,
+        )
+
+    def send_observation(
+        self,
+        observation: dict[str, Any],
+        *,
+        timestep: int,
+        must_go: bool,
+    ) -> None:
+        timed_observation = TimedObservation(
+            timestamp=time.time(),
+            observation=observation,
+            timestep=timestep,
+            must_go=must_go,
+        )
+        protobuf = cast("Any", services_pb2)
+        self._require_stub().SendObservations(
+            send_bytes_in_chunks(
+                pickle.dumps(timed_observation),
+                protobuf.Observation,
+                silent=True,
+            ),
+            timeout=self._timeout_s,
+        )
+
+    def receive_actions(self, *, allow_empty: bool = False) -> list[Any]:
+        protobuf = cast("Any", services_pb2)
+        response = self._require_stub().GetActions(
+            protobuf.Empty(),
+            timeout=self._timeout_s,
+        )
+        if not response.data:
+            if allow_empty:
+                return []
+            raise RuntimeError("LeRobot server returned an empty action response")
+        actions = pickle.loads(response.data)  # noqa: S301  # nosec: trusted protocol.
+        if not isinstance(actions, list):
+            msg = f"Expected LeRobot list[TimedAction], got {type(actions).__name__}"
+            raise TypeError(msg)
+        return actions
+
+    def infer(
+        self,
+        observation: dict[str, Any],
+        *,
+        timestep: int,
+        must_go: bool,
+        allow_empty: bool = False,
+    ) -> list[Any]:
+        self.send_observation(observation, timestep=timestep, must_go=must_go)
+        return self.receive_actions(allow_empty=allow_empty)
+
+    def close(self) -> None:
+        channel = self._channel
+        self._channel = None
+        self._stub = None
+        if channel is not None:
+            channel.close()
+
+    def _require_stub(self) -> services_pb2_grpc.AsyncInferenceStub:
+        stub = self._stub
+        if stub is None:
+            self.connect()
+            stub = self._stub
+        if stub is None:
+            raise RuntimeError("Failed to create LeRobot gRPC stub")
+        return stub

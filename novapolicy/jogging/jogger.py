@@ -19,8 +19,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import math
 import time
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, TypeAlias, cast, overload
 
 from novapolicy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
@@ -37,6 +38,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _CARTESIAN_DIMS = 6  # x, y, z, rx, ry, rz — fixed by NOVA jogging API
+
+_TargetValues: TypeAlias = list[float] | list[list[float]]
 
 # Safety fallback: if the robot never reports a RUNNING jogging state, anchor
 # the elapsed clock anyway after this many seconds so the loop can't stall.
@@ -58,6 +61,7 @@ class _BaseJogger:
         *,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
         ease_in_s: float = 0.0,
+        buffer_ms: float = 0.0,
     ) -> None:
         self._mg_list = mg_list
         self._multi = len(mg_list) > 1
@@ -70,6 +74,14 @@ class _BaseJogger:
         self._first_yield_t: float | None = None
         self._ease_in_s = ease_in_s
         self._ease_baseline: dict[MotionGroup, list[float]] = {}
+        if buffer_ms < 0:
+            msg = "buffer_ms must be greater than or equal to 0"
+            raise ValueError(msg)
+        self._buffer_ms = buffer_ms
+        self._target_buffers: dict[MotionGroup, list[list[float]]] = {}
+        self._last_target_elapsed: dict[MotionGroup, float] = {}
+        self._last_target_wall: dict[MotionGroup, float] = {}
+        self._buffer_started: set[MotionGroup] = set()
 
     @property
     def elapsed(self) -> float:
@@ -151,37 +163,113 @@ class _BaseJogger:
 
     def _validate_and_push(self, mg: MotionGroup, values: list[float]) -> None:
         """Validate target dimensions and push to session."""
-        expected = self._expected_dims(mg)
-        if expected is not None and len(values) != expected:
-            msg = f"Target has {len(values)} values but motion group '{mg.id}' expects {expected}"
-            raise ValueError(msg)
+        self._validate_target_dims(mg, values)
         session = self._sessions.get(mg)
         if session is not None:
             # Single-step live target: anchor at "now", one step ahead so the
             # server has time to reach it from the robot's current position.
             session.update_chunk(
-                steps=self._ease_steps(mg, [values], 0.0), dt_ms=0.0, anchor_offset_steps=1
+                steps=self._ease_steps(mg, [values], 0.0), dt_ms=0.0, timestamp_offset_steps=1
             )
         self._log_target(mg.id, [values], 0.0)
 
-    def _push_target(self, mg: MotionGroup, value: list, dt_ms: float) -> list[float]:
+    def _push_target(
+        self,
+        mg: MotionGroup,
+        value: _TargetValues,
+        dt_ms: float,
+        *,
+        extend_buffer: bool = True,
+    ) -> list[float]:
         """Push a single or chunk target to a session. Returns the final target."""
-        session = self._sessions.get(mg)
-        if session is None:
-            return value if not isinstance(value[0], list) else value[-1]
-        if value and isinstance(value[0], list):
-            # Chunked: absolute anchor on the jogger's own session timeline so
-            # overlapping per-tick resends land identical steps at identical
-            # timestamps (one coherent trajectory, no seam jump).
-            session.update_chunk(
-                steps=self._ease_steps(mg, value, dt_ms),
-                dt_ms=dt_ms,
-                anchor_ms=session.session_elapsed_ms,
-            )
-            self._log_target(mg.id, value, dt_ms)
-            return value[-1]
-        self._validate_and_push(mg, value)
-        return value
+        is_chunk = bool(value) and isinstance(value[0], list)
+        if is_chunk:
+            chunk = cast("list[list[float]]", value)
+            session = self._sessions.get(mg)
+            if session is not None:
+                eased = self._ease_steps(mg, chunk, dt_ms)
+                if extend_buffer:
+                    session.update_chunk(
+                        steps=eased,
+                        dt_ms=dt_ms,
+                        first_timestamp_ms=session.estimated_server_timestamp_ms,
+                    )
+                else:
+                    session.update_chunk(
+                        steps=eased,
+                        dt_ms=dt_ms,
+                        first_timestamp_ms=session.estimated_server_timestamp_ms,
+                        extend_buffer=False,
+                    )
+                self._log_target(mg.id, chunk, dt_ms)
+            return chunk[-1]
+
+        target = cast("list[float]", value)
+        self._validate_and_push(mg, target)
+        return target
+
+    def _set_live_target(self, mg: MotionGroup, values: list[float], *, dt_ms: float = 0.0) -> None:
+        """Send one live target immediately or through the configured rolling buffer."""
+        if self._buffer_ms == 0:
+            self._validate_and_push(mg, values)
+            return
+
+        self._validate_target_dims(mg, values)
+        effective_dt_ms = self._target_dt_ms(mg, dt_ms if dt_ms > 0 else None)
+        buffer = self._target_buffers.setdefault(mg, [])
+        if effective_dt_ms is None:
+            if mg not in self._buffer_started and not buffer:
+                buffer.append(list(values))
+            return
+
+        buffer.append(list(values))
+        min_steps = max(1, math.ceil(self._buffer_ms / effective_dt_ms))
+        if len(buffer) > min_steps:
+            del buffer[: len(buffer) - min_steps]
+        if len(buffer) < min_steps:
+            return
+
+        self._push_target(mg, [list(step) for step in buffer], effective_dt_ms, extend_buffer=False)
+        self._buffer_started.add(mg)
+
+    def _target_dt_ms(self, mg: MotionGroup, dt_ms: float | None) -> float | None:
+        """Determine live-sample spacing from explicit or acknowledged timing."""
+        if dt_ms is not None:
+            self._last_target_elapsed[mg] = self.elapsed
+            self._last_target_wall[mg] = time.monotonic()
+            return dt_ms
+
+        now_elapsed = self.elapsed
+        now_wall = time.monotonic()
+        previous_elapsed = self._last_target_elapsed.get(mg)
+        previous_wall = self._last_target_wall.get(mg)
+        self._last_target_elapsed[mg] = now_elapsed
+        self._last_target_wall[mg] = now_wall
+
+        if previous_elapsed is not None:
+            elapsed_ms = (now_elapsed - previous_elapsed) * 1000.0
+            if elapsed_ms > 0:
+                return elapsed_ms
+
+        # Startup only: before the first chunk is sent, elapsed cannot advance.
+        if mg not in self._buffer_started and previous_wall is not None:
+            wall_ms = (now_wall - previous_wall) * 1000.0
+            return wall_ms if wall_ms > 0 else None
+
+        return None
+
+    def _clear_target_buffer(self, mg: MotionGroup) -> None:
+        """Forget rolling samples when an explicit chunk replaces live targets."""
+        self._target_buffers.pop(mg, None)
+        self._last_target_elapsed.pop(mg, None)
+        self._last_target_wall.pop(mg, None)
+        self._buffer_started.discard(mg)
+
+    def _validate_target_dims(self, mg: MotionGroup, values: list[float]) -> None:
+        expected = self._expected_dims(mg)
+        if expected is not None and len(values) != expected:
+            msg = f"Target has {len(values)} values but motion group '{mg.id}' expects {expected}"
+            raise ValueError(msg)
 
     def _log_target(self, mg_id: str, steps: list[list[float]], dt_ms: float) -> None:
         """Log jogging target to Rerun as an action chunk visualization."""
@@ -192,10 +280,15 @@ class _BaseJogger:
         # Determine if this is joint or TCP based on session mode
         session_by_id = self._sessions_by_id()
         session = session_by_id.get(mg_id)
+        state = session.current_state if session is not None else None
         if session is not None and session.mode == "cartesian":
             chunk = ActionChunk(tcp={mg_id: steps}, dt_ms=dt_ms)
+            if steps and state is not None:
+                self._rerun.log_tcp_tracking(mg_id, steps[0], state, step=0)
         else:
             chunk = ActionChunk(joints={mg_id: steps}, dt_ms=dt_ms)
+            if steps and state is not None:
+                self._rerun.log_joint_tracking(mg_id, steps[0], state, step=0)
         self._rerun.log_action_chunk(chunk, step=0)
 
     def state(self) -> dict[MotionGroup, RobotState] | RobotState | None:
@@ -264,7 +357,10 @@ class _BaseJogger:
 
         from novapolicy.rerun import PolicyRerunLogger  # noqa: PLC0415
 
-        self._rerun = PolicyRerunLogger(self._mg_list)
+        self._rerun = PolicyRerunLogger(
+            self._mg_list,
+            use_tcp_offset_for_joint_actions=True,
+        )
         await self._rerun.initialize()
         if self._rerun is not None:
             self._rerun.start_streaming(self._sessions_by_id())
@@ -283,13 +379,14 @@ class _BaseJogger:
             # PTP-to-home would use).
             setup = await mg.get_setup(tcp)
             setup.collision_setups = api.models.CollisionSetups({})
-            traj = await mg.plan([jnt(joints)], tcp, motion_group_setup=setup)
-            await mg.execute(traj, tcp, actions=[jnt(joints)])
+            target = tuple(joints)
+            traj = await mg.plan([jnt(target)], tcp, motion_group_setup=setup)
+            await mg.execute(traj, tcp, actions=[jnt(target)])
 
-        tasks = [
-            _ptp(mg, joints)
-            for mg, joints in self._start_joint_position.items()  # type: ignore[union-attr]
-        ]
+        start_positions = self._start_joint_position
+        if start_positions is None:
+            return
+        tasks = [_ptp(mg, joints) for mg, joints in start_positions.items()]
         await _asyncio.gather(*tasks)
 
     @property
@@ -311,21 +408,23 @@ class _BaseJogger:
             if triggered_stop_condition(self._sessions) is not None:
                 return
             s = self.state()
-            if s is not None:
-                if self._loop_t0 is None:
-                    now = time.monotonic()
-                    if self._first_yield_t is None:
-                        self._first_yield_t = now
-                    running = all(sess.is_running for sess in self._sessions.values())
-                    # Anchor the clock once the robot is actually executing
-                    # motion, or after a safety fallback so a robot that never
-                    # reports RUNNING can't stall the loop.
-                    if running or now - self._first_yield_t > _ANCHOR_FALLBACK_S:
-                        self._loop_t0 = now
-                        # Baseline the acknowledged clock at the same instant so
-                        # elapsed ticks from zero on the acknowledged timeline.
-                        self._ack0_ms = self._acknowledged_ms()
-                yield s
+            if s is None:
+                await asyncio.sleep(0.01)
+                continue
+            if self._loop_t0 is None:
+                now = time.monotonic()
+                if self._first_yield_t is None:
+                    self._first_yield_t = now
+                running = all(sess.is_running for sess in self._sessions.values())
+                # Anchor the clock once the robot is actually executing
+                # motion, or after a safety fallback so a robot that never
+                # reports RUNNING can't stall the loop.
+                if running or now - self._first_yield_t > _ANCHOR_FALLBACK_S:
+                    self._loop_t0 = now
+                    # Baseline the acknowledged clock at the same instant so
+                    # elapsed ticks from zero on the acknowledged timeline.
+                    self._ack0_ms = self._acknowledged_ms()
+            yield s
             await asyncio.sleep(0.01)
 
 
@@ -348,6 +447,7 @@ class JointJogger(_BaseJogger):
         stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
         ease_in_s: float = 0.0,
+        buffer_ms: float = 0.0,
     ) -> None:
         cfg = config or WaypointConfig()
         sessions: dict[MotionGroup, WaypointJoggingSession] = {}
@@ -366,7 +466,11 @@ class JointJogger(_BaseJogger):
             else:
                 home_dict = {motion_groups[0]: start_joint_position}
         super().__init__(
-            motion_groups, sessions, start_joint_position=home_dict, ease_in_s=ease_in_s
+            motion_groups,
+            sessions,
+            start_joint_position=home_dict,
+            ease_in_s=ease_in_s,
+            buffer_ms=buffer_ms,
         )
         self._target: dict[MotionGroup, list[float]] | None = None
 
@@ -394,21 +498,33 @@ class JointJogger(_BaseJogger):
                 - ``list[float]`` — single target (one motion group)
                 - ``list[list[float]]`` — chunk of future targets (one motion group)
                 - ``dict[MotionGroup, ...]`` — per-MG targets or chunks
-            dt_ms: Time between chunk steps in milliseconds.
-                Only used when ``target`` contains chunks (nested lists).
-                Enables interpolation and feedforward velocity.
+            dt_ms: Sample spacing for buffered single targets, or time between
+                explicit chunk steps, in milliseconds. When omitted for buffered
+                targets, spacing is inferred automatically.
         """
         if isinstance(target, list):
             if self._multi:
                 msg = "For multiple motion groups, pass a dict[MotionGroup, ...]"
                 raise TypeError(msg)
             mg = self._mg_list[0]
-            final = self._push_target(mg, target, dt_ms)
+            if target and isinstance(target[0], list):
+                final = self._push_target(mg, target, dt_ms)
+                self._clear_target_buffer(mg)
+            else:
+                live_target = cast("list[float]", target)
+                self._set_live_target(mg, live_target, dt_ms=dt_ms)
+                final = live_target
             self._target = {mg: final}
         elif isinstance(target, dict):
             self._target = self._target or {}
             for mg, mg_value in target.items():
-                self._target[mg] = self._push_target(mg, mg_value, dt_ms)
+                if mg_value and isinstance(mg_value[0], list):
+                    self._target[mg] = self._push_target(mg, mg_value, dt_ms)
+                    self._clear_target_buffer(mg)
+                else:
+                    live_target = cast("list[float]", mg_value)
+                    self._set_live_target(mg, live_target, dt_ms=dt_ms)
+                    self._target[mg] = live_target
         else:
             msg = f"Expected list or dict, got {type(target)}"
             raise TypeError(msg)
@@ -437,6 +553,7 @@ class TcpJogger(_BaseJogger):
         stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
         ease_in_s: float = 0.0,
+        buffer_ms: float = 0.0,
     ) -> None:
         cfg = config or WaypointConfig()
         sessions: dict[MotionGroup, WaypointJoggingSession] = {}
@@ -456,14 +573,22 @@ class TcpJogger(_BaseJogger):
                 home_dict = start_joint_position
             else:
                 home_dict = {mg_list[0]: start_joint_position}
-        super().__init__(mg_list, sessions, start_joint_position=home_dict, ease_in_s=ease_in_s)
-        self._target: dict[MotionGroup, Pose] | None = None
+        super().__init__(
+            mg_list,
+            sessions,
+            start_joint_position=home_dict,
+            ease_in_s=ease_in_s,
+            buffer_ms=buffer_ms,
+        )
+        self._target: dict[MotionGroup, Pose | list[float]] | None = None
 
-    def _expected_dims(self, mg: MotionGroup) -> int | None:  # noqa: ARG002
+    def _expected_dims(self, mg: MotionGroup) -> int | None:  # noqa: ARG002, PLR6301
         return _CARTESIAN_DIMS
 
     @property
-    def target(self) -> dict[MotionGroup, Pose] | Pose | None:
+    def target(
+        self,
+    ) -> dict[MotionGroup, Pose | list[float]] | Pose | list[float] | None:
         """Current target (read-only). Use :meth:`set_target` to update."""
         if self._target is None:
             return None
@@ -484,8 +609,9 @@ class TcpJogger(_BaseJogger):
                 - ``Pose`` — single position target (one motion group)
                 - ``list[list[float]]`` — chunk of future TCP targets [x,y,z,rx,ry,rz]
                 - ``dict[MotionGroup, ...]`` — per-MG targets or chunks
-            dt_ms: Time between chunk steps in milliseconds.
-                Only used when target is a chunk (list of lists).
+            dt_ms: Sample spacing for buffered poses, or time between explicit
+                chunk steps, in milliseconds. When omitted for buffered poses,
+                spacing is inferred automatically.
         """
         from nova.types import Pose  # noqa: PLC0415
 
@@ -494,24 +620,32 @@ class TcpJogger(_BaseJogger):
                 msg = "For multiple motion groups, pass a dict[MotionGroup, Pose]"
                 raise TypeError(msg)
             mg = self._mg_list[0]
-            self._validate_and_push(mg, list(target.position) + list(target.orientation))
+            self._set_live_target(
+                mg,
+                list(target.position) + list(target.orientation),
+                dt_ms=dt_ms,
+            )
             self._target = {mg: target}
         elif isinstance(target, list):
             if self._multi:
                 msg = "For multiple motion groups, pass a dict[MotionGroup, ...]"
                 raise TypeError(msg)
             mg = self._mg_list[0]
-            self._push_target(mg, target, dt_ms)
-            self._target = {mg: target[-1] if target and isinstance(target[0], list) else target}
+            self._target = {mg: self._push_target(mg, target, dt_ms)}
+            self._clear_target_buffer(mg)
         elif isinstance(target, dict):
             self._target = self._target or {}
             for mg, value in target.items():
                 if isinstance(value, Pose):
-                    self._validate_and_push(mg, list(value.position) + list(value.orientation))
+                    self._set_live_target(
+                        mg,
+                        list(value.position) + list(value.orientation),
+                        dt_ms=dt_ms,
+                    )
                     self._target[mg] = value
                 else:
-                    self._push_target(mg, value, dt_ms)
-                    self._target[mg] = value[-1] if value and isinstance(value[0], list) else value
+                    self._target[mg] = self._push_target(mg, value, dt_ms)
+                    self._clear_target_buffer(mg)
         else:
             msg = f"Expected Pose, list, or dict, got {type(target)}"
             raise TypeError(msg)
@@ -534,6 +668,7 @@ def jog_joints(
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
     ease_in_s: float = ...,
+    buffer_ms: float = ...,
 ) -> JointJogger:
     pass
 
@@ -546,6 +681,7 @@ def jog_joints(
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
     ease_in_s: float = ...,
+    buffer_ms: float = ...,
 ) -> JointJogger:
     pass
 
@@ -557,6 +693,7 @@ def jog_joints(
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     ease_in_s: float = 0.0,
+    buffer_ms: float = 0.0,
 ) -> JointJogger:
     """Create a joint position jogger using server-side waypoint jogging.
 
@@ -571,6 +708,8 @@ def jog_joints(
         ease_in_s: If > 0, ramp motion up from a standstill over this many
             seconds at the start, so velocity begins at zero instead of jumping
             to the target's initial speed. Default 0 (disabled).
+        buffer_ms: Rolling live-target buffer duration in milliseconds.
+            Default 0 sends each ``set_target`` target immediately.
 
     Returns:
         A :class:`JointJogger` async context manager.
@@ -586,14 +725,18 @@ def jog_joints(
             async for state in jogger:
                 jogger.set_target([0.1, -1.5, 1.0, -0.5, 0.0, 0.0])
     """
-    if not isinstance(motion_groups, list):
-        motion_groups = [motion_groups]
+    groups = (
+        cast("list[MotionGroup]", motion_groups)
+        if isinstance(motion_groups, list)
+        else [motion_groups]
+    )
     return JointJogger(
-        motion_groups,
+        groups,
         config=config,
         stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,
         ease_in_s=ease_in_s,
+        buffer_ms=buffer_ms,
     )
 
 
@@ -606,6 +749,7 @@ def jog_tcp(
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
     ease_in_s: float = ...,
+    buffer_ms: float = ...,
 ) -> TcpJogger:
     pass
 
@@ -617,6 +761,8 @@ def jog_tcp(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
+    ease_in_s: float = ...,
+    buffer_ms: float = ...,
 ) -> TcpJogger:
     pass
 
@@ -629,6 +775,7 @@ def jog_tcp(
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     ease_in_s: float = 0.0,
+    buffer_ms: float = 0.0,
 ) -> TcpJogger:
     """Create a TCP pose jogger using server-side waypoint jogging.
 
@@ -645,6 +792,8 @@ def jog_tcp(
         ease_in_s: If > 0, ramp motion up from a standstill over this many
             seconds at the start, so velocity begins at zero instead of jumping
             to the target's initial speed. Default 0 (disabled).
+        buffer_ms: Rolling live-target buffer duration in milliseconds.
+            Default 0 sends each ``set_target`` pose immediately.
 
     Returns:
         A :class:`TcpJogger` async context manager.
@@ -662,11 +811,12 @@ def jog_tcp(
     """
     if isinstance(motion_groups, dict):
         return TcpJogger(
-            motion_groups,
+            cast("dict[MotionGroup, str]", motion_groups),
             config=config,
             stop_conditions=stop_conditions,
             start_joint_position=start_joint_position,
             ease_in_s=ease_in_s,
+            buffer_ms=buffer_ms,
         )
     return TcpJogger(
         {motion_groups: tcp},
@@ -674,4 +824,5 @@ def jog_tcp(
         stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,
         ease_in_s=ease_in_s,
+        buffer_ms=buffer_ms,
     )
