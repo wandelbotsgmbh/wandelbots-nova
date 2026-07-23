@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "93205d3984eb",
+  "strategy": "manual-commit",
+  "branch": "feat/program-docs",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".agents/skills/ci/SKILL.md",
+    ".agents/skills/ci/evals/evals.json",
+    ".agents/skills/ci/references/gh-commands.md",
+    ".agents/skills/ci/references/nova-ci.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/93/205d3984eb/0/metadata.json",
+      "transcript": "/93/205d3984eb/0/full.jsonl",
+      "content_hash": "/93/205d3984eb/0/content_hash.txt",
+      "prompt": "/93/205d3984eb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}

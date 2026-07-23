@@ -1,0 +1,1 @@
+add /Users/cbiering/home/dev/leverageimmo/leverage/.agents/skills/ci to the repo under .agents/skills and reference .claude/skills as symlink. ensure it fits to this repo and has no leverage references.
