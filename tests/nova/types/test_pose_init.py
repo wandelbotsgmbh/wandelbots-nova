@@ -130,6 +130,38 @@ class TestPoseInitAllowed:
         assert p.to_tuple() == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
         assert p.kinematic_configuration is None
 
+    def test_from_configured_pose(self, kinematic_config):
+        configured_pose = api.models.ConfiguredPose(
+            pose=api.models.Pose(
+                position=api.models.Vector3d([1, 2, 3]),
+                orientation=api.models.RotationVector([4, 5, 6]),
+            ),
+            kinematic_configuration=kinematic_config,
+        )
+        p = Pose(configured_pose)
+        assert p.to_tuple() == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+        assert p.kinematic_configuration == kinematic_config
+
+    def test_from_configured_pose_without_kinematic_configuration(self):
+        configured_pose = api.models.ConfiguredPose(
+            pose=api.models.Pose(
+                position=api.models.Vector3d([1, 2, 3]),
+                orientation=api.models.RotationVector([4, 5, 6]),
+            )
+        )
+        p = Pose(configured_pose)
+        assert p.to_tuple() == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+        assert p.kinematic_configuration is None
+
+    def test_from_configured_pose_with_none_position_and_orientation(self, kinematic_config):
+        configured_pose = api.models.ConfiguredPose(
+            pose=api.models.Pose(position=None, orientation=None),
+            kinematic_configuration=kinematic_config,
+        )
+        p = Pose(configured_pose)
+        assert p.to_tuple() == (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        assert p.kinematic_configuration == kinematic_config
+
     def test_from_existing_pose_copies_values(self):
         original = Pose((1, 2, 3, 4, 5, 6))
         p = Pose(original)
@@ -198,3 +230,14 @@ class TestPoseInitForbidden:
         )
         with pytest.raises(ValueError):
             Pose(dataset_pose, kinematic_configuration=kinematic_config)
+
+    def test_configured_pose_with_double_kinematic_configuration_raises(self, kinematic_config):
+        configured_pose = api.models.ConfiguredPose(
+            pose=api.models.Pose(
+                position=api.models.Vector3d([1, 2, 3]),
+                orientation=api.models.RotationVector([4, 5, 6]),
+            ),
+            kinematic_configuration=kinematic_config,
+        )
+        with pytest.raises(ValueError):
+            Pose(configured_pose, kinematic_configuration=kinematic_config)

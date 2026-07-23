@@ -23,14 +23,25 @@ def _resolve_pose(
     """
     if args == (None,):
         return Pose.from_tuple((0, 0, 0, 0, 0, 0))
-    if len(args) == 1 and isinstance(args[0], api.models.DatasetPose):
-        dataset_pose = args[0]
-        if dataset_pose.kinematic_configuration is not None and kinematic_configuration is not None:
+    if len(args) == 1 and isinstance(args[0], Pose):
+        pose = args[0]
+        if pose.kinematic_configuration is not None and kinematic_configuration is not None:
+            raise ValueError(
+                "Cannot specify kinematic_configuration when passing a Pose with a "
+                "kinematic_configuration"
+            )
+        return pose
+    if len(args) == 1 and isinstance(args[0], api.models.ConfiguredPose):
+        configured_pose = args[0]
+        if (
+            configured_pose.kinematic_configuration is not None
+            and kinematic_configuration is not None
+        ):
             raise ValueError(
                 "Cannot specify kinematic_configuration when passing a PoseLike "
                 "with a kinematic_configuration"
             )
-        return Pose.from_dataset_pose(dataset_pose)
+        return Pose.from_dataset_pose(configured_pose)
     if len(args) == 1 and isinstance(args[0], api.models.Pose):
         return Pose.from_api_model(args[0], kinematic_configuration=kinematic_configuration)
     if (
@@ -378,8 +389,9 @@ class Pose(pydantic.BaseModel, Sized):
         )
 
     @classmethod
-    def from_dataset_pose(cls, dataset_pose: api.models.DatasetPose) -> Pose:
-        """Create a Pose from a DatasetPose, preserving its kinematic configuration.
+    def from_dataset_pose(cls, dataset_pose: api.models.ConfiguredPose) -> Pose:
+        """Create a Pose from a ConfiguredPose (or DatasetPose subtype), preserving its
+        kinematic configuration.
 
         Example:
         >>> dp = api.models.DatasetPose(id='p1', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6])))
