@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Sized
+from typing import Iterable, Sequence, Sized
 
 import numpy as np
 import pydantic
@@ -33,8 +33,13 @@ def _resolve_pose(
         return Pose.from_dataset_pose(dataset_pose)
     if len(args) == 1 and isinstance(args[0], api.models.Pose):
         return Pose.from_api_model(args[0], kinematic_configuration=kinematic_configuration)
-    if len(args) == 1 and isinstance(args[0], tuple):
-        return Pose.from_tuple(args[0], kinematic_configuration=kinematic_configuration)
+    if (
+        len(args) == 1
+        and isinstance(args[0], Sequence)
+        and not isinstance(args[0], str)
+        and len(args[0]) in (3, 6)
+    ):
+        return Pose.from_tuple(tuple(args[0]), kinematic_configuration=kinematic_configuration)
     if len(args) in (3, 6):
         return Pose.from_tuple(args, kinematic_configuration=kinematic_configuration)
     raise ValueError(f"Cannot construct Pose from arguments: {args!r}")
@@ -96,13 +101,12 @@ class Pose(pydantic.BaseModel, Sized):
             super().__init__(**kwargs)
             return
 
-        pose = _resolve_pose(
-            args, kinematic_configuration=kwargs.pop("kinematic_configuration", None)
-        )
+        kinematic_configuration = kwargs.pop("kinematic_configuration", None)
+        pose = _resolve_pose(args, kinematic_configuration)
         super().__init__(
             position=pose.position,
             orientation=pose.orientation,
-            kinematic_configuration=pose.kinematic_configuration,
+            kinematic_configuration=pose.kinematic_configuration or kinematic_configuration,
         )
 
     def __str__(self):
