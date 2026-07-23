@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "c8f8c76f7f38",
+  "strategy": "manual-commit",
+  "branch": "feat/ws-vscode",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "wandelscript-vscode/.gitignore",
+    "wandelscript-vscode/.npmrc",
+    "wandelscript-vscode/.vscode/launch.json",
+    "wandelscript-vscode/.vscode/tasks.json",
+    "wandelscript-vscode/.vscodeignore",
+    "wandelscript-vscode/biome.json",
+    "wandelscript-vscode/bridge/run_ws.py",
+    "wandelscript-vscode/esbuild.js",
+    "wandelscript-vscode/icons/ws-file-dark.svg",
+    "wandelscript-vscode/icons/ws-file-light.svg",
+    "wandelscript-vscode/language-configuration.json",
+    "wandelscript-vscode/media/motion-pointer.svg",
+    "wandelscript-vscode/media/program-pointer.svg",
+    "wandelscript-vscode/media/wandelscript-icon.svg",
+    "wandelscript-vscode/package.json",
+    "wandelscript-vscode/src/config.ts",
+    "wandelscript-vscode/src/consts.ts",
+    "wandelscript-vscode/src/extension.ts",
+    "wandelscript-vscode/src/logging.ts",
+    "wandelscript-vscode/src/pointerDecorations.ts",
+    "wandelscript-vscode/src/runner.ts",
+    "wandelscript-vscode/src/viewer.ts",
+    "wandelscript-vscode/syntaxes/wandelscript.tmLanguage.json",
+    "wandelscript-vscode/tsconfig.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c8/f8c76f7f38/0/metadata.json",
+      "transcript": "/c8/f8c76f7f38/0/full.jsonl",
+      "content_hash": "/c8/f8c76f7f38/0/content_hash.txt",
+      "prompt": "/c8/f8c76f7f38/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}

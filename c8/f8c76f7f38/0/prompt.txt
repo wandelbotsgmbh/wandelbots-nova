@@ -1,0 +1,32 @@
+Start implementation
+
+---
+
+Read files under /Users/cbiering/home/dev/wandelbots/nova-developer-tools/apps/vscode-ext/app/src (this is OUTSIDE the current workspace, so use read_file with absolute paths; grep won't reach it). I need the EXACT minimal code pattern to obtain a live `ConnectedMotionGroup` from `@wandelbots/nova-js` and render it with `MotionGroupVisualizer` from `@wandelbots/wandelbots-js-react-components`, so I can reproduce a standalone live robot viewer.
+
+Specifically find and quote:
+1. How a `ConnectedMotionGroup` is created from a `NovaClient` — the exact method call(s). Look in hooks/ (list the dir), stores/, pages/, and components/ (e.g. MotionGroupSelection.tsx, JoggingView.tsx, or any page that renders <RobotScene>). Search for `connectMotionGroup`, `ConnectedMotionGroup`, `getMotionGroup`, `motionGroups`, `connect(`, `makeConnectedMotionGroup`. Quote the full function/hook that returns the ConnectedMotionGroup, including how motion group ids are listed/selected.
+2. The exact import paths used from `@wandelbots/nova-js` (e.g. `@wandelbots/nova-js/v2`) and `@wandelbots/wandelbots-js-react-components` and `/3d`.
+3. How the component subscribes to live updates — is it wrapped in mobx `observer` from `mobx-react-lite`? Quote the observer usage and how `rapidlyChangingMotionState` is read/animated (any useFrame or animation loop in RobotScene.tsx below line 180).
+4. The exact props `MotionGroupVisualizer` is given (color, opacity, getModel, connectedMotionGroup, etc.) — quote the JSX from RobotScene.tsx.
+5. How the NovaClient handles the webview fetch proxy (any `fetch` override passed to NovaClient constructor) — quote it.
+6. The main.jsx / main.tsx React bootstrap and App.tsx theme setup (quote the ReactDOM.createRoot call and ThemeProvider/createNovaMuiTheme usage).
+
+Return concrete, copy-pasteable code snippets with their file paths. Read-only.
+
+---
+
+Explore the installed package at /Users/cbiering/home/dev/wandelbots/nova-developer-tools/node_modules/@wandelbots/nova-js (OUTSIDE the workspace — use list_dir and read_file with absolute paths; grep won't reach it). I need the exact public API of the v2 `NovaClient` for connecting to a motion group and getting live state.
+
+Do this:
+1. list_dir the package root and find the v2 entry (package.json "exports" for "./v2", and the dist/types folder). 
+2. Open the v2 type declaration (.d.ts) for `NovaClient`. Quote its constructor options type and ALL public methods related to: connecting motion groups, listing controllers/motion groups, and getting a `ConnectedMotionGroup`. Look for method names like `connectMotionGroup`, `connectMotionGroups`, `getMotionGroup`, `motionGroup`, `listController*`, `listMotionGroup*`, and any property like `.api`, `.cell`.
+3. Find the `ConnectedMotionGroup` type declaration and quote its public members: especially `rapidlyChangingMotionState`, `modelFromController`, `dhParameters`, `motionGroupId`, `wandelscriptIdentifier`, `joints`, and any `dispose`/`disconnect` method.
+4. Show the minimal documented usage: how do you go from `new NovaClient({...})` to a connected motion group with live `rapidlyChangingMotionState`? If there's a README or usage example in the package, quote the relevant lines.
+5. Report the installed version (from the package.json) of @wandelbots/nova-js and @wandelbots/wandelbots-js-react-components.
+
+Return exact type signatures and copy-pasteable usage. Read-only.
+
+---
+
+Continue: "Continue to iterate?"
