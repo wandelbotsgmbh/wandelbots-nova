@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v5.9.0 (2026-07-23)
+
+### Features
+
+- Added docs for program usage (#453)
+  ([#453](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/453),
+  [`42496f6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/42496f66a46c67451c701f6171d30d9bab05efc8))
+
+
 ## v5.8.1 (2026-07-23)
 
 ### Chores
