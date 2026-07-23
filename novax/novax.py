@@ -4,7 +4,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 from fastapi import APIRouter, FastAPI
 
@@ -17,9 +17,21 @@ from nova.program.store import ProgramStore
 from novax.config import APP_NAME, CELL_NAME
 from novax.program_manager import ProgramManager
 
+# Default directory scanned for ``@nova.program`` modules.
+DEFAULT_PROGRAMS_DIR = "programs"
+
+# Sentinel so ``serve(programs_dir=...)`` can tell "not passed" apart from ``None`` (disable).
+_UNSET: Any = object()
+
 
 class Novax:
-    def __init__(self, app: FastAPI | None = None, *, app_name: str | None = None):
+    def __init__(
+        self,
+        app: FastAPI | None = None,
+        *,
+        app_name: str | None = None,
+        programs_dir: str | Path | None = DEFAULT_PROGRAMS_DIR,
+    ):
         """Initialize the Novax class.
 
         Args:
@@ -27,12 +39,20 @@ class Novax:
                 and all imported ``@nova.program`` functions are auto-registered, so
                 ``Novax(app)`` is all you need.
             app_name (str | None, optional): This one is read from the environment variable APP_NAME. Only change it for development purposes. Defaults to None.
+            programs_dir: Directory scanned for ``@nova.program`` modules. Every ``.py``
+                file under it is imported so its programs self-register -- drop a file
+                in and it is picked up, no manual import required. Files whose name
+                starts with ``_`` (e.g. ``__init__.py``) are skipped, and a missing
+                directory is ignored so the convention stays opt-in. Defaults to
+                ``"programs"``; set to ``None`` to disable scanning. Programs imported
+                anywhere else are still registered as well.
         """
         app_name = app_name or APP_NAME
 
         nova = Nova()
         self._nova = nova
         self._cell = self._nova.cell(cell_id=CELL_NAME)
+        self._programs_dir = programs_dir
 
         self._program_manager: ProgramManager = ProgramManager(
             cell_id=CELL_NAME, app_name=app_name, nova_config=nova.config
@@ -41,7 +61,7 @@ class Novax:
 
         if app is not None:
             self.include_programs_router(app)
-            self.auto_register()
+            self.scan_programs()
 
     @property
     def program_manager(self) -> ProgramManager:
@@ -77,6 +97,37 @@ class Novax:
         """Import a module (or a path to a .py file) and register all its programs."""
         if isinstance(module, str):
             _import_module(module)
+        return self.auto_register()
+
+    def scan_programs(self, directory: str | Path | None = None) -> list[str]:
+        """Import every program module under a directory, then register all programs.
+
+        By default this scans the directory configured on the instance (``programs``
+        unless overridden via ``Novax(programs_dir=...)``). Every ``.py`` file under it is
+        imported recursively so its ``@nova.program`` functions self-register; files
+        whose name starts with ``_`` (e.g. ``__init__.py``) are skipped. A missing or
+        disabled (``None``) directory imports nothing, so the convention stays opt-in.
+
+        Either way this finishes by calling :meth:`auto_register`, so programs imported
+        anywhere else are picked up too and a single ``scan_programs()`` call is enough.
+
+        Args:
+            directory: Directory to scan recursively. Defaults to the instance's
+                configured programs directory. When that is ``None`` nothing is imported.
+
+        Returns:
+            The list of all registered program IDs.
+        """
+        target = directory if directory is not None else self._programs_dir
+        if target is not None:
+            root = Path(target)
+            if root.is_dir():
+                for py_file in sorted(root.rglob("*.py")):
+                    if py_file.name.startswith("_"):
+                        continue
+                    rel = py_file.relative_to(root).with_suffix("")
+                    module_name = "novax._scanned_programs." + ".".join(rel.parts)
+                    _import_module(str(py_file), name=module_name)
         return self.auto_register()
 
     def deregister_program(self, program_id: str):
@@ -249,19 +300,45 @@ class Novax:
         title: str = "Novax API",
         version: str = "1.0.0",
         root_path: str = "",
+        programs_dir: str | Path | None = _UNSET,
+        static_dir: str | Path | None = None,
     ) -> None:
         """Build the app, register all decorated programs and run the server.
 
-        This is the one-call entry point for development: it creates the FastAPI app,
-        wires the programs router, auto-registers every imported ``@nova.program`` and
-        starts uvicorn. CORS is open so the NOVA frontend can reach it.
+        This is the one-call entry point for development and deployment: it creates the
+        FastAPI app, wires the programs router, scans the configured ``programs``
+        directory, auto-registers every imported ``@nova.program`` and starts uvicorn.
+        CORS is open so the NOVA frontend can reach it.
+
+        Args:
+            host: Host to bind. Defaults to ``0.0.0.0``.
+            port: Port to bind. Defaults to ``3000``.
+            title: Title of the generated API. Defaults to ``"Novax API"``.
+            version: Version of the generated API. Defaults to ``"1.0.0"``.
+            root_path: ASGI root path (e.g. when served behind a proxy prefix).
+            programs_dir: Overrides the programs directory to scan for this run. When
+                omitted the instance's configured directory is used; pass ``None`` to
+                disable scanning.
+            static_dir: Optional directory served under ``/static`` (e.g. for an app
+                icon). Ignored when the directory does not exist.
         """
         import uvicorn
         from fastapi.middleware.cors import CORSMiddleware
 
+        if programs_dir is not _UNSET:
+            self._programs_dir = programs_dir
+
         app = self.create_app(title=title, version=version, root_path=root_path)
         self.include_programs_router(app)
-        self.auto_register()
+        self.scan_programs()
+
+        if static_dir is not None:
+            from fastapi.staticfiles import StaticFiles
+
+            static_path = Path(static_dir)
+            if static_path.is_dir():
+                app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
@@ -274,11 +351,17 @@ class Novax:
         )
 
 
-def _import_module(module: str) -> ModuleType:
-    """Import a module by dotted path or a path to a ``.py`` file."""
+def _import_module(module: str, name: str | None = None) -> ModuleType:
+    """Import a module by dotted path or a path to a ``.py`` file.
+
+    Args:
+        module: Dotted module path or filesystem path to a ``.py`` file.
+        name: Optional module name to register a file under. Lets callers give scanned
+            files unique, collision-free names based on their location.
+    """
     path = Path(module)
     if path.suffix == ".py" and path.exists():
-        spec = importlib.util.spec_from_file_location(path.stem, path)
+        spec = importlib.util.spec_from_file_location(name or path.stem, path)
         if spec is None or spec.loader is None:
             raise ImportError(f"Cannot import program file: {module}")
         # Reuse an already-loaded module to avoid duplicate instances on repeated imports.

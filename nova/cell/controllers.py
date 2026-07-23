@@ -2,6 +2,7 @@ import json
 from math import pi
 
 from nova import api
+from nova.cell.motion_group_models import MotionGroupModel
 
 MANUFACTURER_HOME_POSITIONS = {
     api.models.Manufacturer.ABB: [0.0, 0.0, 0.0, 0.0, pi / 2, pi, 0.0],
@@ -105,7 +106,7 @@ def yaskawa_controller(name: str, controller_ip: str) -> api.models.RobotControl
 def virtual_controller(
     name: str,
     manufacturer: api.models.Manufacturer,
-    type: str | None = None,
+    type: MotionGroupModel | None = None,
     controller_config_json: str | None = None,
     position: list[float] | str | None = None,
 ) -> api.models.RobotController:

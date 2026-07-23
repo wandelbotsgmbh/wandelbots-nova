@@ -1,0 +1,41 @@
+# NOVA App custom resource. The in-cluster app-operator reconciles this into a
+# Deployment + Service + Ingress AND registers the home-screen tile -- this is the
+# same thing `nova app install` creates, so `skaffold dev` alone is enough (no
+# separate install step needed).
+apiVersion: wandelbots.com/v1alpha1
+kind: App
+metadata:
+  name: your-nova-app
+  namespace: cell # <-- change to your cell's namespace
+  labels:
+    app: your-nova-app
+  annotations:
+    description: "Your Nova App - serves robot programs"
+spec:
+  # Icon shown on the NOVA home screen. Served by the app at {basePath}/app_icon.png
+  # (see your_nova_app/register_programs.py), so a base-path-relative name works.
+  appIcon: app_icon.png
+  # Skaffold substitutes the built + pushed image tag here via the resourceSelector
+  # entry in skaffold.yaml (default image detection only covers built-in kinds).
+  image: your-nova-app
+  cellName: cell
+  # Port uvicorn listens on (see register_programs.main()).
+  port: 3000
+  # The operator injects BASE_PATH (=/<cell>/<app>) and creates the route; the app
+  # reads it via `root_path=BASE_PATH`, so it must NOT be set here.
+  environment:
+    - name: CELL_NAME
+      value: "cell"
+    - name: LOG_LEVEL
+      value: "info"
+    # NOVA_API is the in-cluster gateway. The SDK derives NATS from it, but the
+    # internal gateway does not proxy /api/nats, so NATS_BROKER is set explicitly
+    # to the NATS service's websocket port instead.
+    - name: NOVA_API
+      value: "http://api-gateway.wandelbots.svc.cluster.local:8080"
+    - name: NATS_BROKER
+      value: "ws://nats.wandelbots.svc.cluster.local:8080"
+    # Run uvicorn with --reload so Skaffold file syncs hot-reload the app in-cluster.
+    # Remove (or set to "false") for a production-style deploy.
+    - name: DEV_RELOAD
+      value: "true"
