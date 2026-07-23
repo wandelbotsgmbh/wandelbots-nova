@@ -34,6 +34,14 @@ class TestPoseInitAllowed:
         p = Pose((1, 2, 3))
         assert p.to_tuple() == (1, 2, 3, 0, 0, 0)
 
+    def test_six_list(self):
+        p = Pose([1, 2, 3, 4, 5, 6])
+        assert p.to_tuple() == (1, 2, 3, 4, 5, 6)
+
+    def test_three_list_defaults_orientation(self):
+        p = Pose([1, 2, 3])
+        assert p.to_tuple() == (1, 2, 3, 0, 0, 0)
+
     def test_six_positional_args(self):
         p = Pose(1, 2, 3, 4, 5, 6)
         assert p.to_tuple() == (1, 2, 3, 4, 5, 6)
@@ -122,6 +130,26 @@ class TestPoseInitAllowed:
         assert p.to_tuple() == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
         assert p.kinematic_configuration is None
 
+    def test_from_existing_pose_copies_values(self):
+        original = Pose((1, 2, 3, 4, 5, 6))
+        p = Pose(original)
+        assert p == original
+        assert p.kinematic_configuration is None
+
+    def test_from_existing_pose_with_kinematic_configuration(self, kinematic_config):
+        original = Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kinematic_config)
+        p = Pose(original)
+        assert p.to_tuple() == (1, 2, 3, 4, 5, 6)
+        assert p.kinematic_configuration == kinematic_config
+
+    def test_from_existing_pose_without_kinematic_configuration_kwarg_applied(
+        self, kinematic_config
+    ):
+        original = Pose((1, 2, 3, 4, 5, 6))
+        p = Pose(original, kinematic_configuration=kinematic_config)
+        assert p.to_tuple() == (1, 2, 3, 4, 5, 6)
+        assert p.kinematic_configuration == kinematic_config
+
 
 class TestPoseInitForbidden:
     """Constructor forms that are currently rejected."""
@@ -134,10 +162,6 @@ class TestPoseInitForbidden:
         with pytest.raises(TypeError):
             Pose(position=None, orientation=None)
 
-    def test_from_existing_pose_raises(self):
-        with pytest.raises(ValueError):
-            Pose(Pose((1, 2, 3, 4, 5, 6)))
-
     def test_single_scalar_arg_raises(self):
         with pytest.raises(ValueError):
             Pose(42)
@@ -149,6 +173,19 @@ class TestPoseInitForbidden:
     def test_seven_positional_args_raise(self):
         with pytest.raises(ValueError):
             Pose(1, 2, 3, 4, 5, 6, 7)
+
+    def test_four_element_list_raises(self):
+        with pytest.raises(ValueError):
+            Pose([1, 2, 3, 4])
+
+    def test_string_arg_raises(self):
+        with pytest.raises(ValueError):
+            Pose("abcdef")
+
+    def test_existing_pose_with_double_kinematic_configuration_raises(self, kinematic_config):
+        original = Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kinematic_config)
+        with pytest.raises(ValueError):
+            Pose(original, kinematic_configuration=kinematic_config)
 
     def test_dataset_pose_with_double_kinematic_configuration_raises(self, kinematic_config):
         dataset_pose = api.models.DatasetPose(
