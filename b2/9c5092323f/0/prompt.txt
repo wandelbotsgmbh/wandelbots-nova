@@ -1,0 +1,27 @@
+https://github.com/wandelbotsgmbh/wandelbots-nova using the wandelscript extra create me a new wandelscript vscode extension in apps/wandelscript-vscode. put it into /wandelscript-vscode. 
+
+I want to have syntax support for .ws file + a icon from the nova design system: https://github.com/wandelbotsgmbh/nova-design-system (wandelbots)
+
+I want:
+- code highlighting
+- a play button to run wandelscript
+- visualizaion in with two colored arrows where the program and where the motion pointer is when running the program.
+- add a script to package.json pnpm build:vscode to build the extension. use pnpm
+- use biome for formatting.
+- also visualize the robot. see ../nova-developer-tools/apps/vscode-ext how we did it with the shared components.
+
+---
+
+Explore the VS Code extension at /Users/cbiering/home/dev/wandelbots/nova-developer-tools/apps/vscode-ext THOROUGHLY. I need a complete picture to use it as a template for building a new VS Code extension.
+
+Report back in detail:
+1. The full directory tree of apps/vscode-ext (all folders and files, a few levels deep).
+2. The complete contents of its package.json — especially: scripts, dependencies, devDependencies, the `contributes` section (commands, languages, grammars, views, viewsContainers, menus, icons), `activationEvents`, `main`, `engines`, and any esbuild/bundling config.
+3. How it is built and bundled (esbuild? tsconfig? what build scripts exist, any esbuild.js/esbuild.config file — show its contents).
+4. How the extension activates and registers commands — read the main extension entry file (src/extension.ts or similar) and summarize how commands, webviews/panels are registered.
+5. Any WEBVIEW / UI panel code: how the webview is created, how it loads a bundled frontend (React?), how it visualizes a ROBOT (any robot rendering / 3D / shared components imported from packages/*). List exactly which shared workspace packages it imports (e.g. @wandelbots/... or workspace:* deps) and what they provide (robot visualization, nova-js connection, etc).
+6. How it does any syntax highlighting or language contribution (TextMate grammar files, language-configuration.json) if present.
+7. How it uses biome for formatting (biome.json config, format scripts).
+8. Any icons used and where they come from (nova design system / @wandelbots/icons).
+
+Be concrete: give file paths and quote the important config snippets. This is read-only research.

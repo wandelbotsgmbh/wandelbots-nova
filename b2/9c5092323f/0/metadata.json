@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "b29c5092323f",
+  "session_id": "dfa7da28-6c93-4819-b274-29400bf8701c",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-23T12:09:53.232384Z",
+  "branch": "feat/program-docs",
+  "checkpoints_count": 0,
+  "files_touched": [
+    ".agents/skills/ci/references/nova-ci.md",
+    ".github/workflows/uv-audit.yaml"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "e6b04e8f8027",
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-23T12:09:53.227377Z",
+    "agent_lines": 2,
+    "agent_removed": 2,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2,
+    "total_lines_changed": 4,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
