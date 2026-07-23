@@ -13,7 +13,7 @@ metadata:
     description: "Your Nova App - serves robot programs"
 spec:
   # Icon shown on the NOVA home screen. Served by the app at {basePath}/app_icon.png
-  # (see your_nova_app/register_programs.py), so a base-path-relative name works.
+  # (see app/register_programs.py), so a base-path-relative name works.
   appIcon: app_icon.png
   # Skaffold substitutes the built + pushed image tag here via the resourceSelector
   # entry in skaffold.yaml (default image detection only covers built-in kinds).

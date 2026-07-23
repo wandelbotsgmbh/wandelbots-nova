@@ -71,7 +71,6 @@ download-models = "nova_rerun_bridge.helper_scripts.download_models:update_robot
 create-motion-group-models = "nova.helper_scripts.create_motion_group_models:update_motion_group_models"
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
-novax = "novax.cli:main"
 
 
 

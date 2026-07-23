@@ -17,9 +17,6 @@ from nova.program.store import ProgramStore
 from novax.config import APP_NAME, CELL_NAME
 from novax.program_manager import ProgramManager
 
-# Default directory scanned for ``@nova.program`` modules.
-DEFAULT_PROGRAMS_DIR = "programs"
-
 # Sentinel so ``serve(programs_dir=...)`` can tell "not passed" apart from ``None`` (disable).
 _UNSET: Any = object()
 
@@ -30,21 +27,22 @@ class Novax:
         app: FastAPI | None = None,
         *,
         app_name: str | None = None,
-        programs_dir: str | Path | None = DEFAULT_PROGRAMS_DIR,
+        programs_dir: str | Path | None = None,
     ):
         """Initialize the Novax class.
 
         Args:
             app: Optional FastAPI app. If provided, the programs router is included
-                and all imported ``@nova.program`` functions are auto-registered, so
-                ``Novax(app)`` is all you need.
+                and every already-imported ``@nova.program`` function is auto-registered.
+                Pass ``programs_dir`` as well to also scan a directory for programs.
             app_name (str | None, optional): This one is read from the environment variable APP_NAME. Only change it for development purposes. Defaults to None.
             programs_dir: Directory scanned for ``@nova.program`` modules. Every ``.py``
                 file under it is imported so its programs self-register -- drop a file
                 in and it is picked up, no manual import required. Files whose name
                 starts with ``_`` (e.g. ``__init__.py``) are skipped, and a missing
                 directory is ignored so the convention stays opt-in. Defaults to
-                ``"programs"``; set to ``None`` to disable scanning. Programs imported
+                ``None``, which disables directory scanning; set it to a path (e.g.
+                ``Path(__file__).parent / "programs"``) to opt in. Programs imported
                 anywhere else are still registered as well.
         """
         app_name = app_name or APP_NAME
@@ -102,11 +100,12 @@ class Novax:
     def scan_programs(self, directory: str | Path | None = None) -> list[str]:
         """Import every program module under a directory, then register all programs.
 
-        By default this scans the directory configured on the instance (``programs``
-        unless overridden via ``Novax(programs_dir=...)``). Every ``.py`` file under it is
+        By default this scans the directory configured on the instance via
+        ``Novax(programs_dir=...)``. Every ``.py`` file under it is
         imported recursively so its ``@nova.program`` functions self-register; files
-        whose name starts with ``_`` (e.g. ``__init__.py``) are skipped. A missing or
-        disabled (``None``) directory imports nothing, so the convention stays opt-in.
+        whose name starts with ``_`` (e.g. ``__init__.py``) are skipped. When no
+        directory is configured (``None``) or it is missing, nothing is imported, so
+        scanning stays opt-in.
 
         Either way this finishes by calling :meth:`auto_register`, so programs imported
         anywhere else are picked up too and a single ``scan_programs()`` call is enough.
@@ -278,6 +277,13 @@ class Novax:
 
         # Replace the dependency function on the FastAPI app
         app.dependency_overrides[get_program_manager] = get_program_manager_override
+
+        if self._programs_dir is None:
+            logger.info(
+                "Novax: no programs_dir set; directory scanning is disabled. Pass "
+                "programs_dir=... (e.g. Novax(app, programs_dir='programs')) to auto-import "
+                "every @nova.program module under a directory."
+            )
 
         if not CELL_NAME:
             logger.info(

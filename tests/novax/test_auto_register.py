@@ -298,6 +298,19 @@ def test_scan_programs_disabled_when_programs_none(tmp_path):
     novax = Novax(app_name="novax_scan_test", programs_dir=None)
 
     assert novax.scan_programs() == []
+
+
+def test_default_constructor_does_not_scan_cwd_programs_dir(tmp_path, monkeypatch):
+    # The default constructor must leave directory scanning opt-in: a ``./programs``
+    # directory in the working directory must NOT be imported implicitly.
+    _write_program(tmp_path / "programs", "implicit.py", "scan_implicit")
+    monkeypatch.chdir(tmp_path)
+
+    novax = Novax(app_name="novax_default_test")
+
+    assert novax._programs_dir is None
+    assert novax.scan_programs() == []
+    assert not novax.program_manager.has_program("scan_implicit")
     assert not novax.program_manager.has_program("scan_ignored")
 
 
