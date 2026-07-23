@@ -1,0 +1,21 @@
+I'm building a VS Code extension for Wandelscript (.ws files) in the wandelbots-nova repo at /Users/cbiering/home/dev/wandelbots/wandelbots-nova. I need to understand how to (a) run a Wandelscript program and (b) observe, during execution, both the current PROGRAM POINTER (which source line/location is currently executing) and the MOTION POINTER (progress of robot motion / which motion is currently executing). This is for a "two colored arrows" visualization.
+
+Please research THOROUGHLY and report:
+
+1. How to run a Wandelscript program programmatically and via CLI:
+   - The public API: `wandelscript.run(...)` and `wandelscript/runner.py`, `wandelscript/runtime.py`. What signature does `run` have, what does it return (a Runner / ProgramRun)? Is there an async variant?
+   - The CLI entry (`wandelscript/cli.py`, and pyproject `[project.scripts]` entries like `ws`, `wandelscript`). What env vars are required (NOVA_API, NOVA_ACCESS_TOKEN)?
+
+2. SOURCE LOCATION / program pointer tracking:
+   - Does the runtime/metamodel track the current source location (line/column) of the statement being executed? Search wandelscript/runtime.py, metamodel.py, antlrvisitor.py for anything like "location", "line", "column", "position", "current", "Location", "source_location", "lineno". Quote the relevant types/fields.
+   - Is there any callback/hook/event mechanism to observe execution progress statement-by-statement (e.g. an interrupt, tracer, event bus, or async generator)? Search for "event", "callback", "hook", "on_", "emit", "subscribe", "stream".
+
+3. MOTION pointer / motion execution progress:
+   - How are motions executed and is there streaming of motion progress/state? Look in wandelscript/motions.py and how it calls into nova MotionGroup.execute / plan. In the nova package, search nova/ for motion execution streaming, "MovementController", "ExecuteTrajectoryResponse", "location", "path_parameter", "motion_state", "state_stream", progress reporting. Quote relevant types.
+   - Look at examples/state_stream.py and nova/core or nova/cell for a robot state stream / motion state stream that reports current robot pose and which motion/path parameter is active.
+
+4. Any existing NATS or event streaming that a UI could subscribe to for live robot state (the reference extension uses NATS). Search nova/ and wandelscript/ for "nats", and note how live robot state is published.
+
+5. A representative sample .ws program: read one file under wandelscript/examples/ or examples/*.ws and quote ~20 lines so I understand the syntax (move, def, etc).
+
+Be concrete with file paths, function signatures, and quoted code. Read-only research only.
