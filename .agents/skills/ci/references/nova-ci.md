@@ -21,7 +21,7 @@ Python is pinned to **3.11** in the workflows (SDK supports `>=3.11, <3.13`).
 | `nova-dev.yaml` | `test` (format, import order, lint, typecheck, unit tests) | see table below |
 | `yamllint.yaml` | `yamllint` | `yamllint .` (config `.yamllint`) |
 | `pr-title-check.yaml` | `validate-title` | Retitle PR to Conventional Commits |
-| `uv-audit.yaml` | `pip-audit` | `uv audit --preview-features audit-command` |
+| `uv-audit.yaml` | `uv audit --preview-features audit-command` |
 
 ### `nova-dev.yaml` steps → local commands
 
