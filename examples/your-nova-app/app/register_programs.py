@@ -20,7 +20,8 @@ app = FastAPI(
     root_path=BASE_PATH,
 )
 
-# Include the programs router and scan the ``programs`` directory: every @nova.program
+# Include the programs router and scan the directory passed to Novax via the ``programs_dir``
+# argument: every @nova.program
 # module under it self-registers on import, so dropping in a new file is enough -- no
 # manual import required. The path is anchored to this file (not the working directory)
 # so it resolves correctly both locally and in the deployed container.
