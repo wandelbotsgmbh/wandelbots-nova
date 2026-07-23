@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from nova import Novax
 
-CELL_ID = config("CELL_ID", default="cell", cast=str)
+CELL_NAME = config("CELL_NAME", default="cell", cast=str)
 BASE_PATH = config("BASE_PATH", default="", cast=str)
 
 # Create a new FastAPI app
@@ -26,7 +26,7 @@ app = FastAPI(
 # manual import required. The path is anchored to this file (not the working directory)
 # so it resolves correctly both locally and in the deployed container.
 # See https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/README.md#novax for more information
-novax = Novax(app)
+novax = Novax(app, programs_dir=Path(__file__).parent / "programs")
 
 app.add_middleware(
     CORSMiddleware,

@@ -203,7 +203,7 @@ You can create a new NOVAx app using the [NOVA CLI](https://github.com/wandelbot
 nova app create "your-nova-app" -g python_app
 ```
 
-For more information on using NOVAx see the [README](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/README.md). Explore [this example](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/your-nova-app/app.py) to use the NOVAx entry point.
+For more information on using NOVAx see the [README](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/README.md). Explore [this example](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/app/register_programs.py) to use the NOVAx entry point.
 
 > **Important:** A `@nova.program` function is registered once the module that defines it is imported. NOVAx handles this for you when you enable directory scanning via `programs_dir` — see [Registering programs](#registering-programs) below.
 

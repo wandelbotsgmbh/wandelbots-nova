@@ -22,9 +22,11 @@ and registers them with a NOVA cell so they appear in the NOVA frontend.
 
 A **program** is an `async` function decorated with `@nova.program`. The decorator turns
 the function into an executable, self-describing unit: it derives an input schema from
-the function signature, a name/description from the docstring, and can declare
-**preconditions** (e.g. the controllers it needs). Programs register themselves in a
-global registry when their module is imported, which is how NOVAx discovers them.
+the function signature and a description from the docstring, and can declare
+**preconditions** (e.g. the controllers it needs). The program name is taken from the
+decorator's `name` argument (it is not derived from the docstring). Programs register
+themselves in a global registry when their module is imported, which is how NOVAx
+discovers them.
 
 Every program takes a `ctx: nova.ProgramContext` as its **first parameter**. The context
 gives you a connected `nova` instance, the `cell`, and cycle helpers.
@@ -122,8 +124,8 @@ if __name__ == "__main__":
     novax.serve(port=3000)                  # register programs and run uvicorn
 ```
 
-Run it against your live NOVA, then open the API docs at `http://localhost:3000` and
-execute the program from there.
+Run it against your live NOVA, then open the API docs at `http://localhost:3000/docs`
+and execute the program from there.
 
 You can also run a single program directly as a script, without any server:
 
@@ -225,9 +227,10 @@ executed from there.
 
 ### Hot reload during development (Skaffold)
 
-To develop against a real instance with hot reload, the scaffold ships a Skaffold setup.
-Editing a program file syncs it into the running pod, `uvicorn --reload` restarts, and
-the program re-registers on the instance — no image rebuild per change:
+To develop against a real instance with hot reload, the scaffold ships a setup for
+[Skaffold](https://skaffold.dev/), an external Kubernetes development tool you install
+separately. Editing a program file syncs it into the running pod, `uvicorn --reload`
+restarts, and the program re-registers on the instance — no image rebuild per change:
 
 ```bash
 export KUBECONFIG=/path/to/kubeconfig
@@ -238,6 +241,10 @@ Skaffold deploys an `App` custom resource that the in-cluster app-operator recon
 into a Deployment/Service/Ingress and registers the home-screen tile — the same thing
 `nova app install` does — so `skaffold dev` alone is enough.
 
+The container registry the image is pushed to is configured in the scaffold's
+`skaffold.yaml` (the `build.artifacts[].image` field); point it at your own registry
+when deploying to your instance.
+
 ## Configuration reference
 
 | Variable            | Purpose                                                            |
@@ -245,7 +252,7 @@ into a Deployment/Service/Ingress and registers the home-screen tile — the sam
 | `NOVA_API`          | Base URL of the NOVA instance (required).                          |
 | `NOVA_ACCESS_TOKEN` | Authentication token. Keep it out of committed `.env` files.       |
 | `CELL_NAME`         | NOVA cell to register/sync programs in. Unset ⇒ local dev only.    |
-| `BASE_PATH`         | ASGI root path / app name when served behind a proxy prefix.       |
+| `BASE_PATH`         | Proxy prefix NOVAx derives the app name (`APP_NAME`) from. The scaffold also applies it as the FastAPI `root_path`; `Novax.serve()` does not unless you pass `root_path`. |
 | `LOG_LEVEL`         | Log verbosity (e.g. `info`, `debug`).                              |
 
 Common `Novax` options:
