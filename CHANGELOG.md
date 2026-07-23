@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v5.8.1 (2026-07-23)
+
+### Chores
+
+- Configure dependabot (#451) ([#451](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/451),
+  [`cbb65bc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cbb65bc246ac06f6c4cb10302bd269bb43e1d626))
+
+
 ## v5.8.0 (2026-07-20)
 
 ### Features
