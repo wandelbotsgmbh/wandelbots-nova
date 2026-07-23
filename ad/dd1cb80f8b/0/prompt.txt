@@ -1,0 +1,16 @@
+now check the CI of this branch:0
+
+---
+
+did you check all the threads?
+
+---
+
+no I meant the comments
+
+---
+
+novax = Novax(app, programs_dir=Path(__file__).parent / "programs")
+ path is used now. 
+
+ fix the rest if they are valid/add value
