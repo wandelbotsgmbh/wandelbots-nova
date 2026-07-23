@@ -126,17 +126,16 @@ class TestMoveForwardStateMonitor:
         assert any(isinstance(r, api.models.StartMovementRequest) for r in requests)
 
     @pytest.mark.asyncio
-    async def test_trajectory_ended_without_standstill_does_not_set_flag(self):
-        """TrajectoryEnded WITHOUT standstill must NOT set the trajectory_ended flag.
+    async def test_completes_on_bare_standstill_after_trajectory_ended(self):
+        """After TrajectoryEnded is seen, completion is the NEXT standstill — even a
+        bare frame with no `execute` block (Change A).
 
-        If the flag were set prematurely, a subsequent standalone standstill state
-        would cause the monitor to return early. This test catches that regression:
-        it provides TrajectoryEnded(standstill=False) followed by a bare standstill
-        state. The monitor must continue past that bare standstill and only complete
-        on the later TrajectoryEnded+standstill pair.
-
-        This test FAILS if `and motion_group_state.standstill` is removed from the
-        TrajectoryEnded check in move_forward.
+        Rationale (robotics/wbr ``RAEv2_ProtoRobotState``): the controller drops the
+        trajectory ``execute`` details the instant the robot settles, so the
+        ``TrajectoryEnded + standstill + execute`` frame is frequently never
+        delivered. Waiting for it is what hangs the SDK. The monitor must:
+          * NOT complete on TrajectoryEnded WITHOUT standstill (still settling), and
+          * complete on the FIRST standstill afterwards, regardless of `execute`.
         """
         consumed_count = 0
 
@@ -148,17 +147,14 @@ class TestMoveForwardStateMonitor:
                     standstill=False,
                     execute=_make_execute(api.models.TrajectoryRunning(time_to_end=1000)),
                 ),
-                # 2: TrajectoryEnded WITHOUT standstill — must NOT set trajectory_ended
+                # 2: TrajectoryEnded WITHOUT standstill — must NOT complete yet
                 _make_motion_group_state(
                     standstill=False, execute=_make_execute(api.models.TrajectoryEnded())
                 ),
-                # 3: Bare standstill, no execute — BUG would return here prematurely
+                # 3: Bare standstill, no execute — Change A completes HERE
                 _make_motion_group_state(standstill=True),
-                # 4: Proper completion: TrajectoryEnded WITH standstill
-                _make_motion_group_state(
-                    standstill=True, execute=_make_execute(api.models.TrajectoryEnded())
-                ),
-                # 5: Standstill confirms completion
+                # 4+: would only be reached if state 3 failed to complete
+                _make_motion_group_state(standstill=True),
                 _make_motion_group_state(standstill=True),
             ]
             for s in states:
@@ -187,11 +183,12 @@ class TestMoveForwardStateMonitor:
             async for _ in controller_fn(response_stream()):
                 pass
 
-        # With the bug (standstill check removed): monitor returns at state 3
-        # With the fix: monitor reaches state 5
-        assert consumed_count >= 4, (
-            f"Monitor returned after only {consumed_count} states — "
-            "TrajectoryEnded without standstill incorrectly set the trajectory_ended flag"
+        # Did not complete at state 2 (TrajectoryEnded without standstill), and
+        # completed at the first standstill afterwards (state 3) — not waiting for
+        # a later TrajectoryEnded+standstill frame that rae often never sends.
+        assert consumed_count == 3, (
+            f"Monitor consumed {consumed_count} states — expected completion on the "
+            "first standstill after TrajectoryEnded (state 3)"
         )
 
     @pytest.mark.asyncio

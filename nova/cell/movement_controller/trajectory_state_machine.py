@@ -200,14 +200,24 @@ class TrajectoryExecutionMachine(StateMachine):
         location: float | None = None
 
         if not has_execute:
-            # No execute info — skip.  The API guarantees that once execute is
-            # set it will remain present in subsequent states, so a bare
-            # standstill (without execute) is not a reliable completion signal.
+            # No execute details on this frame. The controller drops the
+            # trajectory `execute` block the instant the robot settles
+            # (robotics/wbr RAEv2_ProtoRobotState), so a bare standstill is the
+            # only completion signal we may ever receive. When we are already
+            # waiting for standstill (`ending` / `pausing`), honour it; the
+            # discriminator (`TrajectoryEnded` / `PausedByUser`) was already seen
+            # on the transition into that state. Otherwise there is nothing to do.
+            if state.standstill:
+                if self.current_state == self.ending:
+                    self._end_after_standstill()
+                elif self.current_state == self.pausing:
+                    self._pause_after_standstill()
+            current_id = self._active_configuration_id()
             return StateUpdate(
                 has_execute=False,
-                state_changed=False,
+                state_changed=current_id != previous_state_id,
                 previous_state_id=previous_state_id,
-                current_state_id=previous_state_id,
+                current_state_id=current_id,
             )
 
         # Execute *is* present ------------------------------------------------
