@@ -1,0 +1,1 @@
+can you add breakpoints to the wandelscript left side (native tools from vscode pls) and stop the execution when its reached. also add then button to proceed, step etc. (like the normal debugger)

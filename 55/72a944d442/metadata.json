@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "5572a944d442",
+  "strategy": "manual-commit",
+  "branch": "feat/ws-vscode",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "wandelscript-vscode/bridge/run_ws.py",
+    "wandelscript-vscode/package.json",
+    "wandelscript-vscode/pnpm-lock.yaml",
+    "wandelscript-vscode/src/bridgeProcess.ts",
+    "wandelscript-vscode/src/consts.ts",
+    "wandelscript-vscode/src/debugAdapter.ts",
+    "wandelscript-vscode/src/extension.ts",
+    "wandelscript-vscode/src/runner.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/55/72a944d442/0/metadata.json",
+      "transcript": "/55/72a944d442/0/full.jsonl",
+      "content_hash": "/55/72a944d442/0/content_hash.txt",
+      "prompt": "/55/72a944d442/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}
