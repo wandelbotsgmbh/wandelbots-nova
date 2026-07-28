@@ -101,11 +101,10 @@ class Pose(pydantic.BaseModel, Sized):
         >>> kc2 = api.models.KinematicConfiguration(kinematic_branch=kb, axis_ranges=ar)
         >>> Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc2).kinematic_configuration == kc2
         True
-        >>> dp = api.models.DatasetPose(id='p1', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6])))
-        >>> Pose(dp)
+        >>> Pose(api.models.DatasetPose(id='p1', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6]))))
         Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
-        >>> dp2 = api.models.DatasetPose(id='p2', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6])), kinematic_configuration=kc)
-        >>> Pose(dp2).kinematic_configuration == kc
+        >>> Pose(api.models.DatasetPose(id='p2', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6])), kinematic_configuration=kc))
+        Pose((1,2,3,4,5,6), kinematic_configuration=kc).kinematic_configuration == kc
         True
         """
         if not args:
