@@ -118,6 +118,9 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
+# Node / husky (dev-only git hooks)
+node_modules/
+
 # Environments
 .env
 .venv

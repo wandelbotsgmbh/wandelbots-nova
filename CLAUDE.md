@@ -32,8 +32,9 @@ PYTHONPATH=. uv run pytest -rs -v path/to/test_file.py
 # Run a specific test
 PYTHONPATH=. uv run pytest -rs -v path/to/test_file.py::test_function_name
 
-# Pre-commit hooks
-pre-commit run --files <changed files>
+# Git hooks (husky + lint-staged): auto-format/lint staged files on commit
+npm install          # one-time setup: activates the husky pre-commit hook
+npx lint-staged      # run the hook manually against staged files
 
 # Build package
 uv build
