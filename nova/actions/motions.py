@@ -6,16 +6,12 @@ import pydantic
 
 from nova import api, utils
 from nova.actions.base import Action
+from nova.types.dataset_pose import DatasetPose
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
 
 PoseLike = (
-    api.models.ConfiguredPose
-    | api.models.DatasetPose
-    | api.models.Pose
-    | Pose
-    | Sequence[float]
-    | np.ndarray
+    api.models.ConfiguredPose | DatasetPose | api.models.Pose | Pose | Sequence[float] | np.ndarray
 )
 
 

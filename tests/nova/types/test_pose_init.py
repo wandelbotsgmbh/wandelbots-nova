@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from nova import api
-from nova.types import Pose, Vector3d
+from nova.types import DatasetPose, Pose, Vector3d
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ class TestPoseInitAllowed:
         assert p.kinematic_configuration == kinematic_config
 
     def test_from_dataset_pose(self, kinematic_config):
-        dataset_pose = api.models.DatasetPose(
+        dataset_pose = DatasetPose(
             id="p1",
             pose=api.models.Pose(
                 position=api.models.Vector3d([1, 2, 3]),
@@ -98,7 +98,7 @@ class TestPoseInitAllowed:
         assert p.kinematic_configuration == kinematic_config
 
     def test_from_dataset_pose_position_none(self, kinematic_config):
-        dataset_pose = api.models.DatasetPose(
+        dataset_pose = DatasetPose(
             id="p1",
             pose=api.models.Pose(position=None, orientation=api.models.RotationVector([4, 5, 6])),
             kinematic_configuration=kinematic_config,
@@ -108,7 +108,7 @@ class TestPoseInitAllowed:
         assert p.kinematic_configuration == kinematic_config
 
     def test_from_dataset_pose_orientation_none(self, kinematic_config):
-        dataset_pose = api.models.DatasetPose(
+        dataset_pose = DatasetPose(
             id="p1",
             pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=None),
             kinematic_configuration=kinematic_config,
@@ -118,7 +118,7 @@ class TestPoseInitAllowed:
         assert p.kinematic_configuration == kinematic_config
 
     def test_from_dataset_pose_position_and_orientation_none(self, kinematic_config):
-        dataset_pose = api.models.DatasetPose(
+        dataset_pose = DatasetPose(
             id="p1",
             pose=api.models.Pose(position=None, orientation=None),
             kinematic_configuration=kinematic_config,
@@ -128,7 +128,7 @@ class TestPoseInitAllowed:
         assert p.kinematic_configuration == kinematic_config
 
     def test_from_dataset_pose_without_kinematic_configuration(self):
-        dataset_pose = api.models.DatasetPose(
+        dataset_pose = DatasetPose(
             id="p2",
             pose=api.models.Pose(
                 position=api.models.Vector3d([1, 2, 3]),
@@ -229,7 +229,7 @@ class TestPoseInitForbidden:
             Pose(original, kinematic_configuration=kinematic_config)
 
     def test_dataset_pose_with_double_kinematic_configuration_raises(self, kinematic_config):
-        dataset_pose = api.models.DatasetPose(
+        dataset_pose = DatasetPose(
             id="p1",
             pose=api.models.Pose(
                 position=api.models.Vector3d([1, 2, 3]),
