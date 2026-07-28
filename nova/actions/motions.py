@@ -1,6 +1,7 @@
 from abc import ABC
 from typing import Any, Literal, Sequence
 
+import numpy as np
 import pydantic
 
 from nova import api, utils
@@ -8,8 +9,13 @@ from nova.actions.base import Action
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
 
-PoseCompatible = (
-    api.models.ConfiguredPose | api.models.DatasetPose | api.models.Pose | Pose | Sequence[float]
+PoseLike = (
+    api.models.ConfiguredPose
+    | api.models.DatasetPose
+    | api.models.Pose
+    | Pose
+    | Sequence[float]
+    | np.ndarray
 )
 
 
@@ -60,7 +66,7 @@ class Linear(Motion):
 
 
 def linear(
-    target: PoseCompatible,
+    target: PoseLike,
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
@@ -128,7 +134,7 @@ class CartesianPTP(Motion):
 
 
 def cartesian_ptp(
-    target: PoseCompatible,
+    target: PoseLike,
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
@@ -192,8 +198,8 @@ class Circular(Motion):
 
 
 def circular(
-    target: PoseCompatible,
-    intermediate: PoseCompatible,
+    target: PoseLike,
+    intermediate: PoseLike,
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
@@ -306,7 +312,7 @@ class Spline(Motion):
 
 
 def spline(
-    target: PoseCompatible,
+    target: PoseLike,
     settings: MotionSettings = MotionSettings(),
     path_parameter: float = 1,
     time=None,

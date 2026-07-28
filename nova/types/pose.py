@@ -21,7 +21,7 @@ def _resolve_pose(
     Raises `ValueError` if `args` does not match any supported form, or if `args` carries
     its own `kinematic_configuration` that conflicts with an explicitly passed one.
     """
-    if args == (None,):
+    if len(args) == 1 and args[0] is None:
         return Pose.from_tuple((0, 0, 0, 0, 0, 0))
     if len(args) == 1 and isinstance(args[0], Pose):
         pose = args[0]
@@ -46,7 +46,7 @@ def _resolve_pose(
         return Pose.from_api_model(args[0], kinematic_configuration=kinematic_configuration)
     if (
         len(args) == 1
-        and isinstance(args[0], Sequence)
+        and isinstance(args[0], (Sequence, np.ndarray))
         and not isinstance(args[0], str)
         and len(args[0]) in (3, 6)
     ):

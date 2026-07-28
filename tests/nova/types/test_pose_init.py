@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from nova import api
@@ -40,6 +41,14 @@ class TestPoseInitAllowed:
 
     def test_three_list_defaults_orientation(self):
         p = Pose([1, 2, 3])
+        assert p.to_tuple() == (1, 2, 3, 0, 0, 0)
+
+    def test_numpy_array(self):
+        p = Pose(np.array([1, 2, 3, 4, 5, 6]))
+        assert p.to_tuple() == (1, 2, 3, 4, 5, 6)
+
+    def test_three_numpy_array_defaults_orientation(self):
+        p = Pose(np.array([1, 2, 3]))
         assert p.to_tuple() == (1, 2, 3, 0, 0, 0)
 
     def test_six_positional_args(self):

@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from nova.actions.motions import cartesian_ptp, circular, linear, spline
@@ -84,3 +85,17 @@ class TestMotionFactoriesAcceptLists:
 
     def test_spline_three_list_defaults_orientation(self):
         assert spline([1, 2, 3]).target == Pose((1, 2, 3, 0, 0, 0))
+
+    def test_linear_numpy_array(self):
+        assert linear(np.array([1, 2, 3, 4, 5, 6])).target == Pose((1, 2, 3, 4, 5, 6))
+
+    def test_cartesian_ptp_numpy_array(self):
+        assert cartesian_ptp(np.array([1, 2, 3, 4, 5, 6])).target == Pose((1, 2, 3, 4, 5, 6))
+
+    def test_circular_numpy_arrays(self):
+        action = circular(np.array([1, 2, 3, 4, 5, 6]), np.array([7, 8, 9, 10, 11, 12]))
+        assert action.target == Pose((1, 2, 3, 4, 5, 6))
+        assert action.intermediate == Pose((7, 8, 9, 10, 11, 12))
+
+    def test_spline_numpy_array(self):
+        assert spline(np.array([1, 2, 3, 4, 5, 6])).target == Pose((1, 2, 3, 4, 5, 6))
