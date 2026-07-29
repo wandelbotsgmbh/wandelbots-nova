@@ -20,20 +20,13 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       html_url: ${{ steps.release.outputs.html_url }}
     steps:
-      - name: Generate token for pipeline-version-bumper app
-        id: app-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.PIPELINE_VERSION_BUMPER_APPID }}
-          private-key: ${{ secrets.PIPELINE_VERSION_BUMPER_SECRET }}
-
       - name: Run release-please
         id: release
         uses: googleapis/release-please-action@v4
         with:
-          # Use the app token so the release PR / tag come from the app actor
-          # and so downstream workflows (CI) are triggered on the release PR.
-          token: ${{ steps.app-token.outputs.token }}
+          # Use a PAT so the release PR / tag come from a real user actor and so
+          # downstream workflows (CI) are triggered on the release PR.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
