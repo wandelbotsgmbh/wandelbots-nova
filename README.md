@@ -287,19 +287,19 @@ wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/
 
 ### Stable releases from `main`
 
-Merging into main triggers the release workflow:
+Releases are managed by [release-please](https://github.com/googleapis/release-please):
 
-1. `semantic-release` analyzes commit messages and bumps the version automatically.
-2. A source distribution and wheel are built and uploaded to PyPI.
-3. A GitHub release is created (or updated) with the release assets.
+1. On every push to `main`, release-please opens/updates a **release PR** that bumps the version (derived from Conventional Commits) and updates the changelog.
+2. Merging that release PR tags the release, then a source distribution and wheel are built and uploaded to PyPI.
+3. A GitHub release is created with the release assets.
 
 ### LTS releases from `release/\*`
 
 If you're on older major versions or under a special LTS contract:
 
 1. Use (or create) a branch like `release/1.x`, `release/customer-foo`, etc.
-2. Every commit to these branches triggers the same workflow as on `main`.
-3. Versions include the branch name to prevent collisions, e.g. `v1.8.7-release-1.x`
+2. Every commit to these branches triggers the release-branch build workflow, which publishes an alpha build to PyPI.
+3. Versions include a date/commit suffix to prevent collisions, e.g. `v1.8.7.a2026072803`
 
 ### Create a dev build (manual)
 
