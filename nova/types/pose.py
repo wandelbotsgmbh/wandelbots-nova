@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Sequence, Sized
+from typing import Sequence, Sized
 
 import numpy as np
 import pydantic
@@ -217,7 +217,7 @@ class Pose(pydantic.BaseModel, Sized):
             ),
         )
 
-    def __matmul__(self, other) -> Pose:
+    def __matmul__(self, other: Pose) -> Pose:
         """
         Pose concatenation combines two poses into a single pose that represents the cumulative effect of both
         transformations applied sequentially.
@@ -225,37 +225,18 @@ class Pose(pydantic.BaseModel, Sized):
         Note: kinematic_configuration is NOT propagated — the result always has
         kinematic_configuration=None.
 
-        Args:
-            other: can be a Pose, or an iterable with 6 elements
-
         Returns:
             Pose: the result of the concatenation
 
         Examples:
         >>> Pose((1, 2, 3, 0, 0, 0)) @ Pose((1, 2, 3, 0, 0, 0))
         Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
-        >>> Pose((1, 2, 3, 0, 0, 0)) @ [1, 2, 3, 0, 0, 0]
-        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
-        >>> Pose((1, 2, 3, 0, 0, 0)) @ (1, 2, 3, 0, 0, 0)
-        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
-        >>> def as_iterator(data):
-        ...     for d in data:
-        ...         yield d
-        >>> Pose((1, 2, 3, 0, 0, 0)) @ as_iterator([1, 2, 3, 0, 0, 0])
-        Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
-        >>> Pose((1, 2, 3, 0, 0, 0)) @ Vector3d.from_tuple((1, 2, 3))
+        >>> Pose((1, 2, 3, 0, 0, 0)) @ Pose(DatasetPose(id='p1', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([0, 0, 0]))))
         Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
         """
-        if isinstance(other, Pose):
-            transformed_matrix = np.dot(self.matrix, other.matrix)
-            return self._matrix_to_pose(transformed_matrix)
-        if isinstance(other, ConfiguredPose):
-            return self.__matmul__(Pose.from_dataset_pose(other))
-        if isinstance(other, Iterable):
-            seq = tuple(other)
-            return self.__matmul__(Pose(seq))
 
-        raise ValueError(f"Cannot multiply Pose with {type(other)}")
+        transformed_matrix = np.dot(self.matrix, other.matrix)
+        return self._matrix_to_pose(transformed_matrix)
 
     def __array__(self, dtype=None):
         """Convert Pose to a 6-element numpy array: [pos.x, pos.y, pos.z, ori.x, ori.y, ori.z].
