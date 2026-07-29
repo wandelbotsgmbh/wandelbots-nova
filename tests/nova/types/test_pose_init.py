@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from nova import api
-from nova.types import DatasetPose, Pose, Vector3d
+from nova.types import ConfiguredPose, DatasetPose, Pose, Vector3d
 
 
 @pytest.fixture
@@ -140,7 +140,7 @@ class TestPoseInitAllowed:
         assert p.kinematic_configuration is None
 
     def test_from_configured_pose(self, kinematic_config):
-        configured_pose = api.models.ConfiguredPose(
+        configured_pose = ConfiguredPose(
             pose=api.models.Pose(
                 position=api.models.Vector3d([1, 2, 3]),
                 orientation=api.models.RotationVector([4, 5, 6]),
@@ -152,7 +152,7 @@ class TestPoseInitAllowed:
         assert p.kinematic_configuration == kinematic_config
 
     def test_from_configured_pose_without_kinematic_configuration(self):
-        configured_pose = api.models.ConfiguredPose(
+        configured_pose = ConfiguredPose(
             pose=api.models.Pose(
                 position=api.models.Vector3d([1, 2, 3]),
                 orientation=api.models.RotationVector([4, 5, 6]),
@@ -164,7 +164,7 @@ class TestPoseInitAllowed:
         assert p.kinematic_configuration is None
 
     def test_from_configured_pose_with_none_position_and_orientation(self, kinematic_config):
-        configured_pose = api.models.ConfiguredPose(
+        configured_pose = ConfiguredPose(
             pose=api.models.Pose(position=None, orientation=None),
             kinematic_configuration=kinematic_config,
         )
@@ -242,7 +242,7 @@ class TestPoseInitForbidden:
             Pose(dataset_pose, kinematic_configuration=kinematic_config)
 
     def test_configured_pose_with_double_kinematic_configuration_raises(self, kinematic_config):
-        configured_pose = api.models.ConfiguredPose(
+        configured_pose = ConfiguredPose(
             pose=api.models.Pose(
                 position=api.models.Vector3d([1, 2, 3]),
                 orientation=api.models.RotationVector([4, 5, 6]),
