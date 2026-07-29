@@ -1,0 +1,7 @@
+the release please does not work yet for this repo. no release please PR is created. check why its not working and fix it
+
+---
+
+**`chore` no longer triggers a release.** With `python-semantic-release` your config bumped a patch on `chore` (e.g. `5.8.1` was a chore). Release-please by default only bumps on `feat`/`fix`/breaking changes. `chore` still shows in the changelog but won't cut a release on its own. If you want chore to keep bumping, tell me and I'll add a `versioning-strategy`/override 
+
+yes chore should bump a patch. also ensure vscode-ext, touch-up, pose and tracjetory-cursor are all included in the release please flow.
