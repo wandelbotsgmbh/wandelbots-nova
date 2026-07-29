@@ -1,0 +1,109 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "e09077ea18e9",
+  "session_id": "becaaf05-e01f-44e3-8cbf-3e35c190f65d",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-29T09:34:54.236497Z",
+  "branch": "main",
+  "checkpoints_count": 4,
+  "files_touched": [
+    ".github/workflows/release-please.yaml"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "dae8aede2ecf",
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-29T09:34:54.22997Z",
+    "agent_lines": 0,
+    "agent_removed": 3,
+    "human_added": 73,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 73,
+    "total_lines_changed": 76,
+    "agent_percentage": 3.9473684210526314,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1109,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".github/CODEOWNERS": 6,
+        ".github/dependabot.yml": 43,
+        ".github/hooks/entire.json": 61,
+        ".github/workflows/autodocs.yaml": 52,
+        ".github/workflows/codeql.yaml": 86,
+        ".github/workflows/dependency-review.yaml": 19,
+        ".github/workflows/nova-build-dev.yaml": 55,
+        ".github/workflows/nova-cleanup-instances.yaml": 24,
+        ".github/workflows/nova-dev.yaml": 40,
+        ".github/workflows/nova-release.yaml": 52,
+        ".github/workflows/nova-run-examples.yaml": 242,
+        ".github/workflows/pr-title-check.yaml": 40,
+        ".github/workflows/push_nova_rerun_bridge_image.yaml": 124,
+        ".github/workflows/push_rerun_image.yaml": 114,
+        ".github/workflows/release-please.yaml": 73,
+        ".github/workflows/uv-audit.yaml": 32,
+        ".github/workflows/yamllint.yaml": 20,
+        ".release-please-manifest.json": 3,
+        "release-please-config.json": 23
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 1109,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".github/CODEOWNERS": 6,
+        ".github/dependabot.yml": 43,
+        ".github/hooks/entire.json": 61,
+        ".github/workflows/autodocs.yaml": 52,
+        ".github/workflows/codeql.yaml": 86,
+        ".github/workflows/dependency-review.yaml": 19,
+        ".github/workflows/nova-build-dev.yaml": 55,
+        ".github/workflows/nova-cleanup-instances.yaml": 24,
+        ".github/workflows/nova-dev.yaml": 40,
+        ".github/workflows/nova-release.yaml": 52,
+        ".github/workflows/nova-run-examples.yaml": 242,
+        ".github/workflows/pr-title-check.yaml": 40,
+        ".github/workflows/push_nova_rerun_bridge_image.yaml": 124,
+        ".github/workflows/push_rerun_image.yaml": 114,
+        ".github/workflows/release-please.yaml": 73,
+        ".github/workflows/uv-audit.yaml": 32,
+        ".github/workflows/yamllint.yaml": 20,
+        ".release-please-manifest.json": 3,
+        "release-please-config.json": 23
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1110,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

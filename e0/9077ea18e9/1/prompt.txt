@@ -1,0 +1,77 @@
+on this branch, check if its possible and how when we send a slack message with the release notes after the release please PR is merged
+
+---
+
+go with A) and implement it
+
+---
+
+where do I get this: **`SLACK_RELEASE_WEBHOOK_URL`**
+
+---
+
+what does this mean?
+
+---
+
+fix the node issue. also getting this now 0, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: [https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/](https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:2)Run tibdex/github-app-token@v2.1.0
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:11)(node:2129) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:12)(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:13)(node:2129) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:14)Error: Could not create installation access token.
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:15)    at createInstallationAccessToken (file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:86267)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:16)    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:17)    at async file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:87518
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:18)    at async run (file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:88811)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:19)    at async file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:87468 {
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:20)  [cause]: Error: Could not retrieve installation.
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:21)      at retrieveInstallationId (file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:87232)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:22)      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:23)      at async createInstallationAccessToken (file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:86069)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:24)      ... 2 lines matching cause stack trace ...
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:25)      at async file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:87468 {
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:26)    [cause]: RequestError [HttpError]: Not Found
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:27)        at file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:1:64431
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:28)        at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:29)        at async retrieveInstallationId (file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:87014)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:30)        at async createInstallationAccessToken (file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:86069)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:31)        at async file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:87518
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:32)        at async run (file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:88811)
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:33)        at async file:///home/runner/work/_actions/tibdex/github-app-token/v2.1.0/dist/main/index.js:9:87468 {
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:34)      status: 404,
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:35)      response: [Object],
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:36)      request: [Object]
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:37)    }
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:38)  }
+
+[](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/runs/30437036075/job/90528423062#step:2:39)}
