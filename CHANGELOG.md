@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## [5.10.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.9.0...v5.10.0) (2026-07-29)
+
+
+### Features
+
+* **NDX-812:** Setup release-please + husky in wandelbots-nova ([#456](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/456)) ([d03d6f8](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d03d6f8f6c6d836e26ce009b45b8c554e8b25a35))
+
+
+### Bug Fixes
+
+* fixed release please [#2](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/2) by using a PAT ([#459](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/459)) ([251e19d](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/251e19d66b15ee0f5fc5651b9c9b6fa434c02815))
+* fixed release-please step ([#458](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/458)) ([ebf1b70](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ebf1b701c25d98dd9fc7c1e6cef2fd0089583e16))
+
 ## v5.9.0 (2026-07-23)
 
 ### Features
