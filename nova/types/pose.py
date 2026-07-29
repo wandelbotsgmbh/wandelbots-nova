@@ -23,7 +23,7 @@ def _resolve_pose(
     its own `kinematic_configuration` that conflicts with an explicitly passed one.
     """
     if len(args) == 1 and args[0] is None:
-        return Pose.from_tuple((0, 0, 0, 0, 0, 0))
+        return Pose.from_tuple((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
     if len(args) == 1 and isinstance(args[0], Pose):
         pose = args[0]
         if pose.kinematic_configuration is not None and kinematic_configuration is not None:
@@ -102,10 +102,10 @@ class Pose(pydantic.BaseModel, Sized):
         >>> kc2 = api.models.KinematicConfiguration(kinematic_branch=kb, axis_ranges=ar)
         >>> Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc2).kinematic_configuration == kc2
         True
-        >>> Pose(DatasetPose(id='p1', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6]))))
+        >>> Pose(DatasetPose(id='p1', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6])), kinematic_configuration=None)).
         Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
-        >>> Pose(DatasetPose(id='p2', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6])), kinematic_configuration=kc))
-        Pose((1,2,3,4,5,6), kinematic_configuration=kc).kinematic_configuration == kc
+        >>> kc = api.models.KinematicConfiguration(kinematic_branch=api.models.KinematicBranch(shoulder_branch='FRONT', elbow_branch='UP', wrist_branch='NO_FLIP'))
+        >>> Pose(DatasetPose(id='p2', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6])), kinematic_configuration=kc)).kinematic_configuration == kc
         True
         """
         if not args:
@@ -394,7 +394,7 @@ class Pose(pydantic.BaseModel, Sized):
         kinematic configuration.
 
         Example:
-        >>> dp = DatasetPose(id='p1', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6])))
+        >>> dp = DatasetPose(id='p1', pose=api.models.Pose(position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([4, 5, 6])), kinematic_configuration=None)
         >>> Pose.from_dataset_pose(dp)
         Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
         """
