@@ -19,6 +19,7 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
       html_url: ${{ steps.release.outputs.html_url }}
+      body: ${{ steps.release.outputs.body }}
     steps:
       - name: Run release-please
         id: release
@@ -73,21 +74,41 @@ jobs:
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Build Slack payload
+        env:
+          BODY: ${{ needs.release-please.outputs.body }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          URL: ${{ needs.release-please.outputs.html_url }}
+        run: |
+          # Convert GitHub-flavoured markdown release notes to Slack mrkdwn:
+          # headings -> bold, "* " bullets -> "• ", [text](url) -> <url|text>.
+          notes=$(printf '%s' "$BODY" \
+            | sed -E 's/^#{1,6}[[:space:]]*(.*)$/*\1*/' \
+            | sed -E 's/^\* /• /' \
+            | sed -E 's/\[([^]]+)\]\(([^)]+)\)/<\2|\1>/g')
+          # Slack section text is limited to 3000 chars; truncate defensively.
+          if [ ${#notes} -gt 2900 ]; then
+            notes="${notes:0:2900}…"
+          fi
+          if [ -z "$notes" ]; then
+            notes="_See the <${URL}|GitHub release> for details._"
+          fi
+          jq -n \
+            --arg text ":rocket: *wandelbots-nova ${TAG}* released"$'\n'"${URL}" \
+            --arg header ":rocket: *<${URL}|wandelbots-nova ${TAG}>* released" \
+            --arg notes "$notes" \
+            '{
+              text: $text,
+              blocks: [
+                { type: "section", text: { type: "mrkdwn", text: $header } },
+                { type: "divider" },
+                { type: "section", text: { type: "mrkdwn", text: $notes } }
+              ]
+            }' > payload.json
+
       - name: Send release notes to Slack
         uses: slackapi/slack-github-action@v2.0.0
         with:
           webhook: ${{ secrets.SLACK_RELEASE_WEBHOOK_URL }}
           webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": ":rocket: *wandelbots-nova ${{ needs.release-please.outputs.tag_name }}* released\n${{ needs.release-please.outputs.html_url }}",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ":rocket: *<${{ needs.release-please.outputs.html_url }}|wandelbots-nova ${{ needs.release-please.outputs.tag_name }}>* released"
-                  }
-                }
-              ]
-            }
+          payload-file-path: payload.json
