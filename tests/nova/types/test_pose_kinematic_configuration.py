@@ -39,7 +39,7 @@ class TestPoseKinematicConfiguration:
         assert pose_with_config != p_no_config
 
     def test_matmul_discards_config(self, pose_with_config):
-        result = pose_with_config @ (0, 0, 0, 0, 0, 0)
+        result = pose_with_config @ Pose((0, 0, 0, 0, 0, 0))
         assert result.kinematic_configuration is None
 
     def test_to_api_model_excludes_config(self, pose_with_config):

@@ -70,10 +70,10 @@ async def start(
         joint_ptp(home_joints, settings=normal),  # Move to home position slowly
         cartesian_ptp(target_pose, settings=fast),  # Move to target pose
         cartesian_ptp(
-            target_pose @ [200, 0, 0, 0, 0, 0], settings=fast
+            target_pose @ Pose([200, 0, 0, 0, 0, 0]), settings=fast
         ),  # Move 100mm in target pose's local x-axis
         linear(
-            target_pose @ (200, 200, 0, 0, 0, 0), settings=fast
+            target_pose @ Pose(200, 200, 0, 0, 0, 0), settings=fast
         ),  # Move 100mm in local x and y axes
         joint_ptp(home_joints, settings=normal),
         cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0)), settings=fast),
