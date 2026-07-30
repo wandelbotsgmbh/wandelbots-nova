@@ -94,8 +94,8 @@ jobs:
             notes="_See the <${URL}|GitHub release> for details._"
           fi
           jq -n \
-            --arg text ":rocket: *wandelbots-nova ${TAG}* released"$'\n'"${URL}" \
-            --arg header ":rocket: *<${URL}|wandelbots-nova ${TAG}>* released" \
+            --arg text ":rocket: *wandelbots-nova ${TAG}* Python SDK released"$'\n'"${URL}" \
+            --arg header ":rocket: *<${URL}|wandelbots-nova ${TAG}>* Python SDK released" \
             --arg notes "$notes" \
             '{
               text: $text,

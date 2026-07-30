@@ -1,4 +1,4 @@
-"""Entry point for the ``trigger-dev-wheel`` uv script.
+"""Entry point for the ``dev-wheel`` uv script.
 
 Runs ``scripts/trigger_dev_wheel.sh`` from the repository root, forwarding any
 extra CLI arguments. This is a developer helper and expects to be run from a

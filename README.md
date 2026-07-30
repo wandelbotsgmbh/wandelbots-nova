@@ -319,7 +319,7 @@ install string. This requires the authenticated [GitHub CLI](https://cli.github.
 (`gh auth login`) and a pushed feature branch (not `main` or `release/*`):
 
 ```bash
-uv run trigger-dev-wheel
+uv run dev-wheel
 ```
 
 It dispatches the workflow for the current branch, watches the run to
