@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [5.11.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.10.0...v5.11.0) (2026-07-30)
+
+
+### Features
+
+* improve slack release message ([#461](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/461)) ([bfb1a8c](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bfb1a8c188ed5c67ba0b099e5aa8568f3ead2923))
+
 ## [5.10.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.9.0...v5.10.0) (2026-07-29)
 
 
