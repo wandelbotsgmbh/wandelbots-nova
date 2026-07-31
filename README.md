@@ -314,6 +314,18 @@ Need a temporary test build? Use GitHub actions:
        pip install "wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@<commit>"
    ```
 
+Alternatively, trigger the same workflow from your terminal and wait for the
+install string. This requires the authenticated [GitHub CLI](https://cli.github.com/)
+(`gh auth login`) and a pushed feature branch (not `main` or `release/*`):
+
+```bash
+uv run dev-wheel
+```
+
+It dispatches the workflow for the current branch, watches the run to
+completion, and prints the ready-to-use `pip install` command pinned to the
+built commit.
+
 ## Additional resources
 
 - [Examples](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples) covering basic to advanced SDK scenarios
