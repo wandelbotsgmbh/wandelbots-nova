@@ -165,6 +165,26 @@ class MovementControllerContext(pydantic.BaseModel):
     start_on_io: api.models.StartOnIO | None = None
     pause_on_io: api.models.PauseOnIO | None = None
     motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
+    # Final joint position of the planned trajectory. Used by the completion
+    # watchdog to confirm the robot is actually at target before treating an
+    # otherwise-unobserved standstill as completion. ``None`` disables the
+    # at-target check (a stall is then always surfaced as an error).
+    target_joint_position: tuple[float, ...] | None = None
+    # How long the robot may sit at an unexplained standstill (trajectory not
+    # observed as ended, not waiting on IO / paused) before the watchdog
+    # resolves the move. Generous default so legitimate slow settling never
+    # trips it.
+    stall_timeout_s: float = 2.0
+    # Hard ceiling: maximum continuous unexplained standstill (not waiting on IO
+    # / paused) before the move is failed regardless of state — the backstop for
+    # an ambiguous stop-short with no TrajectoryEnded, so execute() can never
+    # block forever. Generous so legitimate in-path dwells don't trip it.
+    max_stall_s: float = 30.0
+    # Per-joint tolerance for the watchdog's at-target check. Units follow the
+    # joint: radians for revolute axes, millimetres for prismatic/linear axes
+    # (e.g. an external rail) — set generously enough for the loosest axis in
+    # the motion group.
+    at_target_tolerance: float = 1e-2
 
 
 MovementController = Callable[[MovementControllerContext], MovementControllerFunction]

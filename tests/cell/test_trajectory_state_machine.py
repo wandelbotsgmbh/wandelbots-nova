@@ -141,11 +141,16 @@ class TestTrajectoryEnded:
         assert machine.is_ended
         assert result.state_changed
 
-    def test_ending_then_bare_standstill_does_not_end(self):
-        """Standalone standstill without execute does NOT transition to ended.
+    def test_ending_then_bare_standstill_ends(self):
+        """A bare standstill (no execute block) DOES complete a trajectory already
+        in `ending`.
 
-        The API guarantees execute persists once set, so bare standstill is
-        unreliable for determining completion.
+        The controller (robotics/wbr RAEv2_ProtoRobotState) drops the trajectory
+        `execute` details the instant the robot settles, so the
+        `TrajectoryEnded + standstill + execute` frame is frequently never
+        delivered — the bare standstill is the only completion signal that
+        arrives. Once `TrajectoryEnded` has been seen (machine in `ending`), the
+        next standstill means the move is done.
         """
         machine = TrajectoryExecutionMachine()
         machine.send("start")
@@ -156,10 +161,10 @@ class TestTrajectoryEnded:
         machine.process_motion_state(state1)
         assert machine.is_ending
 
-        # Bare standstill (no execute) — should NOT complete
+        # Bare standstill (no execute) — completes the move.
         state2 = _make_motion_group_state(standstill=True)
         machine.process_motion_state(state2)
-        assert machine.is_ending  # still waiting
+        assert machine.is_ended
 
     def test_ending_stays_in_ending_without_standstill(self):
         machine = TrajectoryExecutionMachine()
