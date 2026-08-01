@@ -250,6 +250,7 @@ def mock_motion_group():
     mock_api_client.motion_group_api.get_motion_group_description = AsyncMock()
     mock_api_client.kinematics_api = MagicMock()
     mock_api_client.kinematics_api.forward_kinematics = AsyncMock()
+    mock_api_client.kinematics_api.get_kinematic_configuration = AsyncMock()
     return MotionGroup(
         api_client=mock_api_client,
         cell="test_cell",
@@ -592,3 +593,64 @@ async def test_forward_kinematics_with_tcp_applies_tcp_offset(mock_motion_group)
         "forward_kinematics_request"
     ]
     assert request.tcp_offset == Pose(gripper_pose).to_api_model()
+
+
+@pytest.mark.asyncio
+async def test_get_kinematic_configuration_empty_joints_raises(mock_motion_group):
+    """Passing an empty joints list must raise ValueError."""
+    with pytest.raises(ValueError, match="at least one"):
+        await mock_motion_group.get_kinematic_configuration(joints=[])
+
+
+@pytest.mark.asyncio
+async def test_get_kinematic_configuration_happy_path(mock_motion_group):
+    """Returns the kinematic configurations from the API response unchanged."""
+    kin_config = api.models.KinematicConfiguration(
+        kinematic_branch=api.models.KinematicBranch(
+            shoulder_branch=api.models.KinematicBranchShoulder.FRONT,
+            elbow_branch=api.models.KinematicBranchElbow.UP,
+            wrist_branch=api.models.KinematicBranchWrist.NO_FLIP,
+        )
+    )
+    mock_motion_group._api_client.motion_group_api.get_motion_group_description.return_value = (
+        api.models.MotionGroupDescription(
+            motion_group_model=api.models.MotionGroupModel("test-model"),
+            operation_limits=api.models.OperationLimits(),
+            mounting=None,
+            tcps={},
+        )
+    )
+    mock_motion_group._api_client.kinematics_api.get_kinematic_configuration.return_value = (
+        MagicMock(kinematic_configurations=[kin_config])
+    )
+
+    result = await mock_motion_group.get_kinematic_configuration(joints=[(0, 0, 0, 0, 0, 0)])
+
+    assert result == [kin_config]
+    assert result[0].kinematic_branch.shoulder_branch == api.models.KinematicBranchShoulder.FRONT
+    assert result[0].kinematic_branch.elbow_branch == api.models.KinematicBranchElbow.UP
+    assert result[0].kinematic_branch.wrist_branch == api.models.KinematicBranchWrist.NO_FLIP
+
+
+@pytest.mark.asyncio
+async def test_get_kinematic_configuration_request_construction(mock_motion_group):
+    """Verifies the request sent to the kinematics API is built correctly from inputs."""
+    mock_motion_group._api_client.motion_group_api.get_motion_group_description.return_value = (
+        api.models.MotionGroupDescription(
+            motion_group_model=api.models.MotionGroupModel("test-model"),
+            operation_limits=api.models.OperationLimits(),
+            mounting=None,
+            tcps={},
+        )
+    )
+    mock_motion_group._api_client.kinematics_api.get_kinematic_configuration.return_value = (
+        MagicMock(kinematic_configurations=[])
+    )
+
+    await mock_motion_group.get_kinematic_configuration(joints=[(1, 2, 3, 4, 5, 6)])
+
+    req = mock_motion_group._api_client.kinematics_api.get_kinematic_configuration.call_args.kwargs[
+        "get_kinematic_configuration_request"
+    ]
+    assert req.motion_group_model == api.models.MotionGroupModel("test-model")
+    assert req.joint_positions == [api.models.DoubleArray([1, 2, 3, 4, 5, 6])]

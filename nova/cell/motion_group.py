@@ -462,6 +462,36 @@ class MotionGroup(AbstractRobot):
 
         return [Pose(tcp_pose) for tcp_pose in response.tcp_poses]
 
+    async def get_kinematic_configuration(
+        self, joints: list[tuple[float, ...]]
+    ) -> list[api.models.KinematicConfiguration]:
+        """Get the kinematic configuration for each joint configuration.
+
+        Only supported for 6-DOF robots with spherical or offset wrist. Raises an API
+        error (422) for unsupported motion groups.
+
+        Args:
+            joints: The joint configurations to compute kinematic configurations for.
+
+        Returns:
+            list[KinematicConfiguration]: One entry per input joint configuration.
+        """
+        if len(joints) == 0:
+            raise ValueError("Provide at least one joint configuration")
+
+        joint_positions = [api.models.DoubleArray(list(j)) for j in joints]
+        motion_group_model = await self.get_model()
+
+        response = await self._api_client.kinematics_api.get_kinematic_configuration(
+            cell=self._cell,
+            get_kinematic_configuration_request=api.models.GetKinematicConfigurationRequest(
+                motion_group_model=api.models.MotionGroupModel(motion_group_model),
+                joint_positions=joint_positions,
+            ),
+        )
+
+        return response.kinematic_configurations
+
     async def open(self):
         # TODO if there is no explicit motion group activation, what should we do here?
         # maybe we set the mode to control mode? But this is not needed (implicitly done by the trajectory execution)
