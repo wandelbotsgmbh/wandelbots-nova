@@ -44,9 +44,7 @@ from nova.types import MotionSettings, Pose
 )
 async def start(
     ctx: nova.ProgramContext,
-    count: int = Field(
-        default=1, ge=1, le=10, description="The number of times to repeat the movement"
-    ),
+    count: int = 1 # optional input parameter that in this case is used for repeating the execution
 ):
     """Main robot control function."""
     cell = ctx.cell
