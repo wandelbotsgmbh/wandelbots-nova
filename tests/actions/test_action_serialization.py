@@ -215,8 +215,7 @@ def test_ptp_helpers_reject_multiple_constraints():
 
     with pytest.raises(ValueError, match="Exactly one DirectionConstraint"):
         joint_ptp(
-            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-            constraints=[direction_constraint, direction_constraint],
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0), constraints=[direction_constraint, direction_constraint]
         )
 
 
@@ -229,6 +228,5 @@ def test_collision_free_rejects_multiple_constraints():
 
     with pytest.raises(ValueError, match="Exactly one DirectionConstraint"):
         collision_free(
-            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-            constraints=[direction_constraint, direction_constraint],
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0), constraints=[direction_constraint, direction_constraint]
         )
