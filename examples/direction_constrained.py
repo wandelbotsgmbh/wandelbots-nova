@@ -7,7 +7,7 @@ Either in cartesian space or joint space.
 
 In this example first a cartesian projection is used (z-axis up). And then a joint projection is used (z-axis down).
 Every time the robot first moves into a valid start position and then executes a constrained motion
-(either direction_constrained_cartesian_ptp or direction_constrained_joint_ptp).
+(using the normal PTP helpers with ``constraints``).
 
 Prerequisites:
 - Create an NOVA instance
@@ -20,12 +20,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 
 from nova import ProgramContext, ProgramPreconditions, api, program, run_program, viewers
-from nova.actions import (
-    direction_constrained_cartesian_ptp,
-    direction_constrained_joint_ptp,
-    joint_ptp,
-    linear,
-)
+from nova.actions import cartesian_ptp, joint_ptp, linear
 from nova.cell import virtual_controller
 from nova.types import MotionSettings, Pose, Vector3d
 from nova.utils import shift_joint_position_close_to_reference
@@ -38,7 +33,7 @@ def project_cartesian_pose_direction_constraint(
     constraint_tcp = np.array(constraint.tcp)
     target_constraint_world = np.array(constraint.world)
 
-    world_tcp_rotation = R.from_rotvec(np.array(world_tcp_pose.orientation))
+    world_tcp_rotation = R.from_rotvec(np.asarray(world_tcp_pose.orientation))
     current_constraint_world = world_tcp_rotation.apply(constraint_tcp)
 
     rotation_correction, _ = R.align_vectors([target_constraint_world], [current_constraint_world])
@@ -73,8 +68,19 @@ async def plan_and_execute_direction_constrained(ctx: ProgramContext):
     normal = MotionSettings(tcp_velocity_limit=120)
     fast = MotionSettings(tcp_velocity_limit=250)
 
-    home_joints = await motion_group.joints()
+    home_joints = [
+        0.9097772836685181,
+        -2.177454710006714,
+        -1.063799500465393,
+        1.8133413791656494,
+        1.5707963705062866,
+        1.1610190868377686,
+    ]
     tcp = (await motion_group.tcp_names())[0]
+
+    start_actions = [joint_ptp(home_joints, settings=normal)]
+    await motion_group.plan_and_execute(start_actions, tcp)
+
     current_pose = await motion_group.tcp_pose(tcp)
 
     # first phase:
@@ -97,17 +103,16 @@ async def plan_and_execute_direction_constrained(ctx: ProgramContext):
     first_phase_actions = [
         joint_ptp(home_joints, settings=normal),
         linear(projected_pose, settings=normal),  # keep tcp position fixed
-        direction_constrained_cartesian_ptp(
-            constrained_target_pose, constraint=direction_constraint_pos_z, settings=fast
+        cartesian_ptp(
+            constrained_target_pose, constraints=[direction_constraint_pos_z], settings=fast
         ),
     ]
-    first_phase_trajectory = await motion_group.plan(first_phase_actions, tcp)
-    await motion_group.execute(first_phase_trajectory, tcp, actions=first_phase_actions)
+    await motion_group.plan_and_execute(first_phase_actions, tcp)
 
     # second phase:
     # project current target and home joint positions to a new direction constraint (tcp -z-axis) in joint space,
     # move to the projected current position (keep first 3 joints fixed), then return via direction-constrained joint PTP.
-    current_joints = await motion_group.joints()
+    current_joints = home_joints
     direction_constraint_neg_z = api.models.DirectionConstraint(
         world=api.models.Vector3d([0.0, 0.0, 1.0]),  # world z-axis
         tcp=api.models.Vector3d([0.0, 0.0, -1.0]),  # tcp -z-axis
@@ -117,8 +122,8 @@ async def plan_and_execute_direction_constrained(ctx: ProgramContext):
         joints=[current_joints, home_joints], constraint=direction_constraint_neg_z, tcp=tcp
     )
 
-    projected_target_joints, projected_home_joints = projected_joint_positions
-    if projected_target_joints is None or projected_home_joints is None:
+    projected_current_joints, projected_home_joints = projected_joint_positions
+    if projected_current_joints is None or projected_home_joints is None:
         raise ValueError(
             "Failed to project current/home joints for direction constraint with tcp axis -z"
         )
@@ -127,20 +132,17 @@ async def plan_and_execute_direction_constrained(ctx: ProgramContext):
     setup = await motion_group.get_setup(tcp)
     joint_limits = setup.global_limits.joints if setup.global_limits is not None else None
     projected_home_joints = shift_joint_position_close_to_reference(
-        np.array(projected_home_joints), np.array(projected_target_joints), joint_limits
+        np.array(projected_home_joints), np.array(projected_current_joints), joint_limits
     ).tolist()
-    projected_target_joints = shift_joint_position_close_to_reference(
-        np.array(projected_target_joints), np.array(projected_home_joints), joint_limits
+    projected_current_joints = shift_joint_position_close_to_reference(
+        np.array(projected_current_joints), np.array(projected_home_joints), joint_limits
     ).tolist()
 
     second_phase_actions = [
-        joint_ptp(projected_target_joints, settings=normal),
-        direction_constrained_joint_ptp(
-            projected_home_joints, constraint=direction_constraint_neg_z, settings=fast
-        ),
+        joint_ptp(projected_current_joints, settings=normal),
+        joint_ptp(projected_home_joints, constraints=[direction_constraint_neg_z], settings=fast),
     ]
-    second_phase_trajectory = await motion_group.plan(second_phase_actions, tcp)
-    await motion_group.execute(second_phase_trajectory, tcp, actions=second_phase_actions)
+    await motion_group.plan_and_execute(second_phase_actions, tcp)
 
 
 if __name__ == "__main__":
