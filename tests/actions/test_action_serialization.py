@@ -1,13 +1,9 @@
 import json
 
+import pytest
+
 from nova import api
-from nova.actions import (
-    cartesian_ptp,
-    collision_free,
-    direction_constrained_cartesian_ptp,
-    direction_constrained_joint_ptp,
-    joint_ptp,
-)
+from nova.actions import cartesian_ptp, collision_free, joint_ptp
 from nova.actions.base import Action
 from nova.types import MotionSettings, Pose
 
@@ -24,24 +20,25 @@ def test_program_serialization_deserialization():
         tcp=api.models.Vector3d([0.0, 0.0, 1.0]),
         tolerance=0.05,
     )
+    constrained_pose = api.models.ConstrainedPose(
+        position=api.models.Vector3d([1.0, 2.0, 3.0]), orientation=0.0
+    )
     actions = [
         joint_ptp(home_joints, settings=MotionSettings(tcp_velocity_limit=200)),
         cartesian_ptp(target_pose, settings=MotionSettings(tcp_velocity_limit=150)),
-        direction_constrained_joint_ptp(
+        joint_ptp(
             home_joints,
-            constraint=direction_constraint,
+            constraints=[direction_constraint],
             settings=MotionSettings(tcp_velocity_limit=200),
         ),
-        direction_constrained_cartesian_ptp(
-            api.models.ConstrainedPose(
-                position=api.models.Vector3d([1.0, 2.0, 3.0]), orientation=0.0
-            ),
-            constraint=direction_constraint,
+        cartesian_ptp(
+            constrained_pose,
+            constraints=[direction_constraint],
             settings=MotionSettings(tcp_velocity_limit=150),
         ),
         collision_free(
             home_joints,
-            constraint=direction_constraint,
+            constraints=[direction_constraint],
             settings=MotionSettings(tcp_velocity_limit=200),
         ),
         joint_ptp(home_joints, settings=MotionSettings(tcp_velocity_limit=200)),
@@ -95,8 +92,8 @@ def test_program_serialization_deserialization():
             deserialized_action.settings.tcp_velocity_limit
             == original_action.settings.tcp_velocity_limit
         )
-        if hasattr(original_action, "constraint"):
-            assert deserialized_action.constraint == original_action.constraint
+        if hasattr(original_action, "constraints"):
+            assert deserialized_action.constraints == original_action.constraints
 
 
 def test_program_serialization_deserialization_collision_scene():
@@ -187,24 +184,51 @@ def test_program_serialization_deserialization_collision_scene():
         )
 
 
-def test_direction_constrained_motion_to_api_model():
+def test_constrained_ptp_to_api_model():
+    direction_constraint = api.models.DirectionConstraint(
+        world=api.models.Vector3d([0.0, 0.0, 1.0]),
+        tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+        tolerance=0.05,
+    )
+    constrained_pose = api.models.ConstrainedPose(
+        position=api.models.Vector3d([1.0, 2.0, 3.0]), orientation=0.1
+    )
+
+    cartesian_motion = cartesian_ptp(constrained_pose, constraints=[direction_constraint])
+    cartesian_path = cartesian_motion.to_api_model()
+    assert isinstance(cartesian_path.target_pose, api.models.ConstrainedPose)
+    assert cartesian_path.path_definition_name == "DirectionConstrainedCartesianPTP"
+    assert cartesian_motion.constraints == [direction_constraint]
+
+    joint_motion = joint_ptp((0.0, 0.0, 0.0, 0.0, 0.0, 0.0), constraints=[direction_constraint])
+    joint_path = joint_motion.to_api_model()
+    assert isinstance(joint_path.target_joint_position, api.models.DoubleArray)
+    assert joint_path.path_definition_name == "DirectionConstrainedJointPTP"
+
+
+def test_ptp_helpers_reject_multiple_constraints():
     direction_constraint = api.models.DirectionConstraint(
         world=api.models.Vector3d([0.0, 0.0, 1.0]),
         tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
         tolerance=0.05,
     )
 
-    cartesian_motion = direction_constrained_cartesian_ptp(
-        api.models.ConstrainedPose(position=api.models.Vector3d([1.0, 2.0, 3.0]), orientation=0.1),
-        constraint=direction_constraint,
-    )
-    cartesian_path = cartesian_motion.to_api_model()
-    assert isinstance(cartesian_path.target_pose, api.models.ConstrainedPose)
-    assert cartesian_path.path_definition_name == "DirectionConstrainedCartesianPTP"
+    with pytest.raises(ValueError, match="Exactly one DirectionConstraint"):
+        joint_ptp(
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+            constraints=[direction_constraint, direction_constraint],
+        )
 
-    joint_motion = direction_constrained_joint_ptp(
-        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0), constraint=direction_constraint
+
+def test_collision_free_rejects_multiple_constraints():
+    direction_constraint = api.models.DirectionConstraint(
+        world=api.models.Vector3d([0.0, 0.0, 1.0]),
+        tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+        tolerance=0.05,
     )
-    joint_path = joint_motion.to_api_model()
-    assert isinstance(joint_path.target_joint_position, api.models.DoubleArray)
-    assert joint_path.path_definition_name == "DirectionConstrainedJointPTP"
+
+    with pytest.raises(ValueError, match="Exactly one DirectionConstraint"):
+        collision_free(
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+            constraints=[direction_constraint, direction_constraint],
+        )

@@ -10,7 +10,13 @@ from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
-from nova.actions.motions import CartesianPTP, Circular, CollisionFreeMotion, Linear
+from nova.actions.motions import (
+    CartesianPTP,
+    Circular,
+    CollisionFreeMotion,
+    Linear,
+    _direction_constraint,
+)
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, PlanTrajectoryFailed
@@ -842,7 +848,9 @@ class MotionGroup(AbstractRobot):
                         motion_group_setup=motion_group_setup,
                         start_joint_position=api.models.DoubleArray(list(start_joint_position)),
                         target=api.models.DoubleArray(list(best_joint_solution)),
-                        constraint=action.constraint,
+                        constraint=_direction_constraint(action.constraints)
+                        if action.constraints is not None
+                        else None,
                         algorithm=action.algorithm,
                     ),
                 )

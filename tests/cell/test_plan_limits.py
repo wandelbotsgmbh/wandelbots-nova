@@ -170,7 +170,7 @@ async def test_collision_free_forwards_constraint_to_request():
     )
 
     await motion_group._plan_collision_free(
-        action=collision_free((0.1,) * 6, constraint=constraint),
+        action=collision_free((0.1,) * 6, constraints=[constraint]),
         tcp=None,
         motion_group_setup=setup,
         start_joint_position=START,
