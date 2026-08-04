@@ -15,7 +15,7 @@ requires-python = ">=3.11, <3.13"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
-    "wandelbots_api_client==26.5.0",
+    "wandelbots_api_client==26.5.3",
     "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",
@@ -74,26 +74,6 @@ ws = "wandelscript.cli:app"
 dev-wheel = "nova.helper_scripts.trigger_dev_wheel:main"
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 [dependency-groups]
 dev = [
     "ruff>=0.12.8",
@@ -149,7 +129,14 @@ markers = """
 python-version = "3.11"
 
 [tool.ty.src]
-include = ["nova", "examples", "tests", "wandelscript", "novax", "nova_rerun_bridge"]
+include = [
+    "nova",
+    "examples",
+    "tests",
+    "wandelscript",
+    "novax",
+    "nova_rerun_bridge",
+]
 exclude = [
     "wandelscript/grammar",
     "wandelscript/motions.py",
@@ -203,25 +190,6 @@ missing-argument = "ignore"
 
 [tool.ruff.lint.isort]
 known-first-party = ["nova", "nova_rerun_bridge", "novax"]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 [build-system]

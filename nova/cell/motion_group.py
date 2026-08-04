@@ -676,6 +676,7 @@ class MotionGroup(AbstractRobot):
         tcp: str | None,
         motion_group_setup: api.models.MotionGroupSetup,
         start_joint_position: tuple[float, ...],
+        singularity_handling: api.models.SingularityHandling | None = None,
     ) -> api.models.JointTrajectory:
         """
         This method plans a trajectory and checks for collisions.
@@ -729,6 +730,8 @@ class MotionGroup(AbstractRobot):
                 motion_group_setup=motion_group_setup,
                 start_joint_position=api.models.DoubleArray(list(start_joint_position)),
                 motion_commands=motion_commands,
+                singularity_handling=singularity_handling
+                or api.models.SingularityHandling.NONE,
             ),
         )
 
@@ -851,6 +854,7 @@ class MotionGroup(AbstractRobot):
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
+        singularity_handling: api.models.SingularityHandling | None = None,
     ) -> api.models.JointTrajectory:
         if not actions:
             raise ValueError("No actions provided")
@@ -905,6 +909,7 @@ class MotionGroup(AbstractRobot):
                     tcp=tcp,
                     start_joint_position=current_joints,
                     motion_group_setup=motion_group_setup,
+                    singularity_handling=singularity_handling,
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
