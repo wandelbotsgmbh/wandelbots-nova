@@ -13,6 +13,17 @@ from nova.types.pose import Pose
 PoseLike = ConfiguredPose | DatasetPose | api.models.Pose | Pose | Sequence[float] | np.ndarray
 
 
+def _direction_constraint(
+    constraints: list[api.models.DirectionConstraint],
+) -> api.models.DirectionConstraint:
+    """
+    In the future there may be more/ different constraints. For now just extract the DirectionConstraint
+    """
+    if len(constraints) != 1:
+        raise ValueError("Exactly one DirectionConstraint must be provided in constraints")
+    return constraints[0]
+
+
 class Motion(Action, ABC):
     """Base model of a motion
 
@@ -23,13 +34,13 @@ class Motion(Action, ABC):
     """
 
     type: Literal["linear", "cartesian_ptp", "circular", "joint_ptp", "spline", "collision_free"]
-    target: Pose | tuple[float, ...]
+    target: Pose | api.models.ConstrainedPose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_setup: api.models.CollisionSetup | None = None
 
     @property
     def is_cartesian(self):
-        return isinstance(self.target, Pose)
+        return isinstance(self.target, (Pose, api.models.ConstrainedPose))
 
     def is_motion(self) -> bool:
         return True
@@ -97,13 +108,30 @@ class CartesianPTP(Motion):
 
     Examples:
     >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
-    CartesianPTP(metas={}, type='cartesian_ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6), kinematic_configuration=None), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None)
+    CartesianPTP(metas={}, type='cartesian_ptp', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6), kinematic_configuration=None), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, constraints=None)
 
     """
 
     type: Literal["cartesian_ptp"] = "cartesian_ptp"
+    target: api.models.ConstrainedPose | Pose
+    constraints: list[api.models.DirectionConstraint] | None = None
 
-    def to_api_model(self) -> api.models.PathCartesianPTP:
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def _coerce_constrained_target(cls, data):
+        if not isinstance(data, dict):
+            return data
+        if data.get("constraints") is None:
+            return data
+        target = data.get("target")
+        if isinstance(target, dict) and not isinstance(target, api.models.ConstrainedPose):
+            data = dict(data)
+            data["target"] = api.models.ConstrainedPose.model_validate(target)
+        return data
+
+    def to_api_model(
+        self,
+    ) -> api.models.PathCartesianPTP | api.models.PathDirectionConstrainedCartesianPTP:
         """Serialize the model to the API model
 
         If target.kinematic_configuration is set, it is passed to
@@ -118,6 +146,16 @@ class CartesianPTP(Motion):
         >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc), settings=MotionSettings()).to_api_model().kinematic_configuration == kc
         True
         """
+        if self.constraints is not None:
+            if not isinstance(self.target, api.models.ConstrainedPose):
+                raise ValueError(
+                    "Target must be an api.models.ConstrainedPose when constraints are provided"
+                )
+            return api.models.PathDirectionConstrainedCartesianPTP(
+                target_pose=self.target,
+                constraint=_direction_constraint(self.constraints),
+                path_definition_name="DirectionConstrainedCartesianPTP",
+            )
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
         return api.models.PathCartesianPTP(
@@ -128,18 +166,22 @@ class CartesianPTP(Motion):
 
 
 def cartesian_ptp(
-    target: PoseLike,
+    target: PoseLike | api.models.ConstrainedPose,
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
+    constraints: list[api.models.DirectionConstraint] | None = None,
     **kwargs: dict[str, Any],
 ) -> CartesianPTP:
     """Convenience function to create a point-to-point motion
 
     Args:
-        target: the target pose or vector. If the target is a vector, the orientation is set to (0, 0, 0).
-            To specify a kinematic configuration, pass it via the Pose:
-            ``Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=KinematicConfiguration(...))``
+        target: the target pose or vector. If the target is a vector, the orientation is set to
+            (0, 0, 0). To specify a kinematic configuration, pass it via the Pose:
+            ``Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=KinematicConfiguration(...))``.
+            When ``constraints`` are provided, ``target`` must be an
+            ``api.models.ConstrainedPose``.
         settings: the motion settings
+        constraints: an optional list with a single ``DirectionConstraint``.
 
     Returns: the point-to-point motion
 
@@ -149,13 +191,27 @@ def cartesian_ptp(
     >>> assert cartesian_ptp((1, 2, 3)) == cartesian_ptp((1, 2, 3, 0, 0, 0))
     >>> assert cartesian_ptp(Pose((1, 2, 3, 4, 5, 6)), settings=ms) == cartesian_ptp((1, 2, 3, 4, 5, 6), settings=ms)
     >>> Action.from_dict(cartesian_ptp((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
-    CartesianPTP(metas={'line_number': 1}, type='cartesian_ptp', target=Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None)
+    CartesianPTP(metas={'line_number': 1}, type='cartesian_ptp', target=Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, constraints=None)
 
     """
-    target = target if isinstance(target, Pose) else Pose(target)
     kwargs.update(utils.get_caller_metas())
+    if constraints is not None:
+        _direction_constraint(constraints)
+    if constraints is not None:
+        if not isinstance(target, api.models.ConstrainedPose):
+            raise ValueError(
+                "target must be an api.models.ConstrainedPose when constraints are provided"
+            )
+    elif isinstance(target, api.models.ConstrainedPose):
+        raise ValueError("ConstrainedPose targets require constraints")
+    else:
+        target = target if isinstance(target, Pose) else Pose(target)
     return CartesianPTP(
-        target=target, settings=settings, collision_setup=collision_setup, metas=kwargs
+        target=target,
+        settings=settings,
+        collision_setup=collision_setup,
+        constraints=constraints,
+        metas=kwargs,
     )
 
 
@@ -236,19 +292,28 @@ class JointPTP(Motion):
 
     Examples:
     >>> JointPTP(target=(1, 2, 3, 4, 5, 6), settings=MotionSettings(tcp_velocity_limit=30))
-    JointPTP(metas={}, type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None)
+    JointPTP(metas={}, type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, constraints=None)
 
     """
 
     type: Literal["joint_ptp"] = "joint_ptp"
+    constraints: list[api.models.DirectionConstraint] | None = None
 
-    def to_api_model(self) -> api.models.PathJointPTP:
+    def to_api_model(self) -> api.models.PathJointPTP | api.models.PathDirectionConstrainedJointPTP:
         """Serialize the model to the API model
 
         Examples:
         >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
         PathJointPTP(target_joint_position=DoubleArray(root=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]), path_definition_name='PathJointPTP')
         """
+        if self.constraints is not None:
+            if not isinstance(self.target, tuple):
+                raise ValueError("Target must be a tuple object")
+            return api.models.PathDirectionConstrainedJointPTP(
+                target_joint_position=api.models.DoubleArray(list(self.target)),
+                constraint=_direction_constraint(self.constraints),
+                path_definition_name="DirectionConstrainedJointPTP",
+            )
         if not isinstance(self.target, tuple):
             raise ValueError("Target must be a tuple object")
         return api.models.PathJointPTP(
@@ -261,6 +326,7 @@ def joint_ptp(
     target: tuple[float, ...],
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
+    constraints: list[api.models.DirectionConstraint] | None = None,
     **kwargs: dict[str, Any],
 ) -> JointPTP:
     """Convenience function to create a joint PTP motion
@@ -268,8 +334,10 @@ def joint_ptp(
     Args:
         target: the target joint configuration
         settings: the motion settings
-        collision_setup: the collision setup. If collision_setup is provided, the motion will be a collision free motion.
-            If collision_setup is not provided, the motion will be a normal joint PTP motion.
+        collision_setup: the collision setup. If collision_setup is provided, the motion will be a
+            collision free motion. If collision_setup is not provided, the motion will be a normal
+            joint PTP motion.
+        constraints: an optional list with a single ``DirectionConstraint``.
 
     Returns: the joint PTP motion
 
@@ -277,12 +345,19 @@ def joint_ptp(
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert joint_ptp((1, 2, 3, 4, 5, 6), settings=ms) == JointPTP(target=(1, 2, 3, 4, 5, 6), settings=ms, metas={'line_number': 1})
     >>> Action.from_dict(joint_ptp((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
-    JointPTP(metas={'line_number': 1}, type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None)
+    JointPTP(metas={'line_number': 1}, type='joint_ptp', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, constraints=None)
 
     """
-
     kwargs.update(utils.get_caller_metas())
-    return JointPTP(target=target, settings=settings, collision_setup=collision_setup, metas=kwargs)
+    if constraints is not None:
+        _direction_constraint(constraints)
+    return JointPTP(
+        target=target,
+        settings=settings,
+        collision_setup=collision_setup,
+        constraints=constraints,
+        metas=kwargs,
+    )
 
 
 jnt = joint_ptp
@@ -351,13 +426,14 @@ class CollisionFreeMotion(Motion):
 
     Examples:
     >>> CollisionFreeMotion(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
-    CollisionFreeMotion(metas={}, type='collision_free', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6), kinematic_configuration=None), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, algorithm=CollisionFreeAlgorithm(root=RRTConnectAlgorithm(algorithm_name='RRTConnectAlgorithm', max_iterations=10000, max_step_size=0.1, adaptive_step_size=True, step_size=None, apply_smoothing=True, apply_blending=True)))
+    CollisionFreeMotion(metas={}, type='collision_free', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6), kinematic_configuration=None), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, constraints=None, algorithm=CollisionFreeAlgorithm(root=RRTConnectAlgorithm(algorithm_name='RRTConnectAlgorithm', max_iterations=10000, max_step_size=0.1, adaptive_step_size=True, step_size=None, apply_smoothing=True, apply_blending=True)))
     """
 
     type: Literal["collision_free"] = "collision_free"
     target: Pose | tuple[float, ...]
     settings: MotionSettings = MotionSettings()
     collision_setup: api.models.CollisionSetup | None = None
+    constraints: list[api.models.DirectionConstraint] | None = None
 
     algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(
         api.models.RRTConnectAlgorithm()
@@ -374,6 +450,7 @@ def collision_free(
     target: Pose | tuple[float, ...],
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
+    constraints: list[api.models.DirectionConstraint] | None = None,
     algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(
         api.models.RRTConnectAlgorithm()
     ),
@@ -385,7 +462,8 @@ def collision_free(
         target: the target joint configuration or pose
         settings: the motion settings
         collision_setup: the collision setup
-        alogorithm: the collision free algorithm, default is RRTConnectAlgorithm
+        constraints: an optional list with a single ``DirectionConstraint``.
+        algorithm: the collision free algorithm, default is RRTConnectAlgorithm
 
     Returns: the collision free motion
 
@@ -393,13 +471,16 @@ def collision_free(
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert collision_free((1, 2, 3, 4, 5, 6), settings=ms) == CollisionFreeMotion(target=(1, 2, 3, 4, 5, 6), settings=ms, metas={'line_number': 1})
     >>> Action.from_dict(collision_free((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
-    CollisionFreeMotion(metas={'line_number': 1}, type='collision_free', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, algorithm=CollisionFreeAlgorithm(root=RRTConnectAlgorithm(algorithm_name='RRTConnectAlgorithm', max_iterations=10000, max_step_size=0.1, adaptive_step_size=True, step_size=None, apply_smoothing=True, apply_blending=True)))
+    CollisionFreeMotion(metas={'line_number': 1}, type='collision_free', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, constraints=None, algorithm=CollisionFreeAlgorithm(root=RRTConnectAlgorithm(algorithm_name='RRTConnectAlgorithm', max_iterations=10000, max_step_size=0.1, adaptive_step_size=True, step_size=None, apply_smoothing=True, apply_blending=True)))
     """
     kwargs.update(utils.get_caller_metas())
+    if constraints is not None:
+        _direction_constraint(constraints)
     return CollisionFreeMotion(
         target=target,
         settings=settings,
         collision_setup=collision_setup,
+        constraints=constraints,
         algorithm=algorithm,
         metas=kwargs,
     )
