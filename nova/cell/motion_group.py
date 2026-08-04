@@ -730,8 +730,7 @@ class MotionGroup(AbstractRobot):
                 motion_group_setup=motion_group_setup,
                 start_joint_position=api.models.DoubleArray(list(start_joint_position)),
                 motion_commands=motion_commands,
-                singularity_handling=singularity_handling
-                or api.models.SingularityHandling.NONE,
+                singularity_handling=singularity_handling or api.models.SingularityHandling.NONE,
             ),
         )
 
