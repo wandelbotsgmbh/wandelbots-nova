@@ -15,7 +15,7 @@ def shift_joint_position_close_to_reference(
     if joint_limits is None:
         return shifted_joints
 
-    for i, joint_limit in enumerate(joint_limits):
+    for i, joint_limit in enumerate(joint_limits[: len(shifted_joints)]):
         if joint_limit.position is None:
             continue
 
