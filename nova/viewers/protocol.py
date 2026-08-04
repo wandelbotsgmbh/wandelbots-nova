@@ -61,6 +61,32 @@ class NovaRerunBridgeProtocol(Protocol):
         """Log collision scenes to the viewer."""
         ...
 
+    async def visualize_collision_scene(
+        self,
+        motion_group_description: api.models.MotionGroupDescription,
+        collision_setup: api.models.CollisionSetup | None = None,
+        joint_positions: list[float] | tuple[float, ...] | None = None,
+        tcp_name: str = "Flange",
+        base_entity_path: str = "collision_scenes/static",
+        show_safety_geometry: bool = True,
+        show_collision_geometry: bool = True,
+        show_environment: bool = True,
+        highlight_collisions: bool = True,
+    ) -> None:
+        """Visualize a static collision scene."""
+        ...
+
+    async def visualize_plan(
+        self,
+        trajectory: api.models.JointTrajectory,
+        motion_group: MotionGroup,
+        tcp: str,
+        collision_setup: api.models.CollisionSetup | None = None,
+        tool_asset: Optional[str] = None,
+    ) -> None:
+        """Visualize a planned trajectory without executing it."""
+        ...
+
     def log_coordinate_system(self) -> None:
         """Log the coordinate system."""
         ...
