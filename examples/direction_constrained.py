@@ -30,10 +30,10 @@ def project_cartesian_pose_direction_constraint(
     world_tcp_pose: Pose, constraint: api.models.DirectionConstraint
 ) -> Pose:
     """Rotate a pose so the constrained TCP direction aligns with the target world direction."""
-    constraint_tcp = np.array(constraint.tcp)
-    target_constraint_world = np.array(constraint.world)
+    constraint_tcp = np.array(constraint.tcp, dtype=float)
+    target_constraint_world = np.array(constraint.world, dtype=float)
 
-    world_tcp_rotation = R.from_rotvec(np.asarray(world_tcp_pose.orientation))
+    world_tcp_rotation = R.from_rotvec(np.asarray(world_tcp_pose.orientation, dtype=float))
     current_constraint_world = world_tcp_rotation.apply(constraint_tcp)
 
     rotation_correction, _ = R.align_vectors([target_constraint_world], [current_constraint_world])
