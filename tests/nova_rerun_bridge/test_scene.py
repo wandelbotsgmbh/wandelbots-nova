@@ -4,7 +4,7 @@ Tests focus on geometry conversion, scene graph construction, and collision dete
 They avoid spawning a Rerun viewer by mocking rerun calls.
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest

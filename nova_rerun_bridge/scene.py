@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 import numpy as np
 import rerun as rr
@@ -17,7 +16,6 @@ import trimesh
 from scipy.spatial.transform import Rotation
 
 from nova import api
-from nova.types import Pose
 from nova_rerun_bridge.dh_robot import DHRobot
 from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
