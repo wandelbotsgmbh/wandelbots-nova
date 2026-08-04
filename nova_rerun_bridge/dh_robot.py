@@ -105,9 +105,7 @@ class DHRobot:
         """
         accumulated = self.pose_to_matrix(self.mounting)
         transforms = [accumulated.copy()]
-        for dh_param, joint_position in zip(
-            self.dh_parameters, joint_positions, strict=False
-        ):
+        for dh_param, joint_position in zip(self.dh_parameters, joint_positions, strict=False):
             transform = self.dh_transform(dh_param=dh_param, joint_position=joint_position)
             accumulated = accumulated @ transform
             transforms.append(accumulated.copy())
@@ -119,4 +117,7 @@ class DHRobot:
         :param joint_values: Object containing joint rotation values as a list in joint_values.joints.
         :return: A list of joint positions as [x, y, z].
         """
-        return [transform[:3, 3].tolist() for transform in self.compute_forward_kinematics(joint_positions)]
+        return [
+            transform[:3, 3].tolist()
+            for transform in self.compute_forward_kinematics(joint_positions)
+        ]
