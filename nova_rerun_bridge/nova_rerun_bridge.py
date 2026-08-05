@@ -192,9 +192,8 @@ class NovaRerunBridge:
         show_safety_geometry: bool = True,
         show_collision_geometry: bool = True,
         show_environment: bool = True,
-        highlight_collisions: bool = True,
     ) -> None:
-        """Visualize a static collision scene: robot + environment + optional collision highlighting.
+        """Visualize a static collision scene: robot + environment.
 
         This method does not require a live motion group; all data comes from the provided
         ``motion_group_description`` and ``collision_setup``.
@@ -208,7 +207,6 @@ class NovaRerunBridge:
             show_safety_geometry: Whether to draw controller-reported safety geometry.
             show_collision_geometry: Whether to draw collision-setup robot geometry.
             show_environment: Whether to draw environment colliders.
-            highlight_collisions: Whether to highlight intersecting colliders in red.
         """
         scene = RobotStateScene(
             motion_group_description=motion_group_description,
@@ -221,7 +219,6 @@ class NovaRerunBridge:
             show_safety_geometry=show_safety_geometry,
             show_collision_geometry=show_collision_geometry,
             show_environment=show_environment,
-            highlight_collisions=highlight_collisions,
         )
         log_scene(entities, static=True, clear_existing=True)
 
@@ -257,7 +254,6 @@ class NovaRerunBridge:
             show_safety_geometry=self.show_safety_link_chain,
             show_collision_geometry=self.show_collision_link_chain,
             show_environment=True,
-            highlight_collisions=False,
         )
 
         collision_setups = {}

@@ -322,7 +322,6 @@ class RobotStateScene:
         show_safety_geometry: bool = True,
         show_collision_geometry: bool = True,
         show_environment: bool = True,
-        highlight_collisions: bool = False,
     ) -> list[SceneEntity]:
         """Build the scene entities for a robot state.
 
@@ -332,7 +331,6 @@ class RobotStateScene:
             show_safety_geometry: Whether to include controller-reported safety geometry.
             show_collision_geometry: Whether to include collision-setup robot geometry.
             show_environment: Whether to include environment colliders from the setup.
-            highlight_collisions: Whether to highlight colliding pairs in red.
 
         Returns:
             A list of scene entities in world space.
@@ -411,61 +409,7 @@ class RobotStateScene:
                         )
                     )
 
-        if highlight_collisions:
-            pairs = find_colliding_pairs(entities)
-            highlighted_ids = {id(e) for pair in pairs for e in pair}
-            entities = [
-                SceneEntity(
-                    entity_path=e.entity_path,
-                    transform=e.transform,
-                    collider=e.collider,
-                    highlight=id(e) in highlighted_ids,
-                )
-                for e in entities
-            ]
-
         return entities
-
-
-def _transformed_mesh(entity: SceneEntity) -> trimesh.Trimesh | None:
-    """Return a world-space trimesh for an entity, or None if unsupported."""
-    mesh = _make_entity_mesh(entity.collider)
-    if mesh is None:
-        return None
-    mesh.apply_transform(entity.transform)
-    return mesh
-
-
-def find_colliding_pairs(entities: list[SceneEntity]) -> list[tuple[SceneEntity, SceneEntity]]:
-    """Find pairs of entities whose meshes intersect.
-
-    Args:
-        entities: Scene entities to test.
-
-    Returns:
-        Pairs of intersecting entities. Pairs are returned once (a, b) with a before b.
-    """
-    manager = trimesh.collision.CollisionManager()
-    for i, entity in enumerate(entities):
-        mesh = _transformed_mesh(entity)
-        if mesh is not None and len(mesh.vertices) > 0:
-            manager.add_object(str(i), mesh)
-
-    collisions: list[tuple[SceneEntity, SceneEntity]] = []
-    try:
-        in_collision, collision_names = manager.in_collision_internal(return_names=True)
-    except Exception:
-        # Trimesh collision queries can fail on degenerate geometry; ignore.
-        return collisions
-
-    if not in_collision or collision_names is None:
-        return collisions
-
-    for a_name, b_name in collision_names:
-        a_index = int(a_name)
-        b_index = int(b_name)
-        collisions.append((entities[a_index], entities[b_index]))
-    return collisions
 
 
 def log_scene(
