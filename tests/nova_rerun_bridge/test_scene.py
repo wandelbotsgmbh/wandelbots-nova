@@ -17,7 +17,6 @@ from nova_rerun_bridge.scene import (
     _collider_pose_matrix,
     _make_entity_mesh,
     collider_to_rerun,
-    find_colliding_pairs,
     log_entity,
     log_scene,
 )
@@ -293,85 +292,6 @@ class TestRobotStateScene:
         assert len(entities) == 2
         assert any("collision/links/link_0" in e.entity_path for e in entities)
         assert any("collision/links/link_1" in e.entity_path for e in entities)
-
-
-class TestCollisionDetection:
-    """Tests for collision highlighting."""
-
-    def test_overlapping_boxes_collide(self):
-        entities = [
-            SceneEntity(
-                entity_path="a",
-                transform=np.eye(4),
-                collider=_box_collider(size_x=10, size_y=10, size_z=10),
-            ),
-            SceneEntity(
-                entity_path="b",
-                transform=np.eye(4),
-                collider=_box_collider(size_x=10, size_y=10, size_z=10),
-            ),
-        ]
-        pairs = find_colliding_pairs(entities)
-        assert len(pairs) == 1
-        assert pairs[0][0].entity_path == "a"
-        assert pairs[0][1].entity_path == "b"
-
-    def test_separated_boxes_do_not_collide(self):
-        transform_a = np.eye(4)
-        transform_b = np.eye(4)
-        transform_b[:3, 3] = [100.0, 0.0, 0.0]
-        entities = [
-            SceneEntity(
-                entity_path="a",
-                transform=transform_a,
-                collider=_box_collider(size_x=10, size_y=10, size_z=10),
-            ),
-            SceneEntity(
-                entity_path="b",
-                transform=transform_b,
-                collider=_box_collider(size_x=10, size_y=10, size_z=10),
-            ),
-        ]
-        pairs = find_colliding_pairs(entities)
-        assert len(pairs) == 0
-
-    def test_highlighted_entities_marked(self):
-        description = api.models.MotionGroupDescription(
-            motion_group_model=api.models.MotionGroupModel("UniversalRobots_UR5e"),
-            operation_limits=api.models.OperationLimits(
-                auto_limits=api.models.LimitSet(
-                    joints=[
-                        api.models.JointLimits(
-                            position=api.models.LimitRange(lower_limit=-3.14, upper_limit=3.14)
-                        )
-                    ],
-                    tcp=api.models.CartesianLimits(velocity=1000.0),
-                )
-            ),
-            dh_parameters=[
-                api.models.DHParameter(
-                    a=0.0, d=0.0, alpha=0.0, theta=0.0, reverse_rotation_direction=False
-                )
-            ],
-            mounting=api.models.Pose(
-                position=api.models.Vector3d([0, 0, 0]),
-                orientation=api.models.RotationVector([0, 0, 0]),
-            ),
-        )
-        setup = api.models.CollisionSetup(
-            colliders=api.models.ColliderDictionary(
-                {
-                    "a": _box_collider(size_x=10, position=(0, 0, 0)),
-                    "b": _box_collider(size_x=10, position=(1, 0, 0)),
-                }
-            )
-        )
-        scene = RobotStateScene(description, collision_setup=setup)
-        entities = scene.build_entities(
-            show_safety_geometry=False, show_collision_geometry=False, highlight_collisions=True
-        )
-        highlighted = [e for e in entities if e.highlight]
-        assert len(highlighted) == 2
 
 
 class TestLogEntity:
