@@ -415,3 +415,58 @@ async def test_cursor_detach_on_standstill_tears_down_on_pause_on_io(kuka_mg):
         await kuka.write("OUT#900", False)
         cursor.detach()
         execute_task.cancel()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cursor_set_outputs_fires_io_during_movement(kuka_mg):
+    """The IO overlay must reach the controller through the cursor.
+
+    Before ``set_outputs`` was plumbed through the cursor, a trajectory's
+    ``io_write`` actions were silently dropped whenever it was executed via a
+    cursor rather than the one-shot movement controller.
+    """
+    mg, kuka = kuka_mg
+    await kuka.write("OUT#900", False)
+
+    trajectory, actions = await _plan_move(mg, delta=0.4)
+    outputs = [
+        api.models.SetIO(
+            io=api.models.IOValue(api.models.IOBooleanValue(io="OUT#900", value=True)),
+            location=0.0,
+            io_origin=api.models.IOOrigin.CONTROLLER,
+        )
+    ]
+
+    cursor_ready = asyncio.Event()
+    holder: list[TrajectoryCursor] = []
+
+    def factory(context: MovementControllerContext) -> MovementControllerFunction:
+        cursor = TrajectoryCursor(
+            motion_id=context.motion_id,
+            motion_group_state_stream=context.motion_group_state_stream_gen(),
+            joint_trajectory=trajectory,
+            actions=actions,
+            set_outputs=outputs,
+            detach_on_standstill=True,
+        )
+        holder.append(cursor)
+        cursor_ready.set()
+        return cursor.cntrl
+
+    execute_task = asyncio.create_task(
+        mg.execute(trajectory, "Flange", actions, movement_controller=factory)
+    )
+    await asyncio.wait_for(cursor_ready.wait(), timeout=10.0)
+    cursor = holder[0]
+
+    try:
+        assert await kuka.read("OUT#900") is False
+        await asyncio.wait_for(cursor.forward(), timeout=30.0)
+        assert await kuka.read("OUT#900") is True, (
+            "set_outputs overlay never reached the controller through the cursor"
+        )
+    finally:
+        await kuka.write("OUT#900", False)
+        cursor.detach()
+        execute_task.cancel()
