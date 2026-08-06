@@ -26,8 +26,8 @@ uv run download-models
 
 ```python
 # Add credentials and instance to .env file
-NOVA_API="https://your-instance.wandelbots.io"
-NOVA_ACCESS_TOKEN="your-access-token"
+NOVA_API = "https://your-instance.wandelbots.io"
+NOVA_ACCESS_TOKEN = "your-access-token"
 ```
 
 ```python
@@ -36,10 +36,7 @@ from nova import Nova, NovaConfig
 
 # Connect to your Nova instance (or use .env file)
 nova = Nova(
-  config=NovaConfig(
-    host="https://your-instance.wandelbots.io",
-    access_token="your-access-token"
-  )
+    config=NovaConfig(host="https://your-instance.wandelbots.io", access_token="your-access-token")
 )
 bridge = NovaRerunBridge(nova)
 
