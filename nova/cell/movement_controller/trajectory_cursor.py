@@ -46,10 +46,11 @@ Example usage:
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator as AsyncIteratorABC
 from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
 from math import ceil, floor
-from typing import AsyncIterator, Optional, Union
+from typing import AsyncIterator, Callable, Optional, Union, cast
 
 import pydantic
 from blinker import signal
@@ -58,13 +59,31 @@ from nova import api
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
 from nova.cell.movement_controller.trajectory_state_machine import TrajectoryExecutionMachine
-from nova.exceptions import InitMovementFailed
+from nova.exceptions import ErrorDuringMovement, InitMovementFailed
 from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream
 from nova.utils import SourceLocation
 
 logger = logging.getLogger(__name__)
 
 _STREAM_STARTUP_TIMEOUT = 5.0
+
+# Bound on states buffered for __aiter__ so an unconsumed cursor cannot grow
+# without limit; oldest states are dropped first.
+_DEFAULT_MAX_QUEUED_STATES = 1024
+
+MotionGroupStateSource = Union[
+    AsyncIterator[api.models.MotionGroupState],
+    Callable[[], AsyncIterator[api.models.MotionGroupState]],
+]
+"""A live motion-group state stream, or a zero-argument factory returning one."""
+
+
+def _resolve_state_stream(
+    source: MotionGroupStateSource,
+) -> AsyncIterator[api.models.MotionGroupState]:
+    """Return a live state stream, invoking ``source`` when it is a factory."""
+    stream = source() if not isinstance(source, AsyncIteratorABC) else source
+    return cast(AsyncIterator[api.models.MotionGroupState], stream)
 
 
 class OperationType(Enum):
@@ -297,6 +316,19 @@ class OperationHandler:
         """
         return self._operation is not None and not self._operation.future.done()
 
+    def is_commanded(self) -> bool:
+        """Whether the current operation's command has actually been sent.
+
+        An operation still in ``INITIAL`` has had nothing put on the wire, so any
+        "movement finished" signal observed in that state cannot belong to it.
+        Gating on this — rather than on the acknowledgement having been received —
+        keeps the check free of races against a fast state stream.
+        """
+        return (
+            self._operation is not None
+            and self._operation.operation_state is not OperationState.INITIAL
+        )
+
     @property
     def current_operation(self) -> Optional[Operation]:
         """Get the current operation, if any."""
@@ -382,6 +414,7 @@ class Intent:
     playback_speed_in_percent: int | None = None
     start_on_io: api.models.StartOnIO | None = None
     pause_on_io: api.models.PauseOnIO | None = None
+    set_outputs: list[api.models.SetIO] | None = None
 
     def to_commands(self) -> list[ExecuteTrajectoryRequestCommand]:
         """Build the concrete API commands for this intent."""
@@ -410,6 +443,10 @@ class Intent:
                     ),
                     start_on_io=self.start_on_io,
                     pause_on_io=self.pause_on_io,
+                    # The server treats every start as an override of the attached
+                    # overlay, so the full list must travel with each one; omitting
+                    # it on a resume silently clears the remaining outputs.
+                    set_outputs=self.set_outputs,
                 )
             )
         return commands
@@ -492,24 +529,47 @@ class TrajectoryCursor:
     def __init__(
         self,
         motion_id: str,
-        motion_group_state_stream: AsyncIterator[api.models.MotionGroupState],
-        joint_trajectory: api.models.JointTrajectory,
+        motion_group_state_stream: MotionGroupStateSource,
+        joint_trajectory: api.models.JointTrajectory | None = None,
         actions: list[Action] | None = None,
         initial_location: float = 0.0,
         detach_on_standstill: bool = False,
+        set_outputs: list[api.models.SetIO] | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
+        emit_motion_events: bool = True,
+        max_queued_states: int = _DEFAULT_MAX_QUEUED_STATES,
     ):
         """Initialize a trajectory cursor.
 
         Args:
             motion_id: Unique identifier for this motion execution.
-            motion_group_state_stream: Async stream of motion group state updates.
-            joint_trajectory: The planned joint-space trajectory to execute.
+            motion_group_state_stream: Async stream of motion group state updates,
+                or a zero-argument factory returning one.
+            joint_trajectory: The planned joint-space trajectory to execute. Optional;
+                when omitted the cursor cannot answer location-bounded questions
+                (``end_location``, ``get_movement_options``, ``forward_to_next_action``)
+                and raises if they are used.
             actions: Actions that make up the trajectory. May contain a mix of
                 motion and non-motion actions (e.g. ``WriteAction``); only the
                 motion actions drive the cursor's location-to-action mapping.
-                Optional for location-based navigation.
+                Optional for location-based navigation. An empty list is treated
+                the same as ``None`` — no action metadata.
             initial_location: Starting position on the trajectory (usually 0.0).
             detach_on_standstill: If True, automatically detach when robot stops.
+            set_outputs: IO overlay attached to *every* ``StartMovementRequest`` this
+                cursor emits. The server treats each start as an override of the
+                previously attached overlay, so a resume that omitted these would
+                silently clear them for the rest of the trajectory — hence they are
+                held here rather than passed per call.
+            start_on_io: Default IO gate applied to every emitted start (same
+                override reasoning as ``set_outputs``). Per-call arguments win.
+            pause_on_io: Default IO pause condition applied to every emitted start.
+            emit_motion_events: When False, no ``motion_started`` signals are emitted.
+                Used by one-shot execution, which has no UI to feed.
+            max_queued_states: Upper bound on states buffered for ``__aiter__``.
+                Oldest states are dropped past this bound so that a cursor whose
+                iterator is never consumed cannot grow without limit.
         """
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
@@ -521,9 +581,9 @@ class TrajectoryCursor:
         # their original order so future work can emit events or use them as
         # execution-step boundaries without losing positional information.
         # TODO: surface non-motion actions through the cursor's event API.
-        self._raw_actions: tuple[Action, ...] | None = (
-            tuple(actions) if actions is not None else None
-        )
+        # An empty ``actions`` list carries no mapping information, so it is
+        # normalised to None rather than asserting a zero-length trajectory.
+        self._raw_actions: tuple[Action, ...] | None = tuple(actions) if actions else None
         # Delegate motion detection to CombinedActions.motions instead of
         # re-implementing it here.
         raw_combined = (
@@ -533,7 +593,7 @@ class TrajectoryCursor:
             CombinedActions(items=tuple(raw_combined.motions)) if raw_combined is not None else None
         )
 
-        if self.actions is not None:
+        if self.actions is not None and joint_trajectory is not None:
             expected_end_location = len(self.actions)
             actual_end_location = joint_trajectory.locations[-1].root
             if abs(actual_end_location - expected_end_location) > 0.01:
@@ -548,9 +608,15 @@ class TrajectoryCursor:
         self._in_queue: asyncio.Queue[api.models.MotionGroupState | _QueueSentinel] = (
             asyncio.Queue()
         )
+        self._max_queued_states = max_queued_states
         self._motion_group_state_stream: AsyncIterator[api.models.MotionGroupState] = (
-            motion_group_state_stream
+            _resolve_state_stream(motion_group_state_stream)
         )
+
+        self._set_outputs = set_outputs
+        self._start_on_io = start_on_io
+        self._pause_on_io = pause_on_io
+        self._emit_motion_events = emit_motion_events
 
         self._current_location = initial_location
         # TODO maybe None instead until we have a target?
@@ -562,14 +628,54 @@ class TrajectoryCursor:
 
         self._initialize_task = asyncio.create_task(self.ainitialize())
 
+    def _build_intent(
+        self,
+        operation_type: OperationType,
+        *,
+        target_location: float | None = None,
+        playback_speed_in_percent: int | None = None,
+        start_on_io: api.models.StartOnIO | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
+    ) -> Intent:
+        """Build an Intent, applying the cursor-level IO defaults.
+
+        ``set_outputs`` is always taken from the cursor: the server treats every
+        ``StartMovementRequest`` as an override of the attached overlay, so it must
+        travel with each one.
+        """
+        return Intent(
+            operation_type=operation_type,
+            target_location=target_location,
+            playback_speed_in_percent=playback_speed_in_percent,
+            start_on_io=start_on_io if start_on_io is not None else self._start_on_io,
+            pause_on_io=pause_on_io if pause_on_io is not None else self._pause_on_io,
+            set_outputs=self._set_outputs,
+        )
+
     async def ainitialize(self):
         """Async initialization that emits the initial motion event."""
-        await motion_started.send_async(self, event=self._get_motion_event())
+        await self._send_motion_started()
+
+    async def _send_motion_started(self, *, forward: bool | None = None) -> None:
+        """Emit a ``motion_started`` signal unless event emission is disabled."""
+        if not self._emit_motion_events:
+            return
+        await motion_started.send_async(self, event=self._get_motion_event(forward=forward))
 
     @property
     def end_location(self) -> float:
-        """The location value at the end of the trajectory."""
-        assert getattr(self, "joint_trajectory", None) is not None
+        """The location value at the end of the trajectory.
+
+        Raises:
+            ValueError: If the cursor was created without a ``joint_trajectory``.
+        """
+        if getattr(self, "joint_trajectory", None) is None:
+            raise ValueError(
+                "This TrajectoryCursor was created without a joint_trajectory, so the "
+                "end of the trajectory is unknown. Pass joint_trajectory= to use "
+                "location-bounded operations."
+            )
+        assert self.joint_trajectory is not None
         return self.joint_trajectory.locations[-1].root
 
     @property
@@ -637,6 +743,10 @@ class TrajectoryCursor:
 
         Returns:
             Set containing CAN_MOVE_FORWARD if not at end, CAN_MOVE_BACKWARD if not at start.
+
+        Raises:
+            ValueError: If the cursor was created without a ``joint_trajectory``,
+                since the end of the trajectory is then unknown.
         """
         options: dict[MovementOption, bool] = {
             MovementOption.CAN_MOVE_FORWARD: self._current_location < self.end_location,
@@ -697,8 +807,8 @@ class TrajectoryCursor:
             self._target_location = target_location
 
         self._set_intent(
-            Intent(
-                operation_type=OperationType.FORWARD,
+            self._build_intent(
+                OperationType.FORWARD,
                 target_location=target_location,
                 playback_speed_in_percent=playback_speed_in_percent,
                 start_on_io=start_on_io,
@@ -745,8 +855,8 @@ class TrajectoryCursor:
             self._target_location = target_location
 
         self._set_intent(
-            Intent(
-                operation_type=OperationType.BACKWARD,
+            self._build_intent(
+                OperationType.BACKWARD,
                 target_location=target_location,
                 playback_speed_in_percent=playback_speed_in_percent,
                 start_on_io=start_on_io,
@@ -929,7 +1039,12 @@ class TrajectoryCursor:
         future = self._start_operation(
             OperationType.PAUSE, expected_response_type=api.models.PauseMovementResponse
         )
-        self._set_intent(Intent(operation_type=OperationType.PAUSE))
+        self._set_intent(
+            Intent(
+                operation_type=OperationType.PAUSE
+                # A pause carries no overlay: PauseMovementRequest has no such field.
+            )
+        )
         return future
 
     def detach(self):
@@ -1039,6 +1154,11 @@ class TrajectoryCursor:
                 motion_group_state_monitor_task.cancel()
         except BaseExceptionGroup as eg:
             logger.exception(eg)
+            # A TaskGroup wraps everything, but callers of the movement-controller
+            # protocol expect the underlying error (e.g. ErrorDuringMovement), not an
+            # exception group. Unwrap when the group carries exactly one exception.
+            if len(eg.exceptions) == 1 and isinstance(eg.exceptions[0], Exception):
+                raise eg.exceptions[0] from eg
             raise
         except asyncio.CancelledError:
             logger.debug("TrajectoryCursor cntrl was cancelled during cleanup of internal tasks")
@@ -1049,6 +1169,12 @@ class TrajectoryCursor:
             # Wait for either a new intent or a stop signal.
             await self._intent_event.wait()
 
+            # A stop always wins over a queued intent: once the cursor is stopping,
+            # commanding movement would move the robot after the caller's operation
+            # has already been cancelled (and, on teardown, with nothing left to
+            # monitor it). The dropped intent is not silently lost — its operation
+            # is never marked commanded, so it is failed rather than reported as a
+            # successful traversal.
             if self._stop_event.is_set():
                 break
 
@@ -1063,18 +1189,24 @@ class TrajectoryCursor:
             commands = intent.to_commands()
             for command in commands:
                 logger.debug(f"Processing command: {command}")
+
+                if isinstance(
+                    command, (api.models.StartMovementRequest, api.models.PauseMovementRequest)
+                ):
+                    # Record the command before handing it over: `yield` suspends
+                    # until the consumer pulls again, and completion must be gated on
+                    # having commanded the operation rather than on ack timing, which
+                    # can lose a race against a fast state stream.
+                    self._operation_handler.set_commanded()
+
                 yield command
 
                 if isinstance(command, api.models.StartMovementRequest):
                     match command.direction:
                         case api.models.Direction.DIRECTION_FORWARD:
-                            await motion_started.send_async(
-                                self, event=self._get_motion_event(forward=True)
-                            )
+                            await self._send_motion_started(forward=True)
                         case api.models.Direction.DIRECTION_BACKWARD:
-                            await motion_started.send_async(
-                                self, event=self._get_motion_event(forward=False)
-                            )
+                            await self._send_motion_started(forward=False)
 
     async def _motion_group_state_monitor(self, ready_event: asyncio.Event):
         """Monitor motion group state and update operation status accordingly.
@@ -1101,25 +1233,36 @@ class TrajectoryCursor:
                 ):
                     self._state_machine.send("start")
 
-                # Skip if no operation in progress
+                # Tee every state to consumers of __aiter__ regardless of whether an
+                # operation is active: observers (guards, overlays, UIs) need states
+                # from before movement starts, not only once it is under way.
+                result = self._state_machine.process_motion_state(motion_group_state)
+                if result.has_execute:
+                    self._enqueue_state(motion_group_state)
+                    if result.location is not None:
+                        self._current_location = result.location
+
                 current_op = self._operation_handler.current_operation
                 if current_op is None or current_op.future.done():
                     continue
 
-                result = self._state_machine.process_motion_state(motion_group_state)
-
                 if result.skip:
                     continue
 
-                # Derived from execute presence
                 if result.has_execute:
-                    self._in_queue.put_nowait(motion_group_state)
                     self._operation_handler.set_running()  # idempotent
 
-                    if result.location is not None:
-                        self._current_location = result.location
-
                 if self._state_machine.is_ended or self._state_machine.is_paused:
+                    # Only an operation the controller actually acknowledged can be
+                    # completed by a terminal state. Without this guard the cursor
+                    # reports a successful traversal for movement it never commanded
+                    # (e.g. when the start command was never sent).
+                    if not self._operation_handler.is_commanded():
+                        logger.debug(
+                            "Terminal trajectory state observed while the current operation "
+                            "was never commanded — not completing it."
+                        )
+                        continue
                     self._complete_operation()
                     if self._detach_on_standstill and self._state_machine.is_ended:
                         logger.debug("Detaching on standstill")
@@ -1129,10 +1272,29 @@ class TrajectoryCursor:
             logger.debug("TrajectoryCursor motion group state monitor was cancelled")
             raise
         finally:
+            # Fail, rather than silently abandon, an operation that can no longer
+            # complete because the state stream is gone.
+            if self._operation_handler.in_progress():
+                self._operation_handler.complete(
+                    final_location=self._current_location,
+                    error=ErrorDuringMovement(
+                        "Motion group state stream ended before the movement completed"
+                    ),
+                )
             # stop the request loop
             self.detach()
             # stop the cursor iterator (TODO is this the right place?)
             self._in_queue.put_nowait(_QUEUE_SENTINEL)
+
+    def _enqueue_state(self, motion_group_state: api.models.MotionGroupState) -> None:
+        """Buffer a state for ``__aiter__``, dropping the oldest past the bound."""
+        if self._in_queue.qsize() >= self._max_queued_states:
+            try:
+                self._in_queue.get_nowait()
+                self._in_queue.task_done()
+            except asyncio.QueueEmpty:  # pragma: no cover - racy drain
+                pass
+        self._in_queue.put_nowait(motion_group_state)
 
     async def _response_consumer(self, ready_event: asyncio.Event):
         """Process responses from the motion controller and update operation state.
@@ -1164,8 +1326,8 @@ class TrajectoryCursor:
                         pass  # no-op for now
                     case api.models.MovementErrorResponse():
                         # TODO do we want this to fail the operation? Maybe you could still continue using the cursor?
-                        raise Exception(
-                            f"Movement error received in trajectory cursor: {response.root.message}"
+                        raise ErrorDuringMovement(
+                            f"Error occurred during trajectory execution: {response.root.message}"
                         )
                     case api.models.StartMovementResponse() | api.models.PauseMovementResponse():
                         # No per-command correlation exists on the wire, but
@@ -1197,18 +1359,16 @@ class TrajectoryCursor:
         Args:
             interval: Time in seconds between event emissions (default 0.2s).
         """
+        if not self._emit_motion_events:
+            return
         while True:
             current_op = self._operation_handler.current_operation
             op_type = current_op.operation_type if current_op else None
             match op_type:
                 case OperationType.FORWARD | OperationType.FORWARD_TO:
-                    await motion_started.send_async(
-                        self, event=self._get_motion_event(forward=True)
-                    )
+                    await self._send_motion_started(forward=True)
                 case OperationType.BACKWARD | OperationType.BACKWARD_TO:
-                    await motion_started.send_async(
-                        self, event=self._get_motion_event(forward=False)
-                    )
+                    await self._send_motion_started(forward=False)
                 case _:
                     pass
             await asyncio.sleep(interval)
