@@ -234,6 +234,7 @@ class AbstractRobot(Device):
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
+        singularity_handling: api.models.SingularityHandling | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -245,6 +246,8 @@ class AbstractRobot(Device):
                 position of the robot is used.
             payload_override (str | api.models.Payload | None): Override for the dynamics payload used by the planner.
                 Only use this when you are certain the physical controller is configured with the same payload.
+            singularity_handling (api.models.SingularityHandling | None): Strategy for handling wrist singularities
+                along a cartesian path. If None, the API default (NONE) is used. Experimental.
 
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
@@ -257,6 +260,7 @@ class AbstractRobot(Device):
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
+        singularity_handling: api.models.SingularityHandling | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions.
 
@@ -279,6 +283,10 @@ class AbstractRobot(Device):
                    configured with the same payload. In most cases the automatic resolution
                    is correct and should be preferred.
 
+            singularity_handling (api.models.SingularityHandling | None): Strategy for handling
+                wrist singularities along a cartesian path. If None, the API default (NONE) is
+                used. Experimental.
+
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
 
@@ -298,6 +306,7 @@ class AbstractRobot(Device):
                 start_joint_position=start_joint_position,
                 motion_group_setup=motion_group_setup,
                 payload_override=payload_override,
+                singularity_handling=singularity_handling,
             )
 
             # Automatic viewer integration - log planning results if viewers are active
@@ -442,6 +451,7 @@ class AbstractRobot(Device):
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
         payload_override: str | api.models.Payload | None = None,
+        singularity_handling: api.models.SingularityHandling | None = None,
     ) -> AsyncIterable[MotionState]:
         """Plan and execute a trajectory for the given actions.
 
@@ -466,6 +476,7 @@ class AbstractRobot(Device):
             tcp,
             start_joint_position=start_joint_position,
             payload_override=payload_override,
+            singularity_handling=singularity_handling,
         )
         motion_state_stream = self.stream_execute(
             joint_trajectory,
@@ -488,6 +499,7 @@ class AbstractRobot(Device):
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
         payload_override: str | api.models.Payload | None = None,
+        singularity_handling: api.models.SingularityHandling | None = None,
     ) -> None:
         """Plan and execute a trajectory for the given actions.
 
@@ -516,6 +528,7 @@ class AbstractRobot(Device):
             tcp,
             start_joint_position=start_joint_position,
             payload_override=payload_override,
+            singularity_handling=singularity_handling,
         )
         await self.execute(
             joint_trajectory,
