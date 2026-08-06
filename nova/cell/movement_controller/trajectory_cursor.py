@@ -1325,10 +1325,20 @@ class TrajectoryCursor:
                     case api.models.PlaybackSpeedResponse():
                         pass  # no-op for now
                     case api.models.MovementErrorResponse():
-                        # TODO do we want this to fail the operation? Maybe you could still continue using the cursor?
-                        raise ErrorDuringMovement(
+                        error = ErrorDuringMovement(
                             f"Error occurred during trajectory execution: {response.root.message}"
                         )
+                        # Fail the operation with the controller's own message
+                        # *before* raising. Raising cancels the state monitor via
+                        # the TaskGroup, and its `finally` would otherwise complete
+                        # the operation first with a generic "stream ended" error,
+                        # leaving a caller awaiting forward()/pause() without the
+                        # actual reason. complete() is a no-op once the future is
+                        # resolved, so this wins the race by running first.
+                        self._operation_handler.complete(
+                            final_location=self._current_location, error=error
+                        )
+                        raise error
                     case api.models.StartMovementResponse() | api.models.PauseMovementResponse():
                         # No per-command correlation exists on the wire, but
                         # mis-attribution is harmless here:
