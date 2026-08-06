@@ -1,0 +1,48 @@
+based on the new commandroutine and what has been done on the branches feat/NDX-155-simple-custom-actions and feat/path-triggers-distance-offset it seems appearent, that move_forward and the TrajectoryCursor might be combined/merged into on entity. basically a call to cursor.forward is the same as move_forward. 
+make a plan on what needs to be done to make a seamless transition from move_froward movement controller to trajectory cursor.
+
+---
+
+regarding D1 in detail:
+- treat new StartMovementRequest as override
+- if StartMovementRequest is treated as overrid, issuing a new one on exactly the same position where the previous one already triggered a set_io might naturally trigger it again if it is in the override
+
+D11 raises a fundamental architectural question: Is it wise to mix non motion logic like IOs and other events/markers into the cursor which seemse to be only concered with movement. Or instead have an explicit overlay layer merely operating the cursor and dealing with all the overlay topics
+
+D12 is having the autostart feature maybe better placed in a wrapper/adapter in the "new" move_forward for the cursor which might be necessary for a backwards compatible unification anyways, I'm not sure. If autostart complicates things, then maybe. If the autostart issue uncovers a deeper problem in the cursor design then having it inside might be a good idea.
+
+---
+
+what questions do you need answered befor implementing it now?
+
+---
+
+I created a NOVA instance and filled in the information in the SDKs .env file (172.31.10.174)
+
+---
+
+commit, push and create mr
+
+---
+
+/act-on-feedback
+
+---
+
+<skill-context name="act-on-feedback">
+Base directory for this skill: /Users/q/Library/Application Support/Code/agentPlugins/vscode-synced-customization-agent-host-copilotcli/467921786/skills/act-on-feedback
+
+<!-- Customize this skill and select save to override its behavior. Delete that copy to restore the built-in behavior. -->
+
+# Act on Feedback
+
+The user has provided feedback on the current session's changes.
+
+1. Use the `listComments` tool to retrieve the user's feedback comments for this session
+2. If specific feedback comments were attached to this message, act on **only** those attached comments (match them by their comment id); otherwise act on all of the listed comments, or whatever subset the user specified in their message
+3. Understand the intent behind each piece of feedback you are acting on
+4. Make the requested changes to address the feedback
+5. When feedback has been tackled, use the `resolveComments` tool to mark those comments as resolved, or the `deleteComments` tool to delete them
+6. Verify your changes are consistent with the rest of the codebase
+
+</skill-context>
