@@ -286,6 +286,10 @@ class TestPendingIntentSurvivesStop:
                 async for request in request_loop:
                     sent.append(request)
         except (asyncio.TimeoutError, StopAsyncIteration):
+            # Both outcomes are acceptable and neither is the assertion under test:
+            # the loop may exit cleanly on the stop, or it may still be parked on
+            # `_intent_event` and hit the timeout. What matters is that nothing was
+            # yielded in the meantime, which the assertion below checks.
             pass
 
         assert sent == [], "no command may be sent after the cursor was detached"
@@ -469,3 +473,32 @@ class TestMovementErrorPropagation:
                     api.models.MovementErrorResponse(message="boom"),
                 ),
             )
+
+    async def test_operation_future_carries_the_controller_message(self):
+        """A caller awaiting ``forward()`` must get the controller's own reason.
+
+        Regression: raising in the response consumer cancels the state monitor,
+        whose ``finally`` completed the operation first with a generic
+        "stream ended" error, hiding the actual fault from anyone holding the
+        future rather than iterating ``cntrl``.
+        """
+        cursor = TrajectoryCursor(
+            motion_id="traj-1",
+            motion_group_state_stream=_blocking_states(),
+            joint_trajectory=_trajectory(3),
+            actions=_actions(3),
+            emit_motion_events=False,
+        )
+        future = cursor.forward()
+        with pytest.raises(ErrorDuringMovement):
+            await _drive(
+                cursor,
+                _responses(
+                    api.models.InitializeMovementResponse(),
+                    api.models.StartMovementResponse(),
+                    api.models.MovementErrorResponse(message="E-STOP triggered"),
+                ),
+            )
+
+        with pytest.raises(ErrorDuringMovement, match="E-STOP triggered"):
+            await future
