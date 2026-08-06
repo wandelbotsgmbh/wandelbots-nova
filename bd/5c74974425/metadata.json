@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "bd5c74974425",
+  "strategy": "manual-commit",
+  "branch": "feat/trajectory-cursor-io-overlay-parity",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "docs/architecture/incoming/move-forward-to-cursor.md",
+    "docs/getting_started.md",
+    "docs/programs.md",
+    "nova_rerun_bridge/README.md",
+    "novapolicy/README.md",
+    "novapolicy/docs/executor.md",
+    "novapolicy/docs/gr00t.md",
+    "novapolicy/docs/rerun.md",
+    "novapolicy/docs/rtc.md",
+    "novapolicy/docs/schema.md",
+    "novapolicy/tests/unit/test_pose.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/bd/5c74974425/0/metadata.json",
+      "transcript": "/bd/5c74974425/0/full.jsonl",
+      "compact_transcript": "/bd/5c74974425/0/transcript.jsonl",
+      "content_hash": "/bd/5c74974425/0/content_hash.txt",
+      "prompt": "/bd/5c74974425/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 18469,
+    "api_call_count": 38
+  }
+}
