@@ -183,7 +183,7 @@ Measured against `main` @ `3e9e513`, with `detach_on_standstill=True`, a cursor 
 ```python
 await self._intent_event.wait()
 if self._stop_event.is_set():
-    break                     # ← a pending intent is thrown away here
+    break  # ← a pending intent is thrown away here
 intent = self._pending_intent
 ```
 
