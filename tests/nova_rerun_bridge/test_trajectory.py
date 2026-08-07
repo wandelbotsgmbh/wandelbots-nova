@@ -39,9 +39,7 @@ class TestVisualizerCaching:
     @pytest.fixture
     def empty_trajectory(self):
         """Create an empty trajectory for testing."""
-        return api.models.JointTrajectory(
-            joint_positions=[], times=[], locations=[], tcp="test_tcp"
-        )
+        return api.models.JointTrajectory(joint_positions=[], times=[], locations=[])
 
     @pytest.mark.asyncio
     async def test_model_loaded_only_once_for_same_motion_group(
@@ -218,7 +216,6 @@ class TestLogMotionParameterValidation:
             joint_positions=[api.models.Joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) for _ in range(5)],
             times=[0.0, 0.1, 0.2, 0.3, 0.4],
             locations=[api.models.Location(0.0) for _ in range(5)],
-            tcp="test_tcp",
         )
 
         with (
@@ -271,9 +268,7 @@ class TestLogMotionParameterValidation:
         mock_motion_group.get_description = AsyncMock(return_value=mock_description)
 
         # Create empty JointTrajectory
-        empty_trajectory = api.models.JointTrajectory(
-            joint_positions=[], times=[], locations=[], tcp="test_tcp"
-        )
+        empty_trajectory = api.models.JointTrajectory(joint_positions=[], times=[], locations=[])
 
         with (
             patch("nova_rerun_bridge.trajectory.rr"),
@@ -324,9 +319,7 @@ class TestLogMotionParameterValidation:
         mock_motion_group.get_description = AsyncMock(return_value=mock_description)
 
         # Create empty JointTrajectory
-        empty_trajectory = api.models.JointTrajectory(
-            joint_positions=[], times=[], locations=[], tcp="test_tcp"
-        )
+        empty_trajectory = api.models.JointTrajectory(joint_positions=[], times=[], locations=[])
 
         with (
             patch("nova_rerun_bridge.trajectory.rr"),

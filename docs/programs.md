@@ -64,8 +64,8 @@ from nova.types import Pose
 
 
 @nova.program(
-    id="hello_robot",              # unique id; defaults to the function name
-    name="Hello Robot",            # human-readable name shown in the UI
+    id="hello_robot",  # unique id; defaults to the function name
+    name="Hello Robot",  # human-readable name shown in the UI
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -92,11 +92,7 @@ async def hello_robot(ctx: nova.ProgramContext, offset: float = 100.0):
     current_pose = await motion_group.tcp_pose(tcp)
     target_pose = current_pose @ Pose((offset, 0, 0, 0, 0, 0))
 
-    actions = [
-        joint_ptp(home_joints),
-        cartesian_ptp(target_pose),
-        joint_ptp(home_joints),
-    ]
+    actions = [joint_ptp(home_joints), cartesian_ptp(target_pose), joint_ptp(home_joints)]
 
     trajectory = await motion_group.plan(actions, tcp)
     await motion_group.execute(trajectory, tcp, actions=actions)
@@ -121,7 +117,7 @@ from nova import Novax
 
 if __name__ == "__main__":
     novax = Novax(programs_dir="programs")  # scan ./programs
-    novax.serve(port=3000)                  # register programs and run uvicorn
+    novax.serve(port=3000)  # register programs and run uvicorn
 ```
 
 Run it against your live NOVA, then open the API docs at `http://localhost:3000/docs`
@@ -174,9 +170,9 @@ three ways to make that happen — they can be combined:
   directory is ignored.
 
   ```python
-  Novax(app)                                     # no scanning (default)
+  Novax(app)  # no scanning (default)
   Novax(app, programs_dir="my_pkg/robot_progs")  # scan a directory
-  Novax(app, programs_dir=None)                  # explicit: no scanning
+  Novax(app, programs_dir=None)  # explicit: no scanning
   ```
 
 - **Plain import.** Any program imported anywhere is registered:
@@ -206,7 +202,7 @@ Or serve directly from a `Novax` instance without extra FastAPI boilerplate:
 from nova import Novax
 
 novax = Novax(programs_dir="programs")  # scan ./programs
-novax.serve(port=3000)   # builds the app, registers programs, runs uvicorn
+novax.serve(port=3000)  # builds the app, registers programs, runs uvicorn
 ```
 
 When `CELL_NAME` is set, NOVAx connects to that cell on startup and syncs your programs

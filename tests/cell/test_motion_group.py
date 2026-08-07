@@ -132,11 +132,7 @@ def mock_collision_setup():
 
     return api.models.CollisionSetup.model_construct(
         colliders=api.models.ColliderDictionary(
-            {
-                "test_collider": api.models.Collider(
-                    shape=api.models.Sphere(radius=1, position=api.models.Vector3d([0, 0, 0]))
-                )
-            }
+            {"test_collider": api.models.Collider(shape=api.models.Sphere(radius=1))}
         )
         # link_chain=api.models.LinkChain(
         #    list(api.models.Link(link) for link in robot_link_colliders)

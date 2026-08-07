@@ -58,15 +58,16 @@ from novapolicy import PolicyExecutor, WaypointConfig
 
 # WaypointConfig: how waypoints are sent to the robot
 config = WaypointConfig(
-    n_action_steps=8,       # send only first N steps per chunk (0 = all)
-    state_rate_ms=10,       # state stream update rate
+    n_action_steps=8,  # send only first N steps per chunk (0 = all)
+    state_rate_ms=10,  # state stream update rate
 )
 
 # PolicyExecutor: controls timing
 executor = PolicyExecutor(
-    schema, policy,
+    schema,
+    policy,
     motion=config,
-    policy_rate_hz=-1,      # -1 = wait, 0 = ASAP, >0 = fixed Hz
+    policy_rate_hz=-1,  # -1 = wait, 0 = ASAP, >0 = fixed Hz
 )
 ```
 
@@ -81,13 +82,15 @@ executor = PolicyExecutor(
 ```python
 # Sequential (non-RTC policy, e.g. GR00T without RTC)
 executor = PolicyExecutor(
-    schema, policy,
+    schema,
+    policy,
     motion=WaypointConfig(n_action_steps=8),
 )
 
 # RTC-capable policy (overlapping chunks at 20 Hz)
 executor = PolicyExecutor(
-    schema, policy,
+    schema,
+    policy,
     policy_rate_hz=20,
     motion=WaypointConfig(n_action_steps=8),
 )

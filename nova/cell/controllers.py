@@ -129,7 +129,9 @@ def virtual_controller(
     virtual_config = api.models.VirtualController(
         manufacturer=manufacturer,
         type=type,
-        json_=controller_config_json,  # ty: ignore[unknown-argument]
+        # The field is `json_` but its alias is `json`, and the model does not set
+        # populate_by_name — passing `json_=` here silently discarded the value.
+        json=controller_config_json,
         initial_joint_position=json.dumps(position),
     )
     return _build_controller(name=name, configuration=virtual_config)
