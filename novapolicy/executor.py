@@ -377,6 +377,8 @@ class PolicyExecutor:
                 self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
 
             trimmed = trim_chunk(action, self._n_action_steps)
+            if self._rerun is not None:
+                self._rerun.log_target_tracking(trimmed, robot_states, step)
             self._send(trimmed)
             step += 1
             self.status.step = step
