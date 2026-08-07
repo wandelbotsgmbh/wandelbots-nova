@@ -1,0 +1,4 @@
+# examples/lab — scratch experiments (repros, spikes, throwaway tests).
+# Nothing in here is meant to be committed. Ignore everything except this file.
+*
+!.gitignore
