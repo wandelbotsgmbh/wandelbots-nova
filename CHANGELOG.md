@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## [6.0.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.11.0...v6.0.0) (2026-08-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **NDX-810:** integrate DatasetPose into SDK ([#455](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/455))
+
+### Features
+
+* add dev-wheel script to build dev wheels from CLI ([#463](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/463)) ([3e9e513](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3e9e513a0ef70a70691df019fc5b8b1dff235521))
+* **NDX-810:** integrate DatasetPose into SDK ([#455](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/455)) ([f1ff153](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f1ff15339dd331396a25f1121af8c1a6e5d8ccc3))
+
+
+### Chores
+
+* refresh dependencies and fix ruff 0.16.1 / ty 0.0.69 fallout ([#473](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/473)) ([ae895ef](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ae895eff3846190b86cd297cd0069bfbe4845df6))
+
 ## [5.11.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.10.0...v5.11.0) (2026-07-30)
 
 
