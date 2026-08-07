@@ -13,3 +13,11 @@ The team decided to include .md ruff formatting but we need to fix the wrong gor
 ---
 
 The team decided to include .md ruff formatting but we need to fix the wrong gormatting in the md which shows the setting of envirnment variables i thing having spaces around assignments in shell scripts is wrong
+
+---
+
+commit and push
+
+---
+
+commit and push
