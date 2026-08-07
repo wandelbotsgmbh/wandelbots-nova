@@ -371,7 +371,9 @@ the overlay layer is the missing piece between the two.
 
 Each phase is independently landable and independently verifiable.
 
-> **Status: Phases A and B are implemented** on `agents/merge-move-forward-into-cursor`
+> **Status: Phases A and B are implemented** in
+> [PR #472](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/472), branch
+> `feat/trajectory-cursor-io-overlay-parity`
 > (`nova/cell/movement_controller/trajectory_cursor.py`, plus
 > `tests/cell/test_trajectory_cursor_parity.py` and one new integration test).
 > Verified: 363 unit tests and 14 integration tests green against a live cell, `ruff` and
