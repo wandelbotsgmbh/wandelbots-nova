@@ -1,0 +1,15 @@
+the PR https://github.com/wandelbotsgmbh/wandelbots-nova/pull/473 made changes to .md files some of them are nice some of them are bad and some are plain wrong because it was not python that was changed
+can we prevent ruff from doing all these changes? The idea of the PR was to have dependencies updated and errors fixed in files which would break due to dependency update. But changes to .md files are not fixes
+
+---
+
+the PR https://github.com/wandelbotsgmbh/wandelbots-nova/pull/473 made changes to .md files some of them are nice some of them are bad and some are plain wrong because it was not python that was changed
+can we prevent ruff from doing all these changes? The idea of the PR was to have dependencies updated and errors fixed in files which would break due to dependency update. But changes to .md files are not fixes
+
+---
+
+The team decided to include .md ruff formatting but we need to fix the wrong gormatting in the md which shows the setting of envirnment variables i thing having spaces around assignments in shell scripts is wrong
+
+---
+
+The team decided to include .md ruff formatting but we need to fix the wrong gormatting in the md which shows the setting of envirnment variables i thing having spaces around assignments in shell scripts is wrong
