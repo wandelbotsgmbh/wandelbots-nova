@@ -1,0 +1,5 @@
+according to @docs/architecture/incoming/move-forward-to-cursor.md where are we in the plan on this branch and PR
+
+---
+
+update the doc's stale branch reference to point at PR #472
