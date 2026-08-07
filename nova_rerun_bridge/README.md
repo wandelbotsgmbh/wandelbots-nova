@@ -26,8 +26,8 @@ uv run download-models
 
 ```bash
 # Add credentials and instance to .env file
-NOVA_API = "https://your-instance.wandelbots.io"
-NOVA_ACCESS_TOKEN = "your-access-token"
+NOVA_API="https://your-instance.wandelbots.io"
+NOVA_ACCESS_TOKEN="your-access-token"
 ```
 
 ```python
