@@ -24,7 +24,7 @@ wandelbots-nova = { version = ">=0.12", extras = ["nova-rerun-bridge"] }
 uv run download-models
 ```
 
-```python
+```bash
 # Add credentials and instance to .env file
 NOVA_API="https://your-instance.wandelbots.io"
 NOVA_ACCESS_TOKEN="your-access-token"
