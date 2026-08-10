@@ -34,5 +34,5 @@ jobs:
       - name: Audit dependencies (experimental with uv audit)
         run: |
           uv audit --preview-features audit-command \
-            --ignore-until-fixed GHSA-rrmf-rvhw-rf47 \
+            --ignore GHSA-rrmf-rvhw-rf47 \
             --ignore PYSEC-2026-3447

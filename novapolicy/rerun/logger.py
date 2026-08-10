@@ -6,7 +6,10 @@ to focused submodules (observation, action_chunk, streaming, images).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
+import threading
 import time
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -21,6 +24,36 @@ if TYPE_CHECKING:
     from rerun import RecordingStream
 
 logger = logging.getLogger(__name__)
+
+_RERUN_DISCONNECT_TIMEOUT_S = 1.0
+
+
+async def _disconnect_recording(recording: RecordingStream) -> None:
+    """Disconnect Rerun without allowing its synchronous client to block shutdown."""
+    loop = asyncio.get_running_loop()
+    completed: asyncio.Future[Exception | None] = loop.create_future()
+
+    def disconnect() -> None:
+        error: Exception | None = None
+        try:
+            recording.disconnect()
+        except Exception as e:  # ruff: ignore[blind-except]
+            error = e
+        with contextlib.suppress(RuntimeError):
+            loop.call_soon_threadsafe(set_result, error)
+
+    def set_result(error: Exception | None) -> None:
+        if not completed.done():
+            completed.set_result(error)
+
+    threading.Thread(target=disconnect, name="rerun-disconnect", daemon=True).start()
+    try:
+        error = await asyncio.wait_for(completed, timeout=_RERUN_DISCONNECT_TIMEOUT_S)
+    except TimeoutError:
+        logger.warning("Timed out disconnecting policy Rerun recording")
+        return
+    if error is not None:
+        raise error
 
 
 class PolicyRerunLogger:
@@ -403,6 +436,6 @@ class PolicyRerunLogger:
             self._initialized = False
             if recording is not None:
                 try:
-                    recording.disconnect()
+                    await _disconnect_recording(recording)
                 except (OSError, RuntimeError) as e:
                     logger.debug("Failed to disconnect policy Rerun recording: %s", e)
