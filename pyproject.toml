@@ -65,6 +65,7 @@ novapolicy-gr00t = [
 ]
 novapolicy-lerobot = [
     "aiortc>=1.14.0",
+    # LeRobot 0.6 declares Requires-Python >=3.12; the core SDK remains compatible with 3.11.
     "lerobot[async]>=0.6,<0.7; python_version >= '3.12'",
     "Pillow>=10.0.0",
     "requests>=2.33.1",
