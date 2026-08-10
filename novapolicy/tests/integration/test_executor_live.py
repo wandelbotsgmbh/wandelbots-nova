@@ -128,14 +128,15 @@ async def test_stop_condition_ends_dual_arm_run_normally():
         mgs = [await stack.enter_async_context(c[0]) for c in controllers]
         homes = {mg.id: list(await mg.joints()) for mg in mgs}
 
+        policy_calls = 0
+
         async def hold(obs):
+            nonlocal policy_calls
+            policy_calls += 1
             return ActionChunk(joints={mg.id: [homes[mg.id]] for mg in mgs})
 
-        ticks = {"n": 0}
-
-        def stop_after_a_few_ticks(ctx: StopContext) -> bool:
-            ticks["n"] += 1
-            return ticks["n"] >= 5
+        def stop_after_policy_calls(ctx: StopContext) -> bool:
+            return policy_calls >= 2
 
         schema = PolicySchema(
             observations=[
@@ -145,13 +146,13 @@ async def test_stop_condition_ends_dual_arm_run_normally():
         executor = PolicyExecutor(
             schema,
             CallbackPolicyClient(hold),
-            stop_conditions=[stop_after_a_few_ticks],
+            stop_conditions=[stop_after_policy_calls],
             timeout_s=10.0,
         )
 
         result = await executor.run()
         mg_ids = {mg.id for mg in mgs}
 
-    assert result.reason == "stop condition: stop_after_a_few_ticks"
+    assert result.reason == "stop condition: stop_after_policy_calls"
     assert result.last_state is not None
     assert set(result.last_state) == mg_ids
