@@ -1,0 +1,51 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "4575e0df88b7",
+  "session_id": "82064362-3367-4f6e-bc71-1957a33a2576",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-10T11:44:34.166879Z",
+  "branch": "feat/move-forward-cursor-adapter",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "tests/cell/test_trajectory_cursor_parity.py",
+    "tests/cell/test_move_forward_adapter.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "44317447f75a",
+  "checkpoint_transcript_start": 317,
+  "transcript_lines_at_start": 317,
+  "compact_transcript_start": 72,
+  "token_usage": {
+    "input_tokens": 45,
+    "cache_creation_tokens": 205137,
+    "cache_read_tokens": 4602308,
+    "output_tokens": 18784,
+    "api_call_count": 23
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-10T11:44:34.109722Z",
+    "agent_lines": 114,
+    "agent_removed": 8,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 114,
+    "total_lines_changed": 122,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

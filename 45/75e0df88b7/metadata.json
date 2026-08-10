@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "4575e0df88b7",
+  "strategy": "manual-commit",
+  "branch": "feat/move-forward-cursor-adapter",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "tests/cell/test_move_forward_adapter.py",
+    "tests/cell/test_trajectory_cursor_parity.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/45/75e0df88b7/0/metadata.json",
+      "transcript": "/45/75e0df88b7/0/full.jsonl",
+      "compact_transcript": "/45/75e0df88b7/0/transcript.jsonl",
+      "content_hash": "/45/75e0df88b7/0/content_hash.txt",
+      "prompt": "/45/75e0df88b7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 45,
+    "cache_creation_tokens": 205137,
+    "cache_read_tokens": 4602308,
+    "output_tokens": 18784,
+    "api_call_count": 23
+  }
+}
