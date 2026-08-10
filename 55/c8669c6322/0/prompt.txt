@@ -1,0 +1,6 @@
+why would we not want to do phase c already?
+
+---
+
+I'd say the phase C change is less invasive regarding the actual code changes then introducing the watchdog. The watchdog is also not used in production yet. So not tested and validated by that. Let's stack the move_forward adapter on to of tae current branch.
+/goal have a merge request where TrajectoryCursor is the sole means of executing robot motion and move_forward remaining as an adapter for backwards compatibility only.
