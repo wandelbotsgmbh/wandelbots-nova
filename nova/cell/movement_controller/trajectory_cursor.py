@@ -605,6 +605,12 @@ class TrajectoryCursor:
         self._pending_intent: Intent | None = None
         self._intent_event = asyncio.Event()
         self._stop_event = asyncio.Event()
+        # Created by cntrl() when an intent is already queued at protocol start
+        # (the one-shot adapter shape). While present and unset, the state
+        # monitor holds after its first state so a fast state stream cannot be
+        # interpreted — or torn down on EOF — before the queued command was
+        # dispatched. See _request_loop/_motion_group_state_monitor.
+        self._first_dispatch_gate: asyncio.Event | None = None
         self._in_queue: asyncio.Queue[api.models.MotionGroupState | _QueueSentinel] = (
             asyncio.Queue()
         )
@@ -1061,6 +1067,12 @@ class TrajectoryCursor:
                 op.future.cancel()
         self._stop_event.set()
         self._intent_event.set()  # wake _request_loop so it sees the stop
+        self._signal_first_dispatch()  # a parked state monitor must not outlive a stop
+
+    def _signal_first_dispatch(self) -> None:
+        """Release a state monitor parked on the first-dispatch gate, if any."""
+        if self._first_dispatch_gate is not None:
+            self._first_dispatch_gate.set()
 
     def _start_operation(
         self,
@@ -1111,6 +1123,15 @@ class TrajectoryCursor:
             self.motion_id, response_stream, self._current_location
         ):
             yield request
+
+        # An intent queued before the protocol started (a cursor commanded ahead
+        # of cntrl, e.g. by the move_forward adapter) must reach the wire before
+        # trajectory progress is interpreted: scheduling could otherwise let the
+        # state monitor consume a fast stream — and tear the cursor down on its
+        # end — before _request_loop has had its first turn, failing the
+        # operation without ever sending the command.
+        if self._pending_intent is not None:
+            self._first_dispatch_gate = asyncio.Event()
 
         motion_group_state_monitor_ready_event = asyncio.Event()
         response_consumer_ready_event = asyncio.Event()
@@ -1176,6 +1197,7 @@ class TrajectoryCursor:
             # is never marked commanded, so it is failed rather than reported as a
             # successful traversal.
             if self._stop_event.is_set():
+                self._signal_first_dispatch()
                 break
 
             # Consume the pending intent atomically.
@@ -1184,9 +1206,15 @@ class TrajectoryCursor:
             self._intent_event.clear()
 
             if intent is None:
+                self._signal_first_dispatch()
                 continue
 
             commands = intent.to_commands()
+            # Release the state monitor before the first yield: setting the event
+            # only schedules its waiter, and this task keeps running until the
+            # yield below has handed the command to the consumer — so the monitor
+            # can only resume once the command is actually on its way out.
+            self._signal_first_dispatch()
             for command in commands:
                 # Re-check the stop on every command, not just once per intent.
                 # `yield` suspends until the consumer pulls again — a network send —
@@ -1228,7 +1256,9 @@ class TrajectoryCursor:
         """
         logger.debug("Starting state monitor for trajectory cursor")
         try:
-            async for motion_group_state in self._motion_group_state_stream:
+            async for motion_group_state in self._held_at_first_dispatch(
+                self._motion_group_state_stream
+            ):
                 ready_event.set()
 
                 # Ensure the state machine is in executing state when an operation
@@ -1293,6 +1323,25 @@ class TrajectoryCursor:
             self.detach()
             # stop the cursor iterator (TODO is this the right place?)
             self._in_queue.put_nowait(_QUEUE_SENTINEL)
+
+    async def _held_at_first_dispatch(
+        self, stream: AsyncIterator[api.models.MotionGroupState]
+    ) -> AsyncIterator[api.models.MotionGroupState]:
+        """Pass states through, holding between states until the first dispatch.
+
+        With an intent queued before ``cntrl`` started (``_first_dispatch_gate``
+        set up by ``cntrl``), the monitor may process the first state — that is
+        the liveness handshake ``ready_event`` needs — but must not pull further
+        states, or reach the stream's end, before ``_request_loop`` has sent the
+        queued command: trajectory progress would be attributed to (or teardown
+        would fail) an operation that never went out. Once the gate opens the
+        wrapper is transparent. Without a gate (interactive use) it passes
+        everything straight through.
+        """
+        async for motion_group_state in stream:
+            yield motion_group_state
+            if self._first_dispatch_gate is not None:
+                await self._first_dispatch_gate.wait()
 
     def _enqueue_state(self, motion_group_state: api.models.MotionGroupState) -> None:
         """Buffer a state for ``__aiter__``, dropping the oldest past the bound."""

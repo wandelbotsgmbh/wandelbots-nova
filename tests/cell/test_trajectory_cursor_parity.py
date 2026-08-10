@@ -367,6 +367,56 @@ class TestStopWinsOverPendingIntent:
         cursor._initialize_task.cancel()
 
 
+class TestFirstDispatchGate:
+    """An intent queued before ``cntrl`` starts must reach the wire first.
+
+    A mocked (or merely fast) state stream can otherwise be consumed to its end
+    in a single scheduling slice, tearing the cursor down before the request
+    loop's first turn — the queued start would be dropped and the operation
+    failed without anything having been sent.
+    """
+
+    async def test_prequeued_intent_is_dispatched_before_a_fast_stream_ends(self):
+        cursor = TrajectoryCursor(
+            motion_id="traj-1",
+            motion_group_state_stream=_finite_states(),
+            joint_trajectory=_trajectory(3),
+            actions=_actions(3),
+            detach_on_standstill=True,
+            emit_motion_events=False,
+        )
+        future = cursor.forward()
+        requests = await _drive(
+            cursor,
+            _responses(api.models.InitializeMovementResponse(), api.models.StartMovementResponse()),
+        )
+
+        assert any(isinstance(r, api.models.StartMovementRequest) for r in requests)
+        result = await future
+        assert result.error is None
+        assert result.final_location == pytest.approx(3.0)
+
+    async def test_detach_before_cntrl_still_wins_over_the_queued_intent(self):
+        """A stop must keep winning: nothing is sent, and nothing deadlocks on
+        the gate the queued intent would otherwise have opened."""
+        cursor = TrajectoryCursor(
+            motion_id="traj-1",
+            motion_group_state_stream=_finite_states(),
+            joint_trajectory=_trajectory(3),
+            actions=_actions(3),
+            detach_on_standstill=True,
+            emit_motion_events=False,
+        )
+        future = cursor.forward()
+        cursor.detach()
+        requests = await _drive(
+            cursor, _responses(api.models.InitializeMovementResponse()), timeout=2.0
+        )
+
+        assert not any(isinstance(r, api.models.StartMovementRequest) for r in requests)
+        assert future.cancelled()
+
+
 class TestOperationRequiresAcknowledgement:
     """A terminal state must not complete an operation that was never commanded."""
 

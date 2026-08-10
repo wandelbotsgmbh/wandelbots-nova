@@ -1,6 +1,6 @@
 # `move_forward` → `TrajectoryCursor` — transition plan
 
-Status: **Phases A and B implemented; C–E open.** This document argues that the two
+Status: **Phases A–C implemented; D–E open.** This document argues that the two
 movement controllers should become **one** implementation, and sequences the transition.
 
 It is a companion to the `command-routine.md` analysis (an unpublished working document on
@@ -446,12 +446,32 @@ turn, which is the artefact that originally looked like D12. The parity fixtures
 idle state immediately (a real motion-group stream is always live) and withhold trajectory
 progress until the `StartMovementRequest` has actually been observed.
 
-### Phase C — `move_forward` becomes an adapter (D10)
+### Phase C — `move_forward` becomes an adapter (D10) — **DONE**
 
 Rewrite `move_forward` as §3. Add the optional `joint_trajectory` to
 `MovementControllerContext`. Expose the live cursor to callers of `execute()` — proposal: an
 optional `on_cursor: Callable[[TrajectoryCursor], None]` on `MovementControllerContext`,
 which also lets the integration tests drop their hand-rolled adapter factory.
+
+> Implemented on `feat/move-forward-cursor-adapter` (stacked on the Phase A+B branch,
+> landed before the watchdog rebase of §5 step 2 — the adapter is the smaller, better-tested
+> change, and the watchdog has never run in production). Two deviations from the sketch
+> above:
+>
+> - **`on_cursor` is deferred.** It only becomes reachable with `execute()`-level plumbing,
+>   and open question 5 (§6, what `detach()` means for an exposed cursor) should be settled
+>   in the same change. D10 is P1 quality-of-transition; the adapter does not need it.
+> - **The cursor gained a first-dispatch gate.** The gate-test fixtures surfaced a real
+>   scheduling hazard: a state stream that is consumed to its end in a single scheduling
+>   slice (a mock — or a fast real stream, depending on Python-version `wait_for`
+>   internals) tears the cursor down before `_request_loop` has its first turn, dropping
+>   the adapter's queued start. `cntrl` now creates a gate when an intent is already queued
+>   at protocol start; the state monitor may process its first state (the liveness
+>   handshake) but holds before pulling further states until the queued command has been
+>   dispatched. An explicit `detach()` still wins over the queued intent — every
+>   `_request_loop` exit path and `detach()` itself open the gate, so nothing deadlocks.
+>   This is what lets the Phase C gate below pass **with zero edits**, rather than
+>   reclassifying those fixtures as D15 artefacts.
 
 *Verify:* **the existing `move_forward` test files must pass unchanged** —
 `tests/cell/test_process_motion_group_state.py`,

@@ -1001,6 +1001,7 @@ class MotionGroup(AbstractRobot):
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
                 motion_group_state_stream_gen=self.stream_state,
+                joint_trajectory=joint_trajectory,
             )
         )
 
