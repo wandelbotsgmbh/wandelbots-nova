@@ -464,6 +464,9 @@ class AbstractRobot(Device):
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
             payload_override (str | api.models.Payload | None): Override for the dynamics payload
                 used by the planner. See :meth:`plan` for resolution rules and caveats.
+            singularity_handling (api.models.SingularityHandling | None): Strategy for handling
+                wrist singularities along a cartesian path. If None, the API default (NONE) is
+                used. Experimental.
         """
         actions_list = _normalize_actions(actions)
 
@@ -512,6 +515,9 @@ class AbstractRobot(Device):
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
             payload_override (str | api.models.Payload | None): Override for the dynamics payload
                 used by the planner. See :meth:`plan` for resolution rules and caveats.
+            singularity_handling (api.models.SingularityHandling | None): Strategy for handling
+                wrist singularities along a cartesian path. If None, the API default (NONE) is
+                used. Experimental.
 
         Raises:
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
