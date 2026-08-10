@@ -589,9 +589,12 @@ class TrajectoryCursor:
         raw_combined = (
             CombinedActions(items=self._raw_actions) if self._raw_actions is not None else None  # ty: ignore[invalid-argument-type]
         )
-        self.actions = (
-            CombinedActions(items=tuple(raw_combined.motions)) if raw_combined is not None else None
-        )
+        # A list with no motion actions (e.g. only io_write) carries no
+        # location-to-action mapping either, so it is normalised to None just
+        # like an empty list — otherwise the end-location check below would
+        # demand a zero-length trajectory.
+        motions = tuple(raw_combined.motions) if raw_combined is not None else ()
+        self.actions = CombinedActions(items=motions) if motions else None
 
         if self.actions is not None and joint_trajectory is not None:
             expected_end_location = len(self.actions)
@@ -1210,11 +1213,6 @@ class TrajectoryCursor:
                 continue
 
             commands = intent.to_commands()
-            # Release the state monitor before the first yield: setting the event
-            # only schedules its waiter, and this task keeps running until the
-            # yield below has handed the command to the consumer — so the monitor
-            # can only resume once the command is actually on its way out.
-            self._signal_first_dispatch()
             for command in commands:
                 # Re-check the stop on every command, not just once per intent.
                 # `yield` suspends until the consumer pulls again — a network send —
@@ -1227,6 +1225,16 @@ class TrajectoryCursor:
 
                 logger.debug(f"Processing command: {command}")
 
+                # A stop that lands while this intent is mid-dispatch (e.g. between
+                # a PlaybackSpeedRequest and its StartMovementRequest) must suppress
+                # the remaining commands for the same reason a queued intent is
+                # dropped above: nothing is left to monitor the movement. A speed
+                # setting without its movement command is harmless; the reverse is
+                # not.
+                if self._stop_event.is_set():
+                    self._signal_first_dispatch()
+                    return
+
                 if isinstance(
                     command, (api.models.StartMovementRequest, api.models.PauseMovementRequest)
                 ):
@@ -1235,6 +1243,13 @@ class TrajectoryCursor:
                     # having commanded the operation rather than on ack timing, which
                     # can lose a race against a fast state stream.
                     self._operation_handler.set_commanded()
+                    # Release the state monitor only for the movement command itself,
+                    # not for a leading PlaybackSpeedRequest: setting the event only
+                    # schedules its waiter, and this task keeps running until the
+                    # yield below has handed the command to the consumer — so the
+                    # monitor can only resume once the movement command is actually
+                    # on its way out.
+                    self._signal_first_dispatch()
 
                 yield command
 

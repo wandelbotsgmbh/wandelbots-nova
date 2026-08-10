@@ -22,6 +22,7 @@ from typing import AsyncIterator
 import pytest
 
 from nova import api
+from nova.actions.io import io_write
 from nova.actions.motions import lin
 from nova.cell.movement_controller.trajectory_cursor import TrajectoryCursor
 from nova.exceptions import ErrorDuringMovement
@@ -416,6 +417,56 @@ class TestFirstDispatchGate:
         assert not any(isinstance(r, api.models.StartMovementRequest) for r in requests)
         assert future.cancelled()
 
+    async def test_gate_holds_through_a_leading_playback_speed_request(self):
+        """A speed-carrying intent dispatches two commands; the gate must open on
+        the movement command, not on the leading ``PlaybackSpeedRequest``.
+
+        Regression (PR #475 review): the gate opened before the first yield, so
+        the monitor could run a fast stream to its end — failing the operation
+        and detaching — during the PlaybackSpeed suspension, after which the loop
+        still put an unmonitored ``StartMovementRequest`` on the wire.
+        """
+        cursor = TrajectoryCursor(
+            motion_id="traj-1",
+            motion_group_state_stream=_finite_states(),
+            joint_trajectory=_trajectory(3),
+            actions=_actions(3),
+            detach_on_standstill=True,
+            emit_motion_events=False,
+        )
+        future = cursor.forward(playback_speed_in_percent=50)
+        requests = await _drive(
+            cursor,
+            _responses(api.models.InitializeMovementResponse(), api.models.StartMovementResponse()),
+        )
+
+        assert any(isinstance(r, api.models.PlaybackSpeedRequest) for r in requests)
+        assert any(isinstance(r, api.models.StartMovementRequest) for r in requests)
+        result = await future
+        assert result.error is None
+
+    async def test_stop_mid_intent_suppresses_the_movement_command(self):
+        """A detach landing between a ``PlaybackSpeedRequest`` and its start must
+        suppress the start: a speed setting without its movement is harmless, an
+        unmonitored movement command is not."""
+        cursor = TrajectoryCursor(
+            motion_id="traj-1",
+            motion_group_state_stream=_blocking_states(),
+            joint_trajectory=_trajectory(3),
+            actions=_actions(3),
+            emit_motion_events=False,
+        )
+        cursor.forward(playback_speed_in_percent=50)
+
+        request_loop = cursor._request_loop()
+        first = await anext(request_loop)
+        assert isinstance(first, api.models.PlaybackSpeedRequest)
+
+        cursor.detach()
+        with pytest.raises(StopAsyncIteration):
+            await anext(request_loop)
+        cursor._initialize_task.cancel()
+
 
 class TestOperationRequiresAcknowledgement:
     """A terminal state must not complete an operation that was never commanded."""
@@ -521,6 +572,22 @@ class TestOptionalConstructorArguments:
         )
         assert cursor.actions is None
         assert cursor.current_action is None
+        cursor._initialize_task.cancel()
+
+    async def test_actions_without_motions_are_not_a_zero_length_trajectory(self):
+        """Only non-motion actions (e.g. a lone ``io_write``) carry no location
+        mapping either — they must not trip the end-location check against a real
+        trajectory. Regression (PR #475 review): the preplanned-trajectory path
+        with an IO-only overlay raised ``ValueError`` in the constructor."""
+        cursor = TrajectoryCursor(
+            motion_id="traj-1",
+            motion_group_state_stream=_finite_states(),
+            joint_trajectory=_trajectory(3),
+            actions=[io_write(key="OUT#900", value=True)],
+            emit_motion_events=False,
+        )
+        assert cursor.actions is None
+        assert cursor._raw_actions is not None
         cursor._initialize_task.cancel()
 
     async def test_joint_trajectory_is_optional(self):

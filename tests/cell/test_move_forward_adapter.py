@@ -104,6 +104,30 @@ async def test_start_reaches_the_wire_against_a_fast_finite_stream():
     assert any(isinstance(r, api.models.StartMovementRequest) for r in requests)
 
 
+async def test_io_only_actions_with_a_preplanned_trajectory():
+    """Attaching an IO-only overlay to a preplanned trajectory must keep working.
+
+    Regression (PR #475 review): the cursor normalised ``actions=[]`` to "no
+    action metadata" but not a non-empty list without motion actions, so this
+    previously-supported ``execute()`` shape raised ``ValueError`` against the
+    trajectory's real end location.
+    """
+    combined_actions = CombinedActions(items=(io_write(key="OUT#900", value=True),))
+    joint_trajectory = api.models.JointTrajectory(
+        joint_positions=[api.models.Joints([0.0] * 6), api.models.Joints([0.1] * 6)],
+        times=[0.0, 1.0],
+        locations=[api.models.Location(root=0.0), api.models.Location(root=1.0)],
+    )
+    context = _context(combined_actions=combined_actions, joint_trajectory=joint_trajectory)
+
+    requests = await _run(context)
+
+    starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
+    assert len(starts) == 1
+    assert starts[0].set_outputs == combined_actions.to_set_io()
+    assert starts[0].set_outputs, "the IO overlay must still travel on the start"
+
+
 async def test_start_carries_the_io_overlay_and_io_gates():
     """set_outputs derived from the actions, and the context's start/pause IO
     conditions, must all travel on the emitted StartMovementRequest."""
