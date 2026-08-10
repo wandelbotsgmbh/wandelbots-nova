@@ -1,5 +1,6 @@
+from pathlib import Path
+
 import uvicorn
-import your_nova_app.start_here  # noqa: F401  (import registers the program)
 from decouple import config
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,22 +8,25 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from nova import Novax
 
-CELL_ID = config("CELL_ID", default="cell", cast=str)
+CELL_NAME = config("CELL_NAME", default="cell", cast=str)
 BASE_PATH = config("BASE_PATH", default="", cast=str)
 
 # Create a new FastAPI app
 # See https://fastapi.tiangolo.com/ for more information
 app = FastAPI(
-    title="your_nova_app",
+    title="Your NOVA App",
     version="0.1.0",
     description="An application that serves your robot programs 🦾",
     root_path=BASE_PATH,
 )
 
-# Include the programs router and auto-register every @nova.program in this app.
-# Importing start_here above is enough — programs register themselves on import.
+# Include the programs router and scan the directory passed to Novax via the ``programs_dir``
+# argument: every @nova.program
+# module under it self-registers on import, so dropping in a new file is enough -- no
+# manual import required. The path is anchored to this file (not the working directory)
+# so it resolves correctly both locally and in the deployed container.
 # See https://github.com/wandelbotsgmbh/wandelbots-nova/blob/main/README.md#novax for more information
-novax = Novax(app)
+novax = Novax(app, programs_dir=Path(__file__).parent / "programs")
 
 app.add_middleware(
     CORSMiddleware,
@@ -69,6 +73,21 @@ async def get_app_icon():
 
 
 def main(host: str = "0.0.0.0", port: int = 3000):
+    # In-cluster dev (Skaffold sets DEV_RELOAD=true) runs uvicorn with --reload so
+    # synced program files hot-reload. The app-operator owns the Deployment and uses
+    # the image's default command, so reload is opted into via env instead of args.
+    if config("DEV_RELOAD", default=False, cast=bool):
+        uvicorn.run(
+            "app.register_programs:app",
+            host=host,
+            port=port,
+            reload=True,
+            reload_dirs=["/app/app"],
+            log_level="info",
+            proxy_headers=True,
+            forwarded_allow_ips="*",
+        )
+        return
     uvicorn.run(
         app,
         host=host,

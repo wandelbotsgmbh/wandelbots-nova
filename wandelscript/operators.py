@@ -4,6 +4,8 @@ import operator
 from enum import Enum
 from typing import Any, TypeVar
 
+from nova.types import Pose, Vector3d
+
 T = TypeVar("T")
 
 
@@ -90,6 +92,31 @@ class AdditionOperator(BinaryOperator):
     sub = "-"
 
 
+def _to_pose_operand(value: Any) -> Any:
+    """Coerce a geometric value operand of the `::` operator into a Pose.
+
+    `Pose.__matmul__` only accepts a `Pose`, but Wandelscript's frame algebra also
+    transforms plain positions/poses expressed as a `Vector3d` or a 3-/6-element numeric
+    `tuple`/`list` (e.g. a `[...]` array literal, or a builtin returning a raw tuple).
+    Those are converted to a `Pose` here so they can be chained with `::`.
+
+    Everything else (`Pose`, `Frame`, `Closure`, ...) is returned unchanged so their own
+    `@`/`__rmatmul__` handling still applies.
+    """
+    if isinstance(value, Vector3d):
+        return Pose(value.to_tuple())
+    if (
+        isinstance(value, (tuple, list))
+        and len(value) in (3, 6)
+        and all(
+            isinstance(component, (int, float)) and not isinstance(component, bool)
+            for component in value
+        )
+    ):
+        return Pose(tuple(value))
+    return value
+
+
 class MultiplicationOperator(BinaryOperator):
     """Multiplication, division and transformation chaining operator
 
@@ -104,6 +131,12 @@ class MultiplicationOperator(BinaryOperator):
     mul = "*"
     truediv = "/"
     matmul = "::"
+
+    def __call__(self, a: Any, b: Any) -> Any:
+        if self is MultiplicationOperator.matmul:
+            a = _to_pose_operand(a)
+            b = _to_pose_operand(b)
+        return super().__call__(a, b)
 
 
 class ComparisonOperator(BinaryOperator):

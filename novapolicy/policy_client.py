@@ -23,13 +23,13 @@ class PolicyClient(ABC):
     override the hooks they support.
     """
 
-    async def connect(self, motion_group_ids: list[str]) -> None:  # noqa: B027
+    async def connect(self, motion_group_ids: list[str]) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
         """Establish a policy-service connection."""
 
-    async def validate_schema(self, schema: PolicySchema) -> None:  # noqa: B027
+    async def validate_schema(self, schema: PolicySchema) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
         """Raise ``ValueError`` when the schema cannot satisfy the policy."""
 
-    async def prepare(  # noqa: B027
+    async def prepare(  # ruff: ignore[empty-method-without-abstract-decorator]
         self,
         states: dict[str, RobotState],
         schema: PolicySchema,
@@ -48,10 +48,10 @@ class PolicyClient(ABC):
     ) -> ActionChunk:
         """Return one action chunk for the current observation."""
 
-    async def close(self) -> None:  # noqa: B027
+    async def close(self) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
         """Release policy-service resources."""
 
-    def synchronize_action_timestep(self, timestep: int) -> None:  # noqa: B027
+    def synchronize_action_timestep(self, timestep: int) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
         """Synchronize an asynchronous queue to the controller timestep."""
 
     @property

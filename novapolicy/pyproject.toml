@@ -59,9 +59,9 @@ select = [
 ]
 
 ignore = [
-    "E501",    # Line too long (formatter handles this)
-    "S101",    # Allow assert (tests might import from here)
-    "PLR0913", # Too many arguments
+    "line-too-long",    # Line too long (formatter handles this)
+    "assert",    # Allow assert (tests might import from here)
+    "too-many-arguments", # Too many arguments
 ]
 
 [tool.ruff.lint.mccabe]
@@ -71,28 +71,30 @@ max-complexity = 10
 max-nested-blocks = 3
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
-"gr00t/__init__.py" = ["RUF067"]
-"rerun/__init__.py" = ["RUF067"]
+"__init__.py" = ["unused-import"]
+"gr00t/__init__.py" = ["non-empty-init-module"]
+"rerun/__init__.py" = ["non-empty-init-module"]
+"rerun/action_chunk.py" = ["import-outside-top-level"]
+"rerun/logger.py" = ["import-outside-top-level"]
 "**/tests/**" = [
-    "S101", "S105", "S403", "PLR2004", "PLR0917", "PLR1702", "PLR6301",
-    "ANN", "FBT", "T20", "PLC0415", "PLC2701", "PERF401",
-    "SIM102", "SIM103", "SIM114", "TC001", "TC003", "ARG", "B018", "B903",
-    "ASYNC109", "ASYNC110", "ASYNC251", "RUF029", "RUF069", "RUF076",
+    "assert", "hardcoded-password-string", "suspicious-pickle-import", "magic-value-comparison", "too-many-positional-arguments", "too-many-nested-blocks", "no-self-use",
+    "ANN", "FBT", "T20", "import-outside-top-level", "import-private-name", "manual-list-comprehension",
+    "collapsible-if", "needless-bool", "if-with-same-arms", "typing-only-first-party-import", "typing-only-standard-library-import", "ARG", "useless-expression", "class-as-data-structure",
+    "async-function-with-timeout", "async-busy-wait", "blocking-sleep-in-async-function", "unused-async", "float-equality-comparison", "pytest-fixture-autouse",
 ]
 "**/examples/**" = [
-    "S101", "S105", "S110", "PLR2004", "PLR0912", "PLR0914", "PLR0915",
-    "PLW0602", "PLW0603", "ANN", "FBT", "T20",
-    "PLC0415", "PERF401", "SIM102", "SIM103", "SIM114",
-    "TC001", "TC003", "ARG", "RUF003", "RUF029", "RUF069",
-    "BLE001", "B008", "B905", "C901",
+    "assert", "hardcoded-password-string", "try-except-pass", "magic-value-comparison", "too-many-branches", "too-many-locals", "too-many-statements",
+    "global-variable-not-assigned", "global-statement", "ANN", "FBT", "T20",
+    "import-outside-top-level", "manual-list-comprehension", "collapsible-if", "needless-bool", "if-with-same-arms",
+    "typing-only-first-party-import", "typing-only-standard-library-import", "ARG", "ambiguous-unicode-character-comment", "unused-async", "float-equality-comparison",
+    "blind-except", "function-call-in-default-argument", "zip-without-explicit-strict", "complex-structure",
 ]
 "**/benchmarks/**" = [
-    "S101", "S105", "S110", "PLR2004", "PLR0912", "PLR0914", "PLR0915",
-    "PLW0602", "PLW0603", "ANN", "FBT", "T20",
-    "PLC0415", "PERF401", "SIM102", "SIM103", "SIM114",
-    "TC001", "TC003", "ARG", "RUF003", "RUF029", "RUF069",
-    "BLE001", "B008", "B905", "C901",
+    "assert", "hardcoded-password-string", "try-except-pass", "magic-value-comparison", "too-many-branches", "too-many-locals", "too-many-statements",
+    "global-variable-not-assigned", "global-statement", "ANN", "FBT", "T20",
+    "import-outside-top-level", "manual-list-comprehension", "collapsible-if", "needless-bool", "if-with-same-arms",
+    "typing-only-first-party-import", "typing-only-standard-library-import", "ARG", "ambiguous-unicode-character-comment", "unused-async", "float-equality-comparison",
+    "blind-except", "function-call-in-default-argument", "zip-without-explicit-strict", "complex-structure",
 ]
 
 [tool.ruff.lint.isort]

@@ -194,7 +194,9 @@ def _step_to_tcp(
     dh_robot: DHRobot, joint_target: list[float], tcp_offset: np.ndarray | None
 ) -> list[float]:
     """TCP position for a joint target: flange FK, then the TCP offset if known."""
-    from novapolicy.rerun.kinematics import joint_tcp_position  # noqa: PLC0415
+    from novapolicy.rerun.kinematics import (
+        joint_tcp_position,
+    )
 
     return joint_tcp_position(dh_robot, joint_target, tcp_offset)
 
@@ -282,7 +284,7 @@ def _log_text(
         split = n_action_steps if 0 < n_action_steps < n_steps else n_steps
         lines.append(f"  {mg_id}: {n_steps} joint steps (execute {split})")
         if steps:
-            joints_fmt = lambda j: "[" + ", ".join(f"{v:.4f}" for v in j) + "]"  # noqa: E731
+            joints_fmt = lambda j: "[" + ", ".join(f"{v:.4f}" for v in j) + "]"  # ruff: ignore[lambda-assignment]
             lines.append(f"    [0]   {joints_fmt(steps[0])}")
             if n_steps > MIN_LINE_STEPS:
                 mid = n_steps // 2
@@ -294,7 +296,7 @@ def _log_text(
         n_steps = len(steps)
         lines.append(f"  {mg_id}: {n_steps} TCP steps")
         if steps:
-            tcp_fmt = lambda s: "[" + ", ".join(f"{v:.2f}" for v in s) + "]"  # noqa: E731
+            tcp_fmt = lambda s: "[" + ", ".join(f"{v:.2f}" for v in s) + "]"  # ruff: ignore[lambda-assignment]
             lines.append(f"    [0]   {tcp_fmt(steps[0])}")
             if n_steps > 1:
                 lines.append(f"    [{n_steps - 1}] {tcp_fmt(steps[-1])}")

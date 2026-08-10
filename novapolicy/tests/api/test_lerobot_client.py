@@ -48,25 +48,25 @@ class _RecordingLeRobotService(services_pb2_grpc.AsyncInferenceServicer):
         self.release_get_actions = threading.Event()
         self.release_get_actions.set()
 
-    def Ready(self, _request: object, _context: object) -> Any:  # noqa: N802
+    def Ready(self, _request: object, _context: object) -> Any:  # ruff: ignore[invalid-function-name]
         self.ready_calls += 1
         return services_pb2.Empty()
 
-    def SendPolicyInstructions(self, request: Any, _context: object) -> Any:  # noqa: N802
+    def SendPolicyInstructions(self, request: Any, _context: object) -> Any:  # ruff: ignore[invalid-function-name]
         self.policy_setup_calls += 1
-        self.policy_setup = pickle.loads(request.data)  # noqa: S301 - trusted local fixture.
+        self.policy_setup = pickle.loads(request.data)  # ruff: ignore[suspicious-pickle-usage] - trusted local fixture.
         return services_pb2.Empty()
 
-    def SendObservations(  # noqa: N802
+    def SendObservations(  # ruff: ignore[invalid-function-name]
         self,
         request_iterator: Iterable[Any],
         _context: object,
     ) -> Any:
         payload = b"".join(message.data for message in request_iterator)
-        self.observations.append(pickle.loads(payload))  # noqa: S301 - trusted local fixture.
+        self.observations.append(pickle.loads(payload))  # ruff: ignore[suspicious-pickle-usage] - trusted local fixture.
         return services_pb2.Empty()
 
-    def GetActions(self, _request: object, context: Any) -> Any:  # noqa: N802
+    def GetActions(self, _request: object, context: Any) -> Any:  # ruff: ignore[invalid-function-name]
         self.get_actions_calls += 1
         context.add_callback(self.get_actions_finished.set)
         if self.get_actions_calls == self.block_get_actions_call:

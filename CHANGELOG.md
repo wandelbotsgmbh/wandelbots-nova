@@ -1,6 +1,52 @@
 # CHANGELOG
 
 
+## [5.11.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.10.0...v5.11.0) (2026-07-30)
+
+
+### Features
+
+* improve slack release message ([#461](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/461)) ([bfb1a8c](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bfb1a8c188ed5c67ba0b099e5aa8568f3ead2923))
+
+## [5.10.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.9.0...v5.10.0) (2026-07-29)
+
+
+### Features
+
+* **NDX-812:** Setup release-please + husky in wandelbots-nova ([#456](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/456)) ([d03d6f8](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d03d6f8f6c6d836e26ce009b45b8c554e8b25a35))
+
+
+### Bug Fixes
+
+* fixed release please [#2](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/2) by using a PAT ([#459](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/459)) ([251e19d](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/251e19d66b15ee0f5fc5651b9c9b6fa434c02815))
+* fixed release-please step ([#458](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/458)) ([ebf1b70](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ebf1b701c25d98dd9fc7c1e6cef2fd0089583e16))
+
+## v5.9.0 (2026-07-23)
+
+### Features
+
+- Added docs for program usage (#453)
+  ([#453](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/453),
+  [`42496f6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/42496f66a46c67451c701f6171d30d9bab05efc8))
+
+
+## v5.8.1 (2026-07-23)
+
+### Chores
+
+- Configure dependabot (#451) ([#451](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/451),
+  [`cbb65bc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cbb65bc246ac06f6c4cb10302bd269bb43e1d626))
+
+
+## v5.8.0 (2026-07-20)
+
+### Features
+
+- **NDX-817**: Make it possible to hot-reload novax programs on changes on the instance (#452)
+  ([#452](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/452),
+  [`774006c`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/774006cdc6fc415f30c9867b0da96f4da03f568e))
+
+
 ## v5.7.6 (2026-07-16)
 
 ### Chores

@@ -144,7 +144,7 @@ class WebRTCConnection:
     async def _setup_webrtc(self, api_url: str, cfg: WebRTCCameraConfig) -> None:
         """WebRTC offer/answer exchange."""
         _require_aiortc()
-        from aiortc import (  # noqa: PLC0415
+        from aiortc import (  # ruff: ignore[import-outside-top-level]
             RTCConfiguration,
             RTCPeerConnection,
             RTCSessionDescription,
@@ -192,9 +192,9 @@ class WebRTCConnection:
 
     async def _receive_frames(self, track: MediaStreamTrack) -> None:
         """Receive frames and store the latest (thread-safe)."""
-        from aiortc.mediastreams import MediaStreamError  # noqa: PLC0415
+        from aiortc.mediastreams import MediaStreamError  # ruff: ignore[import-outside-top-level]
 
-        try:  # noqa: PLW0717
+        try:  # ruff: ignore[too-many-statements-in-try-clause]
             while True:
                 frame = cast("VideoFrame", await track.recv())
                 img = frame.to_ndarray(format="rgb24")
@@ -218,7 +218,7 @@ class WebRTCConnection:
 
 def _resize_frame(frame: NDArray[Any], width: int, height: int) -> NDArray[Any]:
     """Resize a single (H, W, 3) frame using Pillow (no system lib dependencies)."""
-    from PIL import Image  # noqa: PLC0415
+    from PIL import Image  # ruff: ignore[import-outside-top-level]
 
     img = Image.fromarray(frame)
     img = img.resize((width, height), Image.Resampling.LANCZOS)

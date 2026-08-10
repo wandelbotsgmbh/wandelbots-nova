@@ -100,7 +100,7 @@ def _build_pose_request(
     Each step is [x, y, z, rx, ry, rz] where position is in mm and
     orientation is a rotation vector in radians.
     """
-    from wandelbots_api_client.v2_pydantic.models.models import (  # noqa: PLC0415
+    from wandelbots_api_client.v2_pydantic.models.models import (  # ruff: ignore[import-outside-top-level]
         Pose as ApiPose,
         RotationVector,
         Vector3d,

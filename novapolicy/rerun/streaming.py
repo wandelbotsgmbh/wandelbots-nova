@@ -78,10 +78,10 @@ class StateStreamer:
 
     async def _loop(self) -> None:
         """Log live state and camera frames without blocking policy execution."""
-        import rerun as rr  # noqa: PLC0415
+        import rerun as rr  # ruff: ignore[import-outside-top-level]
 
         next_image_time = 0.0
-        try:  # noqa: PLR1702, PLW0717
+        try:  # ruff: ignore[too-many-nested-blocks, too-many-statements-in-try-clause]
             while self._running:
                 if self._sessions is None:
                     break
@@ -118,7 +118,7 @@ class StateStreamer:
     def _log_images(self, images: dict[str, Any]) -> None:
         if not images:
             return
-        from novapolicy.rerun.images import log_images  # noqa: PLC0415
+        from novapolicy.rerun.images import log_images  # ruff: ignore[import-outside-top-level]
 
         log_images(
             images,
@@ -128,7 +128,7 @@ class StateStreamer:
 
     def _log_controller_timing(self, mg_id: str, session: WaypointJoggingSession) -> None:
         """Log raw controller progress and each scheduled waypoint request."""
-        import rerun as rr  # noqa: PLC0415
+        import rerun as rr  # ruff: ignore[import-outside-top-level]
 
         server_timestamp_ms = session.last_server_timestamp_ms
         rr.log(
@@ -176,7 +176,7 @@ class StateStreamer:
 
     def _log_state(self, mg_id: str, state: RobotState) -> None:
         """Log a single state sample for one motion group."""
-        import rerun as rr  # noqa: PLC0415
+        import rerun as rr  # ruff: ignore[import-outside-top-level]
 
         joints = list(state.joints)
 

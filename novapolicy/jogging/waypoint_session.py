@@ -41,7 +41,7 @@ _HTTP_NOT_FOUND = 404
 _DISCONTINUITY_WARN_DEG = 10.0
 
 
-class WaypointJoggingSession:  # noqa: PLR0904
+class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     """Sends action chunks as timestamped waypoints via the NOVA Jogging API.
 
     Sends raw position waypoints (joint or TCP) with timing info.
@@ -413,7 +413,7 @@ class WaypointJoggingSession:  # noqa: PLR0904
     async def _stream_state(self) -> None:
         """Continuously read state for guards and observation building."""
         stream = None
-        try:  # noqa: PLW0717
+        try:  # ruff: ignore[too-many-statements-in-try-clause]
             stream = self._motion_group.stream_state(response_rate_msecs=self._config.state_rate_ms)
             async for state in stream:
                 self._current_joints = list(state.joint_position)

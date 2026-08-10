@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pickle  # noqa: S403  # nosec: LeRobot uses trusted pickle payloads.
+import pickle  # ruff: ignore[suspicious-pickle-import]  # nosec: LeRobot uses trusted pickle payloads.
 import time
 from typing import Any, cast
 
@@ -75,7 +75,7 @@ class LeRobotGrpcTransport:
             if allow_empty:
                 return []
             raise RuntimeError("LeRobot server returned an empty action response")
-        actions = pickle.loads(response.data)  # noqa: S301  # nosec: trusted protocol.
+        actions = pickle.loads(response.data)  # ruff: ignore[suspicious-pickle-usage]  # nosec: trusted protocol.
         if not isinstance(actions, list):
             msg = f"Expected LeRobot list[TimedAction], got {type(actions).__name__}"
             raise TypeError(msg)

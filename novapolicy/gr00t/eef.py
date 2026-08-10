@@ -29,7 +29,7 @@ class TcpFormat(StrEnum):
     """[x, y, z, r1x, r1y, r1z, r2x, r2y, r2z] — 9 values. GR00T format."""
 
 
-def pose_to_eef(  # noqa: PLR0914
+def pose_to_eef(  # ruff: ignore[too-many-locals]
     pose: Pose, fmt: TcpFormat | str, *, position_scale: float = 0.001
 ) -> list[float]:
     """Convert a Nova Pose to TCP values in the requested format.

@@ -8,7 +8,7 @@
             "name": "Register Program",
             "type": "node-terminal",
             "request": "launch",
-            "command": "python -m your_nova_app",
+            "command": "python -m app",
             "cwd": "${workspaceFolder}",
             "envFile": "${workspaceFolder}/.env"
         },

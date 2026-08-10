@@ -84,11 +84,11 @@ def test_paused_by_user_is_recoverable_and_never_raises():
 # non-blocking tick resets the streak.
 # ===========================================================================
 
-from hypothesis import (  # noqa: E402
+from hypothesis import (  # ruff: ignore[module-import-not-at-top-of-file]
     settings as _settings,
     strategies as st,
 )
-from hypothesis.stateful import (  # noqa: E402
+from hypothesis.stateful import (  # ruff: ignore[module-import-not-at-top-of-file]
     RuleBasedStateMachine,
     initialize,
     invariant,

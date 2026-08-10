@@ -177,9 +177,9 @@ def detect_action_horizon(action: dict[str, object]) -> int | None:
     ``shape[-2]`` also handles an un-batched ``(T, dof)`` array. Returns the
     first such array's horizon, or ``None`` if no >=2-D array is present.
     """
-    import numpy as np  # noqa: PLC0415
+    import numpy as np  # ruff: ignore[import-outside-top-level]
 
     for value in action.values():
-        if isinstance(value, np.ndarray) and value.ndim >= 2:  # noqa: PLR2004
+        if isinstance(value, np.ndarray) and value.ndim >= 2:  # ruff: ignore[magic-value-comparison]
             return int(value.shape[-2])
     return None

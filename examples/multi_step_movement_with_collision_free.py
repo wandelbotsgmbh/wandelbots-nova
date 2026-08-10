@@ -47,10 +47,10 @@ async def multi_step_movement_with_collision_free(ctx: nova.ProgramContext):
     actions = [
         cartesian_ptp(target_pose),
         # collision_free(home_joints),
-        cartesian_ptp(target_pose @ [50, 0, 0, 0, 0, 0]),
+        cartesian_ptp(target_pose @ Pose([50, 0, 0, 0, 0, 0])),
         io_write(key="digital_out[0]", value=True),
         joint_ptp(home_joints),
-        cartesian_ptp(target_pose @ (50, 100, 0, 0, 0, 0)),
+        cartesian_ptp(target_pose @ Pose((50, 100, 0, 0, 0, 0))),
         # collision_free(home_pose),
         cartesian_ptp(target_pose @ Pose((0, 50, 0, 0, 0, 0))),
         joint_ptp(home_joints),

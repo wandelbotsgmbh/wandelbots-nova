@@ -275,7 +275,7 @@ class _BaseJogger:
         """Log jogging target to Rerun as an action chunk visualization."""
         if self._rerun is None:
             return
-        from novapolicy.types import ActionChunk  # noqa: PLC0415
+        from novapolicy.types import ActionChunk  # ruff: ignore[import-outside-top-level]
 
         # Determine if this is joint or TCP based on session mode
         session_by_id = self._sessions_by_id()
@@ -350,12 +350,12 @@ class _BaseJogger:
 
     async def _init_rerun(self) -> None:
         """Initialize Rerun logger if a viewer is active."""
-        from novapolicy.rerun import _is_rerun_active  # noqa: PLC0415
+        from novapolicy.rerun import _is_rerun_active  # ruff: ignore[import-outside-top-level]
 
         if not _is_rerun_active():
             return
 
-        from novapolicy.rerun import PolicyRerunLogger  # noqa: PLC0415
+        from novapolicy.rerun import PolicyRerunLogger  # ruff: ignore[import-outside-top-level]
 
         self._rerun = PolicyRerunLogger(
             self._mg_list,
@@ -367,10 +367,10 @@ class _BaseJogger:
 
     async def _move_to_start_joint_position(self) -> None:
         """PTP move all motion groups to their start_joint_position positions."""
-        import asyncio as _asyncio  # noqa: PLC0415
+        import asyncio as _asyncio  # ruff: ignore[import-outside-top-level]
 
-        from nova import api  # noqa: PLC0415
-        from nova.actions import jnt  # noqa: PLC0415
+        from nova import api  # ruff: ignore[import-outside-top-level]
+        from nova.actions import jnt  # ruff: ignore[import-outside-top-level]
 
         async def _ptp(mg: MotionGroup, joints: list[float]) -> None:
             tcp = await mg.active_tcp_name() or (await mg.tcp_names())[0]
@@ -582,7 +582,7 @@ class TcpJogger(_BaseJogger):
         )
         self._target: dict[MotionGroup, Pose | list[float]] | None = None
 
-    def _expected_dims(self, mg: MotionGroup) -> int | None:  # noqa: ARG002, PLR6301
+    def _expected_dims(self, mg: MotionGroup) -> int | None:  # ruff: ignore[unused-method-argument, no-self-use]
         return _CARTESIAN_DIMS
 
     @property
@@ -613,7 +613,7 @@ class TcpJogger(_BaseJogger):
                 chunk steps, in milliseconds. When omitted for buffered poses,
                 spacing is inferred automatically.
         """
-        from nova.types import Pose  # noqa: PLC0415
+        from nova.types import Pose  # ruff: ignore[import-outside-top-level]
 
         if isinstance(target, Pose):
             if self._multi:

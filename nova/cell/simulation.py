@@ -152,6 +152,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
+        singularity_handling: api.models.SingularityHandling | None = None,
     ) -> api.models.JointTrajectory:
         """
         A simple example planner that:

@@ -46,15 +46,15 @@ logger = logging.getLogger(__name__)
 class Mapping:
     """Identity mapping — passes values through unchanged."""
 
-    def to_policy(  # noqa: PLR6301
+    def to_policy(  # ruff: ignore[no-self-use]
         self,
-        hardware_value: bool | int | float,  # noqa: FBT001
+        hardware_value: bool | int | float,  # ruff: ignore[boolean-type-hint-positional-argument]
     ) -> float:
         if isinstance(hardware_value, bool):
             return 1.0 if hardware_value else 0.0
         return float(hardware_value)
 
-    def to_hardware(  # noqa: PLR6301
+    def to_hardware(  # ruff: ignore[no-self-use]
         self, policy_value: float
     ) -> bool | int | float | str:
         return policy_value
@@ -74,7 +74,7 @@ class BoolMapping(Mapping):
         self.off = off
         self.threshold = threshold if threshold is not None else (on + off) / 2.0
 
-    def to_policy(self, hardware_value: bool | int | float) -> float:  # noqa: FBT001
+    def to_policy(self, hardware_value: bool | int | float) -> float:  # ruff: ignore[boolean-type-hint-positional-argument]
         if isinstance(hardware_value, bool):
             return self.on if hardware_value else self.off
         return self.on if float(hardware_value) >= self.threshold else self.off

@@ -116,7 +116,7 @@ class LeRobotPolicyClient(PolicyClient):
         if self._async_queue is not None:
             self._async_queue.synchronize(timestep)
 
-    async def connect(self, motion_group_ids: list[str]) -> None:  # noqa: ARG002
+    async def connect(self, motion_group_ids: list[str]) -> None:  # ruff: ignore[unused-method-argument]
         """Open the gRPC channel and reset episode state."""
         await asyncio.to_thread(self._transport.connect)
         self._setup_sent = False
@@ -133,7 +133,7 @@ class LeRobotPolicyClient(PolicyClient):
         states: dict[str, RobotState],
         schema: PolicySchema,
         images: dict[str, Any] | None = None,
-        io_values: dict[str, object] | None = None,  # noqa: ARG002
+        io_values: dict[str, object] | None = None,  # ruff: ignore[unused-method-argument]
     ) -> None:
         """Send policy setup before the executor timeout starts."""
         if not self._transport.connected:

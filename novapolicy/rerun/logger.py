@@ -44,7 +44,10 @@ class PolicyRerunLogger:
         self._camera_names = camera_names or []
         self._use_tcp_offset_for_joint_actions = use_tcp_offset_for_joint_actions
         if state_sample_interval_ms is None:
-            from nova.viewers import Rerun, get_viewer_manager  # noqa: PLC0415
+            from nova.viewers import (
+                Rerun,
+                get_viewer_manager,
+            )
 
             viewer = get_viewer_manager().get_viewer(Rerun)
             state_sample_interval_ms = (
@@ -62,22 +65,28 @@ class PolicyRerunLogger:
         self._streamer: StateStreamer | None = None
         self._recording: RecordingStream | None = None
 
-    async def initialize(self) -> None:  # noqa: C901
+    async def initialize(self) -> None:  # ruff: ignore[complex-structure]
         """Fetch DH parameters, create robot visualizers, and send blueprint."""
         try:
-            from nova_rerun_bridge.dh_robot import DHRobot  # noqa: PLC0415
-            from nova_rerun_bridge.model_loader import load_model_data  # noqa: PLC0415
-            from nova_rerun_bridge.robot_visualizer import RobotVisualizer  # noqa: PLC0415
+            from nova_rerun_bridge.dh_robot import DHRobot
+            from nova_rerun_bridge.model_loader import (
+                load_model_data,
+            )
+            from nova_rerun_bridge.robot_visualizer import (
+                RobotVisualizer,
+            )
 
-            import rerun as rr  # noqa: PLC0415
+            import rerun as rr
         except ImportError:
             logger.warning("rerun or nova_rerun_bridge not available — visualization disabled")
             return
 
-        try:  # noqa: PLR1702, PLW0717
-            from nova import api  # noqa: PLC0415
-            from novapolicy._sdk import get_api_gateway  # noqa: PLC0415
-            from novapolicy.rerun.blueprint import send_blueprint  # noqa: PLC0415
+        try:  # ruff: ignore[too-many-nested-blocks, too-many-statements-in-try-clause]
+            from nova import api
+            from novapolicy._sdk import get_api_gateway
+            from novapolicy.rerun.blueprint import (
+                send_blueprint,
+            )
 
             self._start_time = time.monotonic()
             self._recording = rr.RecordingStream(
@@ -104,7 +113,9 @@ class PolicyRerunLogger:
                 # the action marker look displaced from what is actually sent.
                 if self._use_tcp_offset_for_joint_actions:
                     try:
-                        from novapolicy.rerun.kinematics import tcp_offset_matrix  # noqa: PLC0415
+                        from novapolicy.rerun.kinematics import (
+                            tcp_offset_matrix,
+                        )
 
                         active_tcp = await mg.active_tcp_name()
                         if active_tcp is not None:
@@ -179,7 +190,9 @@ class PolicyRerunLogger:
         if not self._initialized or self._recording is None:
             return
         try:
-            from novapolicy.rerun.observation import log_observation  # noqa: PLC0415
+            from novapolicy.rerun.observation import (
+                log_observation,
+            )
 
             log_observation(
                 states,
@@ -199,7 +212,9 @@ class PolicyRerunLogger:
         if not self._initialized or self._recording is None:
             return
         try:
-            from novapolicy.rerun.action_chunk import log_bridge_chunk  # noqa: PLC0415
+            from novapolicy.rerun.action_chunk import (
+                log_bridge_chunk,
+            )
 
             log_bridge_chunk(
                 chunk,
@@ -217,7 +232,9 @@ class PolicyRerunLogger:
         if not self._initialized or self._recording is None:
             return
         try:
-            from novapolicy.rerun.action_chunk import log_action_chunk  # noqa: PLC0415
+            from novapolicy.rerun.action_chunk import (
+                log_action_chunk,
+            )
 
             log_action_chunk(
                 chunk,
@@ -250,9 +267,11 @@ class PolicyRerunLogger:
         """Log commanded/actual joints and the derived TCP position error."""
         if not self._initialized or self._recording is None:
             return
-        try:  # noqa: PLW0717
-            from novapolicy.rerun.kinematics import joint_tcp_position  # noqa: PLC0415
-            from novapolicy.rerun.target_tracking import (  # noqa: PLC0415
+        try:  # ruff: ignore[too-many-statements-in-try-clause]
+            from novapolicy.rerun.kinematics import (
+                joint_tcp_position,
+            )
+            from novapolicy.rerun.target_tracking import (
                 log_joint_tcp_tracking,
                 log_joint_tracking,
             )
@@ -296,7 +315,9 @@ class PolicyRerunLogger:
         if pose is None:
             return
         try:
-            from novapolicy.rerun.target_tracking import log_tcp_tracking  # noqa: PLC0415
+            from novapolicy.rerun.target_tracking import (
+                log_tcp_tracking,
+            )
 
             log_tcp_tracking(
                 mg_id,
@@ -316,7 +337,7 @@ class PolicyRerunLogger:
         if not self._initialized or self._recording is None or not images:
             return
         try:
-            from novapolicy.rerun.images import log_images  # noqa: PLC0415
+            from novapolicy.rerun.images import log_images
 
             log_images(images, start_time=self._start_time, recording=self._recording)
         except (OSError, RuntimeError, ValueError, TypeError) as e:
@@ -327,7 +348,7 @@ class PolicyRerunLogger:
         if not self._initialized:
             return
         try:
-            import rerun as rr  # noqa: PLC0415
+            import rerun as rr
 
             rr.log(
                 "policy/status",
@@ -354,7 +375,9 @@ class PolicyRerunLogger:
         """Start background state and camera-frame logging."""
         if not self._initialized:
             return
-        from novapolicy.rerun.streaming import StateStreamer  # noqa: PLC0415
+        from novapolicy.rerun.streaming import (
+            StateStreamer,
+        )
 
         self._streamer = StateStreamer(
             start_time=self._start_time,

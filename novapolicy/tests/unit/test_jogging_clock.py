@@ -176,7 +176,7 @@ def test_healthy_link_does_not_warn(caplog, manual_time):
 # Property-based invariants for the clock's scaling + clamp behaviour.
 # ===========================================================================
 
-from hypothesis import (  # noqa: E402
+from hypothesis import (  # ruff: ignore[module-import-not-at-top-of-file]
     given,
     settings,
     strategies as st,

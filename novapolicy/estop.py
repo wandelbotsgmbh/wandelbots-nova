@@ -129,7 +129,7 @@ class EstopMonitor:
     async def _watch(self, controller_id: str, api_client: ApiGateway) -> None:
         cell = get_cell(self._motion_groups[0])
         stream = None
-        try:  # noqa: PLW0717
+        try:  # ruff: ignore[too-many-statements-in-try-clause]
             stream = api_client.controller_api.stream_robot_controller_state(
                 cell=cell,
                 controller=controller_id,

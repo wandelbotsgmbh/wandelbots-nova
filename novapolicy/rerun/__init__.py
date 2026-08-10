@@ -27,7 +27,7 @@ from novapolicy.rerun.logger import PolicyRerunLogger
 def _is_rerun_active() -> bool:
     """Check if a Rerun viewer is active."""
     try:
-        from nova.viewers import get_viewer_manager  # noqa: PLC0415
+        from nova.viewers import get_viewer_manager  # ruff: ignore[import-outside-top-level]
 
         return get_viewer_manager().has_active_viewers
     except (ImportError, AttributeError):

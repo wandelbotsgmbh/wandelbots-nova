@@ -991,12 +991,12 @@ class PolicyExecutor:
 
     async def _init_rerun(self) -> None:
         """Initialize Rerun logger if a viewer is active."""
-        from novapolicy.rerun import _is_rerun_active  # noqa: PLC0415
+        from novapolicy.rerun import _is_rerun_active  # ruff: ignore[import-outside-top-level]
 
         if not _is_rerun_active():
             return
 
-        from novapolicy.rerun import PolicyRerunLogger  # noqa: PLC0415
+        from novapolicy.rerun import PolicyRerunLogger  # ruff: ignore[import-outside-top-level]
 
         self._rerun = PolicyRerunLogger(
             self._motion_groups,

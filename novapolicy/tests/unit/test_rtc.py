@@ -66,7 +66,7 @@ def test_compute_rtc_options_does_not_mutate_the_latency_queue():
 # Property-based invariants over horizon, latency, dt, and overlap-factor ranges.
 # ===========================================================================
 
-from hypothesis import (  # noqa: E402
+from hypothesis import (  # ruff: ignore[module-import-not-at-top-of-file]
     given,
     settings,
     strategies as st,

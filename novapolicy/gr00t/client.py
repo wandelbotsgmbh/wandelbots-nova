@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 
 from novapolicy.gr00t.eef import TcpFormat, pose_to_eef
-from novapolicy.gr00t.rtc import (  # noqa: TC001
+from novapolicy.gr00t.rtc import (  # ruff: ignore[typing-only-first-party-import]
     RTCConfig,
     RTCState,
     compute_rtc_options,
@@ -100,7 +100,7 @@ class Gr00tPolicyClient(PolicyClient):
             )
         )
 
-    async def connect(self, motion_group_ids: list[str]) -> None:  # noqa: ARG002
+    async def connect(self, motion_group_ids: list[str]) -> None:  # ruff: ignore[unused-method-argument]
         """Create the ZMQ REQ socket.
 
         Called once per episode by the executor.  Resets RTC state so frozen
@@ -174,7 +174,7 @@ class Gr00tPolicyClient(PolicyClient):
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
         """Build GR00T observation from raw states + images, send, decode response."""
-        import time as _time  # noqa: PLC0415
+        import time as _time  # ruff: ignore[import-outside-top-level]
 
         groot_obs = await self._build_groot_obs(states, schema, images, io_values)
 
@@ -208,7 +208,7 @@ class Gr00tPolicyClient(PolicyClient):
 
         # RTC: update timing state (server stores action internally)
         if self._rtc_config is not None:
-            import time as _time2  # noqa: PLC0415
+            import time as _time2  # ruff: ignore[import-outside-top-level]
 
             if self._rtc_state.action_horizon is None:
                 self._rtc_state.action_horizon = detect_action_horizon(action_raw)
