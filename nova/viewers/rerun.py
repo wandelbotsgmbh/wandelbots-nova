@@ -160,6 +160,11 @@ class Rerun(Viewer):
             # viewer/proxy available), skip it instead of failing program execution.
             logger.warning("Skipping Rerun viewer configuration due to error: %s", e)
 
+    @property
+    def is_configured(self) -> bool:
+        """Return whether this viewer has an active NOVA Rerun bridge."""
+        return self._bridge is not None
+
     async def setup_after_preconditions(self) -> None:
         """Setup async components after preconditions are met.
 

@@ -7,9 +7,24 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from novapolicy.rerun import _is_rerun_active
 from novapolicy.rerun.logger import PolicyRerunLogger
 
 rr = pytest.importorskip("rerun")
+
+
+def test_rerun_is_active_only_after_viewer_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    viewer = MagicMock(is_configured=False)
+    manager = MagicMock()
+    manager.get_viewer.return_value = viewer
+    monkeypatch.setattr("nova.viewers.get_viewer_manager", lambda: manager)
+
+    assert not _is_rerun_active()
+
+    viewer.is_configured = True
+    assert _is_rerun_active()
 
 
 @pytest.mark.asyncio
