@@ -471,14 +471,14 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 return_when=asyncio.FIRST_COMPLETED,
             )
             if response_task in done:
-                await response_task
+                _ = await response_task
                 return False
             return True
         finally:
             if not signal_task.done():
                 signal_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await signal_task
+                _ = await signal_task
 
     async def _pending_waypoint_requests(
         self,
@@ -569,7 +569,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 if not response_task.done():
                     response_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
-                    await response_task
+                    _ = await response_task
 
         try:
             await api_gateway.jogging_api.execute_waypoint_jogging(

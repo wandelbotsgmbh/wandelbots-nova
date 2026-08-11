@@ -17,7 +17,7 @@ import importlib
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import requests
@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from aiortc import MediaStreamTrack
-    from av import VideoFrame
     from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
@@ -193,10 +192,13 @@ class WebRTCConnection:
     async def _receive_frames(self, track: MediaStreamTrack) -> None:
         """Receive frames and store the latest (thread-safe)."""
         from aiortc.mediastreams import MediaStreamError  # ruff: ignore[import-outside-top-level]
+        from av import VideoFrame  # ruff: ignore[import-outside-top-level]
 
         try:  # ruff: ignore[too-many-statements-in-try-clause]
             while True:
-                frame = cast("VideoFrame", await track.recv())
+                frame = await track.recv()
+                if not isinstance(frame, VideoFrame):
+                    continue
                 img = frame.to_ndarray(format="rgb24")
 
                 with self._frame_lock:
