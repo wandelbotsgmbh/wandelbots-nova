@@ -169,7 +169,7 @@ def calculate_handover_orientation(
 
 @nova.program(
     name="robocore",
-    viewer=nova.viewers.Rerun(application_id="robocore"),
+    viewer=lambda: nova.viewers.Rerun(application_id="robocore"),
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(

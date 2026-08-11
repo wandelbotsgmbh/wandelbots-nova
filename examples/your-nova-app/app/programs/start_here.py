@@ -39,7 +39,7 @@ async def p2(ctx: nova.ProgramContext, count: int = 3):
 @nova.program(
     id="start_here",  # Unique identifier of the program. If not provided, the function name will be used.
     name="Start Here",  # Readable name of the program
-    # viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization (headless in-cluster: leave disabled)
+    # viewer=nova.viewers.Rerun,  # add this line for a 3D visualization (headless in-cluster: leave disabled)
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
@@ -79,7 +79,9 @@ async def start(ctx: nova.ProgramContext):
             target_pose @ Pose([offset, 0, 0, 0, 0, 0])
         ),  # Move 200mm in target pose's local x-axis
         joint_ptp(home_joints),
-        linear(target_pose @ Pose([offset, offset, 0, 0, 0, 0])),  # Move 200mm in local x and y axes
+        linear(
+            target_pose @ Pose([offset, offset, 0, 0, 0, 0])
+        ),  # Move 200mm in local x and y axes
         joint_ptp(home_joints, settings=slow),
         cartesian_ptp(target_pose @ Pose((0, offset, 0, 0, 0, 0))),
         joint_ptp(home_joints),

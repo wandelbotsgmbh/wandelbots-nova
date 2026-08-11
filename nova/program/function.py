@@ -35,6 +35,7 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
+from nova.viewers import Viewer, get_viewer_manager
 
 from . import registry
 from .context import ProgramContext, current_program_context_var
@@ -54,7 +55,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
     _wrapped: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(  # ty: ignore[invalid-assignment]
         default_factory=lambda *args, **kwargs: None
     )
-    _viewer: Any | None = PrivateAttr(default=None)
+    _viewer: Viewer | Callable[[], Viewer] | None = PrivateAttr(default=None)
     program_id: str
     name: str | None
     description: str | None
@@ -169,13 +170,13 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 f"Please make sure the right input parameters are configured. {e}"
             )
 
-        try:
-            return await self._wrapped(ctx, **validated_kwargs)
-        finally:
-            if self._viewer is not None:
-                from nova.viewers import _cleanup_active_viewers
+        return await self._wrapped(ctx, **validated_kwargs)
 
-                _cleanup_active_viewers()
+    def _create_viewer(self) -> Viewer | None:
+        """Create or return the viewer owned by one program execution."""
+        if self._viewer is None or isinstance(self._viewer, Viewer):
+            return self._viewer
+        return self._viewer()
 
     def _log(self, level: str, message: str) -> None:
         """Log a message with program prefix."""
@@ -400,7 +401,7 @@ def program(
     name: str | None = None,
     description: str | None = None,
     preconditions: ProgramPreconditions | None = None,
-    viewer: Any | None = None,
+    viewer: Viewer | Callable[[], Viewer] | None = None,
 ) -> Callable[[Callable[Parameters, Return]], Program[Parameters, Coroutine[Any, Any, Return]]]: ...
 
 
@@ -412,7 +413,7 @@ def program(
     name: str | None = None,
     description: str | None = None,
     preconditions: ProgramPreconditions | None = None,
-    viewer: Any | None = None,
+    viewer: Viewer | Callable[[], Viewer] | None = None,
 ):
     """
     Decorator factory for creating Nova programs with declarative controller setup.
@@ -424,7 +425,10 @@ def program(
         preconditions: ProgramPreconditions containing controller configurations and cleanup settings
             Based on the program preconditions, a robot cell is created when running the program in a runner
             Only devices that are part of the preconditions are opened and listened for e.g. estop handling
-        viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
+        viewer: Optional viewer instance or zero-argument factory. A factory creates a fresh
+            viewer for each execution and avoids module-import side effects. Passing an instance
+            remains supported, but implicit global registration by ``Rerun()`` is deprecated and
+            will be removed in the next major release.
 
     Decorator / decorator-factory for creating Nova programs.
         - Bare usage:        @nova.program
@@ -460,6 +464,10 @@ def program(
         if description:
             program_obj.description = description
         program_obj.preconditions = preconditions
+        if isinstance(viewer, Viewer):
+            # Rerun() still auto-registers for legacy direct usage. A program owns
+            # its viewer, so claim it now and activate it only while the program runs.
+            get_viewer_manager().unregister_viewer(viewer)
         program_obj._viewer = viewer
         registry.register(program_obj)
         return program_obj

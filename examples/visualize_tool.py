@@ -17,7 +17,9 @@ robot_tcp_data = api.models.RobotTcpData(
 
 @nova.program(
     name="visualize_tool",
-    viewer=nova.viewers.Rerun(application_id="visualize-tool", tcp_tools={"vacuum": TOOL_ASSET}),
+    viewer=lambda: nova.viewers.Rerun(
+        application_id="visualize-tool", tcp_tools={"vacuum": TOOL_ASSET}
+    ),
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(

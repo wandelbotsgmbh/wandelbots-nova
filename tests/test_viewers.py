@@ -20,6 +20,7 @@ The tests use pytest best practices:
 - Clear test organization by functional area
 """
 
+import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -84,16 +85,13 @@ class TestRerunViewer:
         with pytest.raises(ValueError, match="positive finite"):
             Rerun(state_sample_interval_ms=interval_ms)
 
-    def test_rerun_viewer_auto_registers(self):
-        """Should automatically register itself when created."""
+    def test_rerun_viewer_legacy_auto_registration_remains_compatible(self):
+        """Legacy construction remains compatible while programs migrate to factories."""
         manager = get_viewer_manager()
-        initial_count = len(manager._viewers)
-
         viewer = Rerun()
 
-        # Should have one more viewer registered
-        assert len(manager._viewers) == initial_count + 1
-        assert viewer is not None  # Keep the variable used
+        assert viewer in manager.active_viewers
+        manager.cleanup_viewer(viewer)
 
     @patch("nova_rerun_bridge.NovaRerunBridge")
     def test_rerun_viewer_configure(self, mock_bridge_class):
@@ -291,7 +289,7 @@ class TestViewerManager:
 
         manager.register_viewer(viewer)
 
-        assert viewer in manager._viewers
+        assert viewer in manager.active_viewers
         assert manager.get_viewer(Viewer) is viewer
 
     def test_get_viewer_returns_none_when_type_is_not_active(self):
@@ -308,7 +306,36 @@ class TestViewerManager:
         manager.register_viewer(viewer)  # Register again
 
         # WeakSet automatically handles duplicates
-        assert len(manager._viewers) == 1
+        assert len(manager.active_viewers) == 1
+
+    def test_cleanup_viewer_preserves_other_active_viewers(self):
+        manager = ViewerManager()
+        viewer1 = Mock(spec=Viewer)
+        viewer2 = Mock(spec=Viewer)
+        manager.register_viewer(viewer1)
+        manager.register_viewer(viewer2)
+
+        manager.cleanup_viewer(viewer1)
+
+        viewer1.cleanup.assert_called_once()
+        viewer2.cleanup.assert_not_called()
+        assert manager.active_viewers == (viewer2,)
+
+    @pytest.mark.asyncio
+    async def test_active_viewers_are_isolated_between_tasks(self):
+        manager = ViewerManager()
+        viewer1 = Mock(spec=Viewer)
+        viewer2 = Mock(spec=Viewer)
+
+        async def activate(viewer):
+            manager.activate_viewer(viewer)
+            await asyncio.sleep(0)
+            assert manager.active_viewers == (viewer,)
+            manager.cleanup_viewer(viewer)
+
+        await asyncio.gather(activate(viewer1), activate(viewer2))
+
+        assert not manager.active_viewers
 
     def test_configure_viewers(self):
         """Should configure all registered viewers."""
@@ -353,7 +380,7 @@ class TestViewerManager:
 
         viewer1.cleanup.assert_called_once()
         viewer2.cleanup.assert_called_once()
-        assert len(manager._viewers) == 0
+        assert not manager.active_viewers
 
     @pytest.mark.asyncio
     async def test_log_planning_success(self):
@@ -566,9 +593,7 @@ class TestViewerIntegration:
         mock_bridge_class.return_value = mock_bridge
 
         # Create viewer and manager
-        with patch("nova.viewers.rerun.register_viewer"):
-            viewer = Rerun(show_safety_link_chain=True)
-
+        viewer = Rerun(show_safety_link_chain=True)
         manager = ViewerManager()
 
         # Register viewer
@@ -600,12 +625,11 @@ class TestViewerIntegration:
 
     def test_viewer_configuration_propagation(self):
         """Test that viewer configuration is properly propagated."""
-        with patch("nova.viewers.rerun.register_viewer"):
-            viewer = Rerun(
-                show_collision_link_chain=True,
-                show_safety_link_chain=False,
-                tcp_tools={"gripper": "gripper.stl"},
-            )
+        viewer = Rerun(
+            show_collision_link_chain=True,
+            show_safety_link_chain=False,
+            tcp_tools={"gripper": "gripper.stl"},
+        )
 
         # Verify configuration
         assert viewer.show_collision_link_chain is True
@@ -856,15 +880,14 @@ class TestViewerUtilities:
         # Create a real viewer instance that won't be garbage collected
         viewer = Rerun()
 
-        # Get initial count
         manager = get_viewer_manager()
-        initial_count = len(manager._viewers)
+        initial_count = len(manager.active_viewers)
 
-        # Register should not add it again since Rerun auto-registers
         register_viewer(viewer)
 
-        # Should still have same count since it was already registered
-        assert len(manager._viewers) == initial_count
+        assert len(manager.active_viewers) == initial_count
+        assert viewer in manager.active_viewers
+        manager.cleanup_viewer(viewer)
 
     def test_extract_collision_scenes_empty_actions(self):
         """Should handle empty actions list."""
@@ -878,18 +901,18 @@ class TestViewerUtilities:
         from nova.viewers.manager import _viewer_manager
 
         # Clear any existing viewers (for test isolation)
-        _viewer_manager._viewers.clear()
+        _viewer_manager.cleanup_viewers()
 
         manager1 = get_viewer_manager()
         viewer = Mock(spec=Viewer)
 
         manager1.register_viewer(viewer)
-        assert len(manager1._viewers) >= 1
+        assert len(manager1.active_viewers) >= 1
 
         # Get manager again should be same instance
         manager2 = get_viewer_manager()
         assert manager1 is manager2
-        assert viewer in manager2._viewers
+        assert viewer in manager2.active_viewers
 
 
 class TestViewerEdgeCases:

@@ -31,7 +31,7 @@ def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
 
 @nova.program(
     name="reachability_check",
-    viewer=nova.viewers.Rerun(application_id="reachability-check"),
+    viewer=lambda: nova.viewers.Rerun(application_id="reachability-check"),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

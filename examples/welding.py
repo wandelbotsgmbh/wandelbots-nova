@@ -173,7 +173,9 @@ async def calculate_seam_poses(mesh_pose: api.models.Pose) -> tuple[Pose, Pose, 
 
 @nova.program(
     name="14_welding_example",
-    # viewer=nova.viewers.Rerun(application_id="14_welding_example", show_collision_link_chain=True),
+    # viewer=lambda: nova.viewers.Rerun(
+    #     application_id="14_welding_example", show_collision_link_chain=True
+    # ),
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(

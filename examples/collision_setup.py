@@ -167,7 +167,7 @@ async def build_and_store_collision_world(
 
 @nova.program(
     name="15_collison_world",
-    viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization
+    viewer=nova.viewers.Rerun,  # add this line for a 3D visualization
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(

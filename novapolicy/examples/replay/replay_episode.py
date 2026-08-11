@@ -52,7 +52,7 @@ CHUNK_SIZE = 8
     id="replay_episode",
     name="Replay Dataset Episode",
     description="Replays a recorded parquet episode on two UR5e robots via waypoint jogging.",
-    viewer=nova.viewers.Rerun(),
+    viewer=nova.viewers.Rerun,
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

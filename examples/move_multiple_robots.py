@@ -33,7 +33,7 @@ async def move_robot(controller: Controller):
 @nova.program(
     id="move_multiple_robots",
     name="Move Multiple Robots",
-    viewer=nova.viewers.Rerun(),
+    viewer=nova.viewers.Rerun,
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(

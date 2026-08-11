@@ -15,7 +15,7 @@ HOME_RIGHT = [-1.169, -2.3911, -1.8675, 0.0, -0.872, -2.094]
 @nova.program(
     id="jogging_dual_tcp_chunked",
     name="Dual-Arm TCP Jogging (Chunked)",
-    viewer=nova.viewers.Rerun(),
+    viewer=nova.viewers.Rerun,
 )
 async def main(ctx: nova.ProgramContext):
     cell = ctx.nova.cell()
