@@ -13,7 +13,7 @@ from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 
 @nova.program(
     name="10_import_ply",
-    viewer=lambda: nova.viewers.Rerun(application_id="import-ply"),
+    viewer=nova.viewers.Rerun(application_id="import-ply"),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

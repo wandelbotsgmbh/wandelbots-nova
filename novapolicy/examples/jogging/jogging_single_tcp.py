@@ -12,7 +12,7 @@ START_JOINTS = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
 @nova.program(
     id="jogging_single_tcp",
     name="Single-Arm TCP Jogging",
-    viewer=nova.viewers.Rerun,
+    viewer=nova.viewers.Rerun(),
 )
 async def main(ctx: nova.ProgramContext):
     cell = ctx.nova.cell()

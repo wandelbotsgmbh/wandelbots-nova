@@ -11,7 +11,7 @@ HOME = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
 @nova.program(
     id="jogging_single_joint_chunked",
     name="Single-Arm Joint Jogging (Chunked)",
-    viewer=lambda: nova.viewers.Rerun(state_sample_interval_ms=1000.0 / 30.0),
+    viewer=nova.viewers.Rerun(state_sample_interval_ms=1000.0 / 30.0),
 )
 async def main(ctx: nova.ProgramContext):
     cell = ctx.nova.cell()

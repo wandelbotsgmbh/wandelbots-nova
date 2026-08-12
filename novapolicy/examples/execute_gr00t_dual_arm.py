@@ -43,7 +43,7 @@ CAM_TARGET = "World_EnvAssets_rack_env0_d405_halter_stationaer_2_asm_01_tn__d405
 @program(
     id="gr00t_dual_arm",
     name="GR00T Dual-Arm Policy",
-    viewer=viewers.Rerun,
+    viewer=viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

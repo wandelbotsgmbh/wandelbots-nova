@@ -180,7 +180,7 @@ async def move_to_home(mg1, mg2) -> None:
 @program(
     id="dual_arm_policy",
     name="Dual-Arm Policy Execution",
-    viewer=viewers.Rerun,
+    viewer=viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(

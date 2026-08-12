@@ -113,7 +113,7 @@ async def build_collision_world(
 
 
 @nova.program(
-    viewer=nova.viewers.Rerun,
+    viewer=nova.viewers.Rerun(),
     preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
