@@ -93,20 +93,27 @@ class HullVisualizer:
             adj.setdefault(a, []).append(b)
             adj.setdefault(b, []).append(a)
 
-        # Walk along the boundary edges to form a closed loop
+        # Walk along the boundary edges to form a closed loop. Degenerate hulls can have
+        # pinch vertices (degree > 2) where the boundary is not a simple cycle, so every
+        # edge may only be traversed once - otherwise the walk loops forever.
         start = boundary_edges[0][0]
         loop = [start]
         current = start
         prev = None
+        visited_edges: set[tuple[int, int]] = set()
         while True:
             neighbors = adj[current]
             next_vertex = None
             for n in neighbors:
-                if n != prev:
-                    next_vertex = n
-                    break
+                if n == prev:
+                    continue
+                if (min(current, n), max(current, n)) in visited_edges:
+                    continue
+                next_vertex = n
+                break
             if next_vertex is None:
                 break
+            visited_edges.add((min(current, next_vertex), max(current, next_vertex)))
             loop.append(next_vertex)
             prev, current = current, next_vertex
             if next_vertex == start:
