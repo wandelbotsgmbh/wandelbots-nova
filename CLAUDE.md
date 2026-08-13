@@ -61,14 +61,6 @@ This SDK enables Python developers to control industrial robots through the Wand
 - **novax/**: App framework for building FastAPI server applications
   - `Novax` - FastAPI integration with program registration and lifecycle management
   - Used with `nova app create` CLI to scaffold new apps
-
-- **wandelscript/**: Domain-specific language for robot programming
-  - Grammar defined in `wandelscript/grammar/` (ANTLR4)
-  - Runtime execution in `runtime.py`
-  - Built-in functions in `builtins/`
-# Run Wandelscript CLI
-uv run wandelscript my_script.ws
-uv run ws my_script.ws  # shortcut
 ```
 
 ### Core Usage Pattern

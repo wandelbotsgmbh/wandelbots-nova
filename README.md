@@ -27,7 +27,6 @@ The SDK will help you to build your own apps and services using Python on top of
   - [Using the SDK](#using-the-sdk)
     - [API essentials](#api-essentials)
     - [Example gallery](#example-gallery)
-  - [Wandelscript (deprecated)](#wandelscript-deprecated)
   - [NOVAx](#novax)
     - [Registering programs](#registering-programs)
   - [Development](#development)
@@ -155,42 +154,6 @@ Curated examples in this repository showcase typical SDK workflows:
 8. **Merge trajectories with blending**: [merge_trajectories.py](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/merge_trajectories.py)
 
 9. **Kinematic configuration**: [kinematic_configuration.py](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/kinematic_configuration.py)
-
-## Wandelscript (deprecated)
-
-> [!WARNING]
-> Wandelscript is deprecated and will be removed in a future release. For more information on how to migrate Wandelscript to Python programs, click [here](https://docs.wandelbots.io/latest/pathplanning-local-development#migrating-wandelscript-to-python-programs).
-
-Wandelscript is a domain-specific language for programming robots.
-It is a declarative language that allows you to describe the robot's behavior in a high-level way.
-Wandelscript is suited to get yourself familiar with robot programming.
-
-```bash
-uv add wandelbots-nova --extra wandelscript
-```
-
-Here is a simple example of a Wandelscript program:
-
-```python
-robot = get_controller("controller")[0]
-tcp("Flange")
-home = read(robot, "pose")
-sync
-
-# Set the velocity of the robot to 200 mm/s
-velocity(200)
-
-for i = 0..3:
-    move via ptp() to home
-    # Move to a pose concatenating the home pose
-    move via line() to (50, 20, 30, 0, 0, 0) :: home
-    move via line() to (100, 20, 30, 0, 0, 0) :: home
-    move via line() to (50, 20, 30, 0, 0, 0) :: home
-    move via ptp() to home
-```
-
-To get started, use the [Quickstart](https://docs.wandelbots.io/latest/pathplanning-maintained/wandelscript/quickstart).
-For implementation details or contributing to Wandelscript, refer to the [Wandelscript readme](/wandelscript/README.md).
 
 ## NOVAx
 
