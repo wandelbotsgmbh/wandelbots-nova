@@ -5,6 +5,10 @@ import trimesh
 from scipy.spatial import ConvexHull
 from scipy.spatial.qhull import QhullError
 
+# Adjacent hull triangles are treated as one flat face below this angle, so the edge between
+# them is not part of the wireframe.
+COPLANAR_ANGLE_TOLERANCE = 1e-6
+
 
 class HullVisualizer:
     @staticmethod
@@ -29,108 +33,14 @@ class HullVisualizer:
         return (mesh.vertices.tolist(), mesh.faces.tolist(), mesh.vertex_normals.tolist())
 
     @staticmethod
-    def plane_from_triangle(p0, p1, p2, normal_epsilon=1e-6):
-        # Compute normal
-        v1 = p1 - p0
-        v2 = p2 - p0
-        n = np.cross(v1, v2)
-        norm = np.linalg.norm(n)
-        if norm < normal_epsilon:
-            return None, None
-        n = n / norm
-        # Plane: n·x = d
-        d = np.dot(n, p0)
-        return n, d
-
-    @staticmethod
-    def group_coplanar_triangles(points, hull, angle_epsilon=1e-6, dist_epsilon=1e-6):
-        # Group triangles by their plane (normal and distance)
-        plane_map = {}
-        for simplex in hull.simplices:
-            p0, p1, p2 = points[simplex]
-            n, d = HullVisualizer.plane_from_triangle(p0, p1, p2)
-            if n is None:
-                continue
-
-            # Ensure a canonical representation of the plane normal
-            for i_comp in range(3):
-                if abs(n[i_comp]) > angle_epsilon:
-                    if n[i_comp] < 0:
-                        n = -n
-                        d = -d
-                    break
-
-            # Round normal and distance for stable hashing
-            n_rounded = tuple(np.round(n, 6))
-            d_rounded = round(d, 3)
-
-            key = (n_rounded, d_rounded)
-            if key not in plane_map:
-                plane_map[key] = []
-            plane_map[key].append(simplex)
-
-        return plane_map
-
-    @staticmethod
-    def merge_coplanar_triangles_to_polygon(points, simplices):
-        # Extract polygon outline from coplanar triangles
-        edges = {}
-        for tri in simplices:
-            for i in range(3):
-                a = tri[i]
-                b = tri[(i + 1) % 3]
-                e = (min(a, b), max(a, b))
-                edges[e] = edges.get(e, 0) + 1
-
-        # Keep only outer edges (appear once)
-        boundary_edges = [e for e, count in edges.items() if count == 1]
-        if not boundary_edges:
-            return []
-
-        # Build adjacency
-        adj = {}
-        for a, b in boundary_edges:
-            adj.setdefault(a, []).append(b)
-            adj.setdefault(b, []).append(a)
-
-        # Walk along the boundary edges to form a closed loop. Degenerate hulls can have
-        # pinch vertices (degree > 2) where the boundary is not a simple cycle, so every
-        # edge may only be traversed once - otherwise the walk loops forever.
-        start = boundary_edges[0][0]
-        loop = [start]
-        current = start
-        prev = None
-        visited_edges: set[tuple[int, int]] = set()
-        while True:
-            neighbors = adj[current]
-            next_vertex = None
-            for n in neighbors:
-                if n == prev:
-                    continue
-                if (min(current, n), max(current, n)) in visited_edges:
-                    continue
-                next_vertex = n
-                break
-            if next_vertex is None:
-                break
-            visited_edges.add((min(current, next_vertex), max(current, next_vertex)))
-            loop.append(next_vertex)
-            prev, current = current, next_vertex
-            if next_vertex == start:
-                break
-
-        polygon_points = points[loop]
-        return polygon_points
-
-    @staticmethod
     def compute_hull_outlines_from_geometries(child_geometries: list[Any]) -> list[np.ndarray]:
-        """Compute polygon outlines from geometry child objects.
+        """Compute the wireframe outline from geometry child objects.
 
         Args:
             child_geometries: List of geometry objects containing convex hulls
 
         Returns:
-            List of closed polygons as Nx3 numpy arrays
+            List of line strips as Nx3 numpy arrays
         """
         all_points = []
         for child in child_geometries:
@@ -145,13 +55,13 @@ class HullVisualizer:
 
     @staticmethod
     def compute_hull_outlines_from_points(points: np.ndarray) -> list[np.ndarray]:
-        """Compute polygon outlines directly from point coordinates.
+        """Compute the wireframe outline of the convex hull of the given points.
 
         Args:
             points: List of [x,y,z] coordinates
 
         Returns:
-            List of closed polygons as Nx3 numpy arrays
+            List of line strips as Nx3 numpy arrays
         """
         if len(points) < 4:
             return []
@@ -239,20 +149,31 @@ class HullVisualizer:
 
     @staticmethod
     def _compute_hull_from_points(points: np.ndarray) -> list[np.ndarray]:
-        """Internal helper to compute hull from numpy points array."""
-        try:
-            hull = ConvexHull(points)
-            plane_map = HullVisualizer.group_coplanar_triangles(points, hull)
+        """Internal helper to compute the hull wireframe from a numpy points array.
 
-            polygons = []
-            for simplices in plane_map.values():
-                polygon_points = HullVisualizer.merge_coplanar_triangles_to_polygon(
-                    points, simplices
-                )
-                if len(polygon_points) > 2:
-                    closed_loop = np.vstack([polygon_points, polygon_points[0]])
-                    polygons.append(closed_loop)
-            return polygons
+        The visible edges of a convex hull are the ones whose two adjacent triangles are not
+        coplanar, so trimesh's face adjacency does the coplanar grouping for us. Edges are
+        returned as individual two-point strips - the wireframe looks the same as closed face
+        outlines, and no boundary ordering is needed. That matters because hulls of CAD
+        geometry regularly have faces whose boundary is not a simple cycle.
+        """
+        try:
+            points = np.asarray(points)
+            hull = ConvexHull(points)
+
+            # qhull does not wind the hull triangles consistently, so re-wind them against the
+            # outward plane normals it reports. Without this, two coplanar triangles can appear
+            # to meet at 180 degrees and their shared edge is mistaken for a hull edge.
+            faces = np.array(hull.simplices)
+            windings = np.cross(
+                points[faces[:, 1]] - points[faces[:, 0]], points[faces[:, 2]] - points[faces[:, 0]]
+            )
+            flipped = np.einsum("ij,ij->i", windings, hull.equations[:, :3]) < 0
+            faces[flipped] = faces[flipped][:, ::-1]
+
+            mesh = trimesh.Trimesh(vertices=points, faces=faces, process=False)
+            sharp = mesh.face_adjacency_angles > COPLANAR_ANGLE_TOLERANCE
+            return list(points[mesh.face_adjacency_edges[sharp]])
 
         except QhullError:
             # ConvexHull failed - likely because points are coplanar
