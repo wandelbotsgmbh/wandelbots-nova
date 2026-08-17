@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "806291289002",
+  "strategy": "manual-commit",
+  "branch": "feat/trajectory-cursor-io-overlay-parity",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "tests/cell/test_trajectory_cursor_parity.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/80/6291289002/0/metadata.json",
+      "transcript": "/80/6291289002/0/full.jsonl",
+      "compact_transcript": "/80/6291289002/0/transcript.jsonl",
+      "content_hash": "/80/6291289002/0/content_hash.txt",
+      "prompt": "/80/6291289002/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 133894071,
+    "cache_creation_tokens": 14719947,
+    "cache_read_tokens": 119167503,
+    "output_tokens": 330141,
+    "api_call_count": 467
+  }
+}
