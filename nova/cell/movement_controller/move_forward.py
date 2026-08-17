@@ -1,172 +1,57 @@
 import asyncio
 import logging
 
-from nova import api
 from nova.actions import MovementControllerContext
-from nova.cell.movement_controller.trajectory_state_machine import TrajectoryExecutionMachine
-from nova.exceptions import ErrorDuringMovement, InitMovementFailed
-from nova.types import (
-    ExecuteTrajectoryRequestStream,
-    ExecuteTrajectoryResponseStream,
-    MovementControllerFunction,
-)
+from nova.cell.movement_controller.trajectory_cursor import TrajectoryCursor
+from nova.types import MovementControllerFunction
 
 logger = logging.getLogger(__name__)
 
-_START_STATE_MONITOR_TIMEOUT = 5.0
 
-
-# TODO: when the message exchange is not working as expected we should gracefully close
 def move_forward(context: MovementControllerContext) -> MovementControllerFunction:
+    """Default movement controller: run the trajectory forward from start to end.
+
+    This is a thin adapter over :class:`TrajectoryCursor`, which owns the
+    ``executeTrajectory`` protocol; ``move_forward`` only configures a cursor for
+    one-shot execution and starts it. The name and the plug-in seam
+    (``MovementController`` / ``MovementControllerContext``) are kept for
+    backwards compatibility.
+
+    Must be called with a running event loop: the cursor schedules its
+    background initialization at construction time.
     """
-    movement_controller is an async function that yields requests to the server.
-    If a movement_consumer is provided, we'll asend() each wb.models.MovementMovement to it,
-    letting it produce MotionState objects.
+    cursor = TrajectoryCursor(
+        motion_id=context.motion_id,
+        motion_group_state_stream=context.motion_group_state_stream_gen,
+        joint_trajectory=context.joint_trajectory,
+        # An empty list carries no action metadata; it must not be mistaken
+        # for a zero-length trajectory.
+        actions=list(context.combined_actions.items) or None,
+        # Server-side IO overlay, attached by the cursor to every start it
+        # emits (each start overrides the previously attached overlay).
+        set_outputs=context.combined_actions.to_set_io(),
+        start_on_io=context.start_on_io,
+        pause_on_io=context.pause_on_io,
+        initial_location=0.0,
+        detach_on_standstill=True,
+        emit_motion_events=False,
+    )
+    # Starting immediately is move_forward policy, not a cursor capability.
+    operation = cursor.forward()
+    operation.add_done_callback(_consume_operation_outcome)
+    return cursor.cntrl
+
+
+def _consume_operation_outcome(operation: asyncio.Future) -> None:
+    """Retrieve the one-shot operation's result so asyncio never warns about it.
+
+    Nobody awaits this future in one-shot execution: movement errors reach the
+    protocol caller through ``cntrl`` itself. A state stream that ends before
+    the trajectory completes only resolves the future, matching the previous
+    ``move_forward`` behaviour of returning once the state monitor is gone.
     """
-
-    async def movement_controller(
-        response_stream: ExecuteTrajectoryResponseStream,
-    ) -> ExecuteTrajectoryRequestStream:
-        async def motion_group_state_monitor(stream_started_event: asyncio.Event):
-            try:
-                logger.info("Starting state monitor for trajectory")
-                machine = TrajectoryExecutionMachine()
-                machine.send("start")
-
-                async for motion_group_state in context.motion_group_state_stream_gen():
-                    if not stream_started_event.is_set():
-                        stream_started_event.set()
-
-                    logger.debug(
-                        f"Trajectory: {context.motion_id} state monitor received state: {motion_group_state}"
-                    )
-
-                    machine.process_motion_state(motion_group_state)
-
-                    if machine.is_ended:
-                        logger.info(
-                            f"Trajectory: {context.motion_id} state monitor ended at standstill."
-                        )
-                        return
-
-                    if machine.is_waiting_for_standstill:
-                        logger.debug(f"Trajectory: {context.motion_id} waiting for standstill")
-
-                logger.info(
-                    f"Trajectory: {context.motion_id} state monitor ended without TrajectoryEnded"
-                )
-            except BaseException as e:
-                logger.error(
-                    f"Trajectory: {context.motion_id} state monitor ended with exception: {type(e).__name__}: {e}"
-                )
-                raise
-
-        trajectory_id = api.models.TrajectoryId(id=context.motion_id)
-        initialize_movement_request = api.models.InitializeMovementRequest(
-            trajectory=trajectory_id, initial_location=api.models.Location(0)
-        )
-
-        logger.info(f"Trajectory: {context.motion_id} Initializing movement with request")
-        yield initialize_movement_request
-        initialize_movement_response = await anext(response_stream)
-
-        logger.info(f"Trajectory: {context.motion_id} received initialize movement response.")
-        if not isinstance(initialize_movement_response.root, api.models.InitializeMovementResponse):
-            raise Exception(
-                f"Expected InitializeMovementResponse but got: {initialize_movement_response.root}"
-            )
-
-        if (
-            initialize_movement_response.root.message
-            or initialize_movement_response.root.add_trajectory_error
-        ):
-            logger.error(
-                f"Trajectory: {context.motion_id} initialization failed: {initialize_movement_response.root}"
-            )
-            raise InitMovementFailed(initialize_movement_response.root)
-
-        # before sending start movement start state monitoring to not loose any data
-        # at this point we have exclusive right to do movement on the robot, any movement should be
-        # what is coming from our trajectory
-        try:
-            stream_started_event = asyncio.Event()
-            state_monitor = asyncio.create_task(
-                motion_group_state_monitor(stream_started_event),
-                name=f"motion-group-state-monitor-{context.motion_id}",
-            )
-            logger.info(f"Trajectory: {context.motion_id} waiting for state monitor to start")
-            await asyncio.wait_for(
-                stream_started_event.wait(), timeout=_START_STATE_MONITOR_TIMEOUT
-            )
-        except asyncio.TimeoutError:
-            logger.error(f"Trajectory: {context.motion_id} state monitor failed to start in time")
-            state_monitor.cancel()
-            raise Exception("State monitor failed to start in time")
-
-        set_io_list = context.combined_actions.to_set_io()
-        start_movement_request = api.models.StartMovementRequest(
-            direction=api.models.Direction.DIRECTION_FORWARD,
-            set_outputs=set_io_list,
-            start_on_io=context.start_on_io,
-            pause_on_io=context.pause_on_io,
-        )
-        logger.info(f"Trajectory: {context.motion_id} sending StartMovementRequest")
-        yield start_movement_request
-
-        start_movement_response = await anext(response_stream)
-        logger.info(f"Trajectory: {context.motion_id} received start movement response.")
-        if not isinstance(start_movement_response.root, api.models.StartMovementResponse):
-            raise Exception(
-                f"Expected StartMovementResponse but got: {start_movement_response.root}"
-            )
-
-        # the only possible response we can get from web socket at this point is a movement failure
-        error_message = ""
-
-        async def error_response_consumer(response_stream: ExecuteTrajectoryResponseStream):
-            response = await anext(response_stream)
-            if not isinstance(response.root, api.models.MovementErrorResponse):
-                logger.error(
-                    f"Trajectory: {context.motion_id} received unexpected response: {response}"
-                )
-                return
-
-            nonlocal error_message
-            error_message = response.root.message
-
-        error_consumer = asyncio.create_task(
-            error_response_consumer(response_stream),
-            name=f"execute-trajectory-error-consumer-{context.motion_id}",
-        )
-        tasks = {error_consumer, state_monitor}
-
-        try:
-            logger.info(f"Trajectory: {context.motion_id} waiting for completion or error")
-            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            if state_monitor in done:
-                logger.info(f"Trajectory: {context.motion_id} completed via state monitor")
-                return
-
-            if error_consumer in done:
-                logger.info(f"Trajectory: {context.motion_id} error consumer completed")
-                raise ErrorDuringMovement(
-                    f"Error occurred during trajectory execution: {error_message}"
-                )
-        except BaseException as e:
-            logger.error(
-                f"Trajectory: {context.motion_id} encountered exception: {type(e).__name__}: {e}"
-            )
-            raise
-        finally:
-            for task in tasks:
-                if not task.done():
-                    logger.info(
-                        f"Trajectory: {context.motion_id} cancelling task: {task.get_name()}"
-                    )
-                    task.cancel()
-
-            logger.info(f"Trajectory: {context.motion_id} waiting for tasks to finish")
-            await asyncio.gather(*tasks, return_exceptions=True)
-            logger.info(f"Trajectory: {context.motion_id} all tasks finished")
-
-    return movement_controller
+    if operation.cancelled():
+        return
+    error = operation.exception()
+    if error is not None:
+        logger.debug(f"move_forward operation ended with an error: {error!r}")

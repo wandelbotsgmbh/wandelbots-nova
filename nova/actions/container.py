@@ -165,6 +165,9 @@ class MovementControllerContext(pydantic.BaseModel):
     start_on_io: api.models.StartOnIO | None = None
     pause_on_io: api.models.PauseOnIO | None = None
     motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
+    # The planned trajectory being executed. Optional: only location-bounded
+    # cursor operations need it, one-shot execution does not.
+    joint_trajectory: api.models.JointTrajectory | None = None
 
 
 MovementController = Callable[[MovementControllerContext], MovementControllerFunction]
