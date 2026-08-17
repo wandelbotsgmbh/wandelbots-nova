@@ -6,8 +6,8 @@ single ``forward()`` is equivalent to the ``move_forward`` movement controller:
 - the IO overlay must travel with *every* ``StartMovementRequest`` (the server
   treats each start as an override of the previously attached overlay, so a
   resume that omits it silently clears the remaining outputs);
-- a pending intent must not be discarded when the cursor stops, which otherwise
-  produced no ``StartMovementRequest`` at all against a short state stream;
+- a pending intent must be dropped once the cursor stops, and the dropped
+  operation must then fail rather than report a phantom success;
 - a terminal trajectory state must not complete an operation that the controller
   never acknowledged, which otherwise reported a successful traversal for
   movement that was never commanded.
@@ -259,7 +259,7 @@ class TestSetOutputsOverlay:
         cursor._initialize_task.cancel()
 
 
-class TestPendingIntentSurvivesStop:
+class TestStopWinsOverPendingIntent:
     """A queued command must never reach the wire once the cursor is stopping."""
 
     async def test_queued_intent_is_not_sent_after_detach(self):
@@ -293,6 +293,49 @@ class TestPendingIntentSurvivesStop:
             pass
 
         assert sent == [], "no command may be sent after the cursor was detached"
+        assert future.cancelled()
+        cursor._initialize_task.cancel()
+
+    async def test_stop_between_commands_of_one_intent_withholds_movement(self):
+        """A stop landing mid-intent must still withhold the movement command.
+
+        ``Intent.to_commands()`` expands to two commands when a playback speed is
+        set, and ``yield`` suspends between them while the consumer sends the
+        first over the wire. Regression: the stop was only checked once per
+        intent, so a detach landing in that window let the trailing
+        ``StartMovementRequest`` reach the controller after the caller's
+        operation had already been cancelled.
+        """
+        cursor = TrajectoryCursor(
+            motion_id="traj-1",
+            motion_group_state_stream=_blocking_states(),
+            joint_trajectory=_trajectory(3),
+            actions=_actions(3),
+            emit_motion_events=False,
+        )
+        future = cursor.forward(playback_speed_in_percent=50)
+        assert [type(c) for c in cursor._pending_intent.to_commands()] == [
+            api.models.PlaybackSpeedRequest,
+            api.models.StartMovementRequest,
+        ], "this test is only meaningful for a multi-command intent"
+
+        sent = []
+        request_loop = cursor._request_loop()
+        # Pull the first command, then abort while the loop is suspended on the
+        # yield — the point at which the consumer would be sending it.
+        sent.append(await anext(request_loop))
+        cursor.detach()
+
+        try:
+            async with asyncio.timeout(1.0):
+                async for request in request_loop:
+                    sent.append(request)
+        except (asyncio.TimeoutError, StopAsyncIteration):
+            pass
+
+        assert not any(isinstance(r, api.models.StartMovementRequest) for r in sent), (
+            "movement must not be commanded after the cursor was detached"
+        )
         assert future.cancelled()
         cursor._initialize_task.cancel()
 

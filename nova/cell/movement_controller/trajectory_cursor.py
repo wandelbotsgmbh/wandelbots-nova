@@ -1188,6 +1188,15 @@ class TrajectoryCursor:
 
             commands = intent.to_commands()
             for command in commands:
+                # Re-check the stop on every command, not just once per intent.
+                # `yield` suspends until the consumer pulls again — a network send —
+                # so a detach can land between two commands of the same intent.
+                # `to_commands()` is multi-command whenever a playback speed is set,
+                # and without this the trailing movement command would still reach
+                # the controller after the caller's operation was cancelled.
+                if self._stop_event.is_set():
+                    return
+
                 logger.debug(f"Processing command: {command}")
 
                 if isinstance(
@@ -1275,11 +1284,10 @@ class TrajectoryCursor:
             # Fail, rather than silently abandon, an operation that can no longer
             # complete because the state stream is gone.
             if self._operation_handler.in_progress():
-                self._operation_handler.complete(
-                    final_location=self._current_location,
+                self._complete_operation(
                     error=ErrorDuringMovement(
                         "Motion group state stream ended before the movement completed"
-                    ),
+                    )
                 )
             # stop the request loop
             self.detach()
@@ -1335,9 +1343,7 @@ class TrajectoryCursor:
                         # leaving a caller awaiting forward()/pause() without the
                         # actual reason. complete() is a no-op once the future is
                         # resolved, so this wins the race by running first.
-                        self._operation_handler.complete(
-                            final_location=self._current_location, error=error
-                        )
+                        self._complete_operation(error=error)
                         raise error
                     case api.models.StartMovementResponse() | api.models.PauseMovementResponse():
                         # No per-command correlation exists on the wire, but
