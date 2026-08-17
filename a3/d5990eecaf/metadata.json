@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "a3d5990eecaf",
+  "strategy": "manual-commit",
+  "branch": "feat/trajectory-cursor-io-overlay-parity",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "tests/cell/test_trajectory_cursor_parity.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a3/d5990eecaf/0/metadata.json",
+      "transcript": "/a3/d5990eecaf/0/full.jsonl",
+      "compact_transcript": "/a3/d5990eecaf/0/transcript.jsonl",
+      "content_hash": "/a3/d5990eecaf/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 5841,
+    "api_call_count": 20
+  }
+}

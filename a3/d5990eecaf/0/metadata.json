@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "a3d5990eecaf",
+  "session_id": "c16b4dcc-f5e2-4f68-8cd2-ff11fdb2d4d4",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-17T10:16:58.016238Z",
+  "branch": "feat/trajectory-cursor-io-overlay-parity",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "tests/cell/test_trajectory_cursor_parity.py"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "93a3053d05fc",
+  "checkpoint_transcript_start": 5894,
+  "transcript_lines_at_start": 5894,
+  "compact_transcript_start": 507,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 5841,
+    "api_call_count": 20
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-17T10:16:57.61283Z",
+    "agent_lines": 4,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 4,
+    "total_lines_changed": 4,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
