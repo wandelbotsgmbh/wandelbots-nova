@@ -100,6 +100,17 @@ class WaypointConfig:
     state_rate_ms: int = 10
     """State stream update rate."""
 
+    min_buffer_ms: float = 100.0
+    """Minimum waypoint horizon sent to the controller.
+
+    Chunks shorter than this are extended so a short packet drop or slow policy
+    tick does not let the controller exhaust its waypoint buffer. Set to ``0``
+    to disable automatic extension.
+    """
+
+    single_step_dt_ms: float = 100.0
+    """Spacing used when a live jog target is sent as a single point."""
+
 
 @dataclass(slots=True)
 class StopContext:
