@@ -331,6 +331,10 @@ class TestStopWinsOverPendingIntent:
                 async for request in request_loop:
                     sent.append(request)
         except (asyncio.TimeoutError, StopAsyncIteration):
+            # Either outcome is fine and neither is the assertion under test: the
+            # loop may return on the stop, or still be parked on `_intent_event`
+            # and hit the timeout. What matters is which commands were collected
+            # in `sent`, which the assertions below check.
             pass
 
         assert not any(isinstance(r, api.models.StartMovementRequest) for r in sent), (
