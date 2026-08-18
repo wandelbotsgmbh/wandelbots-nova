@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "06fb6dac7993",
+  "strategy": "manual-commit",
+  "branch": "docs/adr-movement-controller-merge",
+  "checkpoints_count": 6,
+  "files_touched": [
+    ".gitignore",
+    "docs/architecture/adr/001-merge-movement-controllers-into-trajectory-cursor.md",
+    "docs/architecture/adr/README.md",
+    "docs/architecture/adr/TEMPLATE.md",
+    "docs/architecture/incoming/move-forward-to-cursor.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/06/fb6dac7993/0/metadata.json",
+      "transcript": "/06/fb6dac7993/0/full.jsonl",
+      "compact_transcript": "/06/fb6dac7993/0/transcript.jsonl",
+      "content_hash": "/06/fb6dac7993/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 4134,
+    "api_call_count": 10
+  }
+}
