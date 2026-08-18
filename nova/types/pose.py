@@ -7,7 +7,6 @@ import pydantic
 from scipy.spatial.transform import Rotation
 
 from nova import api
-from nova.types.dataset_pose import ConfiguredPose, DatasetPose
 from nova.types.vector3d import Vector3d
 
 _POSE_EQUALITY_PRECISION = 6
@@ -32,7 +31,7 @@ def _pose_from_args(
                 "kinematic_configuration"
             )
         return pose
-    if len(args) == 1 and isinstance(args[0], ConfiguredPose):
+    if len(args) == 1 and isinstance(args[0], api.models.ConfiguredPose):
         configured_pose = args[0]
         if (
             configured_pose.kinematic_configuration is not None
@@ -102,10 +101,10 @@ class Pose(pydantic.BaseModel, Sized):
         >>> kc2 = api.models.KinematicConfiguration(kinematic_branch=kb, axis_ranges=ar)
         >>> Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc2).kinematic_configuration == kc2
         True
-        >>> Pose(DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6])))
+        >>> Pose(api.models.DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6])))
         Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
         >>> kc = api.models.KinematicConfiguration(kinematic_branch=api.models.KinematicBranch(shoulder_branch='FRONT', elbow_branch='UP', wrist_branch='NO_FLIP'))
-        >>> Pose(DatasetPose(dataset_pose='p2', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), kinematic_configuration=kc)).kinematic_configuration == kc
+        >>> Pose(api.models.DatasetPose(dataset_pose='p2', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), kinematic_configuration=kc)).kinematic_configuration == kc
         True
         """
         if not args:
@@ -229,7 +228,7 @@ class Pose(pydantic.BaseModel, Sized):
         Examples:
         >>> Pose((1, 2, 3, 0, 0, 0)) @ Pose((1, 2, 3, 0, 0, 0))
         Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
-        >>> Pose((1, 2, 3, 0, 0, 0)) @ Pose(DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[0, 0, 0])))
+        >>> Pose((1, 2, 3, 0, 0, 0)) @ Pose(api.models.DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[0, 0, 0])))
         Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
         """
 
@@ -368,12 +367,14 @@ class Pose(pydantic.BaseModel, Sized):
         )
 
     @classmethod
-    def from_dataset_pose(cls, dataset_pose: DatasetPose | ConfiguredPose) -> Pose:
+    def from_dataset_pose(
+        cls, dataset_pose: api.models.DatasetPose | api.models.ConfiguredPose
+    ) -> Pose:
         """Create a Pose from a ConfiguredPose (or DatasetPose subtype), preserving its
         kinematic configuration.
 
         Example:
-        >>> dp = DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), kinematic_configuration=None)
+        >>> dp = api.models.DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), kinematic_configuration=None)
         >>> Pose.from_dataset_pose(dp)
         Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
         """
