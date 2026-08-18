@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "da9640c058e4",
+  "strategy": "manual-commit",
+  "branch": "fix/trajectory-completion-level-detection",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/da/9640c058e4/0/metadata.json",
+      "transcript": "/da/9640c058e4/0/full.jsonl",
+      "compact_transcript": "/da/9640c058e4/0/transcript.jsonl",
+      "content_hash": "/da/9640c058e4/0/content_hash.txt",
+      "prompt": "/da/9640c058e4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 487,
+    "cache_creation_tokens": 1158704,
+    "cache_read_tokens": 59417130,
+    "output_tokens": 187795,
+    "api_call_count": 244
+  }
+}

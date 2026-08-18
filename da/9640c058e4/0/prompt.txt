@@ -1,0 +1,12 @@
+<task-notification>
+<task-id>ad277e716c002a695</task-id>
+<tool-use-id>toolu_01PuJJmipD8jToQ9Ts8o35g9</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/25b7c60c-e5dc-481e-b512-2e7fca66ae61/tasks/ad277e716c002a695.output</output-file>
+<status>failed</status>
+<summary>Agent "Map main's movement-controller architecture" failed: Agent terminated early due to an API error: API Error: 529 Overloaded. This is a server-side issue, usually temporary — try again in a moment. If it persists, check https://status.claude.com.</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+</task-notification>
+
+---
+
+@explore https://code.wabo.run/robotics/wbr/-/merge_requests/2262 which is might introduce an api change to have level based completion and state messages also for pause
