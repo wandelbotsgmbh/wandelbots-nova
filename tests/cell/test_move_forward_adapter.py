@@ -1,6 +1,7 @@
 """Regression tests for move_forward as a TrajectoryCursor adapter.
 
-Since the Phase C merge (docs/architecture/incoming/move-forward-to-cursor.md),
+Since the movement-controller merge
+(docs/architecture/adr/001-merge-movement-controllers-into-trajectory-cursor.md),
 ``move_forward`` no longer implements the ``executeTrajectory`` protocol itself:
 it configures a :class:`TrajectoryCursor` for one-shot execution and starts it.
 The behavioural contract of the old implementation is pinned by the untouched
