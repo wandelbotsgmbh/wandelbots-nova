@@ -13,7 +13,7 @@ from nova.types.vector3d import Vector3d
 _POSE_EQUALITY_PRECISION = 6
 
 
-def _resolve_pose(
+def _pose_from_args(
     args: tuple, kinematic_configuration: api.models.KinematicConfiguration | None
 ) -> Pose:
     """Resolve the positional constructor arguments of `Pose` into a `Pose` instance.
@@ -113,7 +113,7 @@ class Pose(pydantic.BaseModel, Sized):
             return
 
         kinematic_configuration = kwargs.pop("kinematic_configuration", None)
-        pose = _resolve_pose(args, kinematic_configuration)
+        pose = _pose_from_args(args, kinematic_configuration)
         super().__init__(
             position=pose.position,
             orientation=pose.orientation,
