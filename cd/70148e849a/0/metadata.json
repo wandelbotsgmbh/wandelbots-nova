@@ -1,0 +1,59 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "cd70148e849a",
+  "session_id": "25b7c60c-e5dc-481e-b512-2e7fca66ae61",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-18T19:02:08.093502Z",
+  "branch": "fix/trajectory-completion-level-detection",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "c5c5b8e79f35",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 491,
+    "cache_creation_tokens": 1160112,
+    "cache_read_tokens": 60221685,
+    "output_tokens": 188489,
+    "api_call_count": 246
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01G4Z3ZVEvmCPWcQdb1N55zD",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "mattpocock-skills:research"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "c5c5b8e79f35",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 17,
+        "end": 18,
+        "entry_ids": [
+          "e56a38e6-80b4-418f-9e62-74c0ff727458"
+        ],
+        "tool_use_id": "toolu_01G4Z3ZVEvmCPWcQdb1N55zD"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01G4Z3ZVEvmCPWcQdb1N55zD"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: mattpocock-skills:research",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 7
+  }
+}
