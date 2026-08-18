@@ -10,3 +10,7 @@
 ---
 
 @explore https://code.wabo.run/robotics/wbr/-/merge_requests/2262 which is might introduce an api change to have level based completion and state messages also for pause
+
+---
+
+also /explore https://code.wabo.run/robotics/wbr/-/merge_requests/2322 and verify this is fixed with our changes too
