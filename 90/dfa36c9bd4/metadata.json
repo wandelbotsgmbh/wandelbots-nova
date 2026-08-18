@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "90dfa36c9bd4",
+  "strategy": "manual-commit",
+  "branch": "fix/trajectory-completion-level-detection",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "experiments/__init__.py",
+    "experiments/completion_detection/.gitignore",
+    "experiments/completion_detection/README.md",
+    "experiments/completion_detection/__init__.py",
+    "experiments/completion_detection/analyze.py",
+    "experiments/completion_detection/common.py",
+    "experiments/completion_detection/observer.py",
+    "experiments/completion_detection/runner.py",
+    "experiments/completion_detection/visualize.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/90/dfa36c9bd4/0/metadata.json",
+      "transcript": "/90/dfa36c9bd4/0/full.jsonl",
+      "compact_transcript": "/90/dfa36c9bd4/0/transcript.jsonl",
+      "content_hash": "/90/dfa36c9bd4/0/content_hash.txt",
+      "prompt": "/90/dfa36c9bd4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 253,
+    "cache_creation_tokens": 768001,
+    "cache_read_tokens": 21693535,
+    "output_tokens": 110732,
+    "api_call_count": 127
+  }
+}

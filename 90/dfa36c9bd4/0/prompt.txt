@@ -1,0 +1,23 @@
+current instance in the .env file is 172.31.10.66
+device experiments wich observe the received messages during an execution of motion with the sdk and with the api only
+- we want to check for different motiongroupstatestream state rates
+- we want to test with different connections, lan with connected to IPC, dev machine (mine) connected to k8s instance, dev machine connected to nova cloud instance (later)
+- with virtual robots and physical one when connectd to the ipc
+- execute a simple motion wich is long enough to see something but short enough for the experiments not to take too long when running
+- as lean as possible logging what is received in the motiongroupstatestream and summaraize different scenarios of the motion ending and which messages we see in the stream before during and after the end.
+- also some experiment how it looks when we pause mid trajectory so we can compare the messages
+- associate different messages received sequences with what our execution state machine in the SDK would have as the state sequence then 
+- find a suitable visualization to demonstrate what heppens with the SDK state machine based execution on which sequence of motiongroupstates we received in different scenarios.
+/ goal is th collect and visualise enough data to make a decision on how to proceded with how SDK and API client handle the streamed messages and how the backend would need to change to make this communication more robust and safe.
+
+---
+
+for virtual instances, k8s and cloud, how can I select a different robot?
+
+---
+
+current instance is 172.31.13.226
+
+---
+
+where are the event timestamps measured

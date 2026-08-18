@@ -1,0 +1,147 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "90dfa36c9bd4",
+  "session_id": "25b7c60c-e5dc-481e-b512-2e7fca66ae61",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-18T17:19:56.521788Z",
+  "branch": "fix/trajectory-completion-level-detection",
+  "checkpoints_count": 4,
+  "save_step_count": 4,
+  "files_touched": [
+    "experiments/__init__.py",
+    "experiments/completion_detection/.gitignore",
+    "experiments/completion_detection/README.md",
+    "experiments/completion_detection/__init__.py",
+    "experiments/completion_detection/analyze.py",
+    "experiments/completion_detection/common.py",
+    "experiments/completion_detection/observer.py",
+    "experiments/completion_detection/runner.py",
+    "experiments/completion_detection/visualize.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "127939bc618b",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 253,
+    "cache_creation_tokens": 768001,
+    "cache_read_tokens": 21693535,
+    "output_tokens": 110732,
+    "api_call_count": 127
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01G4Z3ZVEvmCPWcQdb1N55zD",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "mattpocock-skills:research"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "127939bc618b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 17,
+        "end": 18,
+        "entry_ids": [
+          "e56a38e6-80b4-418f-9e62-74c0ff727458"
+        ],
+        "tool_use_id": "toolu_01G4Z3ZVEvmCPWcQdb1N55zD"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01G4Z3ZVEvmCPWcQdb1N55zD"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: mattpocock-skills:research",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-18T17:19:56.46622Z",
+    "agent_lines": 1568,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1568,
+    "total_lines_changed": 1568,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1182,
+      "user_lines_removed": 78,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 7,
+        "docs/architecture/incoming/execution-completion-detection-research.md": 222,
+        "docs/architecture/incoming/execution-completion-detection.md": 340,
+        "nova/interlock/__init__.py": 7,
+        "nova/interlock/client.py": 235,
+        "nova/interlock/models.py": 42,
+        "pyproject.toml": 1,
+        "tests/interlock/test_interlock.py": 170,
+        "tests/interlock/test_interlock_live.py": 158
+      },
+      "user_removed_per_file": {
+        "nova/interlock/__init__.py": 2,
+        "nova/interlock/client.py": 61,
+        "nova/interlock/models.py": 4,
+        "tests/interlock/test_interlock.py": 11
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 7,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2646,
+      "agent_lines_removed": 78,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 7
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 7,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2719,
+      "agent_lines_removed": 78,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 7
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 7,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2743,
+      "agent_lines_removed": 78,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 7
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 7,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2743,
+      "agent_lines_removed": 78,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 7
+      }
+    }
+  ]
+}
