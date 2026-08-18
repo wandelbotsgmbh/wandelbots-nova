@@ -86,6 +86,24 @@ def _resolve_state_stream(
     return cast(AsyncIterator[api.models.MotionGroupState], stream)
 
 
+def _frame_shows_motion(state: api.models.MotionGroupState) -> bool:
+    """True when this frame is evidence that the robot is actually executing.
+
+    Either the robot is physically moving (``standstill`` false) or the
+    controller reports the trajectory RUNNING. The mere presence of an
+    ``execute`` block is NOT evidence: with level-based execute state
+    (robotics/wbr!2262) the block is published persistently from
+    InitializeMovementRequest on, including while parked before the start.
+    """
+    if not state.standstill:
+        return True
+    return (
+        state.execute is not None
+        and isinstance(state.execute.details, api.models.TrajectoryDetails)
+        and isinstance(state.execute.details.state, api.models.TrajectoryRunning)
+    )
+
+
 class OperationType(Enum):
     """Types of movement operations that can be performed on a trajectory.
 
@@ -327,6 +345,23 @@ class OperationHandler:
         return (
             self._operation is not None
             and self._operation.operation_state is not OperationState.INITIAL
+        )
+
+    def may_complete_as_paused(self) -> bool:
+        """Whether a terminal paused state can belong to the current operation.
+
+        A PAUSE operation is completed by exactly the pause it commanded. Any
+        other operation may only be concluded by a pause after it demonstrably
+        ran: with level-based execute state (robotics/wbr!2262) the controller
+        publishes PAUSED_BY_USER persistently between initialization and the
+        actual motion start, and those frames must not resolve a movement
+        operation that never moved.
+        """
+        if self._operation is None:
+            return False
+        return (
+            self._operation.operation_type is OperationType.PAUSE
+            or self._operation.operation_state is OperationState.RUNNING
         )
 
     @property
@@ -1300,10 +1335,10 @@ class TrajectoryCursor:
                 if current_op is None or current_op.future.done():
                     continue
 
-                if result.skip:
+                if result.skip and not _frame_shows_motion(motion_group_state):
                     continue
 
-                if result.has_execute:
+                if _frame_shows_motion(motion_group_state):
                     self._operation_handler.set_running()  # idempotent
 
                 if self._state_machine.is_ended or self._state_machine.is_paused:
@@ -1315,6 +1350,19 @@ class TrajectoryCursor:
                         logger.debug(
                             "Terminal trajectory state observed while the current operation "
                             "was never commanded — not completing it."
+                        )
+                        continue
+                    # A paused state can only conclude a pause operation, or a
+                    # movement operation that was seen running. Level-based
+                    # execute state (robotics/wbr!2262) publishes PAUSED_BY_USER
+                    # persistently between initialize and motion start; those
+                    # frames must not resolve a movement that never moved.
+                    if self._state_machine.is_paused and not (
+                        self._operation_handler.may_complete_as_paused()
+                    ):
+                        logger.debug(
+                            "Paused trajectory state observed before the current operation "
+                            "showed any motion — not completing it."
                         )
                         continue
                     self._complete_operation()

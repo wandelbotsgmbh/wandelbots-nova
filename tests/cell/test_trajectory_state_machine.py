@@ -5,7 +5,9 @@ correctly, including forward/backward movement, pauses, standstill detection
 and multi-phase completion (TrajectoryEnded followed by standstill).
 """
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -141,11 +143,13 @@ class TestTrajectoryEnded:
         assert machine.is_ended
         assert result.state_changed
 
-    def test_ending_then_bare_standstill_does_not_end(self):
-        """Standalone standstill without execute does NOT transition to ended.
+    def test_ending_then_bare_standstill_ends(self):
+        """A bare standstill frame (no execute) completes ending → ended.
 
-        The API guarantees execute persists once set, so bare standstill is
-        unreliable for determining completion.
+        Current controllers drop the trajectory ``execute`` block the instant
+        the robot settles (robotics/wbr MotionPointGenerator; changes with
+        wbr!2262), so after ``TrajectoryEnded`` was observed, a bare standstill
+        can be the only completion signal that ever arrives.
         """
         machine = TrajectoryExecutionMachine()
         machine.send("start")
@@ -156,10 +160,40 @@ class TestTrajectoryEnded:
         machine.process_motion_state(state1)
         assert machine.is_ending
 
-        # Bare standstill (no execute) — should NOT complete
+        # Bare standstill (no execute) — completes: the discriminator was
+        # already seen on the way into `ending`.
         state2 = _make_motion_group_state(standstill=True)
-        machine.process_motion_state(state2)
-        assert machine.is_ending  # still waiting
+        result = machine.process_motion_state(state2)
+        assert machine.is_ended
+        assert result.state_changed
+        assert not result.skip
+
+    def test_pausing_then_bare_standstill_pauses(self):
+        """A bare standstill frame (no execute) completes pausing → paused."""
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+
+        state1 = _make_motion_group_state(
+            standstill=False, execute=_make_execute(api.models.TrajectoryPausedByUser())
+        )
+        machine.process_motion_state(state1)
+        assert machine.is_pausing
+
+        state2 = _make_motion_group_state(standstill=True)
+        result = machine.process_motion_state(state2)
+        assert machine.is_paused
+        assert result.state_changed
+
+    def test_bare_standstill_in_executing_does_not_end(self):
+        """Without a terminal discriminator, bare standstill concludes nothing:
+        the machine must not fabricate a completion from `executing`."""
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+
+        state = _make_motion_group_state(standstill=True)
+        result = machine.process_motion_state(state)
+        assert machine.is_executing
+        assert result.skip
 
     def test_ending_stays_in_ending_without_standstill(self):
         machine = TrajectoryExecutionMachine()
@@ -566,3 +600,31 @@ class TestStateUpdateResult:
         state = _make_motion_group_state(standstill=False)
         result = machine.process_motion_state(state)
         assert result.skip
+
+
+# ---------------------------------------------------------------------------
+# Replay of a real captured stream
+# ---------------------------------------------------------------------------
+
+
+class TestRecordedStreamReplay:
+    def test_50ms_capture_edge_then_bare_standstill_reaches_ended(self):
+        """Replay of a real 50 ms state-stream capture (virtual UR10e).
+
+        The recorded shape is the measured production failure mode of the
+        throttled stream: ``TrajectoryEnded`` arrives while the robot is still
+        decelerating (standstill False), the controller then drops the
+        ``execute`` block at settle, and only bare standstill frames follow.
+        The machine previously discarded those frames and hung in ``ending``
+        forever; it must complete to ``ended``.
+        """
+        fixture = json.loads(
+            (
+                Path(__file__).parent / "fixtures" / "frames_50ms_edge_then_bare_standstill.json"
+            ).read_text()
+        )
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        for raw in fixture["frames"]:
+            machine.process_motion_state(api.models.MotionGroupState.model_validate(raw))
+        assert machine.is_ended

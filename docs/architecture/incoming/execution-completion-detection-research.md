@@ -220,3 +220,46 @@ Carried over from the briefing where no primary source resolves them, plus new o
 **External (primary):** Kubernetes design principles — github.com/kubernetes/design-proposals-archive `architecture/principles.md` · Kubernetes API conventions — github.com/kubernetes/community `contributors/devel/sig-architecture/api-conventions.md` · Kubernetes controller guidelines — same repo, `contributors/devel/sig-api-machinery/controllers.md` · Beckhoff "General rules for MC function blocks" — infosys.beckhoff.com/content/1033/tcplclibmc2/458355339.html (PLCopen contract, first-party implementation) · Synapticon CiA 402 profile position & objects 0x6067/0x6068 — doc.synapticon.com/circulo/sw5.1/motion_control/operation_modes/profiled_modes/profile_position.html, …/object_htmls/6067/, doc-legacy…/6068/ · ROS 2 actions design — design.ros2.org/articles/actions.html · Google AIP-151 — google.aip.dev/151 · NATS — docs.nats.io/nats-concepts/core-nats, /nats-concepts/jetstream, /learn/jetstream/policies, /nats-concepts/jetstream/key-value-store · OASIS MQTT 5.0 — docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html (§3.3.1.3, §3.8.4) · Wandelbots — docs.wandelbots.io/26.1/api-execution-model, docs.wandelbots.io/25.10/setup-communication-protocols/nats/setup. *(Not cited for lack of a verifiable quote: Pat Helland, "Data on the Outside versus Data on the Inside" (CIDR 2005 / ACM Queue 2020) — paywalled/unfetchable during this session; the "state transfer beats event transfer" principle is covered by the Kubernetes citations above.)*
 
 **Local:** `docs/architecture/incoming/execution-completion-detection.md` (briefing; measurements §3–§4, mitigations §6) · `nova/cell/movement_controller/trajectory_state_machine.py:202–211, 306–338` · `nova/cell/motion_group.py:581–602, 717–720` · `.venv/lib/python3.12/site-packages/wandelbots_api_client/v2/api/motion_group_api.py:49, 596` · `…/v2/api/controller_api.py:1347, 2875` · `…/v2/api/trajectory_execution_api.py:48` · `…/v2/models/motion_group_state.py` (`sequence_number`, `standstill`, `execute`, `payload` field docs) · `…/v2/models/robot_controller_state.py:43–54` · `…/v2/models/trajectory_details.py`, `…/trajectory_ended.py` (END_OF_TRAJECTORY, "first or last sample … has been sent") · `…/wandelbots_api_client/api/motion_group_infos_api.py:2508` (200 ms default response-rate doc).
+
+---
+
+## 11. Update 2026-08-18 — backend MR wbr!2262: level-based execute state
+
+Analyzed from source (`git fetch git@code.wabo.run:robotics/wbr.git refs/merge-requests/2262/head`,
+head `a3b59aa`, **unmerged** at the time of writing; base ~`db15e90` "Release 3.337.0"). The MR
+implements exactly the §9.6(c) ask — the execute state becomes a **level**:
+
+- **The root cause of the one-tick terminal state is removed.**
+  `wbr/src/robot/control/MotionPointGenerator.cpp` currently deregisters the motion provider when
+  the execution state is `STOPPED | END_OF_TRAJECTORY | STOPPED_ON_IO | USER_PAUSED` — i.e. the
+  `execute` block vanishes the instant a motion ends *or pauses*. The MR restricts removal to
+  `STOPPED` only (commit "Do not remove generator for stopped on io" + "Simplify trajectory
+  execution").
+- **Consequences on the wire** (`TrajectoryExecutor.cpp::getCommand`,
+  `RAEv2_ProtoRobotState.cpp::setExecutionDetails`):
+  - `execute.details` persists from `InitializeMovementRequest` until stop/websocket teardown
+    (the executor is now created and registered at *initialize*, not at start);
+  - after the motion ends, `END_OF_TRAJECTORY` is **re-published every controller step** —
+    completion becomes a durable level, observable at any stream rate;
+  - `USER_PAUSED` is published persistently during a pause **and between initialize and the
+    actual motion start** (the executor's initial pause reason is USER_PAUSED);
+  - internal `STOPPED` also maps to proto `PAUSED_BY_USER` — **no new wire kinds**, existing SDK
+    models remain valid.
+- **New client-side trap:** the pre-start persistent `PAUSED_BY_USER`+standstill window. An SDK
+  that treats "paused" as terminal for any commanded operation would resolve a forward operation
+  that never moved (and the one-shot path would then hang, since it only detaches on `ended`).
+
+**Scope decision (2026-08-18):** the client-side stall watchdog (§6a Change B) is postponed —
+wbr!2262 is intended to make it obsolete; if still wanted later it can be added as an optional
+feature. Implemented in the SDK instead (branch `fix/trajectory-completion-level-detection`):
+
+1. Change A (bare standstill completes `ending`/`pausing` — fixes the measured "edge caught but
+   hang in `ending`" case on current controllers; harmless under wbr!2262);
+2. motion-evidence guard (`set_running` no longer fires on the mere presence of an `execute`
+   block) and a pause-completion guard (a paused state only concludes a PAUSE operation or an
+   operation that was seen running) — the pre-start window cannot resolve a movement operation.
+
+**Accepted residual risk until wbr!2262 ships:** on current controllers, a run whose
+`TrajectoryEnded` edge is never delivered (§3) still hangs `execute()`; the remedy is the backend
+change, not a client watchdog. Steady-state step-rate streaming plus Change A keeps this
+intermittent, as measured.
