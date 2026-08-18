@@ -3,8 +3,9 @@
   "checkpoint_id": "90dfa36c9bd4",
   "strategy": "manual-commit",
   "branch": "fix/trajectory-completion-level-detection",
-  "checkpoints_count": 4,
+  "checkpoints_count": 6,
   "files_touched": [
+    "docs/architecture/incoming/execution-completion-detection-research.md",
     "experiments/__init__.py",
     "experiments/completion_detection/.gitignore",
     "experiments/completion_detection/README.md",
@@ -22,13 +23,20 @@
       "compact_transcript": "/90/dfa36c9bd4/0/transcript.jsonl",
       "content_hash": "/90/dfa36c9bd4/0/content_hash.txt",
       "prompt": "/90/dfa36c9bd4/0/prompt.txt"
+    },
+    {
+      "metadata": "/90/dfa36c9bd4/1/metadata.json",
+      "transcript": "/90/dfa36c9bd4/1/full.jsonl",
+      "compact_transcript": "/90/dfa36c9bd4/1/transcript.jsonl",
+      "content_hash": "/90/dfa36c9bd4/1/content_hash.txt",
+      "prompt": "/90/dfa36c9bd4/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 253,
-    "cache_creation_tokens": 768001,
-    "cache_read_tokens": 21693535,
-    "output_tokens": 110732,
-    "api_call_count": 127
+    "input_tokens": 276,
+    "cache_creation_tokens": 852726,
+    "cache_read_tokens": 22371551,
+    "output_tokens": 135365,
+    "api_call_count": 139
   }
 }

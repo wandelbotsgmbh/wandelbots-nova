@@ -1,0 +1,108 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "90dfa36c9bd4",
+  "session_id": "a88a5969-f856-4635-b7a9-5d1d99d8b9b6",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-18T17:19:56.788764Z",
+  "branch": "fix/trajectory-completion-level-detection",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "docs/architecture/incoming/execution-completion-detection-research.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "2842a795f909",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 23,
+    "cache_creation_tokens": 84725,
+    "cache_read_tokens": 678016,
+    "output_tokens": 24633,
+    "api_call_count": 12
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01G4Z3ZVEvmCPWcQdb1N55zD",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "mattpocock-skills:research"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "2842a795f909",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 23,
+        "end": 24,
+        "entry_ids": [
+          "e56a38e6-80b4-418f-9e62-74c0ff727458"
+        ],
+        "tool_use_id": "toolu_01G4Z3ZVEvmCPWcQdb1N55zD"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01G4Z3ZVEvmCPWcQdb1N55zD"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: mattpocock-skills:research",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-18T17:19:56.717681Z",
+    "agent_lines": 222,
+    "agent_removed": 0,
+    "human_added": 1568,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1790,
+    "total_lines_changed": 1790,
+    "agent_percentage": 12.402234636871508,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 960,
+      "user_lines_removed": 78,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 7,
+        "docs/architecture/incoming/execution-completion-detection.md": 340,
+        "nova/interlock/__init__.py": 7,
+        "nova/interlock/client.py": 235,
+        "nova/interlock/models.py": 42,
+        "pyproject.toml": 1,
+        "tests/interlock/test_interlock.py": 170,
+        "tests/interlock/test_interlock_live.py": 158
+      },
+      "user_removed_per_file": {
+        "nova/interlock/__init__.py": 2,
+        "nova/interlock/client.py": 61,
+        "nova/interlock/models.py": 4,
+        "tests/interlock/test_interlock.py": 11
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 7,
+      "user_lines_removed": 0,
+      "agent_lines_added": 953,
+      "agent_lines_removed": 78,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 7
+      }
+    }
+  ]
+}

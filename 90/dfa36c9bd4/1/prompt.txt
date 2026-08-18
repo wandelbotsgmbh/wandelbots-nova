@@ -1,0 +1,225 @@
+look at @docs/architecture/incoming/execution-completion-detection.md and /mattpocock-skills:research what are proven solutions to this kind of problem
+
+---
+
+<task-notification>
+<task-id>a34f5e856fcfb3a55</task-id>
+<tool-use-id>toolu_01BDwh7LyLLd2F1aBTXsv2CN</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/a88a5969-f856-4635-b7a9-5d1d99d8b9b6/tasks/a34f5e856fcfb3a55.output</output-file>
+<status>completed</status>
+<summary>Agent "Research completion-detection architectures" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All research complete — briefing read, local SDK and generated client mined, and primary sources fetched and quoted (Kubernetes design docs, Beckhoff/PLCopen, Synapticon/CiA 402, ROS 2 design, AIP-151, NATS/OASIS MQTT specs, Wandelbots docs). Here is the deliverable document.
+
+---
+
+# Detecting completion of an operation whose terminal state is a one-tick edge on a sampled stream — research findings
+
+**Status:** research output, companion to `docs/architecture/incoming/execution-completion-detection.md` (the briefing).
+**Date:** 2026-08-13.
+
+**TL;DR.** Every mature system examined — Kubernetes controllers, PLCopen motion function blocks, CiA 402 servo drives, ROS actions, Google long-running-operation APIs, and retained-message brokers — converges on the same answer: **completion must be a level (a durable, re-observable state), never an edge (a transient event) that the consumer has to catch in flight.** Where the underlying signal is inherently instantaneous, proven systems do one of three things: (1) *hold* the terminal signal until the consumer acknowledges it (PLCopen `Done`/`Execute` handshake), (2) *derive* completion from continuously true conditions — at target position, within tolerance, for a dwell time (CiA 402 "target reached" = position window + position window time), or (3) *store* the terminal state so it can be pulled or replayed at any later moment (Kubernetes status/conditions, ROS 2 result service with cached result, AIP-151 `Operation.done`, MQTT retained messages, NATS JetStream/KV last-value). Event streams are used only to reduce latency; correctness never depends on them. The Kubernetes design principle states this verbatim: *"Functionality must be level-based … regardless of how many intermediate state updates may have been missed. Edge-triggered behavior must be just an optimization."* For the NOVA SDK this means: the standstill watchdog of branch `fix/trajectory-completion-standstill-watchdog` is an independent rediscovery of the CiA 402 settle criterion and is the correct *core* of the design, not its fallback; the `TrajectoryEnded` frame should be demoted to a latency optimization; the existing pull endpoint `get_current_motion_group_state` should be used as the authoritative low-rate arbiter; and the long-term ask to the NOVA team is a retained/durable terminal state (or a completion message on the execution websocket).
+
+---
+
+## 1. The problem class, named
+
+The NOVA situation is **edge-triggered signaling over an at-most-once, sampled channel**:
+
+- The terminal condition (`execute.details.state == TrajectoryEnded`, kind `END_OF_TRAJECTORY`) exists for **one 4 ms controller step**. The generated model documents the edge nature explicitly: *"First or last sample (depending on direction) of trajectory has been sent."* (`.venv/lib/python3.12/site-packages/wandelbots_api_client/v2/models/trajectory_ended.py`). It describes a **send event**, not a persistent condition.
+- The `execute` field itself is documented as ephemeral: *"This is a convenience field to indicate the last command sent to the motion group. It is not available in all cases, e.g., if the motion group is not moved by NOVA."* (`…/v2/models/motion_group_state.py`, `execute` field description). Once nothing is being commanded, the field disappears — which is exactly the measured behaviour (1979 of 3101 frames with no `execute` block; briefing §3).
+- The channel samples: *"Update rate for the response message in milliseconds (ms). Default is 200 ms. … Minimal response rate is the step rate of controller."* (`…/wandelbots_api_client/api/motion_group_infos_api.py:2508`, `stream_motion_group_state` parameter doc). A 4 ms state inside a 200 ms window is observed ~2% of the time; the briefing measured **0 of 24** production cycles observing it at 200 ms, and exactly **1 of 3101** frames at full rate (briefing §3–§4).
+
+**Why no rate tuning fixes this:** the briefing's own arithmetic. Catching a one-tick edge requires sampling at the tick rate with *zero* tolerance for a single lost or coalesced frame, forever, across 14 concurrent streams (~3900 frames/s). Any one dropped frame loses the edge permanently — "There is no repeat and no re-query that reconstructs it" (briefing §3). This is a *structural* mismatch, not a tuning problem: an at-most-once channel (websocket frames under load, or core NATS) cannot carry a signal whose validity window is one tick. The fix is always to change *what* is signaled (a level) or *where it lives* (durable state), not how fast it is polled.
+
+---
+
+## 2. Kubernetes: level-triggered reconciliation
+
+**How it works.** Controllers never act on "I saw event X"; they act on "observed state differs from desired state." Watches (the event stream) exist only to *wake the controller up sooner*; the decision inputs are always re-readable current state, plus a periodic resync that re-processes everything regardless of events.
+
+**Primary sources, verbatim:**
+
+- Design principles (kubernetes/design-proposals-archive, `architecture/principles.md`):
+  &gt; "Functionality must be *level-based*, meaning the system must operate correctly given the desired state and the current/observed state, regardless of how many intermediate state updates may have been missed. Edge-triggered behavior must be just an optimization."
+  and, on self-healing: &gt; "if you must keep some state (e.g., cache) the content needs to be periodically refreshed, so that if an item does get erroneously stored or a deletion event is missed etc, it will be soon fixed."
+  https://github.com/kubernetes/design-proposals-archive/blob/main/architecture/principles.md
+- API conventions (kubernetes/community, `contributors/devel/sig-architecture/api-conventions.md`):
+  &gt; "The system's behavior is *level-based* rather than *edge-based*. This enables robust behavior in the presence of missed intermediate state changes."
+  &gt; "Condition type names should describe the current observed state of the resource, rather than describing the current state transitions."
+  Conditions carry `lastTransitionTime` (when the level last flipped) and `observedGeneration` ("the .metadata.generation that the condition was set based upon") so a reader can detect that a status is **stale** relative to the spec it claims to describe.
+  https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md
+- Controller guidelines (`contributors/devel/sig-api-machinery/controllers.md`):
+  &gt; "Level driven, not edge driven. Just like having a shell script that isn't running all the time, your controller may be off for an indeterminate amount of time before running again."
+  and informers "can periodically 'resync'", re-delivering every cached object to catch anything missed.
+  https://github.com/kubernetes/community/blob/master/contributors/devel/sig-api-machinery/controllers.md
+
+**The robustness mechanism:** conditions are *states, not transitions* — "Pod is Ready", never "Pod became ready". A consumer that slept through the transition still reads the correct answer afterwards. Staleness is *detectable* (`observedGeneration` vs `generation`), and missed events are *bounded* by resync.
+
+**Mapping to NOVA:** `TrajectoryEnded` is a transition name; `standstill=true` + "joints within tolerance of planned target" + "no execute block for our trajectory" is the level. The completion decision must be computable from any *current* `MotionGroupState` frame (plus the client's own memory of what it commanded), so that missing any number of intermediate frames is harmless. The `sequence_number`/`timestamp` fields play the `observedGeneration` role (see §8).
+
+---
+
+## 3. PLCopen motion control: the `Done` handshake
+
+**How it works.** IEC 61131-3 / PLCopen Motion Control function blocks (`MC_MoveAbsolute` etc.) expose `Execute` (input), `Busy`, `Done`, `Error`, `CommandAborted` (outputs). Completion is not an event the PLC program must catch — it is an output *held by the producer until the consumer acknowledges it* by lowering `Execute`.
+
+**Primary source (Beckhoff TwinCAT MC, first-party PLCopen implementation), verbatim** — "General rules for MC function blocks", https://infosys.beckhoff.com/content/1033/tcplclibmc2/458355339.html:
+
+&gt; "The *Done* output is set when a command was executed successfully."
+&gt; "The *Busy* output … is immediately set with a rising edge at *Execute* and is only reset when the command was completed successful or unsuccessfully."
+&gt; "The outputs *Done, InGear, InSync, InVelocity, Error, ErrorID* and *CommandAborted* are reset with a falling edge at input *Execute*, if the function block is not active (Busy=FALSE)."
+&gt; Exclusivity: "only one of these outputs can be TRUE at a function block at any one time."
+
+For the case where the caller released `Execute` early, Beckhoff's MC libraries additionally guarantee the terminal outputs are held for one full task cycle: "The signals provided at the end of the movement (Error, ErrorID, CommandAborted, Done) are made available for one cycle" (Beckhoff hydraulics MC library docs, https://infosys.beckhoff.com/content/1033/tcplclibhydraulics30/1599699723.html — found via search; same rule as PLCopen Part 1's behaviour model). Note the crucial context: a PLC scans *synchronously* — "one cycle" of the consumer's own task can never be missed. NOVA's one-controller-step `TrajectoryEnded` is the same rule transplanted onto an *asynchronous, sampled* channel, where it no longer holds.
+
+**The robustness mechanism:** completion is a **level with consumer-controlled reset** (a two-phase handshake). The producer may not clear `Done` until the consumer signals it has seen it. There is no window to miss.
+
+**Mapping to NOVA:** the NOVA execution websocket is the natural place for such a handshake (it already carries per-request acknowledgements) — but it deliberately carries no completion message at all; completion was pushed onto the sampled state stream. That is the design gap. Client-side, the closest achievable analogue is: treat *your own* execution bookkeeping ("I sent `StartMovementRequest` for trajectory T and have not yet concluded T") as the `Execute` line, and only "reset" it when a level-based completion condition is verified.
+
+---
+
+## 4. CiA 402 / IEC 61800-7: target reached = position window + window time
+
+**How it works.** The drive profile used by essentially every servo drive does *not* signal completion with a momentary event. Statusword (object 0x6041) **bit 10 "target reached" is a level**, computed from a settle criterion configured by two objects: **0x6067 Position window** (tolerance band around the target) and **0x6068 Position window time** (dwell duration). The bit is set — and *stays* set while the condition holds — only after the actual position has remained inside the window for the window time.
+
+**Primary source (Synapticon drive documentation, first-party CiA 402 implementation), verbatim:**
+
+&gt; "**Target reached:** the bit is set to 1 if the actual position stays in the window of the target position ± position window for a duration of position window time."
+&gt; https://doc.synapticon.com/circulo/sw5.1/motion_control/operation_modes/profiled_modes/profile_position.html
+
+Object reference pages: 0x6067 https://doc.synapticon.com/software/42/documentation_html/object_htmls/6067/index.html ("If the actual value of the position encoder is within the position window, the target position will be regarded as having been reached"; window `0xFFFFFFFF` disables monitoring), 0x6068 https://doc-legacy.synapticon.com/software/42/documentation_html/object_htmls/6068/index.html. The same objects and semantics appear across vendors (Faulhaber motion-control manual EN 7000.05040, https://www.faulhaber.com/fileadmin/Import/Media/EN_7000_05040.pdf).
+
+**The robustness mechanism:** two independent ideas —
+1. **Verification, not assertion.** "Done" is *derived from measured position vs. commanded target*, not from the trajectory generator saying it emitted its last setpoint. A drive that stalls 5 mm short never claims target reached.
+2. **Dwell time** debounces overshoot/ringing: momentarily passing through the window does not count; the condition must be continuously true.
+
+**Mapping to NOVA:** the branch-6a watchdog (`nova/cell/movement_controller/stall_watchdog.py` on `fix/trajectory-completion-standstill-watchdog`; not present on this branch — see `nova/cell/movement_controller/`) is a re-derivation of exactly this: `at_target_tolerance` ↔ 0x6067, `stall_timeout_s` dwell at standstill ↔ 0x6068, verification against the *planned final joint position* ↔ actual-vs-target comparison. This is the industry-standard at-target criterion, independently rediscovered — strong evidence it is the right core primitive. The industry difference is polarity: in CiA 402 this *is* the completion signal; in branch 6a it is only a fallback behind the edge.
+
+---
+
+## 5. ROS actions: a separate, reliable result channel
+
+**How it works.** ROS actions exist precisely because topic streams are unsuitable for delivering outcomes of long-running goals. ROS 2 actions (design doc: https://design.ros2.org/articles/actions.html) decompose an action into **three services and two topics**: send-goal service, cancel-goal service, **get-result service** (request/response — the outcome is *delivered on demand*, not broadcast), plus a feedback topic and a status topic. Goals move through an explicit state machine (ACCEPTED → EXECUTING → terminal SUCCEEDED/ABORTED/CANCELED).
+
+**Primary source, verbatim (design.ros2.org/articles/actions.html):**
+
+- On the result service: &gt; "The QoS settings of this service should be set so the client is guaranteed to receive a response or an action could be executed without a client being aware of it."
+- On result durability: &gt; "The server should cache the result once it is ready so multiple clients have to opportunity to get it."
+- On the status topic: &gt; "The default QoS settings for a DDS middleware should be TRANSIENT LOCAL with a history size of 1. This allows new subscribers to always get the latest state."
+
+**The robustness mechanism:** three layers, none of which is "catch the frame": the terminal outcome is (a) delivered over a request/response channel with delivery guarantees, (b) *cached* server-side so it remains pullable after the fact, and (c) mirrored on a status topic whose QoS is **transient-local, last-value** — i.e. the terminal state is retained so late joiners still see it. (ROS 1 actionlib had the same shape built from five topics with a periodically re-published status array; the ROS 2 design doc's ROS 1 comparison section covers this.)
+
+**Mapping to NOVA:** NOVA's execution websocket is the "goal channel" but has no result service and no cached result; the state stream is a status topic with *volatile* (non-retained) semantics and history 0. Every property ROS added to make outcomes reliable is absent. Client-side, the pull endpoint (`get_current_motion_group_state`) is the nearest available "get result" primitive; server-side, "cache the terminal state of trajectory T, queryable by T" is the precise feature request.
+
+---
+
+## 6. AIP-151: long-running operations as durable resources
+
+**How it works.** Google's API design rule for anything long-running: the mutating call returns an **`Operation` resource**; completion is the durable field `done=true` on that resource, observed by polling `GetOperation` at *any* rate, at any later time.
+
+**Primary source, verbatim (https://google.aip.dev/151):**
+
+&gt; "Individual API methods that might take a significant amount of time to complete **should** return a `google.longrunning.Operation` object instead of the ultimate response message."
+&gt; A completed operation is "an `Operation` which is already complete, with the `done` field set to `true`, and a valid (but potentially empty) response message in the `response` field."
+&gt; "The metadata type is used to provide information such as progress, partial failures, and similar information on each `GetOperation` call."
+&gt; "APIs **may** allow their operation resources to expire after sufficient time has elapsed after the operation completed" — i.e. the terminal state persists until deliberately expired.
+
+**The robustness mechanism:** completion is a **resource state, not an event**. Polling frequency trades latency, never correctness — a poller that samples once a minute still gets the right answer. This is the exact inverse of NOVA's design, where sampling slower than 4 ms trades away correctness.
+
+**Mapping to NOVA:** architecture F (low-rate poll + at-target) is AIP-151-shaped. The gap: NOVA has a *current-state* GET but no *operation* resource — a cleared `execute` block does not say "trajectory T completed", it says "nothing is being commanded now". The client must therefore supply the missing operation bookkeeping itself (T was started; movement was observed; now at target ∧ no execute ⇒ T done).
+
+---
+
+## 7. Messaging-layer fixes: retained / last-value terminal state
+
+**Core NATS is at-most-once — it cannot carry a one-tick edge reliably.** Verbatim (https://docs.nats.io/nats-concepts/core-nats): *"A message reaches every interested subscriber that's connected at the moment of publish, at most once."* — *"There's no broker queue, no storage, and no acknowledgment."*
+
+**What converts the edge into a level, server-side:**
+
+- **JetStream** adds persistence and *"at-least-once delivery"* via acknowledgement/redelivery; messages "survive restarts and can be replayed" (https://docs.nats.io/nats-concepts/jetstream).
+- **`DeliverPolicy: last_per_subject`**: a consumer "starts with the newest message *for each subject* the consumer matches. That gives a latest-state view per subject" (https://docs.nats.io/learn/jetstream/policies) — i.e. a broker-side last-value cache per subject.
+- **NATS Key-Value store** is exactly the last-value-cache abstraction: "a `put` of a value appends a message, a `get` of a value reads the last message for a subject, and a `watch` of a bucket opens a consumer" — a bucket is a JetStream stream `KV_&lt;bucket&gt;` whose value per key is the most recent message (https://docs.nats.io/nats-concepts/jetstream/key-value-store).
+- **MQTT retained messages**, the same idea in the other dominant IoT protocol, normatively: *"If a Server receives a PUBLISH packet with the RETAIN flag set to 1, the Server MUST store the application message and its QoS so that it can be delivered to future subscribers to the topic"* [MQTT-3.3.1-2]; *"When a new subscription is established, the last retained message, if any, on each matching topic name MUST be sent to the subscriber"* [MQTT-3.8.4-1] (OASIS MQTT 5.0, https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html §3.3.1.3, §3.8.4).
+
+**The client cannot fix this alone.** All of these are *publisher/broker-side* mechanisms. If NOVA publishes controller state on core NATS (undocumented — see §8), subscribing to it inherits at-most-once and merely changes which socket drops the terminal frame. The actionable ask to the NOVA team: publish trajectory *lifecycle* states (or at minimum the terminal state per trajectory id) to a JetStream-backed subject or KV bucket, where `last_per_subject`/`get` makes completion permanently observable.
+
+**Sequence numbers: detect what you cannot recover.** Both NOVA state models already carry one: `sequence_number` — *"Sequence number of the controller state. It starts with 0 upon establishing the connection with a physical controller. The sequence number is reset when the connection … is closed and re-established."* (`…/v2/models/motion_group_state.py`; same field on `RobotControllerState`, `…/v2/models/robot_controller_state.py:43`). A consumer tracking gaps can *know* it may have missed a transition (and trigger a pull-based resync), even though it cannot recover the missed frame — the same role `observedGeneration` plays in Kubernetes. Whether the number increments per controller step or per delivered response is not documented and must be measured (on a throttled stream, per-step numbering would make every response show a "gap" by design).
+
+---
+
+## 8. What NOVA offers today (verified against the installed client and public docs)
+
+Generated client at `.venv/lib/python3.12/site-packages/wandelbots_api_client/` (v2 = OpenAPI doc 2.5.0); SDK wrappers in `nova/`.
+
+**Pull endpoints (the §7.5 answer: yes, they exist):**
+
+| method | where | returns |
+|---|---|---|
+| `get_current_motion_group_state(cell, controller, motion_group)` | `…/v2/api/motion_group_api.py:49` — `GET /cells/{cell}/controllers/{controller}/motion-groups/{mg}/state` | full `MotionGroupState`: `standstill`, `joint_position`, `execute` (incl. `TrajectoryDetails.trajectory` id + `state`), `sequence_number`, `timestamp`. Docstring: "Returns the current state of the selected motion group including the current joint position, velocity, pose, and more." |
+| `get_current_robot_controller_state(cell, controller)` | `…/v2/api/controller_api.py:1347` | `RobotControllerState` with `motion_groups: List[MotionGroupState]` — **one REST call covers all motion groups of a controller** (12 calls for the whole cell, not 14) |
+| SDK wrapper | `nova/cell/motion_group.py:717–720` (`_fetch_state`) already calls `get_current_motion_group_state` | used by `get_state()`/`joints()` today, not by completion logic |
+
+Caveats on pull: `MotionGroupState.payload` is documented "Only fetchable via GET endpoint, not available in WebSocket" (`…/v2/models/motion_group_state.py`), implying the GET returns a superset of the stream — but whether `execute` is reliably populated in GET responses *during* motion is unverified. And a *cleared* `execute` in a poll is ambiguous ("done" vs "not yet started" vs "not moved by NOVA") — the client's own started/observed-movement bookkeeping plus at-target verification must disambiguate, exactly as branch 6a does.
+
+**Streams:**
+
+- `stream_motion_group_state` per motion group (`…/v2/api/motion_group_api.py:596`; v1 variant with the 200 ms-default `response_rate` doc at `…/api/motion_group_infos_api.py:2508`). SDK: `nova/cell/motion_group.py:581–602`.
+- `stream_robot_controller_state` per **controller** (`…/v2/api/controller_api.py:2875`, `GET /cells/{cell}/controllers/{controller}/state-stream`, has `response_rate`) — an unexplored middle ground: 12 websockets instead of 14, each frame carrying all of that controller's `MotionGroupState`s. This partially defuses the briefing §4 load argument without involving NATS at all.
+
+**Execution websocket:** `execute_trajectory` (`…/v2/api/trajectory_execution_api.py:48`). Its own docstring confirms the asymmetry: response variants are acknowledgements only (`initialize_movement_response.py`, `start_movement_response.py`, `pause_movement_response.py`, `movement_error_response.py` in `…/v2/models/`; no completion/standstill variant exists), and: *"To monitor the state of the movement, listen to the state stream (streamMotionGroupState). The state is published via nats as well. Field `execute` in the `MotionGroupState` indicates whether a movement is ongoing and carries execution details."* No endpoint answers "is trajectory X still executing" by trajectory id — `trajectory_caching_api` is CRUD only (`add/get/list/delete/clear`), so the nearest equivalent is polling current state and matching `execute.details.trajectory`.
+
+**Public docs:**
+
+- Execution model (https://docs.wandelbots.io/26.1/api-execution-model) — notably, Wandelbots' own guidance is already level-based: *"Detect completion via `Standstill` flag in state"*; standstill described as "emitted on completion or pause; signals stable state". Nothing in that page instructs clients to key on `TrajectoryEnded`/`END_OF_TRAJECTORY`.
+- NATS setup (https://docs.wandelbots.io/25.10/setup-communication-protocols/nats/setup) — documents the subject `nova.v2.cells.{cell}.controllers.{controller}.state` ("Stream a real-time robot controller state including joint positions, velocities, and operation mode"; example payload shows per-motion-group `joint_position` and `standstill`). **The page states no delivery guarantees and no rate for this subject**; JetStream is mentioned only for a separate `system-state` stream. Whether the controller-state subject is core NATS (at-most-once) or JetStream-backed, and whether it carries `execute.details`, is **undocumented and must be measured** (briefing §7.3 stands).
+
+**SDK completion logic (this branch, `feat/zone-interlock-nats`):** `nova/cell/movement_controller/trajectory_state_machine.py` — completion requires observing the `TrajectoryEnded` frame (lines 306–338) and *discards every frame without an `execute` block* on a wrong assumption stated at lines 202–211 ("The API guarantees that once execute is set it will remain present in subsequent states"), contradicted by the model's own field description ("not available in all cases") and by measurement. `stall_watchdog.py` exists only on the fix branch; `move_forward.py` and `trajectory_cursor.py` both feed this machine.
+
+---
+
+## 9. Synthesis: what the evidence supports for this SDK
+
+Scoring the briefing's §8 candidates against the patterns above (criteria from the briefing: never fabricate, never hang, distinguish dwell from stall, cost at 14 motion groups):
+
+| | candidate | verdict against the external evidence |
+|---|---|---|
+| **A** | step-rate stream + edge-dependent FSM (today) | **Rejected as sole mechanism.** Violates the level principle directly ("must operate correctly … regardless of how many intermediate state updates may have been missed"). Its failure mode is structural, and it maximizes load (~3900 frames/s). |
+| **B** | A + standstill watchdog | **Sound core, wrong polarity.** The watchdog *is* CiA 402's position-window + window-time (§4): verified at-target, dwell debounce, hard ceiling (`max_stall_s`) so it never hangs, dwell/stall classification via `TrajectoryWaitForIO`/`PausedOnIO`/`PausedByUser`. Every property matches the industry pattern. But B still treats the edge as primary and the level as fallback — the evidence says invert it. |
+| **C** | throttled stream + at-target confirmation | **Supported, as the primary detector** — provided it absorbs B's verification (at-target vs planned final joints, dwell classification, stall ceiling). This is the level-triggered design: completion computed from any current frame. `arg3-api`'s 24/24 fallback completions are field evidence that the level path alone carries production. Its current weakness (no at-target check → can fabricate completion on a stop-short) is exactly what CiA 402 verification closes. |
+| **D** | server-side IO gating | **Orthogonal.** Moves the handshake into PLCopen territory (robot signals completion over a held IO level) — architecturally clean but changes the application contract and bypasses, rather than fixes, the SDK's detection. Worth keeping as a cell-level option, not as the SDK answer. |
+| **E** | NATS controller-state subscription | **Not judgeable yet, and by default not better.** If the subject is core NATS, it is at-most-once (§7) — the same edge-loss problem with fewer connections. It only becomes strictly better if JetStream/KV-backed (last-value). Meanwhile `stream_robot_controller_state` (§8) already gives the 12-connections benefit over plain websockets with known semantics. |
+| **F** | low-rate poll of `get_current_motion_group_state` + at-target | **Supported as the authoritative arbiter/resync**, per AIP-151 and Kubernetes resync. The endpoint exists (verified, §8). Cannot be the *only* mechanism without paying latency (poll interval bounds completion latency) and needs client-side operation bookkeeping to disambiguate a cleared `execute`. |
+
+**The combination the evidence supports** (C as the level, B's verification as its safety, edge and poll as accelerator and backstop):
+
+1. **Completion is a level, decided from any single current frame + client bookkeeping:** movement for trajectory T was observed, AND now `standstill` is true, AND the `execute` block is absent *or* in a terminal/paused-free state, AND measured joints are within tolerance of the planned final joint position — held for a dwell time (CiA 402 semantics; Kubernetes condition semantics). Frames without `execute` become first-class inputs (they are the majority, and the fix branch's Change A already accepts this).
+2. **`TrajectoryEnded` is a latency optimization only** — if observed, it short-circuits the dwell; if missed, nothing is lost ("Edge-triggered behavior must be just an optimization").
+3. **Dwell-vs-stall classification stays** (`TrajectoryWaitForIO`, `TrajectoryPausedOnIO`, `TrajectoryPausedByUser` = legitimate standstill), and the **hard ceiling** (`MovementStalled` after `max_stall_s`) stays so `execute()` can never hang — the ROS-style ABORTED terminal outcome.
+4. **Pull-based confirmation as resync:** on unexplained standstill, ambiguity, or a detected `sequence_number` discontinuity, one `get_current_motion_group_state` / `get_current_robot_controller_state` call arbitrates from authoritative current state (AIP-151 polling; Kubernetes periodic resync). This also permits *lowering* stream rates: the stream provides latency, the poll provides truth.
+5. **Load reduction without NATS:** prefer 12× `stream_robot_controller_state` (or throttled per-motion-group streams) over 14 step-rate streams once correctness no longer depends on catching the edge.
+6. **Server-side asks to the NOVA team** (the only complete fixes): (a) a completion/terminal message on the execution websocket or a result-style query by trajectory id (ROS get-result; PLCopen `Done` handshake), and/or (b) trajectory lifecycle state published retained — JetStream `last_per_subject` or a KV bucket keyed by trajectory (§7), and/or (c) a guarantee that terminal `execute.details` persists in the state (with the *completed* trajectory id) until the next initialize — which would make the existing stream itself level-correct.
+
+---
+
+## 10. Open questions the sources cannot answer
+
+Carried over from the briefing where no primary source resolves them, plus new ones raised by this research:
+
+1. **Is `TrajectoryEnded` guaranteed to be published for ≥1 controller step, or can it be skipped entirely?** (briefing §7.1). Nothing in the OpenAPI doc or public docs promises even one step. If it can be skipped, the level path is mandatory, not a backstop. → NOVA team / measurement.
+2. **Ordering of `execute`-block drop vs. terminal state vs. `standstill`** (briefing §7.2; cited internally as `robotics/wbr RAEv2_ProtoRobotState`, not publicly visible). Decides whether "bare standstill after movement" is a sound signal or a race. → NOVA team.
+3. **NATS `…controllers.{controller}.state`: core or JetStream? rate? does it carry `execute.details`?** The docs page documents the subject but no delivery semantics (§8). → measure with a NATS client; ask for retained semantics regardless.
+4. **`sequence_number` semantics:** per controller step or per delivered response? Does a throttled stream show gaps by design? Is it usable for missed-transition detection? Model docstring is silent beyond reset-on-reconnect. → measurement.
+5. **Does the GET state endpoint populate `execute` during motion**, and what is its end-to-end latency/cost at 12–14 × 1/s? → measurement (needed to validate F as resync).
+6. **Actual cost of step-rate streaming for 14 motion groups** vs. 12 controller-state streams vs. throttled streams (briefing §7.4) — the number that sets how aggressive the rate reduction can be. → side-by-side load test.
+7. **Tolerance calibration:** `at_target_tolerance = 1e-2` rad (branch 6a default) is an SDK invention; CiA 402 leaves the window application-specific. Whether 0.01 rad is tight enough to reject a meaningful stop-short on a KR270 (and loose enough for controller settle behaviour, e.g. KUKA advance-run positioning tolerance) needs validation per robot class. → measurement.
+
+---
+
+### Source index
+
+**External (primary):** Kubernetes design principles — github.com/kubernetes/design-proposals-archive `architecture/principles.md` · Kubernetes API conventions — github.com/kubernetes/community `contributors/devel/sig-architecture/api-conventions.md` · Kubernetes controller guidelines — same repo, `contributors/devel/sig-api-machinery/controllers.md` · Beckhoff "General rules for MC function blocks" — infosys.beckhoff.com/content/1033/tcplclibmc2/458355339.html (PLCopen contract, first-party implementation) · Synapticon CiA 402 profile position &amp; objects 0x6067/0x6068 — doc.synapticon.com/circulo/sw5.1/motion_control/operation_modes/profiled_modes/profile_position.html, …/object_htmls/6067/, doc-legacy…/6068/ · ROS 2 actions design — design.ros2.org/articles/actions.html · Google AIP-151 — google.aip.dev/151 · NATS — docs.nats.io/nats-concepts/core-nats, /nats-concepts/jetstream, /learn/jetstream/policies, /nats-concepts/jetstream/key-value-store · OASIS MQTT 5.0 — docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html (§3.3.1.3, §3.8.4) · Wandelbots — docs.wandelbots.io/26.1/api-execution-model, docs.wandelbots.io/25.10/setup-communication-protocols/nats/setup. *(Not cited for lack of a verifiable quote: Pat Helland, "Data on the Outside versus Data on the Inside" (CIDR 2005 / ACM Queue 2020) — paywalled/unfetchable during this session; the "state transfer beats event transfer" principle is covered by the Kubernetes citations above.)*
+
+**Local:** `docs/architecture/incoming/execution-completion-detection.md` (briefing; measurements §3–§4, mitigations §6) · `nova/cell/movement_controller/trajectory_state_machine.py:202–211, 306–338` · `nova/cell/motion_group.py:581–602, 717–720` · `.venv/lib/python3.12/site-packages/wandelbots_api_client/v2/api/motion_group_api.py:49, 596` · `…/v2/api/controller_api.py:1347, 2875` · `…/v2/api/trajectory_execution_api.py:48` · `…/v2/models/motion_group_state.py` (`sequence_number`, `standstill`, `execute`, `payload` field docs) · `…/v2/models/robot_controller_state.py:43–54` · `…/v2/models/trajectory_details.py`, `…/trajectory_ended.py` (END_OF_TRAJECTORY, "first or last sample … has been sent") · `…/wandelbots_api_client/api/motion_group_infos_api.py:2508` (200 ms default response-rate doc).</result>
+<usage><subagent_tokens>97924</subagent_tokens><tool_uses>68</tool_uses><duration_ms>873709</duration_ms></usage>
+</task-notification>
