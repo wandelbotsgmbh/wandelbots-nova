@@ -1,0 +1,109 @@
+You have not yet marked the task as complete using the task_complete tool. If you were planning, stop planning and start implementing. You aren't done until you have fully completed the task.
+
+IMPORTANT: Do NOT call task_complete if:
+- You have open questions or ambiguities - make good decisions and keep working
+- You encountered an error - try to resolve it or find an alternative approach
+- There are remaining steps - complete them first
+
+Keep working autonomously until the task is truly finished, then call task_complete.
+
+---
+
+You have not yet marked the task as complete using the task_complete tool. If you were planning, stop planning and start implementing. You aren't done until you have fully completed the task.
+
+IMPORTANT: Do NOT call task_complete if:
+- You have open questions or ambiguities - make good decisions and keep working
+- You encountered an error - try to resolve it or find an alternative approach
+- There are remaining steps - complete them first
+
+Keep working autonomously until the task is truly finished, then call task_complete.
+
+---
+
+You have not yet marked the task as complete using the task_complete tool. If you were planning, stop planning and start implementing. You aren't done until you have fully completed the task.
+
+IMPORTANT: Do NOT call task_complete if:
+- You have open questions or ambiguities - make good decisions and keep working
+- You encountered an error - try to resolve it or find an alternative approach
+- There are remaining steps - complete them first
+
+Keep working autonomously until the task is truly finished, then call task_complete.
+
+---
+
+You have not yet marked the task as complete using the task_complete tool. If you were planning, stop planning and start implementing. You aren't done until you have fully completed the task.
+
+IMPORTANT: Do NOT call task_complete if:
+- You have open questions or ambiguities - make good decisions and keep working
+- You encountered an error - try to resolve it or find an alternative approach
+- There are remaining steps - complete them first
+
+Keep working autonomously until the task is truly finished, then call task_complete.
+
+---
+
+You have not yet marked the task as complete using the task_complete tool. If you were planning, stop planning and start implementing. You aren't done until you have fully completed the task.
+
+IMPORTANT: Do NOT call task_complete if:
+- You have open questions or ambiguities - make good decisions and keep working
+- You encountered an error - try to resolve it or find an alternative approach
+- There are remaining steps - complete them first
+
+Keep working autonomously until the task is truly finished, then call task_complete.
+
+---
+
+You have not yet marked the task as complete using the task_complete tool. If you were planning, stop planning and start implementing. You aren't done until you have fully completed the task.
+
+IMPORTANT: Do NOT call task_complete if:
+- You have open questions or ambiguities - make good decisions and keep working
+- You encountered an error - try to resolve it or find an alternative approach
+- There are remaining steps - complete them first
+
+Keep working autonomously until the task is truly finished, then call task_complete.
+
+---
+
+You have not yet marked the task as complete using the task_complete tool. If you were planning, stop planning and start implementing. You aren't done until you have fully completed the task.
+
+IMPORTANT: Do NOT call task_complete if:
+- You have open questions or ambiguities - make good decisions and keep working
+- You encountered an error - try to resolve it or find an alternative approach
+- There are remaining steps - complete them first
+
+Keep working autonomously until the task is truly finished, then call task_complete.
+
+---
+
+You have not yet marked the task as complete using the task_complete tool. If you were planning, stop planning and start implementing. You aren't done until you have fully completed the task.
+
+IMPORTANT: Do NOT call task_complete if:
+- You have open questions or ambiguities - make good decisions and keep working
+- You encountered an error - try to resolve it or find an alternative approach
+- There are remaining steps - complete them first
+
+Keep working autonomously until the task is truly finished, then call task_complete.
+
+---
+
+[[PLAN]] What was the reasoning behind making the join_trajectory parameter optional?
+
+---
+
+[[PLAN]] What was the reasoning behind making the join_trajectory parameter optional?
+
+---
+
+both 472 and 475 have been merged. But I forgot to clean up the arcjhitecture document. Since the origina branch is gone, create a new one where we clean that up.
+the document in incoming should be condensed into a proper ADR documenting the decision for merging the movement controllers.
+the incoming folder should not be in origin but only for me locally when I develop. 
+This adr and future ones shall live in the architecture folder under an new folder called adr like you can find in https://github.com/wandelbotsgmbh/trajectory-format/tree/main/docs/adr
+use https://github.com/LLM-Coding/Semantic-Anchors/blob/main/docs/anchors/adr-according-to-nygard.adoc and https://adr.github.io/madr/ as context on how adrs should look like
+
+---
+
+both 472 and 475 have been merged. But I forgot to clean up the arcjhitecture document. Since the origina branch is gone, create a new one where we clean that up.
+the document in incoming should be condensed into a proper ADR documenting the decision for merging the movement controllers.
+the incoming folder should not be in origin but only for me locally when I develop. 
+This adr and future ones shall live in the architecture folder under an new folder called adr like you can find in https://github.com/wandelbotsgmbh/trajectory-format/tree/main/docs/adr
+use https://github.com/LLM-Coding/Semantic-Anchors/blob/main/docs/anchors/adr-according-to-nygard.adoc and https://adr.github.io/madr/ as context on how adrs should look like
