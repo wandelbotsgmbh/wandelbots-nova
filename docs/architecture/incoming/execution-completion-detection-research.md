@@ -248,6 +248,15 @@ implements exactly the §9.6(c) ask — the execute state becomes a **level**:
 - **New client-side trap:** the pre-start persistent `PAUSED_BY_USER`+standstill window. An SDK
   that treats "paused" as terminal for any commanded operation would resolve a forward operation
   that never moved (and the one-shot path would then hang, since it only detaches on `ended`).
+- **Acceptance test, pause half: wbr!2322** ("Report paused trajectory in motion group state
+  until the pause ends", test-only) pins that after a pause reaches standstill the trajectory
+  stays visible as `PAUSED_BY_USER` in *every* subsequent frame. Its commit message confirms the
+  current defect verbatim: today the state is "reported for a single control cycle before
+  MotionPointGenerator falls back to state::Standstill and 'execute' disappears, which no client
+  can rely on seeing". Fails on develop, passes with !2262. Measured client-side on a current
+  virtual controller (step-rate pause capture, batch 20260814-demo run01_api_pause): 17
+  `PAUSED_BY_USER` frames, all but the last two while still decelerating — the
+  pause-at-standstill window is 1–2 steps, i.e. the §3 one-tick problem, for pauses.
 
 **Scope decision (2026-08-18):** the client-side stall watchdog (§6a Change B) is postponed —
 wbr!2262 is intended to make it obsolete; if still wanted later it can be added as an optional

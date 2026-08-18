@@ -628,3 +628,44 @@ class TestRecordedStreamReplay:
         for raw in fixture["frames"]:
             machine.process_motion_state(api.models.MotionGroupState.model_validate(raw))
         assert machine.is_ended
+
+    def test_step_capture_pause_then_bare_standstill_reaches_paused(self):
+        """Replay of a real step-rate pause capture (the robotics/wbr!2322
+        scenario on a current controller): PAUSED_BY_USER is published almost
+        exclusively while still decelerating; standstill coincides with it for
+        only the last couple of steps before the ``execute`` block drops.
+
+        Replayed twice: the full capture, and a thinned variant with the
+        PAUSED_BY_USER@standstill frames removed — which is exactly what a
+        throttled stream delivers (frames are dropped, and the pause-at-
+        standstill window is one to two steps wide). Both must reach
+        ``paused``; the thinned variant previously hung in ``pausing``.
+        """
+        fixture = json.loads(
+            (
+                Path(__file__).parent / "fixtures" / "frames_step_pause_then_bare_standstill.json"
+            ).read_text()
+        )
+        frames = [api.models.MotionGroupState.model_validate(raw) for raw in fixture["frames"]]
+
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        for state in frames:
+            machine.process_motion_state(state)
+        assert machine.is_paused
+
+        def paused_at_standstill(state: api.models.MotionGroupState) -> bool:
+            return (
+                state.standstill
+                and state.execute is not None
+                and isinstance(state.execute.details, api.models.TrajectoryDetails)
+                and isinstance(state.execute.details.state, api.models.TrajectoryPausedByUser)
+            )
+
+        thinned = [s for s in frames if not paused_at_standstill(s)]
+        assert len(thinned) < len(frames), "fixture must contain the dropped-frame window"
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        for state in thinned:
+            machine.process_motion_state(state)
+        assert machine.is_paused

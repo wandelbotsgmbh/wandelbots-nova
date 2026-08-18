@@ -166,6 +166,39 @@ async def test_edge_then_bare_standstill_completes_and_detaches():
     assert result.final_location == 3.0
 
 
+async def test_pause_edge_then_bare_standstill_completes_the_operation_as_paused():
+    """The pause twin of the vanishing terminal state (pinned server-side by
+    robotics/wbr!2322): on current controllers the paused trajectory is visible
+    at standstill for a single control cycle before the execute block drops.
+    A pause observed while decelerating, followed only by bare standstill
+    frames, must still conclude the running operation — previously the machine
+    hung in `pausing` forever."""
+    cursor = _one_shot_cursor(
+        [
+            _state(False, _running(0.5)),
+            _state(False, _running(1.0)),
+            # pause takes effect while still decelerating…
+            _state(False, _paused(1.2)),
+            # …and the execute block is gone by the time standstill is reached
+            _state(True),
+            _state(True),
+        ]
+    )
+    operation = cursor.forward()
+    consumer = await _drive(cursor)
+
+    try:
+        async with asyncio.timeout(5):
+            result = await operation
+        assert result.error is None
+        assert result.final_location == 1.2
+    finally:
+        # paused is not ended: one-shot does not detach on a pause
+        cursor.detach()
+        async with asyncio.timeout(5):
+            await asyncio.gather(consumer, return_exceptions=True)
+
+
 # ---------------------------------------------------------------------------
 # Level-based publishing (robotics/wbr!2262)
 # ---------------------------------------------------------------------------
