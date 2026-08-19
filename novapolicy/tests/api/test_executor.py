@@ -156,7 +156,19 @@ def _fake_session() -> MagicMock:
     session.scheduled_until_server_ms = 0
     session.scheduled_waypoint_timestamps = ()
     session.last_server_timestamp_ms = 0
-    session.speed_ratio = 1.0
+
+    def scheduled_timestamp_for_step(step: int) -> int | None:
+        """Mirror the real session: caller step index -> absolute timestamp.
+
+        Nothing is trimmed in these tests, so the caller's steps and the sent
+        waypoints are the same list.
+        """
+        timestamps = session.scheduled_waypoint_timestamps
+        if 0 <= step < len(timestamps):
+            return timestamps[step]
+        return None
+
+    session.scheduled_timestamp_for_step = MagicMock(side_effect=scheduled_timestamp_for_step)
     session.start = AsyncMock()
     session.stop = AsyncMock()
     session.wait_ready = AsyncMock()
@@ -382,7 +394,6 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
                 action_timestep=2,
             )
         if call_count == 3:
-            robot.session.speed_ratio = 1.12
             return ActionChunk(
                 joints={MG_ID: [[1.0] * 6, [2.0] * 6, [3.0] * 6]},
                 dt_ms=10.0,
@@ -408,7 +419,6 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         robot.session.session_elapsed_ms = 100_000  # must not affect controller-timer placement
 
     policy = _TestPolicy(get_actions, requires_bridge=True)
-    robot.session.speed_ratio = 1.09
     robot.session.update_chunk.side_effect = acknowledge_chunk
     executor = PolicyExecutor(
         _schema(),
@@ -438,8 +448,8 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
     ]
     # Policy action zero is index one in [measured state, action 0, ...], so
     # its exact controller timestamp is 10 ms. Every replacement stays on the
-    # immutable policy grid; neither client elapsed time nor speed_ratio may
-    # move the same absolute action timestep.
+    # immutable policy grid; client elapsed time may not move the same absolute
+    # action timestep.
     assert replacement.kwargs["first_timestamp_ms"] == 30
     assert replacement.kwargs["timestamp_offset_steps"] == 0
     assert replacement.kwargs["server_dt_ms"] == 10.0

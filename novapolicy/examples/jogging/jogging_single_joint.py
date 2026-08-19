@@ -21,7 +21,9 @@ async def main(ctx: nova.ProgramContext):
     amplitude = 0.3
     frequency = 0.5
 
-    async with jog_joints(mg, start_joint_position=HOME, buffer_ms=0) as jogger:
+    # Default buffer_window_ms replays measured targets, so the robot trails the sine by
+    # the buffer duration rather than being sent a guess at where it goes next.
+    async with jog_joints(mg, start_joint_position=HOME) as jogger:
         async for _ in jogger:
             t = jogger.elapsed
             if t >= duration:

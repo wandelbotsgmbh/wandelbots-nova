@@ -586,15 +586,19 @@ class PolicyExecutor:
                 session = self._sessions.get(group_id)
                 if session is None:
                     continue
-                timestamps = session.scheduled_waypoint_timestamps
-                if len(timestamps) <= policy_start_step:
+                # Asked for by this queue's own step index: the session drops
+                # leading waypoints whose moment has passed, so indexing the sent
+                # request shifts this origin by however many it dropped — on every
+                # chunk, compounding.
+                policy_start_ms = session.scheduled_timestamp_for_step(policy_start_step)
+                if policy_start_ms is None:
                     continue
                 # Policy waypoint zero already has an exact timestamp on NOVA's
                 # jogger timer. Preserve it as the immutable queue origin.
                 self._policy_timelines[group_id] = _PolicyTimeline(
                     action_timestep=action.action_timestep,
                     policy_dt_ms=action.dt_ms,
-                    server_timestamp_ms=float(timestamps[policy_start_step]),
+                    server_timestamp_ms=float(policy_start_ms),
                 )
             logger.info("Policy action timeline initialized: %s", self._policy_timelines)
         return termination
@@ -646,11 +650,11 @@ class PolicyExecutor:
             target_chunk = target_chunks.get(group_id)
             if session is None or target_chunk is None:
                 continue
-            timestamps = session.scheduled_waypoint_timestamps
+            policy_start_ms = session.scheduled_timestamp_for_step(policy_start_step)
             if (
                 session.scheduled_chunk_count >= target_chunk
-                and len(timestamps) > policy_start_step
-                and session.last_server_timestamp_ms >= timestamps[policy_start_step]
+                and policy_start_ms is not None
+                and session.last_server_timestamp_ms >= policy_start_ms
             ):
                 ready.add(group_id)
         return ready

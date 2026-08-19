@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import threading
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,6 +12,9 @@ from novapolicy.rerun import _is_rerun_active
 from novapolicy.rerun.logger import PolicyRerunLogger
 
 rr = pytest.importorskip("rerun")
+
+if TYPE_CHECKING:
+    from nova.types import RobotState
 
 
 def test_rerun_is_active_only_after_viewer_configuration(
@@ -76,3 +80,38 @@ async def test_stop_streaming_does_not_wait_for_a_blocked_rerun_disconnect(
         release_disconnect.set()
 
     assert "Timed out disconnecting policy Rerun recording" in caplog.text
+
+
+def _tracking_logger() -> PolicyRerunLogger:
+    """A logger with just enough wired up to reach the tracking snapshot."""
+    policy_logger = PolicyRerunLogger.__new__(PolicyRerunLogger)
+    policy_logger._initialized = True
+    policy_logger._recording = MagicMock()
+    policy_logger._tcp_target_trail = {}
+    policy_logger._sink = MagicMock()
+    return policy_logger
+
+
+def test_a_broken_state_skips_one_tracking_entry_instead_of_raising() -> None:
+    """Reading the state happens on the caller's thread — the control loop.
+
+    The executor calls this straight from its tick with no try/except of its own,
+    so a state that is briefly missing its joints has to cost one skipped entry.
+    Letting it out aborts a real robot run over a visualisation-only fault.
+    """
+    policy_logger = _tracking_logger()
+    half_populated = MagicMock(joints=None)
+
+    policy_logger.log_joint_tracking("mg", [0.0], cast("RobotState", half_populated), 0)
+
+    policy_logger._sink.submit.assert_not_called()
+
+
+def test_an_unreadable_tcp_target_skips_its_entry_instead_of_raising() -> None:
+    """Same guard on the TCP path, which the executor reaches the same way."""
+    policy_logger = _tracking_logger()
+    not_a_sequence = cast("list[float]", object())
+
+    policy_logger.log_tcp_tracking("mg", not_a_sequence, MagicMock(), 0)
+
+    policy_logger._sink.submit.assert_not_called()

@@ -1,9 +1,14 @@
-"""Server jogger-clock synchronization for waypoint jogging.
+"""Server jogger-clock tracking for waypoint jogging.
 
 The NOVA server exposes ``jogger_session_timestamp_ms`` in the state stream.
-``JoggingTimeClock`` observes it alongside the client monotonic clock and derives
-a clock-rate ratio from timestamp deltas. That ratio is used to extrapolate
-server "now" and scale waypoint intervals.
+``JoggingTimeClock`` observes it alongside the client monotonic clock so server
+"now" can be extrapolated between state samples.
+
+Server jogger milliseconds are treated as **real milliseconds**: waypoint
+intervals are never rescaled. Deriving a server/client rate ratio and scaling by
+it is the tempting alternative, and it is wrong — on a UR10e that ratio settles
+near 1.09 and stretches the timeline, slowing all motion by that proportion,
+where an unscaled timeline executes at exactly the commanded speed.
 """
 
 from __future__ import annotations
@@ -11,51 +16,114 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import logging
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# Number of continuously advancing state-envelope timestamps observed before
+# freezing the server/client UTC skew estimate. At a 10ms state rate this adds
+# about 200ms to startup and ensures a late first packet cannot bias every
+# waypoint timestamp in the session.
+_STATE_CLOCK_CALIBRATION_SAMPLES = 20
+
+# Longest calibration may hold startup up. The sample count above is the real
+# criterion, but the rate those samples arrive at is the caller's choice
+# (``WaypointConfig.state_rate_ms``): at 500ms per packet, 20 of them outlast
+# ``wait_ready``'s own default timeout, and a perfectly healthy session would
+# fail to start. Past this window the estimate is frozen with whatever it has —
+# fewer samples means a rougher skew estimate, not a broken one.
+_STATE_CLOCK_CALIBRATION_WINDOW_S = 1.0
+
+# Largest delivery delay that may be attributed to a single state packet.
+#
+# The delay is a difference of ``time.time()`` readings against a skew baseline
+# frozen during calibration, so it is only as trustworthy as the wall clock. An
+# NTP step — or one oddly stamped packet — inflates it, and it is subtracted from
+# the monotonic reference, pushing estimated server time into the future. The
+# jogger's trajectory clock never runs backwards, so it latches that estimate and
+# stops advancing until the real server clock catches up: the robot holds still
+# for the length of the error. Bounding the correction bounds that stall. Chosen
+# to sit above the worst real delivery delay seen on the deployment this was
+# developed against, and under ``max_lookahead_ms`` so a fully clamped correction
+# does not by itself read as a stalled link. A link with materially worse
+# delivery wants a larger value.
+_MAX_DELIVERY_DELAY_MS = 200.0
 
 
 @dataclass
 class JoggingTimeClock:
-    """Tracks the server's jogger session clock and computes the speed ratio.
+    """Tracks and extrapolates the server's jogger session clock.
 
     The server exposes ``jogger_session_timestamp_ms`` in the state stream
     (field on ``JoggingDetails``). It starts at 0 after ``InitializeJoggingRequest``
     and increments while waypoints are being executed.
 
-    This class observes that timestamp alongside client monotonic time and
-    derives the speed ratio from deltas between clock samples.
-    The ratio is used to scale outgoing waypoint timestamps so that the
-    robot moves at real-time speed regardless of the server's internal rate.
-
-    .. note::
-        This scaling is **required**, not optional. On **virtual robots** the
-        server's jogger clock advances faster than wall-clock, so outgoing
-        waypoint timestamps must be scaled by ``speed_ratio`` or the robot
-        races ahead / stalls. On **real robots** the server timer closely
-        tracks wall-clock, so the ratio stays near ``1.0`` and scaling is
-        effectively a no-op.
+    This class observes that timestamp alongside client monotonic time so that
+    server "now" can be extrapolated between state samples. Timestamps are used
+    as-is: one server millisecond is one millisecond of motion.
     """
 
-    speed_ratio: float = 1.0
     synced: bool = False
     max_lookahead_ms: float = 250.0
-    """Cap on how far "now" may run ahead of the last acknowledged server time.
-
-    Set to the current chunk horizon (``len(steps) * dt``) by the session, so a
-    stalled connection lets the timeline drift at most one lookahead window
-    before it freezes — see :attr:`acknowledged_elapsed_ms`.
-    """
+    """How long the server timer may go unheard before warning that the link stalled."""
     _client_start_time: float = field(default=0.0, repr=False)
     _last_server_ts_ms: int = field(default=0, repr=False)
     _last_server_wall: float = field(default=0.0, repr=False)
-    _rate_reference_server_ts_ms: int = field(default=0, repr=False)
-    _rate_reference_wall: float = field(default=0.0, repr=False)
+    _best_state_age_ms: float | None = field(default=None, repr=False)
+    _state_age_samples: int = field(default=0, repr=False)
+    _first_state_age_wall: float | None = field(default=None, repr=False)
     _stalled: bool = field(default=False, repr=False)
 
     def start(self) -> None:
         """Mark the client-side session start time."""
         self._client_start_time = time.monotonic()
+
+    @property
+    def state_clock_calibrated(self) -> bool:
+        """Whether server/client wall-clock skew has been measured and frozen.
+
+        Satisfied by :data:`_STATE_CLOCK_CALIBRATION_SAMPLES` samples, or by
+        :data:`_STATE_CLOCK_CALIBRATION_WINDOW_S` elapsing with at least one, so
+        that a slow state rate cannot hold startup past its own timeout.
+        """
+        if self._state_age_samples >= _STATE_CLOCK_CALIBRATION_SAMPLES:
+            return True
+        if self._first_state_age_wall is None:
+            return False
+        return time.monotonic() - self._first_state_age_wall >= _STATE_CLOCK_CALIBRATION_WINDOW_S
+
+    def observe_state_timestamp(self, state_timestamp: datetime | None) -> None:
+        """Observe a state generation timestamp during startup calibration."""
+        if state_timestamp is None or self.state_clock_calibrated:
+            return
+        observed_age_ms = time.time() * 1000.0 - state_timestamp.timestamp() * 1000.0
+        if self._best_state_age_ms is None:
+            self._best_state_age_ms = observed_age_ms
+            self._first_state_age_wall = time.monotonic()
+        else:
+            self._best_state_age_ms = min(self._best_state_age_ms, observed_age_ms)
+        self._state_age_samples += 1
+
+    @property
+    def last_sample_wall(self) -> float | None:
+        """Monotonic instant the latest state was *generated*, or ``None``.
+
+        Receipt time is not it: packets arrive in bursts, so a dozen states
+        generated 8ms apart can land within 3ms of each other. Anything placing
+        a state on a time axis has to use this, or a burst is drawn as a spike
+        preceded by a gap.
+
+        ``None`` until the first jogger timestamp arrives. Callers must not
+        substitute the raw field for it: it is zero-initialised, and zero in the
+        monotonic domain is machine boot, which lands a good week before the
+        session started.
+        """
+        if not self.synced:
+            return None
+        return self._last_server_wall
 
     @property
     def last_server_timestamp_ms(self) -> int:
@@ -78,63 +146,81 @@ class JoggingTimeClock:
         server "now" when timestamping a waypoint request.
         """
         if not self.synced:
-            return self.scale_timestamp(self.client_elapsed_ms)
+            return self.client_elapsed_ms
         drift_ms = (time.monotonic() - self._last_server_wall) * 1000.0
         if drift_ms >= self.max_lookahead_ms:
             self._note_stall(drift_ms)
-        drift_ms = min(max(0.0, drift_ms), self.max_lookahead_ms)
-        return self._last_server_ts_ms + int(drift_ms * self.speed_ratio)
+        return self._last_server_ts_ms + int(max(0.0, drift_ms))
 
     @property
     def acknowledged_elapsed_ms(self) -> int:
-        """Session "now" driven by acknowledged server progress, not wall-clock.
+        """Estimated session "now" based on the latest acknowledged server state.
 
-        The free-running wall clock keeps advancing even when a weak connection
-        stalls the jogging stream, so anchoring waypoints (and time-parameterised
-        targets) on wall time makes them race ahead of what the robot has
-        actually executed — then jump when the backlog finally lands.
+        The latest jogger timestamp is extrapolated from the state generation
+        time, not from when its packet reached this process. Before the first
+        server timestamp arrives, the clock falls back to client elapsed time.
 
-        Instead this returns the last acknowledged server time (converted back to
-        client-time via the speed ratio) plus the wall time elapsed since that
-        acknowledgement, but the extrapolation is **capped** at
-        :attr:`max_lookahead_ms`. On a healthy link the last reading is fresh, so
-        this tracks wall-clock to within a state-stream tick (no behaviour
-        change). When the stream stalls the extrapolation saturates at the cap
-        and "now" freezes — so content and anchors stop advancing past what the
-        robot has confirmed, and there is no catch-up jump on recovery.
-
-        Before the first server timestamp arrives the clock is unsynced and this
-        falls back to plain wall-clock elapsed.
+        The name notwithstanding, the value extrapolates *beyond* the last
+        acknowledgement: ``max_lookahead_ms`` is a stall-warning threshold, not a
+        cap on it. Capping it deadlocks startup, because the jogger timer only
+        advances once waypoints execute, and waypoints can only be placed once
+        this advances.
         """
-        if not self.synced or self.speed_ratio <= 0.0:
+        if not self.synced:
             return self.client_elapsed_ms
-        return int(self.estimated_server_timestamp_ms / self.speed_ratio)
+        return self.estimated_server_timestamp_ms
 
     def _note_stall(self, drift_ms: float) -> None:
         """Warn once when the server timer stops advancing (edge-triggered).
 
         Fires when no fresh ``jogger_session_timestamp_ms`` has arrived for
-        longer than one lookahead window, i.e. the jog clock has frozen at the
-        cap. Recovery is logged from :meth:`update` when server time resumes.
+        longer than one lookahead window. Recovery is logged from :meth:`update`.
         """
         if not self._stalled:
             self._stalled = True
             logger.warning(
                 "Jogging connection stalled: no server timestamp for %.0f ms "
-                "(> %.0f ms lookahead) — jog clock frozen until it resumes.",
+                "(> %.0f ms lookahead) — extrapolating until it resumes.",
                 drift_ms,
                 self.max_lookahead_ms,
             )
 
-    def update(self, timestamp_ms: int) -> None:
-        """Feed a new ``jogger_session_timestamp_ms`` reading from the state stream."""
+    def update(self, timestamp_ms: int, state_timestamp: datetime | None = None) -> None:
+        """Feed a jogger timestamp and its server-generated state timestamp.
+
+        ``state_timestamp`` identifies when the state was generated. State
+        messages can arrive appreciably late — over 100ms on the deployment this
+        was developed against; treating receipt time as generation time drags the
+        estimated jogger clock backwards by that delay, which the trajectory clock
+        can only absorb by freezing (visible as a ramp-and-snap tracking error).
+
+        Server and client UTC clocks can have a constant offset. The smallest
+        observed ``local UTC - state UTC`` is the least-delayed sample and thus
+        our clock-skew estimate; any excess age on this sample is delivery delay.
+        We backdate the monotonic reference by that delay, capped at
+        :data:`_MAX_DELIVERY_DELAY_MS` so a non-monotonic wall clock cannot push
+        the estimate arbitrarily far ahead. No bound is placed on future
+        extrapolation, so a session that has not started cannot deadlock.
+
+        Calibration is *not* driven from here: the caller must pass every state
+        packet through :meth:`observe_state_timestamp`, including the ones with
+        no jogger timestamp yet. Observing again here would count each packet
+        twice and declare the skew estimate frozen after half the samples it is
+        meant to see.
+        """
         if timestamp_ms <= 0:
             return
-        sample_wall = time.monotonic()
+        received_wall = time.monotonic()
+        sample_wall = received_wall
+        if state_timestamp is not None:
+            observed_age_ms = time.time() * 1000.0 - state_timestamp.timestamp() * 1000.0
+            best_age_ms = (
+                observed_age_ms if self._best_state_age_ms is None else self._best_state_age_ms
+            )
+            delivery_delay_ms = min(_MAX_DELIVERY_DELAY_MS, max(0.0, observed_age_ms - best_age_ms))
+            sample_wall -= delivery_delay_ms / 1000.0
         if not self.synced:
             self.synced = True
-            self._rate_reference_server_ts_ms = timestamp_ms
-            self._rate_reference_wall = sample_wall
             logger.info(
                 "Server time sync established (jogger_session_timestamp_ms=%d)", timestamp_ms
             )
@@ -143,11 +229,6 @@ class JoggingTimeClock:
             # reference forward. Aging the reference here would make the
             # estimated server clock lag behind reality.
             return
-        else:
-            server_delta_ms = timestamp_ms - self._rate_reference_server_ts_ms
-            wall_delta_ms = (sample_wall - self._rate_reference_wall) * 1000.0
-            if wall_delta_ms > 0.0:
-                self.speed_ratio = max(1.0, server_delta_ms / wall_delta_ms)
 
         if self._stalled:
             self._stalled = False
@@ -161,14 +242,6 @@ class JoggingTimeClock:
         # and server clocks started at the same instant.
         self._last_server_ts_ms = timestamp_ms
         self._last_server_wall = sample_wall
-
-    def scale_timestamp(self, trajectory_time_ms: int) -> int:
-        """Convert a trajectory-time timestamp to server-time."""
-        return int(trajectory_time_ms * self.speed_ratio)
-
-    def scale_dt(self, dt_ms: float) -> float:
-        """Convert a trajectory-time dt to server-time."""
-        return dt_ms * self.speed_ratio
 
     @staticmethod
     def extract_from_state(state: object) -> int | None:

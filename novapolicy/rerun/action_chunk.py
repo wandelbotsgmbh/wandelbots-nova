@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING, Any
 
 from novapolicy.rerun.constants import (
@@ -20,6 +19,7 @@ from novapolicy.rerun.constants import (
     MIN_TCP_COMPONENTS,
     lerp_color,
 )
+from novapolicy.rerun.logtime import elapsed_since
 import rerun as rr
 
 if TYPE_CHECKING:
@@ -76,7 +76,7 @@ def log_bridge_chunk(
     recording: RecordingStream | None = None,
 ) -> None:
     """Log an interpolated connector separately from orange policy output."""
-    elapsed = time.monotonic() - start_time
+    elapsed = elapsed_since(start_time)
     rr.set_time("policy_time", duration=elapsed, recording=recording)
     rr.set_time("policy_step", sequence=step, recording=recording)
     tcp_offsets = tcp_offsets or {}
@@ -150,7 +150,7 @@ def _log_joint_chunk(
     n_action_steps: int,
     recording: RecordingStream | None,
 ) -> None:
-    elapsed = time.monotonic() - start_time
+    elapsed = elapsed_since(start_time)
     rr.set_time("policy_time", duration=elapsed, recording=recording)
     rr.set_time("policy_step", sequence=step, recording=recording)
 
@@ -209,7 +209,7 @@ def _log_tcp_chunk(
     n_action_steps: int,
     recording: RecordingStream | None,
 ) -> None:
-    elapsed = time.monotonic() - start_time
+    elapsed = elapsed_since(start_time)
     rr.set_time("policy_time", duration=elapsed, recording=recording)
     rr.set_time("policy_step", sequence=step, recording=recording)
 
@@ -269,7 +269,7 @@ def _log_text(
 ) -> None:
     """Log action chunk as inspectable text for offline review."""
 
-    elapsed = time.monotonic() - start_time
+    elapsed = elapsed_since(start_time)
     rr.set_time("policy_time", duration=elapsed, recording=recording)
     rr.set_time("policy_step", sequence=step, recording=recording)
 

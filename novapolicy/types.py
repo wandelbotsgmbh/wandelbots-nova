@@ -146,15 +146,51 @@ class WaypointConfig:
     state_rate_ms: int = 10
     """State stream update rate."""
 
-    min_buffer_ms: float = 100.0
-    """Minimum waypoint horizon sent to the controller.
+    min_chunk_horizon_ms: float = 500.0
+    """Shortest waypoint horizon a *chunk* may be sent with.
 
     Chunks shorter than this are extended by repeating their final target. Set
-    to ``0`` to disable automatic extension.
+    to ``0`` to disable the extension.
+
+    The chunk counterpart to the jogger's ``buffer_window_ms``: both give the
+    server a horizon it can brake within, but they do it for different inputs and
+    only one applies to any given push. A chunk already contains future waypoints,
+    so this only tops it up when it is too short. A live target contains none, so
+    the jogger replays a ring buffer of measured targets instead — and opts out of
+    this padding entirely, because holding one pose is not the same as replaying
+    where the target actually went.
+
+    Why a horizon is needed at all: a lone waypoint is a *terminal* target, and
+    with no successor the server plans an accelerate/decelerate-to-standstill
+    profile. It also has to be *long*, because the server has to be able to brake
+    to a stop by the end of whatever it has been given, so a short horizon caps
+    the speed it will run at. On the UR10e this was tuned against, a 150ms horizon
+    stalled a fifth of all samples and 450ms still stalled occasionally — the safe
+    horizon is a property of the controller, so expect to re-tune per robot.
+
+    The padding is a braking horizon, not commanded motion, so it is excluded
+    from :attr:`WaypointJoggingSession.scheduled_until_server_ms` — otherwise
+    every caller waiting for a chunk to finish would first sit at its final
+    target for the rest of the buffer.
     """
 
-    single_step_dt_ms: float = 100.0
-    """Spacing used when a live jog target is sent as a single point."""
+    single_step_dt_ms: float = 50.0
+    """Spacing used when a live jog target is sent as a single point.
+
+    Which spacing executes most smoothly is a property of the controller rather
+    than a universal constant, which is why this is config and not hardcoded.
+
+    Must be positive: it is the divisor that turns the horizon length into a
+    waypoint count, and it is the fallback spacing whenever a caller passes
+    ``dt_ms=0``. ``0`` here has no "single step" meaning — it just leaves the
+    live path with no timeline to lay waypoints on.
+    """
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.single_step_dt_ms) or self.single_step_dt_ms <= 0:
+            raise ValueError("single_step_dt_ms must be a positive finite value")
+        if not math.isfinite(self.min_chunk_horizon_ms) or self.min_chunk_horizon_ms < 0:
+            raise ValueError("min_chunk_horizon_ms must be a non-negative finite value")
 
 
 @dataclass(slots=True)

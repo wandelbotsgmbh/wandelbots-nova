@@ -19,6 +19,9 @@ class ManualTime:
     def monotonic(self) -> float:
         return self.now
 
+    def time(self) -> float:
+        return self.now
+
     def advance(self, seconds: float) -> None:
         self.now += seconds
 
@@ -26,5 +29,9 @@ class ManualTime:
 @pytest.fixture
 def manual_time(monkeypatch: pytest.MonkeyPatch) -> ManualTime:
     clock = ManualTime()
-    monkeypatch.setattr(clock_module, "time", SimpleNamespace(monotonic=clock.monotonic))
+    monkeypatch.setattr(
+        clock_module,
+        "time",
+        SimpleNamespace(monotonic=clock.monotonic, time=clock.time),
+    )
     return clock

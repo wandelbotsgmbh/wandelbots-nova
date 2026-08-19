@@ -8,7 +8,7 @@ import math
 import nova
 from novapolicy import jog_tcp
 
-START_JOINTS = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
+START_JOINTS = [0.9484, -2.128, 2.2734, -1.7487, -1.5773, 2.552]
 
 
 @nova.program(
@@ -18,7 +18,7 @@ START_JOINTS = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
 )
 async def main(ctx: nova.ProgramContext):
     cell = ctx.nova.cell()
-    mg = (await cell.controller("ur5e-left"))[0]
+    mg = (await cell.controller("ur10e"))[0]
     tcp_name = (await mg.tcp_names())[0]
 
     duration = 10.0
@@ -27,7 +27,9 @@ async def main(ctx: nova.ProgramContext):
     dt_ms = 10.0
     dt_s = dt_ms / 1000.0
 
-    async with jog_tcp(mg, tcp=tcp_name, start_joint_position=START_JOINTS) as jogger:
+    async with jog_tcp(
+        mg, tcp=tcp_name, start_joint_position=START_JOINTS, ease_in_s=0.5
+    ) as jogger:
         start_pose = None
         center_x = 0.0
         center_z = 0.0

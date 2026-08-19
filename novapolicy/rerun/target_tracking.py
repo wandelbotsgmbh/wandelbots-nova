@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import time
 from typing import TYPE_CHECKING
 
 from novapolicy.rerun.constants import (
@@ -12,6 +11,7 @@ from novapolicy.rerun.constants import (
     TCP_TARGET_TRAIL_COLOR,
     TRAIL_WIDTH_UI,
 )
+from novapolicy.rerun.logtime import elapsed_since
 import rerun as rr
 
 _TCP_POSITION_DIMS = 3
@@ -240,6 +240,6 @@ def _log_tcp_3d(
 
 
 def _set_time(step: int, start_time: float, recording: RecordingStream | None) -> None:
-    elapsed = time.monotonic() - start_time
+    elapsed = elapsed_since(start_time)
     rr.set_time("policy_time", duration=elapsed, recording=recording)
     rr.set_time("policy_step", sequence=step, recording=recording)

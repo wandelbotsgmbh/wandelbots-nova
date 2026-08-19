@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from datetime import UTC, datetime, timedelta
 import logging
 import threading
 import time
@@ -22,6 +23,9 @@ if TYPE_CHECKING:
     from novapolicy.rerun.streaming import StateStreamer
     from novapolicy.types import ActionChunk
     from rerun import RecordingStream
+
+from novapolicy.rerun.logtime import pinned_elapsed
+from novapolicy.rerun.sink import LOG_ERRORS, AsyncLogSink
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +96,16 @@ class PolicyRerunLogger:
         self._visualizers: dict[str, Any] = {}  # mg_id -> RobotVisualizer
         self._initialized = False
         self._start_time: float = 0.0
+        self._start_wall: datetime | None = None
         self._tcp_trail: dict[str, list[list[float]]] = {}  # mg_id -> [[x,y,z], ...]
         self._tcp_target_trail: dict[str, list[list[float]]] = {}
         self._max_trail_points = 500
         self._streamer: StateStreamer | None = None
         self._recording: RecordingStream | None = None
+        # Rerun writes are handed off rather than paid for on the caller's
+        # thread: for a jogging control loop the caller is the loop producing
+        # the next waypoint chunk, and it cannot afford them.
+        self._sink = AsyncLogSink()
 
     async def initialize(self) -> None:  # ruff: ignore[complex-structure]
         """Fetch DH parameters, create robot visualizers, and send blueprint."""
@@ -206,6 +215,7 @@ class PolicyRerunLogger:
                 recording=self._recording,
             )
             self._initialized = True
+            self._sink.start()
             logger.info(
                 "PolicyRerunLogger initialized for %d motion groups, %d cameras",
                 len(self._motion_groups),
@@ -217,6 +227,55 @@ class PolicyRerunLogger:
     # ------------------------------------------------------------------
     # Per-step logging
     # ------------------------------------------------------------------
+
+    def _defer(self, write: Callable[[], None], *, at: float | None = None) -> None:
+        """Run ``write`` on the sink, stamped when the data was produced.
+
+        ``at`` is a monotonic instant; pass it when the data describes an
+        earlier moment than now, such as a state packet that was generated
+        before it was delivered.
+        """
+        moment = time.monotonic() if at is None else at
+        if moment < self._start_time:
+            # A caller handed us an instant from before the session began. The
+            # monotonic epoch is machine boot, so a zero-initialised "instant"
+            # lands days in the past and drags the whole timeline with it.
+            # Stamp it now rather than corrupting the axis for every other view.
+            # Correcting the instant itself, not just the derived elapsed value,
+            # is what keeps ``log_time`` below out of the past as well.
+            logger.debug(
+                "Ignoring log timestamp %.3fs before session start", self._start_time - moment
+            )
+            moment = time.monotonic()
+        elapsed = max(0.0, moment - self._start_time)
+
+        # Rerun stamps its built-in ``log_time`` when the write happens, which
+        # with writes handed to a worker is not when the data was produced: a
+        # burst of state packets is written within a millisecond of each other,
+        # so on that timeline they pile into a vertical step followed by a flat
+        # run, where ``policy_time`` shows the same packets evenly spaced.
+        # Stamping it with the produce moment keeps every timeline telling the
+        # same story.
+        wall = self._wall_clock_at(moment)
+        recording = self._recording
+
+        def stamped() -> None:
+            import rerun as rr
+
+            with pinned_elapsed(elapsed):
+                rr.set_time("log_time", timestamp=wall, recording=recording)
+                write()
+
+        self._sink.submit(stamped)
+
+    def _wall_clock_at(self, moment: float) -> datetime:
+        """Absolute time for a monotonic instant, for stamping ``log_time``."""
+        if self._start_wall is None:
+            # Pin the two clocks to each other once, on first use.
+            self._start_wall = datetime.now(UTC) - timedelta(
+                seconds=time.monotonic() - self._start_time
+            )
+        return self._start_wall + timedelta(seconds=moment - self._start_time)
 
     def log_observation(self, states: dict[str, RobotState], step: int) -> None:
         """Log robot state: update 3D mesh positions, joint scalars, TCP trail."""
@@ -264,7 +323,9 @@ class PolicyRerunLogger:
         """Log action chunk as TCP path line strips and inspectable text."""
         if not self._initialized or self._recording is None:
             return
-        try:
+        recording = self._recording
+
+        def write() -> None:
             from novapolicy.rerun.action_chunk import (
                 log_action_chunk,
             )
@@ -276,10 +337,10 @@ class PolicyRerunLogger:
                 dh_robots=self._dh_robots,
                 tcp_offsets=self._tcp_offsets,
                 n_action_steps=n_action_steps,
-                recording=self._recording,
+                recording=recording,
             )
-        except (OSError, RuntimeError, ValueError, TypeError) as e:
-            logger.debug("log_action_chunk error: %s", e)
+
+        self._defer(write)
 
     def log_target_tracking(
         self, chunk: ActionChunk, states: dict[str, RobotState], step: int
@@ -295,12 +356,33 @@ class PolicyRerunLogger:
                 self.log_tcp_tracking(mg_id, steps[0], state, step)
 
     def log_joint_tracking(
-        self, mg_id: str, target: list[float], actual: RobotState, step: int
+        self,
+        mg_id: str,
+        target: list[float],
+        actual: RobotState,
+        step: int,
+        *,
+        at: float | None = None,
     ) -> None:
         """Log commanded/actual joints and the derived TCP position error."""
         if not self._initialized or self._recording is None:
             return
-        try:  # ruff: ignore[too-many-statements-in-try-clause]
+        # Snapshot before deferring: the caller reuses its target buffers.
+        #
+        # Guarded, because this part runs on the caller's thread — the control
+        # loop, which calls this with no try/except of its own. A state that is
+        # briefly missing its joints must skip one entry, not abort execution.
+        try:
+            snapshot = list(target)
+            joints = list(actual.joints)
+            pose = getattr(actual, "pose", None)
+        except LOG_ERRORS as e:
+            logger.debug("log_joint_tracking snapshot failed: %s", e)
+            return
+        recording = self._recording
+        trail = self._tcp_target_trail.get(mg_id)
+
+        def write() -> None:
             from novapolicy.rerun.kinematics import (
                 joint_tcp_position,
             )
@@ -310,60 +392,66 @@ class PolicyRerunLogger:
             )
 
             log_joint_tracking(
-                mg_id,
-                target,
-                list(actual.joints),
-                step,
-                start_time=self._start_time,
-                recording=self._recording,
+                mg_id, snapshot, joints, step, start_time=self._start_time, recording=recording
             )
-            pose = getattr(actual, "pose", None)
             dh_robot = self._dh_robots.get(mg_id)
             if pose is not None and dh_robot is not None:
-                target_position = joint_tcp_position(
-                    dh_robot,
-                    target,
-                    self._tcp_offsets.get(mg_id),
-                )
                 log_joint_tcp_tracking(
                     mg_id,
-                    target_position,
+                    joint_tcp_position(dh_robot, snapshot, self._tcp_offsets.get(mg_id)),
                     pose,
                     step,
                     start_time=self._start_time,
-                    recording=self._recording,
-                    target_trail=self._tcp_target_trail.get(mg_id),
+                    recording=recording,
+                    target_trail=trail,
                     max_trail_points=self._max_trail_points,
                 )
-        except (OSError, RuntimeError, ValueError, TypeError) as e:
-            logger.debug("log_joint_tracking error: %s", e)
+
+        self._defer(write, at=at)
 
     def log_tcp_tracking(
-        self, mg_id: str, target: list[float], actual: RobotState, step: int
+        self,
+        mg_id: str,
+        target: list[float],
+        actual: RobotState,
+        step: int,
+        *,
+        at: float | None = None,
     ) -> None:
         """Log commanded/actual TCP pose and tracking error."""
         if not self._initialized or self._recording is None:
             return
-        pose = getattr(actual, "pose", None)
-        if pose is None:
-            return
+        # Snapshot before deferring: the caller reuses its target buffers.
+        # Guarded for the same reason as :meth:`log_joint_tracking` — this runs
+        # on the control loop's own thread.
         try:
+            pose = getattr(actual, "pose", None)
+            if pose is None:
+                return
+            snapshot = list(target)
+        except LOG_ERRORS as e:
+            logger.debug("log_tcp_tracking snapshot failed: %s", e)
+            return
+        recording = self._recording
+        trail = self._tcp_target_trail.get(mg_id)
+
+        def write() -> None:
             from novapolicy.rerun.target_tracking import (
                 log_tcp_tracking,
             )
 
             log_tcp_tracking(
                 mg_id,
-                target,
+                snapshot,
                 pose,
                 step,
                 start_time=self._start_time,
-                recording=self._recording,
-                target_trail=self._tcp_target_trail.get(mg_id),
+                recording=recording,
+                target_trail=trail,
                 max_trail_points=self._max_trail_points,
             )
-        except (OSError, RuntimeError, ValueError, TypeError) as e:
-            logger.debug("log_tcp_tracking error: %s", e)
+
+        self._defer(write, at=at)
 
     def log_images(self, images: dict[str, Any]) -> None:
         """Log camera images to Rerun."""
@@ -430,6 +518,10 @@ class PolicyRerunLogger:
             if self._streamer is not None:
                 await self._streamer.stop()
         finally:
+            # Drain before the recording goes away, or the tail of the run is
+            # written to a disconnected stream. Joined off the event loop so
+            # teardown of everything else can proceed meanwhile.
+            await asyncio.get_running_loop().run_in_executor(None, self._sink.close)
             self._streamer = None
             recording = self._recording
             self._recording = None
