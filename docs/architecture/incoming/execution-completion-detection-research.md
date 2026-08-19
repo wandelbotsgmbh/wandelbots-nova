@@ -272,3 +272,17 @@ feature. Implemented in the SDK instead (branch `fix/trajectory-completion-level
 `TrajectoryEnded` edge is never delivered (§3) still hangs `execute()`; the remedy is the backend
 change, not a client watchdog. Steady-state step-rate streaming plus Change A keeps this
 intermittent, as measured.
+
+**Live verification (2026-08-19, RAE pod on the dev k8s instance switched to the wbr!2262
+branch):** measured with the experiment harness against a virtual KR270 —
+(a) `END_OF_TRAJECTORY` is published persistently (1524 step-rate frames; 30 frames on a 200 ms
+stream where previously zero arrived), so completion is detected at any stream rate;
+(b) the pre-start `PAUSED_BY_USER` window is real (2 step-rate frames between start and motion
+begin) and the SDK guards hold: `execute()` returned at 6.3–6.5 s for a 6.01 s motion in 3/3
+runs — no premature pause-completion, no hang;
+(c) a commanded pause publishes `PAUSED_BY_USER` persistently for the whole hold (501 step-rate
+frames, 10 at 200 ms) — the wbr!2322 contract observed on the wire;
+(d) nuance: the level persists only while the execution websocket is open. The SDK tears the
+connection down right after it detects completion, so its own teardown is the consumer-controlled
+reset (the PLCopen `Done`/`Execute` handshake, §3) — third-party observers on throttled streams
+may still see only a short window. Data: `experiments/completion_detection/data/20260819-mr2262/`.

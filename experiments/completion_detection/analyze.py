@@ -104,24 +104,26 @@ def _motion_window(frames: list[dict[str, Any]], t0_ns: int) -> tuple[int | None
 
 
 def _replay_fsm(
-    frames: list[dict[str, Any]], t0_ns: int, resume_times_ns: list[int]
+    frames: list[dict[str, Any]], t0_ns: int, pause_windows_ns: list[tuple[int, float]]
 ) -> dict[str, Any]:
-    """Feed the recorded frames through the SDK's state machine (as this branch ships it)."""
+    """Feed the recorded frames through the SDK's state machine, emulating the
+    cursor's operation loop: a one-shot forward operation keeps the machine
+    active until ``ended``, so a machine parked in ``paused`` outside a
+    commanded pause window is restarted — this is TrajectoryCursor's kick
+    (trajectory_cursor.py, monitor loop). Relevant for level-based execute
+    publishing (wbr!2262), which publishes PAUSED_BY_USER between initialize
+    and the actual motion start."""
     machine = TrajectoryExecutionMachine()
     machine.send("start")
     transitions: list[dict[str, Any]] = [{"t_ns": t0_ns, "state": "executing"}]
-    pending_resumes = sorted(resume_times_ns)
     t_ended_ns: int | None = None
+
+    def in_pause_window(t_ns: int) -> bool:
+        return any(start <= t_ns < end for start, end in pause_windows_ns)
 
     for frame in frames:
         if frame["t_ns"] < t0_ns:
             continue
-        # A resume in the real system is an external `start` sent to the machine.
-        while pending_resumes and pending_resumes[0] <= frame["t_ns"]:
-            t_resume = pending_resumes.pop(0)
-            if machine.is_paused:
-                machine.send("start")
-                transitions.append({"t_ns": t_resume, "state": "executing"})
         try:
             state = api.models.MotionGroupState.model_validate(frame["state"])
         except Exception as e:
@@ -132,6 +134,12 @@ def _replay_fsm(
             transitions.append({"t_ns": frame["t_ns"], "state": result.current_state_id})
             if machine.is_ended and t_ended_ns is None:
                 t_ended_ns = frame["t_ns"]
+        # Cursor kick: while the forward operation is unfinished, `paused`
+        # outside a commanded pause is restarted (covers pre-start
+        # PAUSED_BY_USER frames and the resume after a pause window).
+        if t_ended_ns is None and machine.is_paused and not in_pause_window(frame["t_ns"]):
+            machine.send("start")
+            transitions.append({"t_ns": frame["t_ns"], "state": "executing"})
 
     return {
         "final_state": machine.current_state.id,
@@ -222,7 +230,18 @@ def analyze_run(run_dir: Path) -> dict[str, Any]:
     for event in events:
         event_times.setdefault(event["event"], event["t_ns"])
     t0_ns = event_times.get("start_sent") or event_times.get("sdk_execute_started")
-    resume_times = [e["t_ns"] for e in events if e["event"] == "resume_sent"]
+    # Commanded pause windows: [pause_sent, resume_sent) pairs, open-ended when
+    # the run finished while paused.
+    pause_windows: list[tuple[int, float]] = []
+    pause_start: int | None = None
+    for event in events:
+        if event["event"] == "pause_sent":
+            pause_start = event["t_ns"]
+        elif event["event"] == "resume_sent" and pause_start is not None:
+            pause_windows.append((pause_start, event["t_ns"]))
+            pause_start = None
+    if pause_start is not None:
+        pause_windows.append((pause_start, float("inf")))
 
     streams: dict[str, Any] = {}
     for frames_path in sorted(run_dir.glob("frames_*.jsonl")):
@@ -233,7 +252,7 @@ def analyze_run(run_dir: Path) -> dict[str, Any]:
             continue
         t0 = t0_ns or frames[0]["t_ns"]
         t_move_start, t_move_end = _motion_window(frames, t0)
-        replay = _replay_fsm(frames, t0, resume_times)
+        replay = _replay_fsm(frames, t0, pause_windows)
         detectors = _detectors(frames, t0, metadata.get("planned_final_joints"))
         streams[rate] = {
             "census": _census(frames),
