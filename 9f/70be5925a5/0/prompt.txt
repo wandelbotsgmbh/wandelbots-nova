@@ -14,3 +14,7 @@
 ---
 
 also /explore https://code.wabo.run/robotics/wbr/-/merge_requests/2322 and verify this is fixed with our changes too
+
+---
+
+I set the rae pod in the current k8s instance to the branch of the mr, pls test against it again
