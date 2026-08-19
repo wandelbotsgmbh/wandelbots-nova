@@ -169,6 +169,11 @@ request endpoint rather than trying to guess which prediction will be the episod
 Higher rates give smoother overlapping but require faster inference.
 The server requires continuous waypoint updates — if the buffer empties
 (no new chunk arrives before the previous one finishes), the robot pauses.
+Chunks shorter than `WaypointConfig.min_chunk_horizon_ms` are padded by repeating
+their final target so the server always has a horizon it can brake within. That
+padding is excluded from `scheduled_until_server_ms`, so waits for a chunk to
+finish end at the last waypoint the caller asked for rather than sitting through
+the hold.
 With 20 Hz and 1s lookahead chunks, there is ~95% overlap between
 consecutive chunks, providing ample buffer.
 
@@ -178,20 +183,59 @@ Each waypoint carries a timestamp (milliseconds since session start). The server
 maintains an internal clock that starts when the first `JointWaypointsRequest`
 or `PoseWaypointsRequest` is received.
 
-The server exposes its current clock as `jogger_session_timestamp_ms` in the
-state stream (`JoggingDetails`). The client uses this to compute a **speed ratio**
-(server_time / client_time) and scales outgoing timestamps accordingly.
+The server exposes that clock as `jogger_session_timestamp_ms` in the state
+stream (`JoggingDetails`). One server millisecond is one millisecond of motion:
+outgoing intervals are **never rescaled**. Deriving a server/client rate ratio and
+scaling timestamps by it is the tempting alternative and it is wrong — on a UR10e
+the ratio settles near 1.09 and stretches the timeline, slowing all motion by that
+proportion.
+
+`JoggingTimeClock` uses the readings only to estimate where the server clock is
+now, so that a `now`-anchored chunk can be placed on it:
 
 ```
-client sends:    timestamps = [start_ms * ratio, start_ms * ratio + dt * ratio, ...]
-server receives: timestamps aligned with its internal clock
+server "now" = last acknowledged jogger_session_timestamp_ms
+             + (monotonic now - the instant that state was generated)
 ```
 
-This auto-synchronization applies to relative/``now``-anchored jogging. An
-asynchronous policy queue is different: its first bridge assigns an exact raw
-controller timestamp to action zero, and every replacement uses
-``origin + action_timestep * policy_dt``. Queue timestamps therefore do not use
-client wall time or speed-ratio scaling.
+The elapsed term is measured from when the state was *generated*
+(`MotionGroupState.timestamp`), not from when its packet arrived. Packets can be
+delivered in bursts, and treating arrival as generation drags the estimate
+backwards by the delivery delay. Server/client wall-clock skew is calibrated over
+the first state packets of a session and then held fixed; the per-packet delay
+correction derived from it is bounded, so a wall-clock step cannot shunt the
+estimate far into the future.
+
+The extrapolation itself is deliberately **uncapped**. The jogger timer only
+advances once waypoints execute, and waypoints can only be placed once the
+estimate advances, so capping it deadlocks startup. A stalled link is warned
+about, not clamped — `JoggingTimeClock.max_lookahead_ms` is that warning
+threshold, not a limit on the estimate.
+
+An asynchronous policy queue does not use `now` at all: its first bridge assigns
+an exact raw controller timestamp to action zero, and every replacement uses
+``origin + action_timestep * policy_dt``.
+
+### Unreachable waypoints are trimmed
+
+A chunk is timestamped when it is built and sent a moment later. Waypoints whose
+timestamp has already passed — plus a small minimum lead
+(`waypoint_session.MIN_LEAD_MS`) — cannot be reached, and commanding them makes
+the server jump to catch the trajectory. The session drops those leading
+waypoints at send time and sends the still-reachable tail. A chunk whose every
+waypoint has elapsed is dropped entirely.
+
+Trimming does not move the surviving waypoints: the absolute time-to-position
+mapping stays exactly as the caller defined it. It does change which index of the
+*sent* request holds the caller's step zero, so code that needs the timestamp of
+a particular caller step must use
+`WaypointJoggingSession.scheduled_timestamp_for_step(step)` rather than indexing
+`scheduled_waypoint_timestamps`, which describes the request on the wire.
+
+A dropped chunk still advances `scheduled_chunk_count` and still reports its step
+timestamps (all of them in the past). Both are required: the executor waits for
+`scheduled_chunk_count` to reach what it queued, so a silently skipped chunk
+would leave that wait unsatisfiable for the rest of the run.
 
 ### Trajectory-absolute timestamps
 

@@ -55,46 +55,125 @@ async with jog_joints(mg) as jogger:
 Regenerate chunks at a stable cadence that leaves multiple future waypoints in
 the queue. Replacing a long lookahead on every state callback repeatedly resets
 the server profile; replacing too slowly lets the queue run dry. For finite
-motion, ramp the target to zero velocity and acceleration and keep sending its
-final hold until the lookahead has drained before closing the session. The
-chunked examples show this pattern.
+motion, ramp the target to zero velocity and acceleration. The chunked examples
+show this pattern.
+
+`dt_ms` is required for a chunk — it is the spacing between its steps.
+
+### Where a chunk lands
+
+Step zero is placed at `elapsed + jogger.LEAD_MS` (100 ms) on the absolute session
+timeline, not at "now" resolved at send time. Content generated at trajectory time
+`T` therefore always maps to the same timestamp, however often it is re-sent, so
+overlapping chunks stitch together instead of the same trajectory point landing at
+a slightly different timestamp in every chunk. The lead is constant on purpose:
+anything time-varying in the time-to-position mapping moves already-commanded
+points to new absolute times, and the robot executes each such shift as a lurch.
+
+### Short chunks are padded
+
+A chunk shorter than `WaypointConfig.min_chunk_horizon_ms` (default **500**) is
+extended by repeating its final target, so the server has a horizon it can brake
+within. The padding is sent but is not treated as commanded motion: it is excluded
+from `scheduled_until_server_ms`, so anything waiting for the chunk to finish ends
+at your last step rather than sitting at it for the rest of the window. Set the
+config value to `0` to disable padding — a chunk whose last step is not a genuine
+stopping point will then get a decelerate-to-standstill profile at its end.
+
+### Late chunks are trimmed
+
+A chunk is timestamped when you build it and sent a moment later. Leading
+waypoints whose moment has already passed cannot be reached, and commanding them
+makes the server jump to catch the trajectory; those are dropped at send time and
+the still-reachable tail is sent. A chunk whose every waypoint has elapsed is
+dropped. Surviving waypoints keep their original absolute timestamps, so trimming
+never distorts the trajectory — see
+[executor.md](executor.md#unreachable-waypoints-are-trimmed) for the effect on
+step indices.
+
+### Closing the session
+
+Leaving the `async with` block waits for the waypoints already accepted by the
+server to finish executing before tearing the session down, so a clean exit does
+not truncate commanded motion part-way through. That wait is skipped when the loop
+ended for a reason that wants the robot stopped now — a fault, an e-stop, or a
+fired stop condition.
 
 Rerun state visualization should not be configured faster than the controller
-state source. Logging duplicate states adds control-loop load without increasing
-trajectory fidelity; approximately 30 Hz is the safe default for live robot
-geometry.
+state source: duplicate states cost sampling and serialisation work without adding
+trajectory fidelity, and approximately 30 Hz is the safe default for live robot
+geometry. The Rerun writes themselves are handed to a worker thread rather than
+paid on the control loop (see [rerun.md](rerun.md)).
 
-## Buffered teleop targets (`buffer_ms`)
+## Live targets and the replay buffer (`buffer_window_ms`)
 
-For live teleoperation, pass `buffer_ms` to `jog_joints(...)` or `jog_tcp(...)`.
-Keep calling `set_target(...)`; the jogger first fills a small time-based buffer,
-then sends a rolling chunk. This adds fixed latency but prevents the controller
-from running out of waypoints. The default `buffer_ms=0.0` preserves immediate
-one-target jogging.
+A live target says only where the target is *now*. A lone waypoint is a
+**terminal** target: with no successor the server plans an
+accelerate/decelerate-to-standstill profile, so a target replaced every tick makes
+the robot stop and restart continuously.
 
-When `dt_ms` is omitted, input arrival time is used only while priming, because
-`jogger.elapsed` cannot advance before the first chunk is sent. After jogging
-starts, timing follows acknowledged controller time.
+`buffer_window_ms` (default **500**) is a ring buffer of recent live targets. The
+jogger holds the last `buffer_window_ms` of them and replays them as a continuous
+waypoint horizon, so the server always has somewhere to be going next. Nothing in
+that horizon is invented — every waypoint in it is a target that was really
+measured, replayed late rather than extrapolated forward.
+
+The cost is latency: the robot trails the live target by a little over the window.
+The window has to be a few hundred milliseconds, because the window *is* the
+horizon and the server caps its speed at whatever it can brake to a stop within.
+On the UR10e this was tuned against, a 150 ms window stalled a fifth of all
+samples and 450 ms still stalled occasionally.
+
+`buffer_window_ms=0` disables buffering: each target is sent alone, as measured,
+with the halting motion described above. That is useful for stepping a robot to
+discrete positions, not for tracking a moving one.
 
 ```python
-async with jog_tcp(mg, tcp="Flange", buffer_ms=100.0) as jogger:
+async with jog_tcp(mg, tcp="Flange") as jogger:  # 500 ms window by default
     async for state in jogger:
         jogger.set_target(read_controller_pose())
 ```
 
+`dt_ms` is **ignored** for live targets. Their spacing is not assumed from call
+rate: each sample is stamped with the trajectory time it was produced at, and the
+buffer is resampled onto a uniform grid (`WaypointConfig.single_step_dt_ms`) by
+interpolating at those stamps. Handing the samples over with an averaged `dt`
+instead replays each one at the wrong moment, which time-warps the trajectory.
+
+`buffer_window_ms` applies to live targets only. A chunk carries its own horizon,
+so there is nothing to buffer and no latency to pay — see
+[Chunked targets](#chunked-targets). Pushing a chunk also clears the ring buffer;
+alternating the two forms on one motion group means the live targets after each
+chunk go out alone until the buffer refills, and the jogger warns once per motion
+group when that happens.
+
 ## Timing targets (`jogger.elapsed`)
 
 For time-parameterised motion (e.g. a sinusoid), drive it with `jogger.elapsed`
-rather than your own `time.monotonic()` anchor. `elapsed` is the number of
-seconds since the **jogging motion actually started** — it stays `0.0` until the
-robot reports it is actively executing motion (its jogging state becomes
-`RUNNING`), then ticks from zero.
+rather than your own `time.monotonic()` anchor. `elapsed` is seconds on the
+**server's jogger-session clock**, measured from the first loop iteration that had
+state, and it is what every target is placed on.
 
-This matters on real hardware: the robot's control loop engages a short moment
-after the first waypoint. `elapsed` holds at `0.0` through that spin-up, so your
-loop keeps sending the start target (the robot holds position while control
-engages) instead of letting the target run ahead — which would otherwise force a
-hard catch-up jump on the first move.
+It must come from the server clock rather than a monotonic one: the robot executes
+against the jogger session timer, and wall time drifts from it. Three properties
+follow from that:
+
+- **Sampled once per iteration.** Every target you derive from `elapsed` within
+  one pass through the loop is stamped from the same instant.
+- **Quantised** to a 10 ms grid (`jogger.TIMELINE_GRID_MS`), so successive chunks
+  anchor on one absolute grid instead of each landing at a new phase.
+- **Never runs backwards.** Server "now" is extrapolated between state samples, so
+  a late sample can resolve below an earlier estimate; since content is a function
+  of `elapsed`, a backward step would command the robot to reverse. Forward jumps
+  are *not* limited — they are the clock correcting after the event loop was late
+  reading the state stream, and rate-limiting them makes the timeline fall behind
+  until every waypoint lands in the past.
+
+There is no wait for the robot to report `RUNNING` before the clock starts.
+Waiting for it deadlocks the live path: the timeline has to move before any target
+spacing can be measured, and the robot has to move before it reports `RUNNING`. A
+catch-up jump is not a concern either way, because targets are placed on an
+absolute timeline and unreachable waypoints are dropped at send time.
 
 ```python
 async with jog_joints(mg) as jogger:
@@ -113,9 +192,14 @@ A time-parameterised target with non-zero velocity at `t=0` (a sinusoid has
 maximum velocity there) makes the robot lunge from a standstill to full speed on
 the first move. Pass `ease_in_s` to `jog_joints`/`jog_tcp` to ramp motion up from
 zero over the first N seconds: each target is blended from the robot's start
-position toward the requested value by `min(1, t / ease_in_s)`, so velocity
-starts at zero and is unchanged after the window. It is **off by default**
-(`ease_in_s=0`).
+position toward the requested value, and is unchanged after the window. It is
+**off by default** (`ease_in_s=0`).
+
+The blend is a smoothstep (`f = e²(3 − 2e)` for `e = min(1, t / ease_in_s)`), not
+a straight ramp. A straight ramp is continuous in position but not in velocity:
+the blend rate drops from full to nothing the instant it completes, and the robot
+executes that step in acceleration as a stumble a few hundred milliseconds later.
+Smoothstep is zero-derivative at both ends, so entry and exit are both gradual.
 
 ```python
 async with jog_joints(mg, ease_in_s=1.0) as jogger:  # gentle 1s ramp
