@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "ad06fedab9a5",
+  "strategy": "manual-commit",
+  "branch": "feat/NDX-844",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "nova/actions/motions.py",
+    "nova/command_routines/__init__.py",
+    "nova/command_routines/commands.py",
+    "nova/command_routines/routine.py",
+    "pyproject.toml",
+    "tests/command_routines/__init__.py",
+    "tests/command_routines/test_command_routine.py",
+    "uv.lock"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ad/06fedab9a5/0/metadata.json",
+      "transcript": "/ad/06fedab9a5/0/full.jsonl",
+      "content_hash": "/ad/06fedab9a5/0/content_hash.txt",
+      "prompt": "/ad/06fedab9a5/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}

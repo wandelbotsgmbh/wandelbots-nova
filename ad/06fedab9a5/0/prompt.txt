@@ -1,0 +1,17 @@
+install this wandelbots nova client package: 26.7.0.dev12 create a new submodule in nova "command_routines" and add a CommandRoutineBuilder (similar to the action list handler) to it based on the new api types command routine.
+
+---
+
+Start implementation
+
+---
+
+do you see better/cleaner alternatives for the builder pattern for this? somethwing more readable. give me options with examples
+
+---
+
+go with A)
+
+---
+
+Start implementation

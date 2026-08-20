@@ -1,0 +1,81 @@
+{
+  "cli_version": "0.7.5",
+  "checkpoint_id": "ad06fedab9a5",
+  "session_id": "99175666-0a41-4774-903f-112570f62ebd",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-20T07:35:35.61514Z",
+  "branch": "feat/NDX-844",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "nova/actions/motions.py",
+    "nova/command_routines/__init__.py",
+    "nova/command_routines/commands.py",
+    "nova/command_routines/routine.py",
+    "pyproject.toml",
+    "tests/command_routines/__init__.py",
+    "tests/command_routines/test_command_routine.py",
+    "uv.lock"
+  ],
+  "agent": "Copilot CLI",
+  "model": "",
+  "turn_id": "83d8c8a37fa2",
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-20T07:35:35.607394Z",
+    "agent_lines": 421,
+    "agent_removed": 11,
+    "human_added": 1,
+    "human_modified": 34,
+    "human_removed": 0,
+    "total_committed": 456,
+    "total_lines_changed": 467,
+    "agent_percentage": 92.50535331905782,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 5,
+      "agent_lines_removed": 5
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 608,
+      "agent_lines_removed": 11
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 608,
+      "agent_lines_removed": 11
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 608,
+      "agent_lines_removed": 11
+    }
+  ]
+}
