@@ -10,12 +10,36 @@ from nova.cell.controllers import (
 )
 from nova.cell.motion_group import MotionGroup
 from nova.cell.motion_group_models import MotionGroupModel
+from nova.cell.multi_trajectory_cursor import (
+    IOSyncConfig,
+    IOSyncDriver,
+    MultiTrajectoryCursor,
+    SyncDriver,
+)
+from nova.cell.session_monitor import (
+    DEFAULT_MAX_DRIFT,
+    SessionMonitor,
+    SyncDriftError,
+    SyncDriftMonitor,
+)
+from nova.cell.trajectory_executor import GroupArgs, TrajectoryExecutor, TrajectoryExecutorBuilder
 
 __all__ = [
     "Cell",
     "Controller",
+    "DEFAULT_MAX_DRIFT",
+    "GroupArgs",
+    "IOSyncConfig",
+    "IOSyncDriver",
     "MotionGroup",
     "MotionGroupModel",
+    "MultiTrajectoryCursor",
+    "SessionMonitor",
+    "SyncDriftError",
+    "SyncDriftMonitor",
+    "SyncDriver",
+    "TrajectoryExecutor",
+    "TrajectoryExecutorBuilder",
     "yaskawa_controller",
     "fanuc_controller",
     "universal_robots_controller",
