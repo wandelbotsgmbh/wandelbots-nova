@@ -44,6 +44,7 @@ from dataclasses import dataclass
 from typing import Self
 
 from nova import api
+from nova.actions.container import located_writes, write_to_set_io
 from nova.actions.io import WriteAction, io_write
 from nova.cell.motion_group import MotionGroup
 from nova.cell.movement_controller.trajectory_cursor import MovementOption, TrajectoryCursor
@@ -54,6 +55,7 @@ from nova.cell.multi_trajectory_cursor import (
     SyncDriver,
     _StreamBroadcaster,
 )
+from nova.cell.robot_cell import ActionsLike, _normalize_actions
 from nova.cell.session_monitor import SessionMonitor, SyncDriftMonitor
 
 
@@ -61,10 +63,11 @@ from nova.cell.session_monitor import SessionMonitor, SyncDriftMonitor
 class GroupArgs:
     """Per-group arguments for one execution.
 
-    Actions are not part of this: an action list belongs to one motion group's
-    trajectory, whose integer locations are *its* action boundaries, and the
-    ensemble has one shared parameterization instead. Synchronized execution
-    therefore carries no action metadata and no IO overlay derived from it.
+    Actions are not part of this: the ensemble action list is one shared list,
+    not per group, and is passed straight to :meth:`TrajectoryExecutor.execute`
+    /:meth:`~TrajectoryExecutor.attach`. The executor routes each write to the
+    owning group and anchors it on the shared ``locations`` parameterization,
+    so no per-group action metadata is needed here.
 
     Attributes:
         tcp: TCP the trajectory was planned for; passed to trajectory loading.
@@ -145,26 +148,45 @@ class TrajectoryExecutor:
     async def execute(
         self,
         trajectory: api.models.MultiJointTrajectory,
+        actions: ActionsLike | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
     ) -> None:
-        """Execute the trajectory front to end, synchronized through the barrier."""
-        async with self.attach(trajectory, groups) as cursor:
+        """Execute the trajectory front to end, synchronized through the barrier.
+
+        ``actions`` is the same ensemble action list passed to
+        :meth:`MultiMotionGroupPlanner.plan`; its :class:`WriteAction` entries
+        become the location-anchored IO overlay fired during execution (see
+        :meth:`attach`)."""
+        async with self.attach(trajectory, actions=actions, groups=groups) as cursor:
             await cursor.forward()
 
     @asynccontextmanager
     async def attach(
         self,
         trajectory: api.models.MultiJointTrajectory,
+        actions: ActionsLike | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
     ) -> AsyncGenerator[MultiTrajectoryCursor, None]:
         """Open a session for interactive control: load the trajectory, open the
         sockets, initialize — but do not move. Starting is the caller's call
         (:meth:`MultiTrajectoryCursor.forward`); exiting the context detaches
-        every cursor and closes every socket."""
+        every cursor and closes every socket.
+
+        ``actions`` mirrors the list given to
+        :meth:`MultiMotionGroupPlanner.plan`. It is not baked into the loaded
+        trajectory: each :class:`WriteAction` is turned into a
+        :class:`api.models.SetIO` anchored at its motion index (the count of
+        motions before it, waits skipped — the same convention as single-group
+        execution) and attached to the owning group's cursor, which re-emits the
+        overlay on every start. Every write is fired once, by the single group
+        it routes to; since all groups share one ``locations`` array that instant
+        is synchronized across the ensemble."""
         per_group = self._split_for_groups(trajectory)
         unknown_group_args = set(groups or {}) - set(self._motion_groups)
         if unknown_group_args:
             raise ValueError(f"Group args given for unknown groups: {sorted(unknown_group_args)}")
+
+        overlay = self._build_io_overlay(actions)
 
         cursors: dict[str, TrajectoryCursor] = {}
         broadcasters: dict[str, _StreamBroadcaster[api.models.MotionGroupState]] = {}
@@ -181,6 +203,7 @@ class TrajectoryExecutor:
                 detach_on_standstill=False,
                 emit_motion_events=False,
                 ignore_controller_limits=group_args.ignore_controller_limits,
+                set_outputs=overlay[name] or None,
             )
             cursors[name] = cursor
             broadcasters[name] = _StreamBroadcaster(cursor)
@@ -242,6 +265,47 @@ class TrajectoryExecutor:
             )
             for key, joint_samples in joint_positions_by_group.items()
         }
+
+    def _build_io_overlay(self, actions: ActionsLike | None) -> dict[str, list[api.models.SetIO]]:
+        """Turn the action list's writes into a per-group ``SetIO`` overlay.
+
+        Each write is routed to exactly one group and anchored at its motion
+        index; all other groups get an empty list."""
+        overlay: dict[str, list[api.models.SetIO]] = {name: [] for name in self._motion_groups}
+        for motion_index, write in located_writes(_normalize_actions(actions or [])):
+            group = self._route_write(write)
+            overlay[group].append(write_to_set_io(write, motion_index))
+        return overlay
+
+    def _route_write(self, write: WriteAction) -> str:
+        """Pick the single group whose execute stream fires this write.
+
+        A controller output goes to the group on that controller; a cell-wide
+        bus variable goes to one deterministic group (all groups share the
+        ``locations`` array, so which one carries it does not change the instant).
+        """
+        if write.origin is api.models.IOOrigin.BUS_IO:
+            return min(self._motion_groups)
+
+        controllers = {
+            name: motion_group._controller_id for name, motion_group in self._motion_groups.items()
+        }
+        if write.device_id is None:
+            distinct = set(controllers.values())
+            if len(distinct) > 1:
+                raise ValueError(
+                    f"The controller for IO '{write.key}' is ambiguous: the motion groups span "
+                    f"controllers {sorted(distinct)}. Set the write's device_id explicitly."
+                )
+            return min(self._motion_groups)
+
+        matching = sorted(name for name, ctrl in controllers.items() if ctrl == write.device_id)
+        if not matching:
+            raise ValueError(
+                f"No motion group is on controller '{write.device_id}' for IO '{write.key}'; "
+                f"known controllers are {sorted(set(controllers.values()))}."
+            )
+        return matching[0]
 
     async def _run_execute_trajectory(self, name: str, cursor: TrajectoryCursor) -> None:
         # Addressed through the group's own cell and gateway: executing does not

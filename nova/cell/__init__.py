@@ -10,6 +10,7 @@ from nova.cell.controllers import (
 )
 from nova.cell.motion_group import MotionGroup
 from nova.cell.motion_group_models import MotionGroupModel
+from nova.cell.multi_motion_group_planner import MultiMotionGroupPlanner
 from nova.cell.multi_trajectory_cursor import (
     IOSyncConfig,
     IOSyncDriver,
@@ -33,6 +34,7 @@ __all__ = [
     "IOSyncDriver",
     "MotionGroup",
     "MotionGroupModel",
+    "MultiMotionGroupPlanner",
     "MultiTrajectoryCursor",
     "SessionMonitor",
     "SyncDriftError",

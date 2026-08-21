@@ -370,6 +370,70 @@ class CollisionFreeMotion(Motion):
         raise NotImplementedError("CollisionFreeMotion.to_api_model is not implemented yet")
 
 
+class MultiCollisionFreeMotion(Action):
+    """A synchronized collision-free motion across several motion groups.
+
+    The multi-group counterpart of :class:`CollisionFreeMotion`: one action that
+    targets every group at once and is planned by the multi-motion-group RRT
+    endpoint into a single, time-synchronized trajectory (all groups sharing one
+    ``times``/``locations``). Unlike :class:`CollisionFreeMotion` it carries no
+    single ``target``; the per-group targets live in :attr:`targets`.
+
+    Attributes:
+        targets: The target per motion group, keyed by name — a pose (resolved
+            via inverse kinematics) or a joint tuple.
+        settings: Optional motion settings per group, folded into that group's
+            planning limits. Groups left out plan at their controller limits.
+        collision_setups: Optional cross-group and environment collision setup
+            per group. ``None`` plans against the groups' own geometry only.
+        algorithm: RRT settings shared by the whole search. ``None`` uses the
+            endpoint default.
+    """
+
+    type: Literal["multi_collision_free"] = "multi_collision_free"
+    targets: dict[str, Pose | tuple[float, ...]]
+    settings: dict[str, MotionSettings] = {}
+    collision_setups: dict[str, api.models.MultiCollisionSetup] | None = None
+    algorithm: api.models.RRTConnectAlgorithm | None = None
+
+    def is_motion(self) -> bool:
+        return True
+
+    def to_api_model(self) -> api.models.MultiSearchCollisionFreeRequest:
+        """"""
+        # The request also needs each group's setup and start joints, which the
+        # action does not carry; MultiMotionGroupPlanner assembles it instead.
+        raise NotImplementedError("MultiCollisionFreeMotion.to_api_model is not implemented")
+
+
+def multi_collision_free(
+    targets: dict[str, Pose | tuple[float, ...]],
+    settings: dict[str, MotionSettings] | None = None,
+    collision_setups: dict[str, api.models.MultiCollisionSetup] | None = None,
+    algorithm: api.models.RRTConnectAlgorithm | None = None,
+    **kwargs: Any,
+) -> MultiCollisionFreeMotion:
+    """Convenience factory for a synchronized collision-free motion.
+
+    Args:
+        targets: The target per motion group (pose or joint tuple), keyed by name.
+        settings: Optional per-group motion settings.
+        collision_setups: Optional per-group collision setup.
+        algorithm: Shared RRT settings; ``None`` uses the endpoint default.
+
+    Returns:
+        The multi-motion-group collision-free motion.
+    """
+    kwargs.update(utils.get_caller_metas())
+    return MultiCollisionFreeMotion(
+        targets=targets,
+        settings=settings or {},
+        collision_setups=collision_setups,
+        algorithm=algorithm,
+        metas=kwargs,
+    )
+
+
 def collision_free(
     target: Pose | tuple[float, ...],
     settings: MotionSettings = MotionSettings(),

@@ -13,6 +13,8 @@ import pytest
 
 from nova import api
 from nova.actions.io import io_write
+from nova.actions.mock import wait
+from nova.actions.motions import multi_collision_free
 from nova.cell.multi_trajectory_cursor import IOSyncConfig, IOSyncDriver, SyncDriver
 from nova.cell.session_monitor import SyncDriftError, SyncDriftMonitor
 from nova.cell.trajectory_executor import TrajectoryExecutor
@@ -24,6 +26,12 @@ from tests.cell.multi_group_doubles import (
     sync_driver,
     watch_condition,
 )
+
+
+def _move():
+    """A synchronized motion — the overlay counts it, its targets are irrelevant here."""
+    return multi_collision_free({"a": (0.0,) * 6, "b": (0.0,) * 6})
+
 
 pytestmark = pytest.mark.asyncio
 
@@ -231,6 +239,66 @@ class TestIOSyncDriver:
 
         gateway.bus_ios_api.set_bus_io_values.assert_awaited_once()
         assert gateway.bus_ios_api.get_bus_io_values.await_count == 2
+
+
+class TestIOOverlay:
+    def _executor(
+        self, gateway, controllers=("controller-a", "controller-b")
+    ) -> TrajectoryExecutor:
+        motion_groups = {
+            "a": motion_group(gateway, controller=controllers[0]),
+            "b": motion_group(gateway, controller=controllers[1]),
+        }
+        return TrajectoryExecutor(motion_groups, sync=sync_driver(gateway, groups=("a", "b")))
+
+    def test_no_actions__all_overlays_empty(self):
+        overlay = self._executor(IOGateway())._build_io_overlay(None)
+        assert overlay == {"a": [], "b": []}
+
+    def test_write_anchored_on_preceding_motion_count(self):
+        overlay = self._executor(IOGateway())._build_io_overlay(
+            [_move(), _move(), io_write("OUT#1", True, device_id="controller-a")]
+        )
+        assert [s.location for s in overlay["a"]] == [2]
+        assert overlay["b"] == []
+
+    def test_wait_does_not_advance_the_location(self):
+        overlay = self._executor(IOGateway())._build_io_overlay(
+            [_move(), wait(0.5), io_write("OUT#1", True, device_id="controller-a")]
+        )
+        assert [s.location for s in overlay["a"]] == [1]
+
+    def test_controller_origin_routes_to_the_group_on_that_controller(self):
+        overlay = self._executor(IOGateway())._build_io_overlay(
+            [io_write("OUT#1", True, device_id="controller-b")]
+        )
+        assert overlay["a"] == []
+        assert [s.io.root.io for s in overlay["b"]] == ["OUT#1"]
+
+    def test_controller_origin_without_device_id__ambiguous__raises(self):
+        with pytest.raises(ValueError, match="ambiguous"):
+            self._executor(IOGateway())._build_io_overlay([io_write("OUT#1", True)])
+
+    def test_controller_origin_without_device_id__shared_controller__routes_to_one(self):
+        executor = self._executor(IOGateway(), controllers=("controller-a", "controller-a"))
+        overlay = executor._build_io_overlay([io_write("OUT#1", True)])
+        assert [s.io.root.io for s in overlay["a"]] == ["OUT#1"]
+        assert overlay["b"] == []
+
+    def test_controller_origin__no_matching_group__raises(self):
+        with pytest.raises(ValueError, match="No motion group is on controller"):
+            self._executor(IOGateway())._build_io_overlay(
+                [io_write("OUT#1", True, device_id="controller-x")]
+            )
+
+    def test_bus_origin__fires_once_on_one_group(self):
+        overlay = self._executor(IOGateway())._build_io_overlay(
+            [io_write("bus-var", True, origin=api.models.IOOrigin.BUS_IO)]
+        )
+        # exactly one group carries it — a shared instant, not duplicated
+        assert sum(len(entries) for entries in overlay.values()) == 1
+        assert [s.io.root.io for s in overlay["a"]] == ["bus-var"]
+        assert overlay["b"] == []
 
 
 class TestSyncDriftMonitor:

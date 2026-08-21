@@ -21,6 +21,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from nova import api
+from nova.actions.io import io_write
+from nova.actions.motions import multi_collision_free
 from nova.cell.session_monitor import SyncDriftError
 from nova.cell.trajectory_executor import GroupArgs, TrajectoryExecutor
 from tests.cell.multi_group_doubles import (
@@ -387,3 +389,48 @@ class TestSynchronizedExecution:
         # Assert: the late forward fails loudly instead of deadlocking the exit
         with pytest.raises(RuntimeError):
             await asyncio.wait_for(run(), timeout=5)
+
+
+class TestIOOverlayReachesTheController:
+    async def test_execute__write_rides_the_owning_groups_start_only(self):
+        # Arrange: two groups on distinct controllers; the write targets b's.
+        gateway = _FakeGateway()
+        state_queues = {"a": asyncio.Queue(), "b": asyncio.Queue()}
+        executor = (
+            TrajectoryExecutor.builder(
+                {
+                    "a": motion_group(
+                        gateway, state_queues["a"], controller="ctrl-a", trajectory_id="traj-a"
+                    ),
+                    "b": motion_group(
+                        gateway, state_queues["b"], controller="ctrl-b", trajectory_id="traj-b"
+                    ),
+                }
+            )
+            .sync_on_io("sync-io", controller="ctrl-a")
+            .build()
+        )
+        actions = [
+            multi_collision_free({"a": (0.0,) * 6, "b": (0.0,) * 6}),
+            io_write("OUT#1", True, device_id="ctrl-b"),
+        ]
+
+        # Act: run the barrier through to completion
+        execute_task = asyncio.create_task(
+            executor.execute(multi_trajectory("a", "b"), actions=actions)
+        )
+        await gateway.reached("start", 2)
+        state_queues["a"].put_nowait(wait_for_io_state(at_milliseconds=10))
+        state_queues["b"].put_nowait(wait_for_io_state(at_milliseconds=20))
+        await gateway.reached("write", 2)
+        state_queues["a"].put_nowait(ended_state(2.0, at_milliseconds=30))
+        state_queues["b"].put_nowait(ended_state(2.0, at_milliseconds=40))
+        await asyncio.wait_for(execute_task, timeout=5)
+
+        # Assert: b's start carries the overlay at the motion boundary (1 motion
+        # precedes the write); a's start carries none.
+        b_outputs = gateway.start_requests["traj-b"][0].set_outputs
+        assert [s.io.root.io for s in b_outputs] == ["OUT#1"]
+        assert b_outputs[0].location == 1
+        assert b_outputs[0].io.root.value is True
+        assert not gateway.start_requests["traj-a"][0].set_outputs

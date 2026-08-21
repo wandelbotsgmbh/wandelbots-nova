@@ -27,3 +27,43 @@ def combine_trajectories(
         current_end_location = final_trajectory.locations[-1]
 
     return final_trajectory
+
+
+def combine_multi_trajectories(
+    trajectories: list[api.models.MultiJointTrajectory],
+) -> api.models.MultiJointTrajectory:
+    """Concatenate synchronized multi-motion-group trajectories end to end.
+
+    The multi-group counterpart of :func:`combine_trajectories`: every segment
+    shares one ``times``/``locations`` across all its groups, and the seam shifts
+    later segments to continue from the previous end — so the result keeps the
+    single shared parameterization synchronized execution rests on. All segments
+    must cover the same set of motion groups.
+    """
+    final_trajectory = trajectories[0]
+    keys = set(final_trajectory.joint_positions_by_motion_group_key.root)
+    current_end_time = final_trajectory.times[-1]
+    current_end_location = final_trajectory.locations[-1]
+
+    for trajectory in trajectories[1:]:
+        if set(trajectory.joint_positions_by_motion_group_key.root) != keys:
+            raise ValueError(
+                "All segments must cover the same motion groups; got "
+                f"{sorted(trajectory.joint_positions_by_motion_group_key.root)} vs {sorted(keys)}"
+            )
+
+        # Skip each segment's first point: it duplicates the previous seam.
+        final_trajectory.times.extend(t + current_end_time for t in trajectory.times[1:])
+        final_trajectory.locations.extend(
+            api.models.Location(location.root + current_end_location.root)
+            for location in trajectory.locations[1:]
+        )
+        for key, samples in trajectory.joint_positions_by_motion_group_key.root.items():
+            final_trajectory.joint_positions_by_motion_group_key.root[key].root.extend(
+                samples.root[1:]
+            )
+
+        current_end_time = final_trajectory.times[-1]
+        current_end_location = final_trajectory.locations[-1]
+
+    return final_trajectory
