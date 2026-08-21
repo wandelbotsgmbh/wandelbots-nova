@@ -44,10 +44,10 @@ def command_routine(
         metadata: String-valued annotations preserved on round-trip.
 
     Examples:
-    >>> from nova.command_routines import commands as c
+    >>> from nova.command_routines import set_io
     >>> routine = command_routine(
     ...     "pick-and-place",
-    ...     commands=[c.set_io(c.io_value("digital_out[0]", True))],
+    ...     commands=[set_io("digital_out[0]", True)],
     ... )
     >>> routine.command_routine, len(routine.commands)
     ('pick-and-place', 1)
@@ -80,10 +80,10 @@ def with_settings(
     non-motion commands are passed through unchanged.
 
     Examples:
-    >>> from nova.command_routines import commands as c
+    >>> from nova.command_routines import move_linear
     >>> group = with_settings(
     ...     api.models.MotionSettings(),
-    ...     [c.motion(c.local_pose("a"), c.path_line())],
+    ...     [move_linear("a")],
     ... )
     >>> group[0].motion_settings is not None
     True

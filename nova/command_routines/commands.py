@@ -43,6 +43,16 @@ def joint_position(joints: list[float]) -> api.models.JointPositionReference:
     return api.models.JointPositionReference(joints=joints)
 
 
+def _as_pose_ref(target: api.models.PoseRef | str) -> api.models.PoseRef:
+    """Coerce a bare pose id into a :func:`local_pose` reference."""
+    return local_pose(target) if isinstance(target, str) else target
+
+
+def _as_joint_ref(target: api.models.PoseRef | list[float]) -> api.models.PoseRef:
+    """Coerce a bare joint list into a :func:`joint_position` reference."""
+    return joint_position(target) if isinstance(target, list) else target
+
+
 # --- Path types ------------------------------------------------------------
 
 
@@ -125,17 +135,79 @@ def generated_motion(
     )
 
 
+def move_linear(
+    target: api.models.PoseRef | str,
+    *,
+    settings: api.models.MotionSettings | None = None,
+    intent: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> api.models.ExplicitPathMotionCommand:
+    """A straight-line motion to ``target`` (a pose id or reference)."""
+    return motion(
+        _as_pose_ref(target), path_line(), settings=settings, intent=intent, metadata=metadata
+    )
+
+
+def move_cartesian_ptp(
+    target: api.models.PoseRef | str,
+    *,
+    settings: api.models.MotionSettings | None = None,
+    intent: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> api.models.ExplicitPathMotionCommand:
+    """A Cartesian point-to-point motion to ``target`` (a pose id or reference)."""
+    return motion(
+        _as_pose_ref(target),
+        path_cartesian_ptp(),
+        settings=settings,
+        intent=intent,
+        metadata=metadata,
+    )
+
+
+def move_joint_ptp(
+    target: api.models.PoseRef | list[float],
+    *,
+    settings: api.models.MotionSettings | None = None,
+    intent: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> api.models.ExplicitPathMotionCommand:
+    """A joint-space point-to-point motion to ``target`` (joints or a reference)."""
+    return motion(
+        _as_joint_ref(target), path_joint_ptp(), settings=settings, intent=intent, metadata=metadata
+    )
+
+
+def move_circular(
+    target: api.models.PoseRef | str,
+    via_pose: api.models.PoseRef,
+    *,
+    settings: api.models.MotionSettings | None = None,
+    intent: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> api.models.ExplicitPathMotionCommand:
+    """A circular motion to ``target`` (a pose id or reference) shaped by ``via_pose``."""
+    return motion(
+        _as_pose_ref(target),
+        path_circle(via_pose),
+        settings=settings,
+        intent=intent,
+        metadata=metadata,
+    )
+
+
 def set_io(
-    value: api.models.IOValue,
+    io: str,
+    value: bool | int | float,
     *,
     io_origin: api.models.IOOrigin = api.models.IOOrigin.CONTROLLER,
     at: api.models.AtTrigger | None = None,
     intent: str | None = None,
     metadata: dict[str, str] | None = None,
 ) -> api.models.SetIOCommand:
-    """A non-blocking output command."""
+    """A non-blocking output command that writes ``value`` to ``io``."""
     return api.models.SetIOCommand(
-        io_value=value, io_origin=io_origin, at=at, intent=intent, metadata=metadata
+        io_value=io_value(io, value), io_origin=io_origin, at=at, intent=intent, metadata=metadata
     )
 
 
