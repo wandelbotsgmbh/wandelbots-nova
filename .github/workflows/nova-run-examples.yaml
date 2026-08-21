@@ -131,6 +131,8 @@ jobs:
             run_cmd: "python examples/move_multiple_robots.py"
           - id: multi_motion_group
             run_cmd: "python examples/multi_motion_group.py"
+          - id: bus_io_sync_two_controllers
+            run_cmd: "python examples/bus_io_sync_two_controllers.py"
           # - id: multi_step_movement_with_collision_free
           #   run_cmd: "python examples/multi_step_movement_with_collision_free.py"
           - id: welding
