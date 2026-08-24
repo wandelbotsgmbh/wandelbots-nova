@@ -1,7 +1,7 @@
 # Import api, types, and actions modules
 from typing import TYPE_CHECKING
 
-from nova import actions, api, exceptions, types, viewers
+from nova import actions, api, datasets, exceptions, types, viewers
 from nova.cell import Cell, Controller, MotionGroup
 from nova.config import NovaConfig
 from nova.core.nova import Nova
@@ -24,6 +24,7 @@ __all__ = [
     "Controller",
     "MotionGroup",
     "api",
+    "datasets",
     "exceptions",
     "types",
     "actions",

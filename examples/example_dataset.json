@@ -1,0 +1,293 @@
+{
+  "dataset": "default",
+  "name": "default",
+  "revision": 1,
+  "description": "Default seeded dataset",
+  "created_at": "2026-08-24T08:07:42.193534Z",
+  "updated_at": "2026-08-24T08:07:42.193534Z",
+  "poses": [
+    {
+      "pose": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "kinematic_configuration": null,
+      "coordinate_system": null,
+      "dataset_pose": "home",
+      "dataset": "default",
+      "name": "home",
+      "description": "Seed pose: home",
+      "created_at": "2026-08-24T08:07:42.193534Z",
+      "updated_at": "2026-08-24T08:07:42.193534Z",
+      "metadata": {
+        "seeded": "true"
+      }
+    },
+    {
+      "pose": {
+        "position": [
+          0.5,
+          0.2,
+          0.1
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "kinematic_configuration": null,
+      "coordinate_system": null,
+      "dataset_pose": "pick",
+      "dataset": "default",
+      "name": "pick",
+      "description": "Seed pose: pick",
+      "created_at": "2026-08-24T08:07:42.193534Z",
+      "updated_at": "2026-08-24T08:07:42.193534Z",
+      "metadata": {
+        "seeded": "true"
+      }
+    },
+    {
+      "pose": {
+        "position": [
+          0.8,
+          -0.2,
+          0.1
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "kinematic_configuration": null,
+      "coordinate_system": null,
+      "dataset_pose": "place",
+      "dataset": "default",
+      "name": "place",
+      "description": "Seed pose: place",
+      "created_at": "2026-08-24T08:07:42.193534Z",
+      "updated_at": "2026-08-24T08:07:42.193534Z",
+      "metadata": {
+        "seeded": "true"
+      }
+    },
+    {
+      "pose": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "kinematic_configuration": null,
+      "coordinate_system": "table",
+      "dataset_pose": "table-origin",
+      "dataset": "default",
+      "name": "table_origin",
+      "description": "Seed pose: table_origin",
+      "created_at": "2026-08-24T08:07:42.193534Z",
+      "updated_at": "2026-08-24T08:07:42.193534Z",
+      "metadata": {
+        "seeded": "true"
+      }
+    },
+    {
+      "pose": {
+        "position": [
+          0.3,
+          0.2,
+          0
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "kinematic_configuration": null,
+      "coordinate_system": "table",
+      "dataset_pose": "table-corner",
+      "dataset": "default",
+      "name": "table_corner",
+      "description": "Seed pose: table_corner",
+      "created_at": "2026-08-24T08:07:42.193534Z",
+      "updated_at": "2026-08-24T08:07:42.193534Z",
+      "metadata": {
+        "seeded": "true"
+      }
+    },
+    {
+      "pose": {
+        "position": [
+          0.02,
+          0,
+          0.01
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "kinematic_configuration": null,
+      "coordinate_system": "fixture",
+      "dataset_pose": "fixture-slot-a",
+      "dataset": "default",
+      "name": "fixture_slot_a",
+      "description": "Seed pose: fixture_slot_a",
+      "created_at": "2026-08-24T08:07:42.193534Z",
+      "updated_at": "2026-08-24T08:07:42.193534Z",
+      "metadata": {
+        "seeded": "true"
+      }
+    },
+    {
+      "pose": {
+        "position": [
+          -0.02,
+          0,
+          0.01
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "kinematic_configuration": null,
+      "coordinate_system": "fixture",
+      "dataset_pose": "fixture-slot-b",
+      "dataset": "default",
+      "name": "fixture_slot_b",
+      "description": "Seed pose: fixture_slot_b",
+      "created_at": "2026-08-24T08:07:42.193534Z",
+      "updated_at": "2026-08-24T08:07:42.193534Z",
+      "metadata": {
+        "seeded": "true"
+      }
+    },
+    {
+      "pose": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "kinematic_configuration": null,
+      "coordinate_system": "tool-frame",
+      "dataset_pose": "tool-tip",
+      "dataset": "default",
+      "name": "tool_tip",
+      "description": "Seed pose: tool_tip",
+      "created_at": "2026-08-24T08:07:42.193534Z",
+      "updated_at": "2026-08-24T08:07:42.193534Z",
+      "metadata": {
+        "seeded": "true"
+      }
+    }
+  ],
+  "coordinate_systems": [
+    {
+      "coordinate_system": "table",
+      "name": "Table",
+      "parent": null,
+      "pose": {
+        "position": [
+          0.5,
+          0,
+          0
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "dataset": "default"
+    },
+    {
+      "coordinate_system": "fixture",
+      "name": "Fixture",
+      "parent": "table",
+      "pose": {
+        "position": [
+          0.1,
+          0.1,
+          0.05
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "dataset": "default"
+    },
+    {
+      "coordinate_system": "tool-frame",
+      "name": "Tool frame",
+      "parent": "fixture",
+      "pose": {
+        "position": [
+          0,
+          0,
+          0.15
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "dataset": "default"
+    }
+  ],
+  "command_routines": [
+    {
+      "command_routine": "startup-routine",
+      "dataset": "default",
+      "name": "Startup Routine",
+      "description": "Seed command routine: waits before a run starts",
+      "motion_group": null,
+      "motion_group_setup": null,
+      "tcp": null,
+      "start_joint_position": null,
+      "default_motion_settings": null,
+      "commands": [
+        {
+          "type": "wait_for_time",
+          "duration_ms": 1000,
+          "at": null,
+          "intent": null,
+          "metadata": null
+        }
+      ],
+      "metadata": {
+        "seeded": "true"
+      },
+      "created_at": "2026-08-24T08:07:42.193534Z",
+      "updated_at": "2026-08-24T08:07:42.193534Z"
+    }
+  ]
+}

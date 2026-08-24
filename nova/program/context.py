@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextvars
 from typing import TYPE_CHECKING, Any
 
+from nova.types import Dataset
+
 if TYPE_CHECKING:
     from nova import Nova
 
@@ -14,10 +16,11 @@ current_program_context_var: contextvars.ContextVar["ProgramContext | None"] = (
 class ProgramContext:
     """Context passed into every program execution."""
 
-    def __init__(self, nova: Nova, program_id: str | None = None):
+    def __init__(self, nova: Nova, program_id: str | None = None, dataset: Dataset | None = None):
         self._nova = nova
         self._program_id = program_id
         self._cell = nova.cell()
+        self._dataset = dataset
 
     @property
     def nova(self) -> Nova:
@@ -33,6 +36,15 @@ class ProgramContext:
     def program_id(self) -> str | None:
         """Returns the program ID for the program."""
         return self._program_id
+
+    @property
+    def dataset(self) -> Dataset | None:
+        """Returns the dataset requested for the program.
+
+        This is resolved once, before the program body starts running, so
+        accessing this property does not require awaiting anything.
+        """
+        return self._dataset
 
     def cycle(self, extra: dict[str, Any] | None = None):
         """Create a Cycle with program pre-populated in the extra data."""
