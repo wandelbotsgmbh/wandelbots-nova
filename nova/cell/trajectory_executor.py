@@ -145,6 +145,11 @@ class TrajectoryExecutor:
         self._monitors = tuple(monitors)
         self._sync = sync
 
+    @property
+    def motion_groups(self) -> dict[str, MotionGroup]:
+        """The motion groups this executor drives, keyed by name."""
+        return dict(self._motion_groups)
+
     async def execute(
         self,
         trajectory: api.models.MultiJointTrajectory,
