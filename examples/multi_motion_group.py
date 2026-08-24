@@ -61,7 +61,7 @@ async def multi_motion_group_trajectory(ctx: nova.ProgramContext):
 
     # Starting both movements concurrently with waiting for IO
     start_on_io = api.models.StartOnIO(
-        io=api.models.IOValue(api.models.IOBooleanValue(io=SYNC_IO_ID, value=True)),
+        io=api.models.IOBooleanValue(io=SYNC_IO_ID, value=True),
         comparator=api.models.Comparator.COMPARATOR_EQUALS,
         io_origin=api.models.IOOrigin.CONTROLLER,
     )

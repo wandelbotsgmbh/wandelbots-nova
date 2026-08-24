@@ -27,7 +27,7 @@ def _make_motion_group_state(
         description_revision=0,
         motion_group="mg-0",
         controller="ctrl-0",
-        joint_position=api.models.Joints(root=[0.0] * 6),
+        joint_position=[0.0] * 6,
         joint_limit_reached=api.models.MotionGroupStateJointLimitReached(limit_reached=[False] * 6),
         standstill=standstill,
         execute=execute,
@@ -46,9 +46,7 @@ def _make_execute(
     return api.models.Execute(
         joint_position=[0.0] * 6,
         details=api.models.TrajectoryDetails(
-            trajectory="traj-123",
-            location=api.models.Location(root=location),
-            state=trajectory_state,
+            trajectory="traj-123", location=location, state=trajectory_state
         ),
     )
 

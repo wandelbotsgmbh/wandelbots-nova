@@ -70,7 +70,7 @@ def downsample_trajectory(
 
     # Convert joint positions to numpy array for efficient computation
     # Shape: (n_samples, n_joints)
-    joint_array = np.array([list(jp.root) for jp in trajectory.joint_positions])
+    joint_array = np.array([list(jp) for jp in trajectory.joint_positions])
 
     # Compute importance scores based on joint movement
     importance = _compute_sample_importance(joint_array, curvature_weight)

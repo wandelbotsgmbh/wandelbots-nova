@@ -19,40 +19,28 @@ async def build_and_store_collision_world(
         shape=api.models.Box(
             size_x=100, size_y=50, size_z=200, shape_type="box", box_type=api.models.BoxType.FULL
         ),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([0, 400, 0]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[0, 400, 0], orientation=[0, 0, 0]),
     )
     colliders["box"] = box_collider
 
     # Sphere collider
     sphere_collider = api.models.Collider(
         shape=api.models.Sphere(radius=30, shape_type="sphere"),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([0, 200, 0]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[0, 200, 0], orientation=[0, 0, 0]),
     )
     colliders["sphere"] = sphere_collider
 
     # Cylinder collider
     cylinder_collider = api.models.Collider(
         shape=api.models.Cylinder(radius=30, height=100, shape_type="cylinder"),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([0, -600, 0]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[0, -600, 0], orientation=[0, 0, 0]),
     )
     colliders["cylinder"] = cylinder_collider
 
     # Capsule collider
     capsule_collider = api.models.Collider(
         shape=api.models.Capsule(radius=30, cylinder_height=100, shape_type="capsule"),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([0, -400, 0]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[0, -400, 0], orientation=[0, 0, 0]),
     )
     colliders["capsule"] = capsule_collider
 
@@ -64,20 +52,14 @@ async def build_and_store_collision_world(
             sphere_center_distance_y=50,
             shape_type="rectangular_capsule",
         ),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([0, -200, 0]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[0, -200, 0], orientation=[0, 0, 0]),
     )
     colliders["rectangular_capsule"] = rect_capsule_collider
 
     # Rectangle collider
     rectangle_collider = api.models.Collider(
         shape=api.models.Rectangle(size_x=30, size_y=100, shape_type="rectangle"),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([0, 0, 0]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[0, 0, 0], orientation=[0, 0, 0]),
     )
     colliders["rectangle"] = rectangle_collider
 
@@ -86,20 +68,12 @@ async def build_and_store_collision_world(
         rotated = api.models.Collider(
             shape=collider.shape,
             pose=api.models.Pose(
-                position=api.models.Vector3d(
-                    [
-                        -300,
-                        collider.pose.position[1]
-                        if collider.pose and collider.pose.position
-                        else 0,
-                        collider.pose.position[2]
-                        if collider.pose and collider.pose.position
-                        else 0,
-                    ]
+                position=(
+                    -300,
+                    collider.pose.position[1] if collider.pose and collider.pose.position else 0,
+                    collider.pose.position[2] if collider.pose and collider.pose.position else 0,
                 ),
-                orientation=api.models.RotationVector(
-                    [0.7853981633974484, 0, 0]
-                ),  # 45 degrees in radians
+                orientation=(0.7853981633974484, 0, 0),  # 45 degrees in radians
             ),
         )
         colliders[f"{name}_rot_x_45"] = rotated
@@ -110,20 +84,16 @@ async def build_and_store_collision_world(
             rotated = api.models.Collider(
                 shape=collider.shape,
                 pose=api.models.Pose(
-                    position=api.models.Vector3d(
-                        [
-                            300,
-                            collider.pose.position[1]
-                            if collider.pose and collider.pose.position
-                            else 0,
-                            collider.pose.position[2]
-                            if collider.pose and collider.pose.position
-                            else 0,
-                        ]
+                    position=(
+                        300,
+                        collider.pose.position[1]
+                        if collider.pose and collider.pose.position
+                        else 0,
+                        collider.pose.position[2]
+                        if collider.pose and collider.pose.position
+                        else 0,
                     ),
-                    orientation=api.models.RotationVector(
-                        [0, 0.7853981633974484, 0]
-                    ),  # 45 degrees in radians
+                    orientation=(0, 0.7853981633974484, 0),  # 45 degrees in radians
                 ),
             )
             colliders[f"{name}_rot_y_45"] = rotated
@@ -146,16 +116,14 @@ async def build_and_store_collision_world(
 
     # Define robot link geometries
     robot_link_colliders = await nova.api.motion_group_models_api.get_motion_group_collision_model(
-        motion_group_model=motion_group_description.motion_group_model.root
+        motion_group_model=motion_group_description.motion_group_model
     )
-    link_chain = api.models.LinkChain(
-        [api.models.Link(robot_link_collider) for robot_link_collider in robot_link_colliders]
-    )
-    robot_tool = api.models.Tool({"tool_geometry": tool_collider})
+    link_chain = list(robot_link_colliders)
+    robot_tool = {"tool_geometry": tool_collider}
 
     # Assemble scene with all colliders
     collision_setup = api.models.CollisionSetup(
-        colliders=api.models.ColliderDictionary(colliders), tool=robot_tool, link_chain=link_chain
+        colliders=colliders, tool=robot_tool, link_chain=link_chain
     )
     setup_id = "collision_scene"
     await collision_setup_api.store_collision_setup(
