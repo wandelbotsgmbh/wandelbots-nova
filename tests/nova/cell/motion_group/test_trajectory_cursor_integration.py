@@ -119,7 +119,7 @@ async def test_circular_is_a_single_action_in_planned_trajectory(ur_mg):
 
     # End location equals the number of actions: circular counts as exactly one,
     # not two targets. This is the cursor's location-to-action contract.
-    assert abs(trajectory.locations[-1].root - len(actions)) < 0.01
+    assert abs(trajectory.locations[-1] - len(actions)) < 0.01
 
     circular_action = actions[1]
     loc = circular_action.source_location
@@ -432,7 +432,7 @@ async def test_cursor_set_outputs_fires_io_during_movement(kuka_mg):
     trajectory, actions = await _plan_move(mg, delta=0.4)
     outputs = [
         api.models.SetIO(
-            io=api.models.IOValue(api.models.IOBooleanValue(io="OUT#900", value=True)),
+            io=api.models.IOBooleanValue(io="OUT#900", value=True),
             location=0.0,
             io_origin=api.models.IOOrigin.CONTROLLER,
         )

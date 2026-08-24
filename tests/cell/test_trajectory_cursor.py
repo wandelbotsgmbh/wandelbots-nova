@@ -21,7 +21,7 @@ def create_cursor(num_actions: int, initial_location: float) -> TrajectoryCursor
     actions = [lin(Pose((i * 100, 0, 0, 0, 0, 0))) for i in range(num_actions)]
 
     joint_trajectory = MagicMock()
-    joint_trajectory.locations = [MagicMock(root=float(i)) for i in range(num_actions + 1)]
+    joint_trajectory.locations = [float(i) for i in range(num_actions + 1)]
 
     cursor = object.__new__(TrajectoryCursor)
     cursor.joint_trajectory = joint_trajectory
@@ -197,7 +197,7 @@ def create_cursor_without_actions(end_location: float, initial_location: float) 
     """Helper to create a TrajectoryCursor without actions for testing."""
     cursor = object.__new__(TrajectoryCursor)
     cursor.joint_trajectory = MagicMock()
-    cursor.joint_trajectory.locations = [MagicMock(root=0.0), MagicMock(root=end_location)]
+    cursor.joint_trajectory.locations = [0.0, end_location]
     cursor.actions = None
     cursor._current_location = initial_location
     cursor._target_location = initial_location
@@ -346,9 +346,9 @@ def _trajectory_for_motion_count(num_motions: int):
 
     n = num_motions + 1
     return _api.models.JointTrajectory(
-        joint_positions=[_api.models.Joints([0.0] * 6)] * n,
+        joint_positions=[[0.0] * 6] * n,
         times=[float(i) for i in range(n)],
-        locations=[_api.models.Location(root=float(i)) for i in range(n)],
+        locations=[float(i) for i in range(n)],
     )
 
 

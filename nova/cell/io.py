@@ -61,12 +61,12 @@ class IOAccess(Device):
 
         input_output = response[0]
 
-        if isinstance(input_output.root, api.models.IOBooleanValue):
-            return bool(input_output.root.value)
-        elif isinstance(input_output.root, api.models.IOIntegerValue):
-            return int(input_output.root.value)
-        elif isinstance(input_output.root, api.models.IOFloatValue):
-            return float(input_output.root.value)
+        if isinstance(input_output, api.models.IOBooleanValue):
+            return bool(input_output.value)
+        elif isinstance(input_output, api.models.IOIntegerValue):
+            return int(input_output.value)
+        elif isinstance(input_output, api.models.IOFloatValue):
+            return float(input_output.value)
 
         raise ValueError(
             f"IO value for {key} is of an unexpected type. Expected bool, int or float. Got: {type(input_output)}"
@@ -91,9 +91,7 @@ class IOAccess(Device):
                 raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
 
             await self._api_client.controller_ios_api.set_output_values(
-                cell=self._cell,
-                controller=self._controller_id,
-                io_value=[io_value],  # ty: ignore[invalid-argument-type]
+                cell=self._cell, controller=self._controller_id, io_value=[io_value]
             )
 
     async def _ensure_value_type(self, key: str, value: ValueType):
@@ -125,7 +123,7 @@ class IOAccess(Device):
         io_value = api.models.IOBooleanValue(io=io, value=value)
 
         wait_request = api.models.WaitForIOEventRequest(
-            io=api.models.IOValue(io_value), comparator=api.models.Comparator.COMPARATOR_EQUALS
+            io=io_value, comparator=api.models.Comparator.COMPARATOR_EQUALS
         )
         await self._api_client.controller_ios_api.wait_for_io_event(
             cell=self._cell, controller=self._controller_id, wait_for_io_event_request=wait_request

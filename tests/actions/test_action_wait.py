@@ -1,5 +1,4 @@
-import wandelbots_api_client as wb
-
+from nova import api as wb
 from nova.actions.mock import wait
 
 
@@ -20,7 +19,7 @@ def test_wait_action_trajectory_duration():
         timestep = 0.050  # 50ms timestep
         num_steps = max(2, int(wait_time / timestep) + 1)
 
-        joint_positions = [wb.models.Joints(joints=list(current_joints)) for _ in range(num_steps)]
+        joint_positions = [list(current_joints) for _ in range(num_steps)]
         times = [i * timestep for i in range(num_steps)]
         # Ensure the last timestep is exactly the wait duration
         times[-1] = wait_time
@@ -56,7 +55,7 @@ def test_wait_action_trajectory_duration():
     # Check that all joint positions are identical
     for trajectory in [trajectory_1, trajectory_2, trajectory_3]:
         for i in range(1, len(trajectory.joint_positions)):
-            assert trajectory.joint_positions[i].joints == trajectory.joint_positions[0].joints
+            assert trajectory.joint_positions[i] == trajectory.joint_positions[0]
 
     # Check timestep spacing (approximately 50ms)
     for trajectory in [trajectory_1, trajectory_3]:  # Skip the short trajectory
