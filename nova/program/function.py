@@ -39,7 +39,6 @@ from nova import datasets as ds
 from nova.datasets import LoadDatasetRequest
 from nova.program import registry
 from nova.program.context import ProgramContext, current_program_context_var
-from nova.types import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +140,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
         if ctx is None:
             dataset = (
-                Dataset.from_api_model(await ds.load_dataset(nova, self.preconditions.dataset))
+                await ds.load_dataset(nova, self.preconditions.dataset)
                 if self.preconditions and self.preconditions.dataset
                 else None
             )
