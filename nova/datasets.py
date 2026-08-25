@@ -1,28 +1,94 @@
+import asyncio
 import logging
 from pathlib import Path
 
 from nova import api
 from nova.config import CELL_NAME
 from nova.core.nova import Nova
-from nova.types.dataset import LoadDatasetRequest, LoadLocalDatasetRequest, LoadRemoteDatasetRequest
+from nova.types.dataset import (
+    Dataset,
+    LoadDatasetRequest,
+    LoadLocalDatasetRequest,
+    LoadRemoteDatasetRequest,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def remote_dataset(
-    dataset: api.models.DatasetId,
-    revision: int | None = None,
-    override_dataset_id: str | None = None,
-) -> LoadDatasetRequest:
-    """Load a dataset from the remote server."""
-    return LoadRemoteDatasetRequest(
-        dataset=dataset, revision=revision, override_dataset_id=override_dataset_id
+def _dataset_from_api(api_dataset: api.models.GetDatasetResponse) -> Dataset:
+    """Convert the api datasets response into the convinience class Dataset"""
+    return Dataset(
+        **api_dataset.model_dump(exclude={"poses", "command_routines", "coordinate_systems"}),
+        poses={pose.dataset_pose: pose for pose in api_dataset.poses} if api_dataset.poses else {},
+        command_routines={
+            routine.command_routine: routine for routine in api_dataset.command_routines
+        }
+        if api_dataset.command_routines
+        else {},
+        coordinate_systems={cs.coordinate_system: cs for cs in api_dataset.coordinate_systems}
+        if api_dataset.coordinate_systems
+        else {},
     )
 
 
-def local_dataset(path: str, override_dataset_id: str | None = None) -> LoadDatasetRequest:
-    """Load a dataset from a local file."""
-    return LoadLocalDatasetRequest(path=Path(path), override_dataset_id=override_dataset_id)
+async def list_datasets(
+    nova: Nova, dataset_id: api.models.DatasetId | None = None, latest_only: bool | None = None
+) -> list[api.models.Dataset]:
+    """List the datasets available in the cell on the NOVA instance.
+
+    Every revision is returned as its own entry unless the result is narrowed down.
+
+    Args:
+        nova: A connected NOVA instance.
+        dataset_id: Restrict the result to all revisions of this dataset.
+        latest_only: When True, return only the latest revision of each dataset.
+    """
+    assert nova.is_connected(), "NOVA instance needs to be connected, in order to list datasets."
+
+    try:
+        return await nova.api.datasets_api.get_datasets(
+            cell=CELL_NAME,
+            dataset=str(dataset_id) if dataset_id is not None else None,
+            latest_only=latest_only,
+        )
+    except Exception:
+        logger.exception("Failed to list datasets")
+        raise
+
+
+async def create_dataset(nova: Nova, create_request: api.models.CreateDatasetRequest) -> Dataset:
+    """Create a dataset together with its poses, coordinate systems and command routines.
+
+    Args:
+        nova: A connected NOVA instance.
+        create_request: The dataset to create. Server-managed fields are assigned by
+            the NOVA instance and must not be part of the request.
+    """
+    assert nova.is_connected(), "NOVA instance needs to be connected, in order to create a dataset."
+
+    try:
+        response = await nova.api.datasets_api.create_dataset(
+            cell=CELL_NAME, create_dataset_request=create_request
+        )
+        return _dataset_from_api(response)
+    except Exception:
+        logger.exception(f"Failed to create dataset '{create_request.dataset}'")
+        raise
+
+
+async def delete_dataset(
+    nova: Nova, dataset_id: api.models.DatasetId, revision: int | None = None
+) -> None:
+    """Delete a dataset from the NOVA instance."""
+    assert nova.is_connected(), "NOVA instance needs to be connected, in order to delete a dataset."
+
+    try:
+        await nova.api.datasets_api.delete_dataset(
+            cell=CELL_NAME, dataset=str(dataset_id), revision=revision
+        )
+    except Exception:
+        logger.exception(f"Failed to delete dataset '{dataset_id}'")
+        raise
 
 
 async def localize_pose_from_world(
@@ -76,45 +142,57 @@ async def resolve_to_world(
     )
 
 
-async def load_dataset(
-    nova: Nova, dataset_request: LoadDatasetRequest
-) -> api.models.GetDatasetResponse:
-    """Load a dataset from the remote server or from a local file."""
+async def load_dataset(nova: Nova, dataset_request: LoadDatasetRequest) -> Dataset:
+    """Load a dataset from the NOVA instance or from a local file."""
     if dataset_request.type == "remote":
+        # A remote dataset is addressed by its id, so it already carries the right one.
         return await fetch_remote_dataset(nova, dataset_request.dataset, dataset_request.revision)
+
     else:
         return await read_local_dataset(dataset_request)
 
 
 async def fetch_remote_dataset(
     nova: Nova, dataset_id: api.models.DatasetId, revision: int | None = None
-) -> api.models.GetDatasetResponse:
-    """Load the complete dataset from the API."""
+) -> Dataset:
+    """Fetch a dataset from the NOVA server."""
 
     assert nova.is_connected(), "NOVA instance needs to be connected, in order to fetch a dataset."
 
     try:
-        response: api.models.GetDatasetResponse = await nova.api.datasets_api.get_dataset(
+        response = await nova.api.datasets_api.get_dataset(
             cell=CELL_NAME, dataset=str(dataset_id), revision=revision
         )
-    except Exception as e:
-        logger.error(f"Failed to fetch dataset '{dataset_id}': {e}")
+        return _dataset_from_api(response)
+    except Exception:
+        logger.exception(f"Failed to fetch dataset '{dataset_id}'")
         raise
 
-    return api.models.GetDatasetResponse.model_validate(response.model_dump())
 
-
-async def read_local_dataset(
-    local_dataset: LoadLocalDatasetRequest,
-) -> api.models.GetDatasetResponse:
-    """Read a local dataset from a file."""
+async def read_local_dataset(local_dataset: LoadLocalDatasetRequest) -> Dataset:
+    """Read a local dataset from a JSON file"""
 
     try:
-        with open(local_dataset.path, "r") as f:
-            data = f.read()
-        dataset = api.models.GetDatasetResponse.model_validate_json(data)
-    except Exception as e:
-        logger.error(f"Failed to read local dataset from '{local_dataset.path}': {e}")
+        data = await asyncio.to_thread(Path(local_dataset.path).read_text)
+        response = api.models.GetDatasetResponse.model_validate_json(data)
+        return _dataset_from_api(response)
+    except Exception:
+        logger.exception(f"Failed to read local dataset from '{local_dataset.path}'")
         raise
 
-    return dataset
+
+def remote_dataset(
+    dataset: api.models.DatasetId, revision: int | None = None
+) -> LoadRemoteDatasetRequest:
+    """Create a configuration for loading a dataset stored on the NOVA instance.
+
+    Args:
+        dataset: Identifier of the dataset to load.
+        revision: Revision to load. When omitted, the latest revision is used.
+    """
+    return LoadRemoteDatasetRequest(dataset=dataset, revision=revision)
+
+
+def local_dataset(path: str) -> LoadLocalDatasetRequest:
+    """Create a configuration for loading a dataset from a local JSON file."""
+    return LoadLocalDatasetRequest(path=Path(path))
