@@ -1,0 +1,65 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "695e8cf98e84",
+  "session_id": "c7f3b6f5-178e-4782-b323-50743067fab3",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-25T10:41:24.150764Z",
+  "branch": "fix/controller-shares-cell-api-gateway",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "nova/cell/cell.py",
+    "nova/cell/controller.py",
+    "nova/core/gateway.py",
+    "tests/cell/test_controller_api_gateway.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "686baf55326f",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 166,
+    "cache_creation_tokens": 97890,
+    "cache_read_tokens": 7518458,
+    "output_tokens": 34417,
+    "api_call_count": 83
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-25T10:41:24.112337Z",
+    "agent_lines": 84,
+    "agent_removed": 7,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 84,
+    "total_lines_changed": 91,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 84,
+      "agent_lines_removed": 7
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 84,
+      "agent_lines_removed": 7
+    }
+  ]
+}

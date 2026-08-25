@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "695e8cf98e84",
+  "strategy": "manual-commit",
+  "branch": "fix/controller-shares-cell-api-gateway",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "nova/cell/cell.py",
+    "nova/cell/controller.py",
+    "nova/core/gateway.py",
+    "tests/cell/test_controller_api_gateway.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/69/5e8cf98e84/0/metadata.json",
+      "transcript": "/69/5e8cf98e84/0/full.jsonl",
+      "compact_transcript": "/69/5e8cf98e84/0/transcript.jsonl",
+      "content_hash": "/69/5e8cf98e84/0/content_hash.txt",
+      "prompt": "/69/5e8cf98e84/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 166,
+    "cache_creation_tokens": 97890,
+    "cache_read_tokens": 7518458,
+    "output_tokens": 34417,
+    "api_call_count": 83
+  }
+}

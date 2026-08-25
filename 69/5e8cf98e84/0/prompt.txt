@@ -1,0 +1,15 @@
+if you run the @examples/start_here.py example you'll see the following error messages at the end:
+2026-08-25 10:55:39 [ERROR] asyncio: Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x10e345220>
+2026-08-25 10:55:39 [ERROR] asyncio: Unclosed connector
+connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x10e33b2a0>, 128355.38801975)])']
+connector: <aiohttp.connector.TCPConnector object at 0x10e3468a0>
+Track down the reason for these and suggest potential fixes
+
+---
+
+continue
+
+---
+
+what is the git state of this now
