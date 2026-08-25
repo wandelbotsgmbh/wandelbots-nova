@@ -81,11 +81,11 @@ def with_settings(
 
     Examples:
     >>> from nova.command_routines import move_linear
-    >>> group = with_settings(
+    >>> commands_with_settings = with_settings(
     ...     api.models.MotionSettings(),
     ...     [move_linear("a")],
     ... )
-    >>> group[0].motion_settings is not None
+    >>> commands_with_settings[0].motion_settings is not None
     True
     """
     result: list[api.models.Command] = []
