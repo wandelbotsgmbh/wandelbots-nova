@@ -52,10 +52,10 @@ async def test_collision_free_planning_with_joint_position_as_target(ur_mg):
     assert len(trajectory.joint_positions) > 0, (
         "Collision-free planning did not return a valid joint trajectory"
     )
-    assert trajectory.joint_positions[0].root == initial_joint_positions, (
+    assert trajectory.joint_positions[0] == initial_joint_positions, (
         "Initial joint positions do not match start"
     )
-    assert trajectory.joint_positions[-1].root == [pi / 4, -pi / 2, pi / 2, 0, 0, 0], (
+    assert trajectory.joint_positions[-1] == [pi / 4, -pi / 2, pi / 2, 0, 0, 0], (
         "Final joint positions do not match target"
     )
 
@@ -80,12 +80,12 @@ async def test_collision_free_planning_with_pose_as_target(ur_mg):
     assert len(trajectory.joint_positions) > 0, (
         "Collision-free planning did not return a valid joint trajectory"
     )
-    assert trajectory.joint_positions[0].root == initial_joint_positions, (
+    assert trajectory.joint_positions[0] == initial_joint_positions, (
         "Initial joint positions do not match start"
     )
 
     # make sure the final joint position leas to the some pose as target_as_pose
-    last_joint_position = trajectory.joint_positions[-1].root
+    last_joint_position = trajectory.joint_positions[-1]
     last_joint_position_as_pose = (
         await ur_mg.forward_kinematics(joints=[list(last_joint_position)], tcp="Flange")
     )[0]
@@ -102,15 +102,11 @@ async def test_collision_free_planning_finds_no_solution_pose_as_target(ur_mg: M
     Tests that collision-free planning correctly identifies when no solution is possible.
     """
     plane = api.models.Collider(
-        shape=api.models.Plane(),
-        pose=api.models.Pose(
-            position=api.models.Vector3d(root=[0, 0, 0]),
-            orientation=api.models.RotationVector(root=[0, 0, 0]),
-        ),
+        shape=api.models.Plane(), pose=api.models.Pose(position=[0, 0, 0], orientation=[0, 0, 0])
     )
     collision_setup = await ur_mg.get_safety_collision_setup("Flange")
     collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
-    collision_setup.colliders = api.models.ColliderDictionary({"plane": plane})
+    collision_setup.colliders = {"plane": plane}
 
     with pytest.raises(Exception):
         await ur_mg.plan(
@@ -135,15 +131,11 @@ async def test_collision_free_planning_finds_no_solution_joints_as_target(ur_mg:
 
     # create a collision scene to make the point unreachable
     plane = api.models.Collider(
-        shape=api.models.Plane(),
-        pose=api.models.Pose(
-            position=api.models.Vector3d(root=[0, 0, 0]),
-            orientation=api.models.RotationVector(root=[0, 0, 0]),
-        ),
+        shape=api.models.Plane(), pose=api.models.Pose(position=[0, 0, 0], orientation=[0, 0, 0])
     )
     collision_setup = await ur_mg.get_safety_collision_setup("Flange")
     collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
-    collision_setup.colliders = api.models.ColliderDictionary({"plane": plane})
+    collision_setup.colliders = {"plane": plane}
 
     # plan and expect no solution
     # TODO

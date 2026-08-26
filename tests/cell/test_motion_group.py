@@ -25,14 +25,9 @@ def create_collision_setup(
     collider_id = collider_id or f"test_collider_{radius}"
     collider = api.models.Collider(
         shape=api.models.Sphere(radius=radius),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([radius, 0, 0]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[radius, 0, 0], orientation=[0, 0, 0]),
     )
-    return api.models.CollisionSetup(
-        colliders=api.models.ColliderDictionary({collider_id: collider})
-    )
+    return api.models.CollisionSetup(colliders={collider_id: collider})
 
 
 @pytest.fixture
@@ -131,9 +126,7 @@ def mock_collision_setup():
     motion_groups.__ne__.side_effect = lambda other, self=motion_groups: other is not self
 
     return api.models.CollisionSetup.model_construct(
-        colliders=api.models.ColliderDictionary(
-            {"test_collider": api.models.Collider(shape=api.models.Sphere(radius=1))}
-        )
+        colliders={"test_collider": api.models.Collider(shape=api.models.Sphere(radius=1))}
         # link_chain=api.models.LinkChain(
         #    list(api.models.Link(link) for link in robot_link_colliders)
         # ),
@@ -145,14 +138,11 @@ def mock_collision_setup():
 
 def _test_collider(position: list[float]) -> api.models.CollisionSetup:
     return api.models.CollisionSetup.model_construct(
-        colliders=api.models.ColliderDictionary(
-            {
-                "test_collider": api.models.Collider(
-                    shape=api.models.Sphere(radius=1),
-                    pose=api.models.Pose(position=api.models.Vector3d(position)),
-                )
-            }
-        )
+        colliders={
+            "test_collider": api.models.Collider(
+                shape=api.models.Sphere(radius=1), pose=api.models.Pose(position=tuple(position))
+            )
+        }
     )
 
 
@@ -270,8 +260,7 @@ async def test_plan_and_execute_write_only_actions_use_direct_io_calls(mock_moti
         io_value=[api.models.IOBooleanValue(io="digital_in[0]", value=True)],
     )
     mock_motion_group._api_client.bus_ios_api.set_bus_io_values.assert_awaited_once_with(
-        cell="test_cell",
-        io_value=[api.models.IOValue(api.models.IOBooleanValue(io="test_bool", value=True))],
+        cell="test_cell", io_value=[api.models.IOBooleanValue(io="test_bool", value=True)]
     )
 
 
@@ -329,9 +318,7 @@ async def test_plan_and_execute_actions_with_motion_do_not_use_direct_non_motion
     mock_motion_group._execute_direct_non_motion_actions = AsyncMock()
     mock_motion_group.plan = AsyncMock(
         return_value=api.models.JointTrajectory(
-            joint_positions=[api.models.Joints([0.0] * 6), api.models.Joints([0.0] * 6)],
-            times=[0.0, 0.1],
-            locations=[api.models.Location(0.0), api.models.Location(1.0)],
+            joint_positions=[[0.0] * 6, [0.0] * 6], times=[0.0, 0.1], locations=[0.0, 1.0]
         )
     )
     mock_motion_group.execute = AsyncMock()
@@ -368,8 +355,8 @@ async def test_ensure_virtual_tcp_creates_new_tcp(mock_motion_group):
     tcp = api.models.RobotTcp(
         id="test_tcp",
         name="Test TCP",
-        position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation([0, 0, 0]),
+        position=[0, 0, 150],
+        orientation=[0, 0, 0],
         orientation_type=api.models.OrientationType.ROTATION_VECTOR,
     )
 
@@ -397,15 +384,15 @@ async def test_ensure_virtual_tcp_returns_existing_identical_tcp(mock_motion_gro
     """Test that ensure_virtual_tcp returns existing TCP when configurations are identical."""
     tcp = api.models.RobotTcp(
         id="test_tcp",
-        position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation([0, 0, 0]),
+        position=[0, 0, 150],
+        orientation=[0, 0, 0],
         orientation_type=api.models.OrientationType.ROTATION_VECTOR,
     )
 
     existing_tcp = api.models.RobotTcp(
         id="test_tcp",
-        position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation([0, 0, 0]),
+        position=[0, 0, 150],
+        orientation=[0, 0, 0],
         orientation_type=api.models.OrientationType.ROTATION_VECTOR,
     )
 
@@ -422,15 +409,15 @@ async def test_ensure_virtual_tcp_updates_different_tcp(mock_motion_group):
     """Test that ensure_virtual_tcp updates TCP when configurations differ."""
     tcp = api.models.RobotTcp(
         id="test_tcp",
-        position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation([0, 0, 0]),
+        position=[0, 0, 150],
+        orientation=[0, 0, 0],
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
     )
 
     existing_tcp = api.models.RobotTcp(
         id="test_tcp",
-        position=api.models.Vector3d([10, 0, 150]),
-        orientation=api.models.Orientation([0, 0, 0]),
+        position=[10, 0, 150],
+        orientation=[0, 0, 0],
         orientation_type=api.models.OrientationType.ROTATION_VECTOR,
     )
 
@@ -469,10 +456,7 @@ async def test_ensure_virtual_tcp_different_rotation_types(mock_motion_group, or
     )
 
     tcp = api.models.RobotTcp(
-        id="test_tcp",
-        position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation(angles),
-        orientation_type=orientation_type,
+        id="test_tcp", position=[0, 0, 150], orientation=angles, orientation_type=orientation_type
     )
 
     mock_motion_group.tcps = AsyncMock(side_effect=[{}, {"test_tcp": tcp}])
@@ -499,15 +483,15 @@ async def test_ensure_virtual_tcp_different_rotation_types_not_equal(mock_motion
     """Test that TCPs with different rotation types are not considered equal."""
     tcp = api.models.RobotTcp(
         id="test_tcp",
-        position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation([0, 0, 0]),
+        position=[0, 0, 150],
+        orientation=[0, 0, 0],
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
     )
 
     existing_tcp = api.models.RobotTcp(
         id="test_tcp",
-        position=api.models.Vector3d([0, 0, 150]),
-        orientation=api.models.Orientation([0, 0, 0]),
+        position=[0, 0, 150],
+        orientation=[0, 0, 0],
         orientation_type=api.models.OrientationType.EULER_ANGLES_INTRINSIC_XYZ,
     )
 
@@ -533,20 +517,16 @@ async def test_ensure_virtual_tcp_different_rotation_types_not_equal(mock_motion
 @pytest.mark.asyncio
 async def test_forward_kinematics_without_tcp_skips_tcp_offset(mock_motion_group):
     """tcp=None must compute the flange pose and must not resolve any TCP offset."""
-    gripper_pose = api.models.Pose(
-        position=api.models.Vector3d([10, 20, 30]), orientation=api.models.RotationVector([0, 0, 0])
-    )
+    gripper_pose = api.models.Pose(position=[10, 20, 30], orientation=[0, 0, 0])
     mock_motion_group._api_client.motion_group_api.get_motion_group_description.return_value = (
         api.models.MotionGroupDescription(
-            motion_group_model=api.models.MotionGroupModel("test-model"),
+            motion_group_model="test-model",
             operation_limits=api.models.OperationLimits(),
             mounting=None,
             tcps={"gripper": api.models.TcpOffset(name="gripper", pose=gripper_pose)},
         )
     )
-    flange_pose = api.models.Pose(
-        position=api.models.Vector3d([1, 2, 3]), orientation=api.models.RotationVector([0, 0, 0])
-    )
+    flange_pose = api.models.Pose(position=[1, 2, 3], orientation=[0, 0, 0])
     mock_motion_group._api_client.kinematics_api.forward_kinematics.return_value = MagicMock(
         tcp_poses=[flange_pose]
     )
@@ -563,20 +543,16 @@ async def test_forward_kinematics_without_tcp_skips_tcp_offset(mock_motion_group
 @pytest.mark.asyncio
 async def test_forward_kinematics_with_tcp_applies_tcp_offset(mock_motion_group):
     """tcp=<name> must resolve and forward that TCP's offset to the API request."""
-    gripper_pose = api.models.Pose(
-        position=api.models.Vector3d([10, 20, 30]), orientation=api.models.RotationVector([0, 0, 0])
-    )
+    gripper_pose = api.models.Pose(position=[10, 20, 30], orientation=[0, 0, 0])
     mock_motion_group._api_client.motion_group_api.get_motion_group_description.return_value = (
         api.models.MotionGroupDescription(
-            motion_group_model=api.models.MotionGroupModel("test-model"),
+            motion_group_model="test-model",
             operation_limits=api.models.OperationLimits(),
             mounting=None,
             tcps={"gripper": api.models.TcpOffset(name="gripper", pose=gripper_pose)},
         )
     )
-    tcp_pose = api.models.Pose(
-        position=api.models.Vector3d([11, 22, 33]), orientation=api.models.RotationVector([0, 0, 0])
-    )
+    tcp_pose = api.models.Pose(position=[11, 22, 33], orientation=[0, 0, 0])
     mock_motion_group._api_client.kinematics_api.forward_kinematics.return_value = MagicMock(
         tcp_poses=[tcp_pose]
     )

@@ -50,9 +50,9 @@ def _build_io_changes(
     return {
         io: IOChange(
             old_value=_convert_value(
-                old_values[io].root.value if old_values and io in old_values else None
+                old_values[io].value if old_values and io in old_values else None
             ),
-            new_value=_convert_value(new_values[io].root.value if io in new_values else None),
+            new_value=_convert_value(new_values[io].value if io in new_values else None),
         )
         for io in bus_ios
     }
@@ -66,8 +66,8 @@ async def get_bus_io_value(
 
     values = await nova.api.bus_ios_api.get_bus_io_values(cell=cell, ios=ios)
 
-    values = [value for value in values if value.root.value is not None]
-    return {value.root.io: _convert_value(value.root.value) for value in values}  # type: ignore
+    values = [value for value in values if value.value is not None]
+    return {value.io: _convert_value(value.value) for value in values}  # type: ignore
 
 
 async def set_bus_io_value(
@@ -87,7 +87,7 @@ async def set_bus_io_value(
             io_value = api.models.IOFloatValue(io=io, value=value)
         else:
             raise ValueError(f"Invalid value type {type(value)}. Expected bool, int or float.")
-        io_value_list.append(api.models.IOValue(io_value))
+        io_value_list.append(io_value)
 
     await nova.api.bus_ios_api.set_bus_io_values(cell=cell, io_value=io_value_list)
 
@@ -142,7 +142,7 @@ async def wait_for_bus_io(
 
     try:
         old_values = await nova.api.bus_ios_api.get_bus_io_values(cell=cell, ios=bus_ios)
-        old_values_dict = {value.root.io: value for value in old_values}
+        old_values_dict = {value.io: value for value in old_values}
 
         # Check initial state before listening for changes
         if on_change(_build_io_changes(bus_ios, None, old_values_dict)):
@@ -152,7 +152,7 @@ async def wait_for_bus_io(
             logger.debug("Received bus IO update message: %s", message.data.decode())
 
             new_values = TypeAdapter(list[api.models.IOValue]).validate_json(message.data)
-            new_values_dict = {value.root.io: value for value in new_values}
+            new_values_dict = {value.io: value for value in new_values}
 
             if on_change(_build_io_changes(bus_ios, old_values_dict, new_values_dict)):
                 break

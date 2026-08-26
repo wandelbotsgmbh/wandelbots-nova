@@ -190,3 +190,7 @@ policy/examples/apps/gr00t/
 
 # Local-only clone examples (real-robot dry-runs, not for the repo)
 policy/examples/**/*_clone.py
+
+# Local-only architecture scratch space: working notes and pre-draft analyses
+# that have not yet been distilled into an ADR (docs/architecture/adr/).
+docs/architecture/incoming/

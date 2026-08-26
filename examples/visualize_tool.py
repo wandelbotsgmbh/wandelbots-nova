@@ -9,8 +9,8 @@ from nova.types import Pose
 TOOL_ASSET = "nova_rerun_bridge/example_data/tool.stl"
 robot_tcp_data = api.models.RobotTcpData(
     name="vacuum",
-    position=api.models.Vector3d([0, -80, 340]),
-    orientation=api.models.Orientation([0, 0, 0]),
+    position=[0, -80, 340],
+    orientation=[0, 0, 0],
     orientation_type=api.models.OrientationType.ROTATION_VECTOR,
 )
 

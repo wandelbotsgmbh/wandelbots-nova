@@ -56,7 +56,7 @@ def motion_group_setup_from_motion_group_description(
         global_limits=controller_global_limits(motion_group_description),
         tcp_offset=tcp_offset,
         payload=payload,
-        collision_setups=api.models.CollisionSetups({"safety": collision_setup}),
+        collision_setups={"safety": collision_setup},
     )
 
 
@@ -74,7 +74,7 @@ def get_joint_position_limits_from_motion_group_setup(
         for joint in motion_group_setup.global_limits.joints
         if joint.position is not None
     ]
-    return api.models.JointPositionLimits(root=joint_limit_range_list)
+    return joint_limit_range_list
 
 
 def _patched_joint_limits(

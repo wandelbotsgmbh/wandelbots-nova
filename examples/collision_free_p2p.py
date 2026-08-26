@@ -19,36 +19,24 @@ async def build_collision_world(
     store_collision_setups_api = nova.api.store_collision_setups_api
     motion_group_models_api = nova.api.motion_group_models_api
 
-    motion_group_model = motion_group_description.motion_group_model.root
+    motion_group_model = motion_group_description.motion_group_model
 
     # define annoying obstacle
     sphere_collider_lower = api.models.Collider(
         shape=api.models.Sphere(radius=500, shape_type="sphere"),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([-100, -800, 200]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[-100, -800, 200], orientation=[0, 0, 0]),
     )
     sphere_collider_upper = api.models.Collider(
         shape=api.models.Sphere(radius=500, shape_type="sphere"),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([0, 0, 1500]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[0, 0, 1500], orientation=[0, 0, 0]),
     )
     sphere_collider_side = api.models.Collider(
         shape=api.models.Sphere(radius=400, shape_type="sphere"),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([-1000, -700, 1000]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[-1000, -700, 1000], orientation=[0, 0, 0]),
     )
     sphere_collider_small = api.models.Collider(
         shape=api.models.Sphere(radius=300, shape_type="sphere"),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([600, -700, 200]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[600, -700, 200], orientation=[0, 0, 0]),
     )
 
     wall_collider = api.models.Collider(
@@ -59,10 +47,7 @@ async def build_collision_world(
             shape_type="box",
             box_type=api.models.BoxType.FULL,
         ),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([0, 700, 0]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[0, 700, 0], orientation=[0, 0, 0]),
     )
     await store_collision_components_api.store_collider(
         cell=cell_name, collider="annoying_obstacle", collider2=sphere_collider_lower
@@ -92,18 +77,14 @@ async def build_collision_world(
 
     # assemble scene
     collision_setup = api.models.CollisionSetup(
-        colliders=api.models.ColliderDictionary(
-            {
-                "sphere_lower": sphere_collider_lower,
-                "sphere_upper": sphere_collider_upper,
-                "sphere_small": sphere_collider_small,
-                "wall": wall_collider,
-                "sphere_side": sphere_collider_side,
-            }
-        ),
-        link_chain=api.models.LinkChain(
-            list(api.models.Link(link) for link in robot_link_colliders)
-        ),
+        colliders={
+            "sphere_lower": sphere_collider_lower,
+            "sphere_upper": sphere_collider_upper,
+            "sphere_small": sphere_collider_small,
+            "wall": wall_collider,
+            "sphere_side": sphere_collider_side,
+        },
+        link_chain=list(robot_link_colliders),
     )
     scene_id = "collision_scene"
     await store_collision_setups_api.store_collision_setup(
@@ -140,8 +121,8 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
         coordinate_system=api.models.CoordinateSystem(
             name="mounting",
             coordinate_system="world",
-            position=api.models.Vector3d([0, 0, 0]),
-            orientation=api.models.Orientation([0, 0, 0]),
+            position=[0, 0, 0],
+            orientation=[0, 0, 0],
             orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         ),
     )
@@ -191,7 +172,7 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
         await motion_group.plan(
             actions=collision_actions,
             tcp=tcp,
-            start_joint_position=tuple(joint_trajectory.joint_positions[-1].root),
+            start_joint_position=tuple(joint_trajectory.joint_positions[-1]),
         )
     except Exception as e:
         print(f"Planning failed, we continue with the collision avoidance: {e}")
@@ -202,14 +183,14 @@ async def collision_free_p2p(ctx: nova.ProgramContext) -> None:
             target=target_pose,
             collision_setup=collision_setup,
             settings=MotionSettings(tcp_velocity_limit=30),
-            algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
+            algorithm=api.models.RRTConnectAlgorithm(),
         )
     ]
 
     await motion_group.plan(
         actions=welding_actions,
         tcp=tcp,
-        start_joint_position=tuple(joint_trajectory.joint_positions[-1].root),
+        start_joint_position=tuple(joint_trajectory.joint_positions[-1]),
     )
 
 
