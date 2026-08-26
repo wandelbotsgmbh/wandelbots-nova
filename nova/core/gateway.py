@@ -146,9 +146,15 @@ class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
     class Configuration(ConfigurablePeriphery.Configuration):
         config: NovaConfig
 
-    def __init__(self, configuration: Configuration, **kwargs):
+    def __init__(
+        self, configuration: Configuration, *, api_gateway: ApiGateway | None = None, **kwargs
+    ):
         self._nova_config = configuration.config
-        self._nova_api_gateway: ApiGateway | None = None
+        self._nova_api_gateway: ApiGateway | None = api_gateway
+        # A gateway owns an api.ApiClient and with it an aiohttp session. Only close the gateway
+        # if we created it ourselves; a shared one belongs to its owner (usually the Nova
+        # instance) and is closed there.
+        self._owns_api_gateway = api_gateway is None
         super().__init__(configuration, **kwargs)
 
     @property
@@ -164,5 +170,5 @@ class NovaDevice(ConfigurablePeriphery, Device, ABC, is_abstract=True):
 
     async def close(self):
         await super().close()
-        if self._nova_api_gateway is not None:
+        if self._owns_api_gateway and self._nova_api_gateway is not None:
             await self._nova_api_gateway.close()
