@@ -99,13 +99,13 @@ async def localize_pose_from_world(
 ) -> list[api.models.Pose]:
     """Localize poses that are expressed in the world coordinate system into the given dataset coordinate system."""
 
-    assert nova.is_connected(), (
-        "NOVA instance needs to be connected, in order to resolve dataset poses."
-    )
-
     if not len(poses):
         logger.warning("No dataset poses provided, returning empty list.")
         return []
+
+    assert nova.is_connected(), (
+        "NOVA instance needs to be connected, in order to resolve dataset poses."
+    )
 
     return await nova.api.datasets_api.localize_dataset_coordinate_system_pose(
         cell=nova.cell().id,
