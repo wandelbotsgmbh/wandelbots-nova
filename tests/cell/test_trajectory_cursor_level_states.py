@@ -160,8 +160,7 @@ async def test_edge_then_bare_standstill_completes_and_detaches():
 
     async with asyncio.timeout(5):
         result = await operation
-        # one-shot detach on ended → the protocol loop finishes
-        await asyncio.gather(consumer)
+        await consumer  # one-shot detach on ended → the protocol loop finishes
 
     assert result.error is None
     assert result.final_location == 3.0
@@ -230,7 +229,7 @@ async def test_pre_start_paused_frames_do_not_complete_a_forward_operation():
 
     async with asyncio.timeout(5):
         result = await operation
-        await asyncio.gather(consumer)
+        await consumer
 
     assert result.error is None
     assert result.final_location == 3.0, (
