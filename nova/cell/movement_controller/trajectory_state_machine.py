@@ -235,7 +235,7 @@ class TrajectoryExecutionMachine(StateMachine):
         # Execute *is* present ------------------------------------------------
         assert state.execute is not None  # mypy
         if isinstance(state.execute.details, api.models.TrajectoryDetails):
-            location = state.execute.details.location.root
+            location = state.execute.details.location
             self.location = location
             trajectory_state = state.execute.details.state
 

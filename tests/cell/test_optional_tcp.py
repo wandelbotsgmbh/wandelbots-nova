@@ -25,10 +25,7 @@ def mock_motion_group():
     # Mock get_current_motion_group_state (used by joints())
     mock_state = MagicMock()
     mock_state.joint_position = [0.0, -1.57, -1.57, 0.0, 0.0, 0.0]
-    mock_state.tcp_pose = api.models.Pose(
-        position=api.models.Vector3d([0.0, 0.0, 0.0]),
-        orientation=api.models.RotationVector([0.0, 0.0, 0.0]),
-    )
+    mock_state.tcp_pose = api.models.Pose(position=[0.0, 0.0, 0.0], orientation=[0.0, 0.0, 0.0])
     mock_state.tcp = None
     mock_api_client.motion_group_api = MagicMock()
     mock_api_client.motion_group_api.get_current_motion_group_state = AsyncMock(
@@ -37,7 +34,7 @@ def mock_motion_group():
 
     # Mock get_motion_group_description (used by get_setup)
     mock_description = MagicMock()
-    mock_description.motion_group_model = api.models.MotionGroupModel("test-model")
+    mock_description.motion_group_model = "test-model"
     mock_description.cycle_time = 8
     mock_description.mounting = None
     mock_description.tcps = None  # No TCPs configured
@@ -53,12 +50,9 @@ def mock_motion_group():
     # Mock trajectory planning API
     mock_plan_response = MagicMock()
     mock_plan_response.response = api.models.JointTrajectory(
-        joint_positions=[
-            api.models.Joints([0.0, -1.57, -1.57, 0.0, 0.0, 0.0]),
-            api.models.Joints([0.1, -1.47, -1.47, 0.1, 0.1, 0.1]),
-        ],
+        joint_positions=[[0.0, -1.57, -1.57, 0.0, 0.0, 0.0], [0.1, -1.47, -1.47, 0.1, 0.1, 0.1]],
         times=[0.0, 1.0],
-        locations=[api.models.Location(0.0), api.models.Location(1.0)],
+        locations=[0.0, 1.0],
     )
     mock_api_client.trajectory_planning_api = MagicMock()
     mock_api_client.trajectory_planning_api.plan_trajectory = AsyncMock(
@@ -155,12 +149,9 @@ class TestPlanWithoutTcpAcceptsJointActions:
 
         mock_plan_cf_response = MagicMock()
         mock_plan_cf_response.response = api.models.JointTrajectory(
-            joint_positions=[
-                api.models.Joints([0.0, -1.57, -1.57, 0.0, 0.0, 0.0]),
-                api.models.Joints(list(joint_target)),
-            ],
+            joint_positions=[[0.0, -1.57, -1.57, 0.0, 0.0, 0.0], list(joint_target)],
             times=[0.0, 1.0],
-            locations=[api.models.Location(0.0), api.models.Location(1.0)],
+            locations=[0.0, 1.0],
         )
         mock_motion_group._api_client.trajectory_planning_api.plan_collision_free = AsyncMock(
             return_value=mock_plan_cf_response
@@ -181,9 +172,7 @@ class TestLoadPlannedMotionWithNoneTcp:
     @pytest.mark.asyncio
     async def test_load_planned_motion_passes_none_tcp(self, mock_motion_group):
         joint_trajectory = api.models.JointTrajectory(
-            joint_positions=[api.models.Joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])],
-            times=[0.0],
-            locations=[api.models.Location(0.0)],
+            joint_positions=[[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], times=[0.0], locations=[0.0]
         )
 
         await mock_motion_group._load_planned_motion(joint_trajectory, tcp=None)
@@ -213,11 +202,7 @@ class TestPlanWithoutTcpEdgeCases:
         )
         mock_desc.tcps = {
             "Flange": MagicMock(
-                pose=api.models.Pose(
-                    position=api.models.Vector3d([0, 0, 0]),
-                    orientation=api.models.RotationVector([0, 0, 0]),
-                ),
-                name="Flange",
+                pose=api.models.Pose(position=[0, 0, 0], orientation=[0, 0, 0]), name="Flange"
             )
         }
 

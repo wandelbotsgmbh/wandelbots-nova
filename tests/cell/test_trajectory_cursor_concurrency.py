@@ -40,9 +40,9 @@ def _make_joint_trajectory(num_actions: int) -> api.models.JointTrajectory:
     """Return a minimal JointTrajectory whose locations match *num_actions* actions."""
     n = num_actions + 1
     return api.models.JointTrajectory(
-        joint_positions=[api.models.Joints([0.0] * 6)] * n,
+        joint_positions=[[0.0] * 6] * n,
         times=[float(i) for i in range(n)],
-        locations=[api.models.Location(root=float(i)) for i in range(n)],
+        locations=[float(i) for i in range(n)],
     )
 
 
@@ -58,7 +58,7 @@ def _make_motion_group_state(
         sequence_number=sequence_number,
         motion_group="mg-0",
         controller="ctrl-0",
-        joint_position=api.models.Joints(root=[0.0] * 6),
+        joint_position=[0.0] * 6,
         joint_limit_reached=api.models.MotionGroupStateJointLimitReached(limit_reached=[False] * 6),
         standstill=standstill,
         execute=execute,
@@ -71,7 +71,7 @@ def _make_execute(location: float = 0.5) -> api.models.Execute:
         joint_position=[0.0] * 6,
         details=api.models.TrajectoryDetails(
             trajectory="traj-1",
-            location=api.models.Location(root=location),
+            location=location,
             state=api.models.TrajectoryRunning(time_to_end=0),
         ),
     )

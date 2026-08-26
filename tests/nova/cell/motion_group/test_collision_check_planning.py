@@ -55,14 +55,12 @@ async def test_ptp_planning(ur_mg):
     assert len(trajectory.joint_positions) > 0, (
         "Collision-free planning did not return a valid joint trajectory"
     )
-    assert trajectory.joint_positions[0].root == initial_joint_positions, (
+    assert trajectory.joint_positions[0] == initial_joint_positions, (
         "Initial joint positions do not match start"
     )
 
     # Verify that the final pose matches the target pose
-    found_pose = (await ur_mg.forward_kinematics([trajectory.joint_positions[-1].root], "Flange"))[
-        0
-    ]
+    found_pose = (await ur_mg.forward_kinematics([trajectory.joint_positions[-1]], "Flange"))[0]
     assert target_pose == found_pose, "Final pose doesn't match target pose"
 
 
@@ -73,15 +71,11 @@ async def test_ptp_planning_with_collision_setup(ur_mg):
     Tests collision-free planning with a joint position as target.
     """
     plane = models.Collider(
-        shape=models.Plane(),
-        pose=models.Pose(
-            position=models.Vector3d(root=[0, 0, 0]),
-            orientation=models.RotationVector(root=[0, 0, 0]),
-        ),
+        shape=models.Plane(), pose=models.Pose(position=[0, 0, 0], orientation=[0, 0, 0])
     )
     collision_setup = await ur_mg.get_safety_collision_setup("Flange")
     collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
-    collision_setup.colliders = models.ColliderDictionary({"plane": plane})
+    collision_setup.colliders = {"plane": plane}
 
     target_pose = Pose(700, 0, -10, 0, 0, 0)
 

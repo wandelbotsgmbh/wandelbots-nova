@@ -90,25 +90,17 @@ async def stream_motion_group(
     if motion_group_description.safety_tool_colliders is not None and tcp_name is not None:
         tool_colliders = motion_group_description.safety_tool_colliders.get(tcp_name)
         if tool_colliders is not None:
-            tcp_geometries = dict(tool_colliders.root)
+            tcp_geometries = dict(tool_colliders)
 
     robot_model_geometries: list[api.models.LinkChain] = []
     if motion_group_description.safety_link_colliders is not None:
-        robot_model_geometries = [
-            api.models.LinkChain(
-                [
-                    api.models.Link(link.root)
-                    for link in motion_group_description.safety_link_colliders
-                ]
-            )
-        ]
+        robot_model_geometries = [list(motion_group_description.safety_link_colliders)]
 
     try:
         model_data = await load_model_data(motion_group_model, motion_group._api_client)
 
         mounting = motion_group_description.mounting or api.models.Pose(
-            position=api.models.Vector3d([0, 0, 0]),
-            orientation=api.models.RotationVector([0, 0, 0]),
+            position=(0, 0, 0), orientation=(0, 0, 0)
         )
         robot = DHRobot(
             dh_parameters=motion_group_description.dh_parameters or [], mounting=mounting
@@ -128,7 +120,7 @@ async def stream_motion_group(
         logger.info(f"Started streaming motion group {motion_group.id}")
 
         async for state in downsample_stream(motion_group.stream_state(), target_frequency):
-            current_joint_position = state.joint_position.root
+            current_joint_position = state.joint_position
             tcp_pose = Pose(state.tcp_pose)
             if processor.tcp_pose_changed(motion_group_id=motion_group.id, tcp_pose=tcp_pose):
                 rr.reset_time()

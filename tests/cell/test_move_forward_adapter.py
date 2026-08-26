@@ -1,6 +1,7 @@
 """Regression tests for move_forward as a TrajectoryCursor adapter.
 
-Since the Phase C merge (docs/architecture/incoming/move-forward-to-cursor.md),
+Since the movement-controller merge
+(docs/architecture/adr/001-merge-movement-controllers-into-trajectory-cursor.md),
 ``move_forward`` no longer implements the ``executeTrajectory`` protocol itself:
 it configures a :class:`TrajectoryCursor` for one-shot execution and starts it.
 The behavioural contract of the old implementation is pinned by the untouched
@@ -34,7 +35,7 @@ def _state(
         sequence_number=1,
         motion_group="mg-0",
         controller="ctrl-0",
-        joint_position=api.models.Joints(root=[0.0] * 6),
+        joint_position=[0.0] * 6,
         joint_limit_reached=api.models.MotionGroupStateJointLimitReached(limit_reached=[False] * 6),
         standstill=standstill,
         execute=execute,
@@ -47,7 +48,7 @@ def _execute(location: float, state=None) -> api.models.Execute:
         joint_position=[0.0] * 6,
         details=api.models.TrajectoryDetails(
             trajectory="traj-1",
-            location=api.models.Location(root=location),
+            location=location,
             state=state or api.models.TrajectoryRunning(time_to_end=0),
         ),
     )
@@ -70,8 +71,8 @@ def _finite_states():
 
 
 async def _responses():
-    yield api.models.ExecuteTrajectoryResponse(root=api.models.InitializeMovementResponse())
-    yield api.models.ExecuteTrajectoryResponse(root=api.models.StartMovementResponse())
+    yield api.models.InitializeMovementResponse()
+    yield api.models.StartMovementResponse()
     await asyncio.Future()
 
 
@@ -114,9 +115,7 @@ async def test_io_only_actions_with_a_preplanned_trajectory():
     """
     combined_actions = CombinedActions(items=(io_write(key="OUT#900", value=True),))
     joint_trajectory = api.models.JointTrajectory(
-        joint_positions=[api.models.Joints([0.0] * 6), api.models.Joints([0.1] * 6)],
-        times=[0.0, 1.0],
-        locations=[api.models.Location(root=0.0), api.models.Location(root=1.0)],
+        joint_positions=[[0.0] * 6, [0.1] * 6], times=[0.0, 1.0], locations=[0.0, 1.0]
     )
     context = _context(combined_actions=combined_actions, joint_trajectory=joint_trajectory)
 

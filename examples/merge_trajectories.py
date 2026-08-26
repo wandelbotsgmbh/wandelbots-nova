@@ -59,12 +59,12 @@ async def merge_trajectories(ctx: nova.ProgramContext):
         [linear(pose_1)], tcp, start_joint_position=start_joints, motion_group_setup=setup
     )
 
-    end_joints_1 = tuple(traj_1.joint_positions[-1].root)
+    end_joints_1 = tuple(traj_1.joint_positions[-1])
     traj_2 = await motion_group.plan(
         [linear(pose_2)], tcp, start_joint_position=end_joints_1, motion_group_setup=setup
     )
 
-    end_joints_2 = tuple(traj_2.joint_positions[-1].root)
+    end_joints_2 = tuple(traj_2.joint_positions[-1])
     traj_3 = await motion_group.plan(
         [linear(pose_3)], tcp, start_joint_position=end_joints_2, motion_group_setup=setup
     )

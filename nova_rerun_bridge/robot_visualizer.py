@@ -78,10 +78,10 @@ class RobotVisualizer:
         ]
         # Group collision geometries by link
         self.collision_link_geometries: list[Any] = (
-            cast(list[Any], collision_link_chain.root) if collision_link_chain else []
+            cast(list[Any], collision_link_chain) if collision_link_chain else []
         )
         self.collision_tcp_geometries: dict[str, api.models.Collider] = (
-            collision_tcp.root if collision_tcp else {}
+            collision_tcp if collision_tcp else {}
         )
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
@@ -105,8 +105,8 @@ class RobotVisualizer:
 
         # Group safety geometries by link index for easier lookup later on
         for link_chain in robot_model_geometries:
-            for link_index, link in enumerate(link_chain.root or []):
-                self.link_geometries.setdefault(link_index, []).extend(link.root.values())
+            for link_index, link in enumerate(link_chain or []):
+                self.link_geometries.setdefault(link_index, []).extend(link.values())
 
     def discover_joints(self):
         """
@@ -178,8 +178,7 @@ class RobotVisualizer:
             return np.eye(4)
         return self.robot.pose_to_matrix(
             api.models.Pose(
-                position=api.models.Vector3d(list(init_pose.position.to_tuple())),
-                orientation=api.models.RotationVector(list(init_pose.orientation.to_tuple())),
+                position=init_pose.position.to_tuple(), orientation=init_pose.orientation.to_tuple()
             )
         )
 
@@ -389,7 +388,7 @@ class RobotVisualizer:
                         collider.pose.orientation[0],
                         collider.pose.orientation[1],
                         collider.pose.orientation[2],
-                        collider.pose.orientation[3],
+                        collider.pose.orientation[3],  # ty: ignore[index-out-of-bounds]
                     ]
                 )
                 transform[:3, :3] = rot_mat.as_matrix()
@@ -509,7 +508,7 @@ class RobotVisualizer:
         # Convex hull geometry
         elif isinstance(geometry.shape, api.models.ConvexHull):
             polygons = HullVisualizer.compute_hull_outlines_from_points(
-                np.array([v.root for v in geometry.shape.vertices])
+                np.array([v for v in geometry.shape.vertices])
             )
 
             if polygons:
@@ -758,7 +757,7 @@ class RobotVisualizer:
             link_rotations[entity_path].append(rr.RotationAxisAngle(axis=axis, angle=angle))
 
         for joint_position in trajectory.joint_positions:
-            transforms = self.compute_forward_kinematics(joint_positions=joint_position.root)
+            transforms = self.compute_forward_kinematics(joint_positions=joint_position)
 
             # Log robot joint geometries
             if self.mesh_loaded:

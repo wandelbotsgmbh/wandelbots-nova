@@ -34,9 +34,9 @@ pytestmark = pytest.mark.asyncio
 def _trajectory(num_actions: int) -> api.models.JointTrajectory:
     n = num_actions + 1
     return api.models.JointTrajectory(
-        joint_positions=[api.models.Joints([0.0] * 6)] * n,
+        joint_positions=[[0.0] * 6] * n,
         times=[float(i) for i in range(n)],
-        locations=[api.models.Location(root=float(i)) for i in range(n)],
+        locations=[float(i) for i in range(n)],
     )
 
 
@@ -52,7 +52,7 @@ def _state(
         sequence_number=1,
         motion_group="mg-0",
         controller="ctrl-0",
-        joint_position=api.models.Joints(root=[0.0] * 6),
+        joint_position=[0.0] * 6,
         joint_limit_reached=api.models.MotionGroupStateJointLimitReached(limit_reached=[False] * 6),
         standstill=standstill,
         execute=execute,
@@ -65,7 +65,7 @@ def _execute(location: float, state=None) -> api.models.Execute:
         joint_position=[0.0] * 6,
         details=api.models.TrajectoryDetails(
             trajectory="traj-1",
-            location=api.models.Location(root=location),
+            location=location,
             state=state or api.models.TrajectoryRunning(time_to_end=0),
         ),
     )
@@ -73,7 +73,7 @@ def _execute(location: float, state=None) -> api.models.Execute:
 
 def _set_io(io: str, location: float) -> api.models.SetIO:
     return api.models.SetIO(
-        io=api.models.IOValue(api.models.IOBooleanValue(io=io, value=True)),
+        io=api.models.IOBooleanValue(io=io, value=True),
         location=location,
         io_origin=api.models.IOOrigin.CONTROLLER,
     )
@@ -113,7 +113,7 @@ def _states_after(started: asyncio.Event) -> AsyncIterator[api.models.MotionGrou
 
 async def _responses(*inner) -> AsyncIterator[api.models.ExecuteTrajectoryResponse]:
     for item in inner:
-        yield api.models.ExecuteTrajectoryResponse(root=item)
+        yield item
     await asyncio.Future()
 
 
@@ -128,9 +128,9 @@ def _gated_run() -> tuple[AsyncIterator, AsyncIterator, asyncio.Event]:
     start_sent = asyncio.Event()
 
     async def responses():
-        yield api.models.ExecuteTrajectoryResponse(root=api.models.InitializeMovementResponse())
+        yield api.models.InitializeMovementResponse()
         await start_sent.wait()
-        yield api.models.ExecuteTrajectoryResponse(root=api.models.StartMovementResponse())
+        yield api.models.StartMovementResponse()
         await asyncio.Future()
 
     return _states_after(start_sent), responses(), start_sent

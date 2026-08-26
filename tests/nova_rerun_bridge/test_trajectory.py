@@ -213,9 +213,9 @@ class TestLogMotionParameterValidation:
 
         # Create JointTrajectory
         joint_trajectory = api.models.JointTrajectory(
-            joint_positions=[api.models.Joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]) for _ in range(5)],
+            joint_positions=[[0.0, 0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(5)],
             times=[0.0, 0.1, 0.2, 0.3, 0.4],
-            locations=[api.models.Location(0.0) for _ in range(5)],
+            locations=[0.0 for _ in range(5)],
         )
 
         with (

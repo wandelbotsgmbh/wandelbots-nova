@@ -471,11 +471,7 @@ class Intent:
             commands.append(
                 api.models.StartMovementRequest(
                     direction=direction,
-                    target_location=(
-                        api.models.Location(root=self.target_location)
-                        if self.target_location is not None
-                        else None
-                    ),
+                    target_location=self.target_location,
                     start_on_io=self.start_on_io,
                     pause_on_io=self.pause_on_io,
                     # The server treats every start as an override of the attached
@@ -633,7 +629,7 @@ class TrajectoryCursor:
 
         if self.actions is not None and joint_trajectory is not None:
             expected_end_location = len(self.actions)
-            actual_end_location = joint_trajectory.locations[-1].root
+            actual_end_location = joint_trajectory.locations[-1]
             if abs(actual_end_location - expected_end_location) > 0.01:
                 raise ValueError(
                     f"Trajectory end location ({actual_end_location}) does not match "
@@ -720,7 +716,7 @@ class TrajectoryCursor:
                 "location-bounded operations."
             )
         assert self.joint_trajectory is not None
-        return self.joint_trajectory.locations[-1].root
+        return self.joint_trajectory.locations[-1]
 
     @property
     def current_action_start(self) -> float:
@@ -1434,19 +1430,19 @@ class TrajectoryCursor:
                 # If no operation is in progress, log and skip
                 if not self._is_operation_in_progress():
                     logger.debug(
-                        f"Response received with no operation in progress: {type(response.root).__name__} — skipping"
+                        f"Response received with no operation in progress: {type(response).__name__} — skipping"
                     )
                     continue
 
                 current_op = self._operation_handler.current_operation
                 assert current_op is not None
 
-                match response.root:
+                match response:
                     case api.models.PlaybackSpeedResponse():
                         pass  # no-op for now
                     case api.models.MovementErrorResponse():
                         error = ErrorDuringMovement(
-                            f"Error occurred during trajectory execution: {response.root.message}"
+                            f"Error occurred during trajectory execution: {response.message}"
                         )
                         # Fail the operation with the controller's own message
                         # *before* raising. Raising cancels the state monitor via
@@ -1470,11 +1466,11 @@ class TrajectoryCursor:
                         # The server's 1:1 FIFO guarantee (verified by the
                         # cursor API behavior tests) ensures the current op's
                         # own ack always arrives.
-                        if isinstance(response.root, current_op.expected_response_type):
+                        if isinstance(response, current_op.expected_response_type):
                             self._operation_handler.set_commanded()
                     case _:
                         raise RuntimeError(
-                            f"Unexpected response in trajectory cursor response consumer: {type(response.root)}, "
+                            f"Unexpected response in trajectory cursor response consumer: {type(response)}, "
                             f"expected {current_op.expected_response_type.__name__}"
                         )
         except asyncio.CancelledError:
@@ -1594,7 +1590,7 @@ async def init_movement_gen(
     yield init_request
 
     execute_trajectory_response = await anext(response_stream)
-    initialize_movement_response = execute_trajectory_response.root
+    initialize_movement_response = execute_trajectory_response
     assert isinstance(initialize_movement_response, api.models.InitializeMovementResponse)
     # TODO this should actually check for None but currently the API seems to return an empty string instead
     # create issue with the API to fix this
