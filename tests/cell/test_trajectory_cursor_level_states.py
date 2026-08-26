@@ -46,9 +46,9 @@ _NUM_SAMPLES = 4  # locations 0.0 .. 3.0
 
 def _joint_trajectory() -> api.models.JointTrajectory:
     return api.models.JointTrajectory(
-        joint_positions=[api.models.Joints([0.0] * 6)] * _NUM_SAMPLES,
+        joint_positions=[[0.0] * 6] * _NUM_SAMPLES,
         times=[float(i) for i in range(_NUM_SAMPLES)],
-        locations=[api.models.Location(root=float(i)) for i in range(_NUM_SAMPLES)],
+        locations=[float(i) for i in range(_NUM_SAMPLES)],
     )
 
 
@@ -60,7 +60,7 @@ def _state(
         sequence_number=sequence_number,
         motion_group="mg-0",
         controller="ctrl-0",
-        joint_position=api.models.Joints(root=[0.0] * 6),
+        joint_position=[0.0] * 6,
         joint_limit_reached=api.models.MotionGroupStateJointLimitReached(limit_reached=[False] * 6),
         standstill=standstill,
         execute=execute,
@@ -79,7 +79,7 @@ def _execute(
     return api.models.Execute(
         joint_position=[0.0] * 6,
         details=api.models.TrajectoryDetails(
-            trajectory="traj-1", location=api.models.Location(root=location), state=trajectory_state
+            trajectory="traj-1", location=location, state=trajectory_state
         ),
     )
 
@@ -111,8 +111,8 @@ async def _stream_then_block(
 
 
 async def _responses() -> AsyncIterator[api.models.ExecuteTrajectoryResponse]:
-    yield api.models.ExecuteTrajectoryResponse(root=api.models.InitializeMovementResponse())
-    yield api.models.ExecuteTrajectoryResponse(root=api.models.StartMovementResponse())
+    yield api.models.InitializeMovementResponse()
+    yield api.models.StartMovementResponse()
     await asyncio.Future()
 
 
