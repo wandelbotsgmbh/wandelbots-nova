@@ -3,7 +3,6 @@ import logging
 from pathlib import Path
 
 from nova import api
-from nova.config import CELL_NAME
 from nova.core.nova import Nova
 from nova.types.dataset import (
     Dataset,
@@ -47,7 +46,7 @@ async def list_datasets(
 
     try:
         return await nova.api.datasets_api.get_datasets(
-            cell=CELL_NAME,
+            cell=nova.cell().id,
             dataset=str(dataset_id) if dataset_id is not None else None,
             latest_only=latest_only,
         )
@@ -68,7 +67,7 @@ async def create_dataset(nova: Nova, create_request: api.models.CreateDatasetReq
 
     try:
         response = await nova.api.datasets_api.create_dataset(
-            cell=CELL_NAME, create_dataset_request=create_request
+            cell=nova.cell().id, create_dataset_request=create_request
         )
         return _dataset_from_api(response)
     except Exception:
@@ -84,7 +83,7 @@ async def delete_dataset(
 
     try:
         await nova.api.datasets_api.delete_dataset(
-            cell=CELL_NAME, dataset=str(dataset_id), revision=revision
+            cell=nova.cell().id, dataset=str(dataset_id), revision=revision
         )
     except Exception:
         logger.exception(f"Failed to delete dataset '{dataset_id}'")
@@ -109,7 +108,7 @@ async def localize_pose_from_world(
         return []
 
     return await nova.api.datasets_api.localize_dataset_coordinate_system_pose(
-        cell=CELL_NAME,
+        cell=nova.cell().id,
         dataset=str(dataset),
         revision=revision,
         coordinate_system=str(coordinate_system),
@@ -134,7 +133,7 @@ async def resolve_to_world(
     )
 
     return await nova.api.datasets_api.resolve_dataset_coordinate_system_pose(
-        cell=CELL_NAME,
+        cell=nova.cell().id,
         dataset=str(dataset),
         revision=revision,
         coordinate_system=str(coordinate_system),
@@ -161,7 +160,7 @@ async def fetch_remote_dataset(
 
     try:
         response = await nova.api.datasets_api.get_dataset(
-            cell=CELL_NAME, dataset=str(dataset_id), revision=revision
+            cell=nova.cell().id, dataset=str(dataset_id), revision=revision
         )
         return _dataset_from_api(response)
     except Exception:
