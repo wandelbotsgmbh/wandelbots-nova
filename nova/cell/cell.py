@@ -73,8 +73,6 @@ class Cell:
                 id=controller_id,
                 config=self._api_client.config,
             ),
-            # Share the cell's gateway so the controller reuses its api client (and therefore
-            # its aiohttp session) instead of opening a second one that nobody closes.
             api_gateway=self._api_client,
         )
 
