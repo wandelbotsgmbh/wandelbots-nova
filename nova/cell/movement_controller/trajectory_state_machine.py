@@ -35,6 +35,15 @@ State diagram::
 
     Any state may transition to ``error`` via :meth:`fail`.
 
+The ``ss`` edges out of ``ending`` and ``pausing`` fire on any standstill
+frame, **with or without an ``execute`` block**: RAE publishes the execute
+state level-based (persistently, robotics/wbr!2262), but controllers older
+than that drop the block the instant the robot settles, leaving bare
+standstill frames as the only completion signal. A bare standstill never
+concludes anything from ``executing`` — without a terminal discriminator
+there is nothing to conclude. See this package's README for the full wire
+behaviour of both publishing modes.
+
 Example::
 
     machine = TrajectoryExecutionMachine()

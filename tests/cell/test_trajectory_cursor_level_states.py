@@ -1,7 +1,8 @@
 """Cursor behaviour against both execute-state publishing modes of the controller.
 
 Two wire behaviours exist for ``MotionGroupState.execute`` (see
-docs/architecture/incoming/execution-completion-detection-research.md):
+nova/cell/movement_controller/README.md, "How the controller publishes
+execution state"):
 
 - **Current controllers** drop the ``execute`` block the instant the robot
   settles (robotics/wbr ``MotionPointGenerator`` removes the provider on
