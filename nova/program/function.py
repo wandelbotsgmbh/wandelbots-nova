@@ -36,9 +36,9 @@ from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
 from nova import datasets as ds
-from nova.datasets import LoadDatasetRequest
 from nova.program import registry
 from nova.program.context import ProgramContext, current_program_context_var
+from nova.types.dataset import LoadDatasetRequest
 
 logger = logging.getLogger(__name__)
 
