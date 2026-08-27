@@ -38,7 +38,7 @@ Example:
 """
 
 import asyncio
-from collections.abc import AsyncGenerator, AsyncIterable, Iterable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Self
@@ -46,13 +46,12 @@ from typing import Self
 from nova import api
 from nova.actions.io import WriteAction, io_write
 from nova.cell.motion_group import MotionGroup
-from nova.cell.movement_controller.trajectory_cursor import MovementOption, TrajectoryCursor
+from nova.cell.movement_controller.trajectory_cursor import TrajectoryCursor
 from nova.cell.multi_trajectory_cursor import (
     IOSyncConfig,
     IOSyncDriver,
     MultiTrajectoryCursor,
     SyncDriver,
-    _StreamBroadcaster,
 )
 from nova.cell.session_monitor import SessionMonitor, SyncDriftMonitor
 
@@ -85,25 +84,6 @@ class GroupArgs:
 
     tcp: str | None = None
     ignore_controller_limits: bool = True
-
-
-async def _detach_when_finished(
-    cursor: TrajectoryCursor, states: AsyncIterable[api.models.MotionGroupState]
-) -> None:
-    """Detach the cursor at the end of its trajectory.
-
-    ``detach_on_standstill`` cannot be used for this: the controller reports
-    ``TrajectoryEnded`` at *every* commanded stop, an intermediate
-    ``forward_to`` target included, so it would end the session on the first
-    interactive step. Only the location says whether the trajectory is through.
-    """
-    async for state in states:
-        if (
-            MovementOption.CAN_MOVE_FORWARD not in cursor.get_movement_options()
-            and state.standstill
-        ):
-            cursor.detach()
-            return
 
 
 class TrajectoryExecutor:
@@ -167,14 +147,13 @@ class TrajectoryExecutor:
             raise ValueError(f"Group args given for unknown groups: {sorted(unknown_group_args)}")
 
         cursors: dict[str, TrajectoryCursor] = {}
-        broadcasters: dict[str, _StreamBroadcaster[api.models.MotionGroupState]] = {}
         for name, joint_trajectory in per_group.items():
             motion_group = self._motion_groups[name]
             group_args = (groups or {}).get(name) or GroupArgs()
             trajectory_id = await motion_group._load_planned_motion(
                 joint_trajectory, group_args.tcp
             )
-            cursor = TrajectoryCursor(
+            cursors[name] = TrajectoryCursor(
                 motion_id=trajectory_id,
                 motion_group_state_stream=motion_group.stream_state,
                 joint_trajectory=joint_trajectory,
@@ -182,38 +161,31 @@ class TrajectoryExecutor:
                 emit_motion_events=False,
                 ignore_controller_limits=group_args.ignore_controller_limits,
             )
-            cursors[name] = cursor
-            broadcasters[name] = _StreamBroadcaster(cursor)
 
+        cursor = MultiTrajectoryCursor(cursors, self._sync)
         try:
             async with asyncio.TaskGroup() as task_group:
-                for name, cursor in cursors.items():
+                # The cursor's control() loop is its cntrl analog: driven here, it
+                # owns the barrier and the state fan-out in its own TaskGroup. The
+                # executor only adds what needs its motion groups — the
+                # executeTrajectory sockets — and the session monitors.
+                for name in cursors:
                     task_group.create_task(
-                        broadcasters[name].run(), name=f"state-broadcaster-{name}"
-                    )
-                    task_group.create_task(
-                        _detach_when_finished(cursor, broadcasters[name].subscribe()),
-                        name=f"end-monitor-{name}",
-                    )
-                    task_group.create_task(
-                        self._run_execute_trajectory(name, cursor),
+                        self._run_execute_trajectory(name, cursors[name]),
                         name=f"execute-trajectory-{name}",
                     )
                 for monitor in self._monitors:
                     task_group.create_task(
-                        monitor.run(
-                            {
-                                name: broadcaster.subscribe()
-                                for name, broadcaster in broadcasters.items()
-                            }
-                        ),
+                        monitor.run(cursor.monitor_streams()),
                         name=f"session-monitor-{type(monitor).__name__}",
                     )
+                task_group.create_task(cursor.control(), name="multi-trajectory-cursor-control")
                 try:
-                    yield MultiTrajectoryCursor(cursors, broadcasters, self._sync, task_group)
+                    yield cursor
                 finally:
-                    for cursor in cursors.values():
-                        cursor.detach()
+                    cursor.request_stop()
+                    for group_cursor in cursors.values():
+                        group_cursor.detach()
         except BaseExceptionGroup as error_group:
             # Callers expect the underlying error (e.g. SyncDriftError), not the
             # TaskGroup wrapper — same unwrapping the cursor itself applies.

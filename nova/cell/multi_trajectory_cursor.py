@@ -9,7 +9,11 @@ from typing import Generic, Protocol, TypeVar
 
 from nova import api
 from nova.actions.io import WriteAction
-from nova.cell.movement_controller.trajectory_cursor import OperationResult, TrajectoryCursor
+from nova.cell.movement_controller.trajectory_cursor import (
+    MovementOption,
+    OperationResult,
+    TrajectoryCursor,
+)
 from nova.core.gateway import ApiGateway
 
 logger = logging.getLogger(__name__)
@@ -231,42 +235,147 @@ async def _gather_named(
     return dict(zip(futures.keys(), results))
 
 
+async def _detach_when_finished(
+    cursor: TrajectoryCursor, states: AsyncIterable[api.models.MotionGroupState]
+) -> None:
+    """Detach the cursor at the end of its trajectory.
+
+    ``detach_on_standstill`` cannot be used for this: the controller reports
+    ``TrajectoryEnded`` at *every* commanded stop, an intermediate
+    ``forward_to`` target included, so it would end the session on the first
+    interactive step. Only the location says whether the trajectory is through.
+    """
+    async for state in states:
+        if (
+            MovementOption.CAN_MOVE_FORWARD not in cursor.get_movement_options()
+            and state.standstill
+        ):
+            cursor.detach()
+            return
+
+
+@dataclass
+class _ForwardIntent:
+    """A forward request posted for ``control()`` to run as a barrier."""
+
+    future: asyncio.Future[dict[str, OperationResult]]
+    target_location: float | None
+    playback_speed_in_percent: int | None
+
+
 class MultiTrajectoryCursor:
     """Cursor-compatible handle over one synchronized execution session.
 
-    Obtained from :meth:`TrajectoryExecutor.attach`; never free-standing. Holds
-    the per-run state — the per-group cursors, their state broadcasters and the
-    barrier — and cannot outlive the ``attach`` context that supervises it.
+    The ensemble analog of :class:`TrajectoryCursor`, and driven the same way:
+    just as a single cursor's :meth:`~TrajectoryCursor.cntrl` must be consumed by
+    ``executeTrajectory`` to come alive, this cursor's :meth:`control` must be
+    driven by :meth:`TrajectoryExecutor.attach`. Inside ``control`` the cursor
+    opens its *own* TaskGroup — hosting the state fan-out and the barrier — so no
+    TaskGroup is handed to it from outside; ``forward``/``pause`` only feed that
+    loop, exactly as the single cursor's ``forward`` feeds its ``cntrl``.
 
+    Offers the same interactive contract as the single cursor: ``forward`` /
+    ``forward_to`` / ``pause``, ``current_location`` and ``stream_state``.
     Backward movement is not exposed: driving the barrier in reverse is
     mechanically symmetric but unverified against real controllers.
     """
 
-    def __init__(
-        self,
-        cursors: dict[str, TrajectoryCursor],
-        broadcasters: dict[str, _StreamBroadcaster[api.models.MotionGroupState]],
-        sync: SyncDriver,
-        task_group: asyncio.TaskGroup,
-    ):
+    def __init__(self, cursors: dict[str, TrajectoryCursor], sync: SyncDriver):
         self._cursors = cursors
-        self._broadcasters = broadcasters
         self._sync = sync
-        # The barrier's failure coupling, in both directions: a forward task
-        # spawned here failing aborts the whole session (sockets close, the
-        # groups stop), and a dying session cancels a barrier still waiting for
-        # its groups. Once ``attach`` exits, the finished TaskGroup rejects new
-        # tasks, so a kept handle fails fast.
-        self._task_group = task_group
-        self._forward_task: asyncio.Task[dict[str, OperationResult]] | None = None
+        # One fan-out per group, hidden here rather than wired by the caller: a
+        # cursor tees its states into a single queue, but the session has several
+        # consumers (barrier arm-wait, end detacher, drift monitors, user streams).
+        self._broadcasters = {name: _StreamBroadcaster(cursor) for name, cursor in cursors.items()}
+        # The intent mailbox and the stop signal, the single cursor's own shape
+        # (its _intent_event/_stop_event): a pending intent not yet consumed is
+        # silently overwritten — only the most recent one matters — and pause()
+        # may void it before it ever runs.
+        self._pending_intent: _ForwardIntent | None = None
+        self._intent_event = asyncio.Event()
+        self._stop_event = asyncio.Event()
+        # The in-flight barrier, owned by control()'s TaskGroup. pause() and a
+        # superseding forward() cancel it; a real failure aborts the session.
+        self._current: asyncio.Task[None] | None = None
+
+    async def control(self) -> None:
+        """The ensemble's ``cntrl`` analog — drive this for the cursor to work.
+
+        Opens the cursor's own TaskGroup, spawns the per-group state pumps and end
+        detachers into it, then serves the intent mailbox: a forward runs a
+        barrier as a child task (so pause/supersede can cancel it), a stop ends
+        the loop. A barrier that fails for real propagates out and aborts the
+        session, the same coupling the single cursor gets from running inside
+        ``executeTrajectory``.
+        """
+        try:
+            async with asyncio.TaskGroup() as task_group:
+                for name, cursor in self._cursors.items():
+                    end_states = self._broadcasters[name].subscribe()
+                    task_group.create_task(
+                        self._broadcasters[name].run(), name=f"state-broadcaster-{name}"
+                    )
+                    task_group.create_task(
+                        _detach_when_finished(cursor, end_states), name=f"end-monitor-{name}"
+                    )
+                while True:
+                    await self._intent_event.wait()
+                    # Take-and-clear with no await in between (the single
+                    # cursor's _set_intent contract): an intent posted after
+                    # this read re-sets the event, so it cannot be lost.
+                    intent, self._pending_intent = self._pending_intent, None
+                    self._intent_event.clear()
+                    if self._stop_event.is_set():
+                        if intent is not None and not intent.future.done():
+                            intent.future.cancel()
+                        await _cancel_and_wait(self._current)
+                        break
+                    if intent is None:
+                        continue  # woken by a pause that voided the mailbox
+                    # A superseded barrier must be gone before the next one arms
+                    # the groups: left running, its still-open subscriptions
+                    # would match the new barrier's WaitForIO states and fire
+                    # the trigger a second time.
+                    await _cancel_and_wait(self._current)
+                    self._current = task_group.create_task(
+                        self._run_barrier(intent), name="multi-trajectory-cursor-forward"
+                    )
+        except BaseExceptionGroup as error_group:
+            # Unwrap our own TaskGroup so a barrier's error reaches attach as
+            # itself, not nested a level deeper by this extra group.
+            if len(error_group.exceptions) == 1 and isinstance(
+                error_group.exceptions[0], Exception
+            ):
+                raise error_group.exceptions[0] from error_group
+            raise
+        finally:
+            # A session that died on its own must also fail late forward() calls.
+            self._stop_event.set()
+
+    def monitor_streams(self) -> dict[str, AsyncGenerator[api.models.MotionGroupState, None]]:
+        """Per-group future-only subscriptions for the session monitors.
+
+        Called during ``attach`` setup, before ``control`` starts the pumps, so
+        no early state is missed."""
+        return {name: broadcaster.subscribe() for name, broadcaster in self._broadcasters.items()}
+
+    def request_stop(self) -> None:
+        """Ask ``control`` to end its loop — called as the session tears down.
+
+        The session-teardown counterpart of the single cursor's ``detach()``,
+        with its exact shape: set the stop signal, wake the loop so it sees it.
+        """
+        self._stop_event.set()
+        self._intent_event.set()
 
     def forward(
         self, target_location: float | None = None, playback_speed_in_percent: int | None = None
     ) -> asyncio.Future[dict[str, OperationResult]]:
         """Move all groups forward, synchronized through the start barrier.
 
-        Starting a new operation cancels the previous one, as on the single
-        cursor.
+        Posts an intent to :meth:`control` and returns immediately, the way the
+        single cursor's ``forward`` feeds its ``cntrl``. Starting a new operation
+        cancels the previous one — a pending intent that never ran included.
 
         Returns:
             Future resolving with the per-group results when every group stops
@@ -274,18 +383,16 @@ class MultiTrajectoryCursor:
             the future does not disarm groups already waiting on the trigger —
             use :meth:`pause` for that.
         """
-        previous = self._forward_task
-        try:
-            self._forward_task = self._task_group.create_task(
-                self._forward(previous, target_location, playback_speed_in_percent),
-                name="multi-trajectory-cursor-forward",
-            )
-        except RuntimeError:
-            # A finished TaskGroup rejects new tasks — the session is closed.
-            future: asyncio.Future[dict[str, OperationResult]] = asyncio.Future()
+        future: asyncio.Future[dict[str, OperationResult]] = asyncio.Future()
+        if self._stop_event.is_set():
             future.set_exception(RuntimeError("The execution session has already been closed"))
             return future
-        return self._forward_task
+        superseded = self._pending_intent
+        if superseded is not None and not superseded.future.done():
+            superseded.future.cancel()
+        self._pending_intent = _ForwardIntent(future, target_location, playback_speed_in_percent)
+        self._intent_event.set()
+        return future
 
     def forward_to(
         self, location: float, playback_speed_in_percent: int | None = None
@@ -302,20 +409,32 @@ class MultiTrajectoryCursor:
             target_location=location, playback_speed_in_percent=playback_speed_in_percent
         )
 
-    async def _forward(
-        self,
-        previous: "asyncio.Task[dict[str, OperationResult]] | None",
-        target_location: float | None,
-        playback_speed_in_percent: int | None,
-    ) -> dict[str, OperationResult]:
-        # A superseded barrier must be gone before a new one arms the groups:
-        # left running, its still-open subscriptions would be satisfied by the
-        # *new* barrier's WaitForIO states and fire the trigger a second time.
-        await _cancel_and_wait(previous)
+    async def _run_barrier(self, intent: _ForwardIntent) -> None:
+        """Run one barrier and resolve the caller's future with its outcome.
 
+        A cancel (pause or a superseding forward) cancels the future. A real
+        failure is re-raised only — it aborts the session through ``control``'s
+        TaskGroup, and the awaiter learns the cause from the ``attach`` exit, not
+        the future (setting both would surface the same error twice in the
+        session group). Same asymmetry the single cursor's failures have.
+        """
+        try:
+            results = await self._forward(intent.target_location, intent.playback_speed_in_percent)
+        except asyncio.CancelledError:
+            if not intent.future.done():
+                intent.future.cancel()
+            raise
+        # A real failure propagates untouched: it aborts the session and the
+        # cause surfaces from the attach exit, not the future.
+        if not intent.future.done():
+            intent.future.set_result(results)
+
+    async def _forward(
+        self, target_location: float | None, playback_speed_in_percent: int | None
+    ) -> dict[str, OperationResult]:
         await self._sync.clear()
 
-        # Live subscriptions taken before forward() so the TrajectoryWaitForIO
+        # Live subscriptions taken before arming so the TrajectoryWaitForIO
         # transition cannot be missed, and future-only so a repeated start never
         # matches a stale WaitForIO buffered from an earlier barrier.
         subscriptions = {
@@ -358,6 +477,12 @@ class MultiTrajectoryCursor:
 
     def pause(self) -> asyncio.Future[dict[str, OperationResult]] | None:
         """Pause every group. Returns None when no group had an active operation."""
+        # A forward posted but not yet consumed by control() must not run after
+        # the pause — void the mailbox first, as the single cursor's pause
+        # overwrites a pending intent that hasn't been consumed.
+        pending, self._pending_intent = self._pending_intent, None
+        if pending is not None and not pending.future.done():
+            pending.future.cancel()
         futures = {
             name: future
             for name, future in ((name, cursor.pause()) for name, cursor in self._cursors.items())
@@ -368,8 +493,8 @@ class MultiTrajectoryCursor:
         # release a later barrier's trigger. Cancelled only after the cursors
         # paused: cancelling first would cascade into the cursors' operation
         # futures and make pause() a no-op.
-        if self._forward_task is not None and not self._forward_task.done():
-            self._forward_task.cancel()
+        if self._current is not None and not self._current.done():
+            self._current.cancel()
         if not futures:
             return None
         return asyncio.ensure_future(_gather_named(futures))
