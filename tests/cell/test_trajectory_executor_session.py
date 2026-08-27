@@ -357,25 +357,30 @@ class TestSynchronizedExecution:
             state_queues["b"].put_nowait(ended_state(2.0, at_milliseconds=40))
             await asyncio.wait_for(resume, timeout=5)
 
-    async def test_attach__forward_after_the_trajectory_ended__fails_instead_of_hanging(self):
-        # Arrange
+    async def test_attach__forward_after_the_trajectory_ended__re_arms_and_no_ops(self):
+        # A real controller re-arms an at-end group — it reports TrajectoryWaitForIO
+        # again and, with nothing left to move, ends immediately — so a forward
+        # after the trajectory ended resolves as a no-op rather than hanging or
+        # failing. (Verified live on SM 26.7.)
         gateway = _FakeGateway()
         executor, state_queues = _two_group_executor(gateway)
 
-        async def run() -> None:
-            async with executor.attach(multi_trajectory("a", "b")) as cursor:
-                operation = cursor.forward()
-                await gateway.reached("start", 2)
-                state_queues["a"].put_nowait(wait_for_io_state(at_milliseconds=10))
-                state_queues["b"].put_nowait(wait_for_io_state(at_milliseconds=20))
-                state_queues["a"].put_nowait(ended_state(2.0, at_milliseconds=30))
-                state_queues["b"].put_nowait(ended_state(2.0, at_milliseconds=40))
-                results = await operation
-                assert set(results) == {"a", "b"}
+        async with executor.attach(multi_trajectory("a", "b")) as cursor:
+            operation = cursor.forward()
+            await gateway.reached("start", 2)
+            state_queues["a"].put_nowait(wait_for_io_state(at_milliseconds=10))
+            state_queues["b"].put_nowait(wait_for_io_state(at_milliseconds=20))
+            state_queues["a"].put_nowait(ended_state(2.0, at_milliseconds=30))
+            state_queues["b"].put_nowait(ended_state(2.0, at_milliseconds=40))
+            results = await asyncio.wait_for(operation, timeout=5)
+            assert set(results) == {"a", "b"}
 
-                # Act: the session has run to its end and detached its cursors
-                await cursor.forward()
-
-        # Assert: the late forward fails loudly instead of deadlocking the exit
-        with pytest.raises(RuntimeError):
-            await asyncio.wait_for(run(), timeout=5)
+            # A second forward re-arms and no-ops: WaitForIO again, release, end.
+            again = cursor.forward()
+            await gateway.reached("start", 4)
+            state_queues["a"].put_nowait(wait_for_io_state(at_milliseconds=50))
+            state_queues["b"].put_nowait(wait_for_io_state(at_milliseconds=60))
+            state_queues["a"].put_nowait(ended_state(2.0, at_milliseconds=70))
+            state_queues["b"].put_nowait(ended_state(2.0, at_milliseconds=80))
+            await asyncio.wait_for(again, timeout=5)
+            assert cursor.current_location >= 2.0 - 0.01

@@ -9,11 +9,7 @@ from typing import Generic, Protocol, TypeVar
 
 from nova import api
 from nova.actions.io import WriteAction
-from nova.cell.movement_controller.trajectory_cursor import (
-    MovementOption,
-    OperationResult,
-    TrajectoryCursor,
-)
+from nova.cell.movement_controller.trajectory_cursor import OperationResult, TrajectoryCursor
 from nova.core.gateway import ApiGateway
 
 logger = logging.getLogger(__name__)
@@ -162,8 +158,8 @@ class _StreamBroadcaster(Generic[T]):
     """Broadcast a single async stream to multiple subscribers.
 
     A cursor tees its states into one internal queue, so it supports exactly one
-    consumer; the session needs several (barrier, end monitor, drift monitor,
-    user streams). A subscriber that closes its stream stops being fed; a
+    consumer; the session needs several (barrier arm-wait, drift monitors, user
+    streams). A subscriber that closes its stream stops being fed; a
     subscriber that never consumes is bounded by dropping its oldest items.
     Subscribing after the source ended yields an immediately-finished stream.
     """
@@ -237,25 +233,6 @@ async def _gather_named(
     return dict(zip(futures.keys(), results))
 
 
-async def _detach_when_finished(
-    cursor: TrajectoryCursor, states: AsyncIterable[api.models.MotionGroupState]
-) -> None:
-    """Detach the cursor at the end of its trajectory.
-
-    ``detach_on_standstill`` cannot be used for this: the controller reports
-    ``TrajectoryEnded`` at *every* commanded stop, an intermediate
-    ``forward_to`` target included, so it would end the session on the first
-    interactive step. Only the location says whether the trajectory is through.
-    """
-    async for state in states:
-        if (
-            MovementOption.CAN_MOVE_FORWARD not in cursor.get_movement_options()
-            and state.standstill
-        ):
-            cursor.detach()
-            return
-
-
 @dataclass
 class _ForwardIntent:
     """A forward request posted for ``control()`` to run as a barrier."""
@@ -281,8 +258,8 @@ class MultiTrajectoryCursor:
         self._cursors = cursors
         self._sync = sync
         # One fan-out per group: a cursor tees its states into a single queue, but
-        # the session has several consumers (barrier arm-wait, end detacher, drift
-        # monitors, user streams).
+        # the session has several consumers (barrier arm-wait, drift monitors,
+        # user streams).
         self._broadcasters = {name: _StreamBroadcaster(cursor) for name, cursor in cursors.items()}
         # A pending intent not yet consumed is silently overwritten — only the
         # most recent one matters — and pause() may void it before it ever runs.
@@ -297,20 +274,16 @@ class MultiTrajectoryCursor:
         """Run the session loop; must be running for ``forward``/``pause`` to make
         progress (:meth:`TrajectoryExecutor.attach` drives it).
 
-        Owns the TaskGroup, spawns the per-group state pumps and end detachers
-        into it, then serves the intent mailbox: a forward runs a barrier as a
-        child task (so pause/supersede can cancel it), a stop ends the loop. A
-        barrier that fails for real propagates out and aborts the session.
+        Owns the TaskGroup, spawns the per-group state pumps into it, then serves
+        the intent mailbox: a forward runs a barrier as a child task (so
+        pause/supersede can cancel it), a stop ends the loop. A barrier that fails
+        for real propagates out and aborts the session.
         """
         try:
             async with asyncio.TaskGroup() as task_group:
-                for name, cursor in self._cursors.items():
-                    end_states = self._broadcasters[name].subscribe()
+                for name in self._broadcasters:
                     task_group.create_task(
                         self._broadcasters[name].run(), name=f"state-broadcaster-{name}"
-                    )
-                    task_group.create_task(
-                        _detach_when_finished(cursor, end_states), name=f"end-monitor-{name}"
                     )
                 while True:
                     await self._intent_event.wait()
