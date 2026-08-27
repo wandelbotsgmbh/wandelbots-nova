@@ -38,11 +38,11 @@ def _recorded_trajectory() -> api.models.MultiJointTrajectory:
     stored = api.models.MultiJointTrajectory.model_validate_json(
         (_EXAMPLES / "multi_motion_group_trajectory.json").read_text()
     )
-    samples = stored.joint_positions_by_motion_group_key.root
+    samples = stored.joint_positions_by_motion_group_key
     return api.models.MultiJointTrajectory(
         joint_positions_by_motion_group_key={
-            ROBOT: samples["0@kuka"].root,
-            POSITIONER: samples["1@kuka"].root,
+            ROBOT: samples["0@kuka"],
+            POSITIONER: samples["1@kuka"],
         },
         times=stored.times,
         locations=stored.locations,
@@ -50,8 +50,8 @@ def _recorded_trajectory() -> api.models.MultiJointTrajectory:
 
 
 def _starts(trajectory: api.models.MultiJointTrajectory) -> dict[str, tuple[float, ...]]:
-    samples = trajectory.joint_positions_by_motion_group_key.root
-    return {name: tuple(samples[name].root[0].root) for name in TCPS}
+    samples = trajectory.joint_positions_by_motion_group_key
+    return {name: tuple(samples[name][0]) for name in TCPS}
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
@@ -129,7 +129,7 @@ async def test_execute_recorded_trajectory_starts_both_groups_in_one_tick(synchr
     """The barrier starts both groups together and runs the trajectory to its end."""
     controller, groups = synchronized_groups
     trajectory = _recorded_trajectory()
-    samples = trajectory.joint_positions_by_motion_group_key.root
+    samples = trajectory.joint_positions_by_motion_group_key
 
     acknowledged: dict[str, object] = {}
     watchers = [
@@ -145,7 +145,7 @@ async def test_execute_recorded_trajectory_starts_both_groups_in_one_tick(synchr
             watcher.cancel()
 
     for name, group in groups.items():
-        expected = tuple(samples[name].root[-1].root)
+        expected = tuple(samples[name][-1])
         reached = tuple(await group.joints())
         assert max(abs(a - b) for a, b in zip(reached, expected)) < 1e-3
 
@@ -183,8 +183,8 @@ async def test_pause_then_forward_rearms_the_barrier(synchronized_groups):
     _, groups = synchronized_groups
     trajectory = await _ramp_from_here(groups)
     ends = {
-        name: tuple(joints.root[-1].root)
-        for name, joints in trajectory.joint_positions_by_motion_group_key.root.items()
+        name: tuple(joints[-1])
+        for name, joints in trajectory.joint_positions_by_motion_group_key.items()
     }
 
     async with _executor(groups).attach(trajectory, _GROUP_ARGS) as cursor:
