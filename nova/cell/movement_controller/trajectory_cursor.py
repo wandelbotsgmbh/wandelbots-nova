@@ -570,6 +570,7 @@ class TrajectoryCursor:
         pause_on_io: api.models.PauseOnIO | None = None,
         emit_motion_events: bool = True,
         max_queued_states: int = _DEFAULT_MAX_QUEUED_STATES,
+        ignore_controller_limits: bool = False,
     ):
         """Initialize a trajectory cursor.
 
@@ -601,6 +602,8 @@ class TrajectoryCursor:
             max_queued_states: Upper bound on states buffered for ``__aiter__``.
                 Oldest states are dropped past this bound so that a cursor whose
                 iterator is never consumed cannot grow without limit.
+            ignore_controller_limits: Skip the controller's own limit check when
+                initializing the movement.
         """
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
@@ -657,6 +660,8 @@ class TrajectoryCursor:
         self._start_on_io = start_on_io
         self._pause_on_io = pause_on_io
         self._emit_motion_events = emit_motion_events
+
+        self._ignore_controller_limits = ignore_controller_limits
 
         self._current_location = initial_location
         # TODO maybe None instead until we have a target?
@@ -717,6 +722,11 @@ class TrajectoryCursor:
             )
         assert self.joint_trajectory is not None
         return self.joint_trajectory.locations[-1]
+
+    @property
+    def current_location(self) -> float:
+        """The cursor's current location on the trajectory."""
+        return self._current_location
 
     @property
     def current_action_start(self) -> float:
@@ -1154,7 +1164,10 @@ class TrajectoryCursor:
 
         self._response_stream = response_stream
         async for request in init_movement_gen(
-            self.motion_id, response_stream, self._current_location
+            self.motion_id,
+            response_stream,
+            self._current_location,
+            ignore_controller_limits=self._ignore_controller_limits,
         ):
             yield request
 
@@ -1564,7 +1577,7 @@ class TrajectoryCursor:
 
 
 async def init_movement_gen(
-    motion_id, response_stream, initial_location
+    motion_id, response_stream, initial_location, ignore_controller_limits: bool = False
 ) -> ExecuteTrajectoryRequestStream:
     """Initialize movement on a trajectory with the motion controller.
 
@@ -1576,6 +1589,7 @@ async def init_movement_gen(
         motion_id: Unique identifier for the trajectory to execute.
         response_stream: Async iterator of responses from the motion controller.
         initial_location: Starting position on the trajectory.
+        ignore_controller_limits: Skip the controller's own limit check.
 
     Yields:
         The initialization request to send to the motion controller.
@@ -1585,7 +1599,9 @@ async def init_movement_gen(
     """
     trajectory_id = api.models.TrajectoryId(id=motion_id)
     init_request = api.models.InitializeMovementRequest(
-        trajectory=trajectory_id, initial_location=initial_location
+        trajectory=trajectory_id,
+        initial_location=initial_location,
+        ignore_controller_limits=ignore_controller_limits,
     )
     yield init_request
 
