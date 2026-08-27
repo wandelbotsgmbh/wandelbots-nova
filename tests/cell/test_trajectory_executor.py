@@ -13,7 +13,7 @@ import pytest
 
 from nova import api
 from nova.actions.io import io_write
-from nova.cell.multi_trajectory_cursor import IOSyncConfig, IOSyncDriver, SyncDriver
+from nova.cell.multi_trajectory_cursor import IOSyncDriver, SyncDriver
 from nova.cell.session_monitor import SyncDriftError, SyncDriftMonitor
 from nova.cell.trajectory_executor import TrajectoryExecutor
 from tests.cell.multi_group_doubles import (
@@ -46,13 +46,11 @@ class TestExecutorValidation:
     async def test_controller_write_without_device_id__raises(self):
         with pytest.raises(ValueError, match="device_id"):
             IOSyncDriver(
-                IOSyncConfig(
-                    clear=io_write("sync-io", False),
-                    release=io_write("sync-io", True),
-                    watch={"a": watch_condition("sync-io")},
-                ),
-                IOGateway(),
-                "cell",
+                clear=io_write("sync-io", False),
+                release=io_write("sync-io", True),
+                watch={"a": watch_condition("sync-io")},
+                api_client=IOGateway(),
+                cell="cell",
             )
 
     async def test_trajectory_keys_not_matching_groups__raises(self):
@@ -175,17 +173,21 @@ class TestBuilder:
 
 
 class TestIOSyncDriver:
-    def _driver(self, config: IOSyncConfig, gateway=None) -> IOSyncDriver:
-        return IOSyncDriver(config, gateway or IOGateway(), "cell")
+    def _driver(self, *, clear, release, watch, gateway=None) -> IOSyncDriver:
+        return IOSyncDriver(
+            clear=clear,
+            release=release,
+            watch=watch,
+            api_client=gateway or IOGateway(),
+            cell="cell",
+        )
 
     async def test_start_conditions__return_the_configured_conditions(self):
         condition = watch_condition("in-b", value=False)
         driver = self._driver(
-            IOSyncConfig(
-                clear=io_write("out-a", False, device_id="controller-a"),
-                release=io_write("out-a", True, device_id="controller-a"),
-                watch={"a": watch_condition("out-a"), "b": condition},
-            )
+            clear=io_write("out-a", False, device_id="controller-a"),
+            release=io_write("out-a", True, device_id="controller-a"),
+            watch={"a": watch_condition("out-a"), "b": condition},
         )
 
         assert driver.start_conditions()["b"] is condition
@@ -194,12 +196,10 @@ class TestIOSyncDriver:
     async def test_clear_and_release__write_their_configured_values(self):
         gateway = IOGateway()
         driver = self._driver(
-            IOSyncConfig(
-                clear=io_write("sync-io", True, device_id="controller-a"),
-                release=io_write("sync-io", False, device_id="controller-a"),
-                watch={"a": watch_condition("sync-io", value=False)},
-            ),
-            gateway,
+            clear=io_write("sync-io", True, device_id="controller-a"),
+            release=io_write("sync-io", False, device_id="controller-a"),
+            watch={"a": watch_condition("sync-io", value=False)},
+            gateway=gateway,
         )
 
         await driver.clear()
@@ -219,12 +219,10 @@ class TestIOSyncDriver:
         )
         bus_trigger = io_write("bus-sync", True, origin=api.models.IOOrigin.BUS_IO)
         driver = self._driver(
-            IOSyncConfig(
-                clear=io_write("bus-sync", False, origin=api.models.IOOrigin.BUS_IO),
-                release=bus_trigger,
-                watch={"a": watch_condition("bus-sync")},
-            ),
-            gateway,
+            clear=io_write("bus-sync", False, origin=api.models.IOOrigin.BUS_IO),
+            release=bus_trigger,
+            watch={"a": watch_condition("bus-sync")},
+            gateway=gateway,
         )
 
         await driver.release()

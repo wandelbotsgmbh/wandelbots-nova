@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from nova import api
 from nova.actions.io import io_write
-from nova.cell.multi_trajectory_cursor import IOSyncConfig, IOSyncDriver
+from nova.cell.multi_trajectory_cursor import IOSyncDriver
 
 BASE_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -78,16 +78,14 @@ def watch_condition(io: str, value: bool = True) -> api.models.StartOnIO:
     )
 
 
-def sync_config(groups: tuple[str, ...] = ("a", "b")) -> IOSyncConfig:
-    return IOSyncConfig(
+def sync_driver(api_client, groups: tuple[str, ...] = ("a", "b")) -> IOSyncDriver:
+    return IOSyncDriver(
         clear=io_write("sync-io", False, device_id="controller-a"),
         release=io_write("sync-io", True, device_id="controller-a"),
         watch={group: watch_condition("sync-io") for group in groups},
+        api_client=api_client,
+        cell="cell",
     )
-
-
-def sync_driver(api_client, groups: tuple[str, ...] = ("a", "b")) -> IOSyncDriver:
-    return IOSyncDriver(sync_config(groups), api_client, "cell")
 
 
 class IOGateway:

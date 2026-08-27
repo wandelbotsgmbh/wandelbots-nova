@@ -47,12 +47,7 @@ from nova import api
 from nova.actions.io import WriteAction, io_write
 from nova.cell.motion_group import MotionGroup
 from nova.cell.movement_controller.trajectory_cursor import TrajectoryCursor
-from nova.cell.multi_trajectory_cursor import (
-    IOSyncConfig,
-    IOSyncDriver,
-    MultiTrajectoryCursor,
-    SyncDriver,
-)
+from nova.cell.multi_trajectory_cursor import IOSyncDriver, MultiTrajectoryCursor, SyncDriver
 from nova.cell.session_monitor import SessionMonitor, SyncDriftMonitor
 
 
@@ -344,11 +339,16 @@ class TrajectoryExecutorBuilder:
             raise ValueError("The barrier has no release write: call sync_on_io() or release_io()")
         if self._clear is None:
             raise ValueError("The barrier has no clear write: call sync_on_io() or clear_io()")
-        config = IOSyncConfig(clear=self._clear, release=self._release, watch=self._watch)
         barrier_group = self._barrier_group()
         return TrajectoryExecutor(
             self._motion_groups,
-            IOSyncDriver(config, barrier_group._api_client, barrier_group._cell),
+            IOSyncDriver(
+                clear=self._clear,
+                release=self._release,
+                watch=self._watch,
+                api_client=barrier_group._api_client,
+                cell=barrier_group._cell,
+            ),
             self._monitors if self._monitors is not None else (SyncDriftMonitor(),),
         )
 

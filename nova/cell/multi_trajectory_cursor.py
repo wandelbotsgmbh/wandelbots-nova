@@ -54,16 +54,16 @@ class SyncDriver(Protocol):
         pass
 
 
-@dataclass(frozen=True)
-class IOSyncConfig:
-    """IO-based start synchronization.
+class IOSyncDriver:
+    """IO-based :class:`SyncDriver`: the start barrier as three IO pieces run
+    through one cell's gateway.
 
-    Three independent pieces describe the barrier for any topology: the IO
-    write that puts the cell into the not-released state (``clear``), the IO
-    write that releases it (``release``), and the condition each group's start
-    *watches* (``watch``). They are deliberately not derived from one another —
-    clear and release may target different values, IOs, or even controllers,
-    and only the wiring's owner knows which.
+    Three independent pieces describe the barrier for any topology: the IO write
+    that puts the cell into the not-released state (``clear``), the IO write that
+    releases it (``release``), and the condition each group's start *watches*
+    (``watch``). They are deliberately not derived from one another — clear and
+    release may target different values, IOs, or even controllers, and only the
+    wiring's owner knows which.
 
     Topologies covered:
 
@@ -74,45 +74,47 @@ class IOSyncConfig:
       output; each group watches its own input the wire lands on. Spelled out
       explicitly — the executor cannot know how a cell is wired.
 
-    For ``CONTROLLER``-origin writes, ``device_id`` names the controller
-    owning the IO; it may be omitted when all motion groups share one
-    controller. It is ignored for ``BUS_IO`` origin.
+    For ``CONTROLLER``-origin writes, ``device_id`` names the controller owning
+    the IO; it may be omitted when all motion groups share one controller. It is
+    ignored for ``BUS_IO`` origin.
 
-    Attributes:
+    Args:
         clear: Written before the groups are armed, so no stale release value
             can start them early.
         release: Written once every group waits on its start condition.
         watch: The start condition per group, keyed like the executor's motion
             groups; every group needs one.
+        api_client: Gateway of the cell that carries the sync IO.
+        cell: The cell the writes and watches address.
     """
 
-    clear: WriteAction
-    release: WriteAction
-    watch: Mapping[str, api.models.StartOnIO]
-
-
-class IOSyncDriver:
-    """IO-based :class:`SyncDriver`: runs :class:`IOSyncConfig`'s writes and
-    serves its per-group start conditions."""
-
-    def __init__(self, config: IOSyncConfig, api_client: ApiGateway, cell: str):
-        for action in (config.clear, config.release):
+    def __init__(
+        self,
+        clear: WriteAction,
+        release: WriteAction,
+        watch: Mapping[str, api.models.StartOnIO],
+        api_client: ApiGateway,
+        cell: str,
+    ):
+        for action in (clear, release):
             if action.origin is not api.models.IOOrigin.BUS_IO and action.device_id is None:
                 raise ValueError(
                     f"Sync IO write '{action.key}' needs a device_id naming its controller"
                 )
-        self._config = config
+        self._clear = clear
+        self._release = release
+        self._watch = watch
         self._api_client = api_client
         self._cell = cell
 
     def start_conditions(self) -> Mapping[str, api.models.StartOnIO]:
-        return self._config.watch
+        return self._watch
 
     async def clear(self) -> None:
-        await self._write(self._config.clear)
+        await self._write(self._clear)
 
     async def release(self) -> None:
-        await self._write(self._config.release)
+        await self._write(self._release)
 
     async def _write(self, action: WriteAction) -> None:
         """Write the IO and wait until the write is observable.
