@@ -149,7 +149,7 @@ class CombinedActions(pydantic.BaseModel):
     def to_set_io(self) -> list[api.models.SetIO]:
         return [
             api.models.SetIO(
-                io=api.models.IOValue(action.action.to_api_model()),
+                io=action.action.to_api_model(),
                 location=action.path_parameter,
                 io_origin=action.action.origin,
             )

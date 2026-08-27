@@ -15,8 +15,7 @@ def combine_trajectories(
         # Shift times and locations to continue from last endpoint
         shifted_times = [t + current_end_time for t in trajectory.times[1:]]  # Skip first point
         shifted_locations = [
-            api.models.Location(location.root + current_end_location.root)
-            for location in trajectory.locations[1:]
+            location + current_end_location for location in trajectory.locations[1:]
         ]  # Skip first point
 
         final_trajectory.times.extend(shifted_times)

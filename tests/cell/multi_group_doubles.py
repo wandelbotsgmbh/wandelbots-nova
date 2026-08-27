@@ -33,7 +33,7 @@ def state(
         sequence_number=1,
         motion_group="mg-0",
         controller="ctrl-0",
-        joint_position=api.models.Joints([0.0] * 6),
+        joint_position=[0.0] * 6,
         joint_limit_reached=api.models.MotionGroupStateJointLimitReached(limit_reached=[False] * 6),
         standstill=standstill,
         execute=execute,
@@ -46,7 +46,7 @@ def execute_detail(location: float, trajectory_state=None) -> api.models.Execute
         joint_position=[0.0] * 6,
         details=api.models.TrajectoryDetails(
             trajectory="traj-1",
-            location=api.models.Location(location),
+            location=location,
             state=trajectory_state or api.models.TrajectoryRunning(time_to_end=0),
         ),
     )
@@ -72,7 +72,7 @@ def paused_state(location: float, at_milliseconds: int = 0) -> api.models.Motion
 
 def watch_condition(io: str, value: bool = True) -> api.models.StartOnIO:
     return api.models.StartOnIO(
-        io=api.models.IOValue(api.models.IOBooleanValue(io=io, value=value)),
+        io=api.models.IOBooleanValue(io=io, value=value),
         comparator=api.models.Comparator.COMPARATOR_EQUALS,
         io_origin=api.models.IOOrigin.CONTROLLER,
     )
@@ -105,7 +105,7 @@ class IOGateway:
         return [value for _, value in self.io_writes]
 
     async def _record_write(self, cell, controller, io_value):
-        self.io_writes.append((io_value[0].root.io, io_value[0].root.value))
+        self.io_writes.append((io_value[0].io, io_value[0].value))
 
 
 def motion_group(

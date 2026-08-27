@@ -146,11 +146,7 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup(ur_mg)
     Cut solution space with a plane collider and test that IK respects the collision setup.
     """
     plane = models.Collider(
-        shape=models.Plane(),
-        pose=models.Pose(
-            position=models.Vector3d(root=[0, 0, 0]),
-            orientation=models.RotationVector(root=[0, 0, 0]),
-        ),
+        shape=models.Plane(), pose=models.Pose(position=[0, 0, 0], orientation=[0, 0, 0])
     )
     setup = await ur_mg.get_setup("Flange")
 
@@ -160,7 +156,7 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup(ur_mg)
     collision_setup.colliders = {"plane": plane}
     collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
 
-    setup.collision_setups.root = {"test": collision_setup}
+    setup.collision_setups = {"test": collision_setup}
 
     # this orientation is important
     # with this orientation, the body of the end effector stays on top of the plane
@@ -185,10 +181,7 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup_2(ur_m
     """
     box = models.Collider(
         shape=models.Box(size_x=100, size_y=100, size_z=100, box_type=models.BoxType.FULL),
-        pose=models.Pose(
-            position=models.Vector3d(root=[700, 0, 700]),
-            orientation=models.RotationVector(root=[0, 0, 0]),
-        ),
+        pose=models.Pose(position=[700, 0, 700], orientation=[0, 0, 0]),
     )
 
     setup = await ur_mg.get_setup("Flange")
@@ -199,7 +192,7 @@ async def test_inverse_kinematics_unreachable_pose_due_to_collision_setup_2(ur_m
     collision_setup.colliders = {"box": box}
     collision_setup.link_chain = await ur_mg.get_default_collision_link_chain()
 
-    setup.collision_setups.root = {"test": collision_setup}
+    setup.collision_setups = {"test": collision_setup}
 
     solutions = await ur_mg._inverse_kinematics(
         poses=[Pose(700, 0, 700, 0, 0, 0)], tcp="Flange", motion_group_setup=setup

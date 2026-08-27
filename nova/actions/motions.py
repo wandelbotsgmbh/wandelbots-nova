@@ -52,7 +52,7 @@ class Linear(Motion):
 
         Examples:
         >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10)).to_api_model()
-        PathLine(target_pose=Pose(position=Vector3d(root=[1.0, 2.0, 3.0]), orientation=RotationVector(root=[4.0, 5.0, 6.0])), path_definition_name='PathLine')
+        PathLine(target_pose=Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)), path_definition_name='PathLine')
         """
         return api.models.PathLine(
             target_pose=self.target.to_api_model(), path_definition_name="PathLine"
@@ -112,7 +112,7 @@ class CartesianPTP(Motion):
 
         Examples:
         >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
-        PathCartesianPTP(target_pose=Pose(position=Vector3d(root=[1.0, 2.0, 3.0]), orientation=RotationVector(root=[4.0, 5.0, 6.0])), kinematic_configuration=None, path_definition_name='PathCartesianPTP')
+        PathCartesianPTP(target_pose=Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)), kinematic_configuration=None, path_definition_name='PathCartesianPTP')
         >>> from nova import api
         >>> kc = api.models.KinematicConfiguration(kinematic_branch=api.models.KinematicBranch(shoulder_branch='FRONT', elbow_branch='UP', wrist_branch='NO_FLIP'))
         >>> CartesianPTP(target=Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc), settings=MotionSettings()).to_api_model().kinematic_configuration == kc
@@ -178,7 +178,7 @@ class Circular(Motion):
 
         Examples:
         >>> Circular(target=Pose((1, 2, 3, 4, 5, 6)), intermediate=Pose((10, 20, 30, 40, 50, 60)), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
-        PathCircle(via_pose=Pose(position=Vector3d(root=[10.0, 20.0, 30.0]), orientation=RotationVector(root=[40.0, 50.0, 60.0])), target_pose=Pose(position=Vector3d(root=[1.0, 2.0, 3.0]), orientation=RotationVector(root=[4.0, 5.0, 6.0])), path_definition_name='PathCircle')
+        PathCircle(via_pose=Pose(position=(10.0, 20.0, 30.0), orientation=(40.0, 50.0, 60.0)), target_pose=Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)), path_definition_name='PathCircle')
         """
         if not isinstance(self.target, Pose):
             raise ValueError("Target must be a Pose object")
@@ -247,13 +247,12 @@ class JointPTP(Motion):
 
         Examples:
         >>> JointPTP(target=(1, 2, 3, 4, 5, 6, 7), settings=MotionSettings(tcp_velocity_limit=30)).to_api_model()
-        PathJointPTP(target_joint_position=DoubleArray(root=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]), path_definition_name='PathJointPTP')
+        PathJointPTP(target_joint_position=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], path_definition_name='PathJointPTP')
         """
         if not isinstance(self.target, tuple):
             raise ValueError("Target must be a tuple object")
         return api.models.PathJointPTP(
-            target_joint_position=api.models.DoubleArray(list(self.target)),
-            path_definition_name="PathJointPTP",
+            target_joint_position=list(self.target), path_definition_name="PathJointPTP"
         )
 
 
@@ -351,7 +350,7 @@ class CollisionFreeMotion(Motion):
 
     Examples:
     >>> CollisionFreeMotion(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=30))
-    CollisionFreeMotion(metas={}, type='collision_free', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6), kinematic_configuration=None), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, algorithm=CollisionFreeAlgorithm(root=RRTConnectAlgorithm(algorithm_name='RRTConnectAlgorithm', max_iterations=10000, max_step_size=0.1, adaptive_step_size=True, step_size=None, apply_smoothing=True, apply_blending=True)))
+    CollisionFreeMotion(metas={}, type='collision_free', target=Pose(position=Vector3d(x=1, y=2, z=3), orientation=Vector3d(x=4, y=5, z=6), kinematic_configuration=None), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=30.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, algorithm=RRTConnectAlgorithm(algorithm_name='RRTConnectAlgorithm', max_iterations=10000, max_step_size=0.1, adaptive_step_size=True, step_size=None, apply_smoothing=True, apply_blending=True))
     """
 
     type: Literal["collision_free"] = "collision_free"
@@ -359,9 +358,7 @@ class CollisionFreeMotion(Motion):
     settings: MotionSettings = MotionSettings()
     collision_setup: api.models.CollisionSetup | None = None
 
-    algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(
-        api.models.RRTConnectAlgorithm()
-    )
+    algorithm: api.models.CollisionFreeAlgorithm = api.models.RRTConnectAlgorithm()
 
     def to_api_model(self) -> api.models.PlanCollisionFreeRequest:
         """"""
@@ -374,9 +371,7 @@ def collision_free(
     target: Pose | tuple[float, ...],
     settings: MotionSettings = MotionSettings(),
     collision_setup: api.models.CollisionSetup | None = None,
-    algorithm: api.models.CollisionFreeAlgorithm = api.models.CollisionFreeAlgorithm(
-        api.models.RRTConnectAlgorithm()
-    ),
+    algorithm: api.models.CollisionFreeAlgorithm = api.models.RRTConnectAlgorithm(),
     **kwargs: dict[str, Any],
 ) -> CollisionFreeMotion:
     """Convenience function to create a collision free motion
@@ -393,7 +388,7 @@ def collision_free(
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
     >>> assert collision_free((1, 2, 3, 4, 5, 6), settings=ms) == CollisionFreeMotion(target=(1, 2, 3, 4, 5, 6), settings=ms, metas={'line_number': 1})
     >>> Action.from_dict(collision_free((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
-    CollisionFreeMotion(metas={'line_number': 1}, type='collision_free', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, algorithm=CollisionFreeAlgorithm(root=RRTConnectAlgorithm(algorithm_name='RRTConnectAlgorithm', max_iterations=10000, max_step_size=0.1, adaptive_step_size=True, step_size=None, apply_smoothing=True, apply_blending=True)))
+    CollisionFreeMotion(metas={'line_number': 1}, type='collision_free', target=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), settings=MotionSettings(blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, algorithm=RRTConnectAlgorithm(algorithm_name='RRTConnectAlgorithm', max_iterations=10000, max_step_size=0.1, adaptive_step_size=True, step_size=None, apply_smoothing=True, apply_blending=True))
     """
     kwargs.update(utils.get_caller_metas())
     return CollisionFreeMotion(

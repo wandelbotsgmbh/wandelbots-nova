@@ -121,7 +121,7 @@ class IOSyncDriver:
         IO image still carries the previous barrier's value and start immediately,
         desynchronizing the run.
         """
-        io_value = api.models.IOValue(action.to_api_model())
+        io_value = action.to_api_model()
         async with asyncio.timeout(_TRIGGER_CONFIRM_TIMEOUT):
             if action.origin is api.models.IOOrigin.BUS_IO:
                 await self._api_client.bus_ios_api.set_bus_io_values(

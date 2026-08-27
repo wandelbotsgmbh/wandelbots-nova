@@ -18,9 +18,7 @@ from nova.utils.motion_group_setup import (
 def test_tcp_limits_patching_with_none_setup():
     """Test TCP limits patching when setup has no existing TCP limits."""
     # Arrange
-    motion_group_setup = models.MotionGroupSetup(
-        motion_group_model=models.MotionGroupModel("test"), cycle_time=8
-    )
+    motion_group_setup = models.MotionGroupSetup(motion_group_model="test", cycle_time=8)
     settings = MotionSettings(
         tcp_velocity_limit=100.0,
         tcp_acceleration_limit=200.0,
@@ -48,7 +46,7 @@ def test_tcp_limits_patching_with_existing_setup():
         velocity=50.0, acceleration=100.0, orientation_velocity=1.0, orientation_acceleration=2.0
     )
     motion_group_setup = models.MotionGroupSetup(
-        motion_group_model=models.MotionGroupModel("test"),
+        motion_group_model="test",
         cycle_time=8,
         global_limits=models.LimitSet(tcp=existing_tcp_limits),
         collision_setups=None,
@@ -315,7 +313,7 @@ _JOINT_TORQUES = [150.0, 140.0, 100.0, 30.0, 30.0, 20.0]
 
 def _description_with_torque() -> models.MotionGroupDescription:
     return models.MotionGroupDescription(
-        motion_group_model=models.MotionGroupModel("UniversalRobots_UR5e"),
+        motion_group_model="UniversalRobots_UR5e",
         operation_limits=models.OperationLimits(
             auto_limits=models.LimitSet(
                 joints=[
@@ -385,8 +383,7 @@ def test_controller_global_limits_returns_auto_limits():
     """``auto_limits`` is the single source of truth for ``global_limits``."""
     auto = models.LimitSet(tcp=models.CartesianLimits(velocity=250.0))
     description = models.MotionGroupDescription(
-        motion_group_model=models.MotionGroupModel("test"),
-        operation_limits=models.OperationLimits(auto_limits=auto),
+        motion_group_model="test", operation_limits=models.OperationLimits(auto_limits=auto)
     )
 
     assert controller_global_limits(description) is auto
@@ -395,8 +392,7 @@ def test_controller_global_limits_returns_auto_limits():
 def test_controller_global_limits_requires_auto_limits():
     """Missing controller (auto) limits is a hard error: we cannot derive a planning ceiling."""
     description = models.MotionGroupDescription(
-        motion_group_model=models.MotionGroupModel("test"),
-        operation_limits=models.OperationLimits(auto_limits=None),
+        motion_group_model="test", operation_limits=models.OperationLimits(auto_limits=None)
     )
 
     with pytest.raises(AssertionError):
@@ -419,7 +415,7 @@ def test_setup_uses_auto_limits_as_global_ceiling():
 
 def test_setup_defaults_cycle_time_to_8_when_missing():
     description = models.MotionGroupDescription(
-        motion_group_model=models.MotionGroupModel("test"),
+        motion_group_model="test",
         operation_limits=models.OperationLimits(auto_limits=models.LimitSet()),
         cycle_time=None,
     )
@@ -430,12 +426,9 @@ def test_setup_defaults_cycle_time_to_8_when_missing():
 
 
 def test_setup_forwards_cycle_time_and_mounting():
-    mounting = models.Pose(
-        position=models.Vector3d([1.0, 2.0, 3.0]),
-        orientation=models.RotationVector([0.0, 0.0, 0.0]),
-    )
+    mounting = models.Pose(position=[1.0, 2.0, 3.0], orientation=[0.0, 0.0, 0.0])
     description = models.MotionGroupDescription(
-        motion_group_model=models.MotionGroupModel("test"),
+        motion_group_model="test",
         operation_limits=models.OperationLimits(auto_limits=models.LimitSet()),
         cycle_time=4,
         mounting=mounting,
@@ -451,7 +444,7 @@ def test_setup_registers_safety_collision_setup():
     setup = motion_group_setup_from_motion_group_description(_description_with_torque())
 
     assert setup.collision_setups is not None
-    assert "safety" in setup.collision_setups.root
+    assert "safety" in setup.collision_setups
 
 
 # ---------------------------------------------------------------------------
@@ -460,16 +453,14 @@ def test_setup_registers_safety_collision_setup():
 
 
 def test_joint_position_limits_none_without_global_limits():
-    setup = models.MotionGroupSetup(
-        motion_group_model=models.MotionGroupModel("test"), cycle_time=8
-    )
+    setup = models.MotionGroupSetup(motion_group_model="test", cycle_time=8)
 
     assert get_joint_position_limits_from_motion_group_setup(setup) is None
 
 
 def test_joint_position_limits_none_without_joints():
     setup = models.MotionGroupSetup(
-        motion_group_model=models.MotionGroupModel("test"),
+        motion_group_model="test",
         cycle_time=8,
         global_limits=models.LimitSet(tcp=models.CartesianLimits(velocity=100.0)),
     )
@@ -483,15 +474,13 @@ def test_joint_position_limits_extracts_ranges():
         models.JointLimits(position=models.LimitRange(lower_limit=-2.0, upper_limit=2.0)),
     ]
     setup = models.MotionGroupSetup(
-        motion_group_model=models.MotionGroupModel("test"),
-        cycle_time=8,
-        global_limits=models.LimitSet(joints=joints),
+        motion_group_model="test", cycle_time=8, global_limits=models.LimitSet(joints=joints)
     )
 
     result = get_joint_position_limits_from_motion_group_setup(setup)
 
     assert result is not None
-    assert result.root == [joint.position for joint in joints]
+    assert result == [joint.position for joint in joints]
 
 
 def test_joint_position_limits_skips_joints_without_position():
@@ -500,15 +489,13 @@ def test_joint_position_limits_skips_joints_without_position():
         models.JointLimits(velocity=5.0),  # no position limit -> skipped
     ]
     setup = models.MotionGroupSetup(
-        motion_group_model=models.MotionGroupModel("test"),
-        cycle_time=8,
-        global_limits=models.LimitSet(joints=joints),
+        motion_group_model="test", cycle_time=8, global_limits=models.LimitSet(joints=joints)
     )
 
     result = get_joint_position_limits_from_motion_group_setup(setup)
 
     assert result is not None
-    assert result.root == [joints[0].position]
+    assert result == [joints[0].position]
 
 
 # ---------------------------------------------------------------------------
@@ -519,7 +506,7 @@ def test_joint_position_limits_skips_joints_without_position():
 def test_update_does_not_mutate_input_setup():
     """The helper returns a patched copy and must not mutate the caller's setup."""
     setup = models.MotionGroupSetup(
-        motion_group_model=models.MotionGroupModel("test"),
+        motion_group_model="test",
         cycle_time=8,
         collision_setups=None,
         global_limits=models.LimitSet(tcp=models.CartesianLimits(velocity=250.0)),

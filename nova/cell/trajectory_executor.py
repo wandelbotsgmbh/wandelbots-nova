@@ -200,7 +200,7 @@ class TrajectoryExecutor:
     ) -> dict[str, api.models.JointTrajectory]:
         """Split into per-group ``JointTrajectory`` for loading; every part
         carries the trajectory's single ``times``/``locations`` parameterization."""
-        joint_positions_by_group = trajectory.joint_positions_by_motion_group_key.root
+        joint_positions_by_group = trajectory.joint_positions_by_motion_group_key
         if set(joint_positions_by_group) != set(self._motion_groups):
             raise ValueError(
                 f"Trajectory keys {sorted(joint_positions_by_group)} must match the executor's "
@@ -208,7 +208,7 @@ class TrajectoryExecutor:
             )
         return {
             key: api.models.JointTrajectory(
-                joint_positions=joint_samples.root,
+                joint_positions=joint_samples,
                 times=trajectory.times,
                 locations=trajectory.locations,
             )
@@ -290,7 +290,7 @@ class TrajectoryExecutorBuilder:
         self._release = self._write(io, release_value, controller, origin)
         self._clear = self._write(io, not release_value, controller, origin)
         condition = api.models.StartOnIO(
-            io=api.models.IOValue(api.models.IOBooleanValue(io=io, value=release_value)),
+            io=api.models.IOBooleanValue(io=io, value=release_value),
             comparator=api.models.Comparator.COMPARATOR_EQUALS,
             io_origin=origin,
         )

@@ -48,7 +48,7 @@ class SessionMonitor(Protocol):
 def _extract_location(state: api.models.MotionGroupState) -> float | None:
     if state.execute is None or not isinstance(state.execute.details, api.models.TrajectoryDetails):
         return None
-    return state.execute.details.location.root
+    return state.execute.details.location
 
 
 class SyncDriftMonitor:

@@ -356,7 +356,7 @@ class NovaRerunBridge:
                 rr.log(
                     f"motion/errors/FeedbackCollision/collisions/point_{i}/a",
                     rr.Points3D(
-                        positions=[pos_a.root],
+                        positions=[pos_a],
                         radii=rr.Radius.ui_points([5.0]),
                         colors=[(255, 0, 0, 255)],
                     ),
@@ -366,7 +366,7 @@ class NovaRerunBridge:
                 rr.log(
                     f"motion/errors/FeedbackCollision/collisions/point_{i}/b",
                     rr.Points3D(
-                        positions=[pos_b.root],
+                        positions=[pos_b],
                         radii=rr.Radius.ui_points([5.0]),
                         colors=[(0, 0, 255, 255)],
                     ),
@@ -377,7 +377,7 @@ class NovaRerunBridge:
                 rr.log(
                     f"motion/errors/FeedbackCollision/collisions/normal_{i}",
                     rr.Arrows3D(
-                        origins=[pos_b.root],
+                        origins=[pos_b],
                         vectors=[
                             [
                                 normal[0] * arrow_length,

@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11, <3.13"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -1629,7 +1629,7 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 dependencies = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" } },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7a/97/5a3609c4f8d58b039179648e62dd220f89864f56f7357f5d4f45c29eb2cc/scipy-1.17.1.tar.gz", hash = "sha256:95d8e012d8cb8816c226aef832200b1d45109ed4464303e997c5b13122b297c0", size = 30573822, upload-time = "2026-02-23T00:26:24.851Z" }
 wheels = [
@@ -1663,7 +1663,7 @@ resolution-markers = [
     "python_full_version >= '3.12'",
 ]
 dependencies = [
-    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" } },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a7/25/c2700dfaf6442b4effaa91af24ebce5dc9d31bb4a69706313aae70d72cd0/scipy-1.18.0.tar.gz", hash = "sha256:67b2ad2ad54c72ca6d04975a9b2df8c3638c34ddd5b28738e94fc2b57929d378", size = 30774447, upload-time = "2026-06-19T15:01:43.456Z" }
 wheels = [
@@ -1867,7 +1867,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/91/26/430de0d8aaf5aad9f
 
 [[package]]
 name = "wandelbots-api-client"
-version = "26.5.3"
+version = "26.7.0.dev24"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1882,9 +1882,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/da/82/10ff7b05702425f6e64fb2b37aa44cd811c435e6bc9c21810ca2938834b7/wandelbots_api_client-26.5.3.tar.gz", hash = "sha256:87545f99f454589f0b874f02a9e360fbe99aea69597871cded48ed5c0f44e5cf", size = 648848, upload-time = "2026-08-04T13:01:55.256Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/b6/bb530bbbf975f3276ef173b3253fcca98b9182e161ea8ad453d9a641d334/wandelbots_api_client-26.7.0.dev24.tar.gz", hash = "sha256:834eaa1d614a63d164bbf225669dcde083689ac866b1529009dfb6bfad794fe1", size = 490975, upload-time = "2026-08-24T11:50:47.998Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/87/0b8bc2fbac7686892c538bd81433c92d3a0a7e1305e181eff9d123ede1fb/wandelbots_api_client-26.5.3-py3-none-any.whl", hash = "sha256:20715d872ea9ca76bfa4a7b9be3ab3cd0568546740b2067b17b18c0794ac5f3b", size = 1550882, upload-time = "2026-08-04T13:01:51.585Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/6a/3b1ce9b92f5594c39e3cc416c1df795744e9215fe82987998c4f76cd297f/wandelbots_api_client-26.7.0.dev24-py3-none-any.whl", hash = "sha256:eba0f5cb5d5a4850a407ec2f5e1f13f531dcbe717f6c652a2da9b8700ddaa15c", size = 1104732, upload-time = "2026-08-24T11:50:45.473Z" },
 ]
 
 [[package]]
@@ -2009,7 +2009,7 @@ requires-dist = [
     { name = "trimesh", marker = "extra == 'nova-rerun-bridge'", specifier = ">=4.5.3" },
     { name = "typer", marker = "extra == 'wandelscript'", specifier = ">=0.12,<0.20" },
     { name = "uvicorn", marker = "extra == 'novax'", specifier = ">=0.34.0" },
-    { name = "wandelbots-api-client", specifier = "==26.5.3" },
+    { name = "wandelbots-api-client", specifier = "==26.7.0.dev24" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
 provides-extras = ["nova-rerun-bridge", "wandelscript", "novax", "novapolicy", "benchmark"]

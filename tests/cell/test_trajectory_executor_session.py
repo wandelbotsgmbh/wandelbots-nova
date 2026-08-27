@@ -82,22 +82,14 @@ class _FakeGateway(IOGateway):
                 self.execution_cells[trajectory_id] = cell
                 self.initialize_requests[trajectory_id] = request
                 self._reach("init")
-                responses.put_nowait(
-                    api.models.ExecuteTrajectoryResponse(
-                        root=api.models.InitializeMovementResponse()
-                    )
-                )
+                responses.put_nowait(api.models.InitializeMovementResponse())
             elif isinstance(request, api.models.StartMovementRequest):
                 self.start_requests.setdefault(trajectory_id, []).append(request)
                 self._reach("start")
-                responses.put_nowait(
-                    api.models.ExecuteTrajectoryResponse(root=api.models.StartMovementResponse())
-                )
+                responses.put_nowait(api.models.StartMovementResponse())
             elif isinstance(request, api.models.PauseMovementRequest):
                 self._reach("pause")
-                responses.put_nowait(
-                    api.models.ExecuteTrajectoryResponse(root=api.models.PauseMovementResponse())
-                )
+                responses.put_nowait(api.models.PauseMovementResponse())
 
 
 async def _settle() -> None:
@@ -137,7 +129,7 @@ class TestTrajectorySplitting:
         for group in motion_groups.values():
             loaded_trajectory, tcp = group._load_planned_motion.await_args.args
             assert loaded_trajectory.times == [0.0, 1.0, 2.0]
-            assert [location.root for location in loaded_trajectory.locations] == [0.0, 1.0, 2.0]
+            assert list(loaded_trajectory.locations) == [0.0, 1.0, 2.0]
             assert tcp is None
 
 
@@ -202,7 +194,7 @@ class TestSynchronizedExecution:
         # Assert: armed with the trigger condition, barrier not yet released
         start_request = gateway.start_requests["traj-a"][0]
         assert start_request.start_on_io is not None
-        assert start_request.start_on_io.io.root.io == "sync-io"
+        assert start_request.start_on_io.io.io == "sync-io"
         assert gateway.trigger_writes == [False]
 
         # Act: running states do not release the barrier

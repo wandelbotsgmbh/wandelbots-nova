@@ -65,11 +65,9 @@ def get_safety_collision_setup_from_motion_group_description(
         if motion_group_description.safety_tool_colliders is not None and tcp_name is not None
         else None
     )
-    tool = api.models.Tool(tool_colliders.root) if tool_colliders is not None else None
+    tool = tool_colliders if tool_colliders is not None else None
     link_chain = (
-        api.models.LinkChain(
-            [api.models.Link(link.root) for link in motion_group_description.safety_link_colliders]
-        )
+        list(motion_group_description.safety_link_colliders)
         if motion_group_description.safety_link_colliders
         else None
     )

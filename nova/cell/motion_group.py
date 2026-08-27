@@ -131,9 +131,9 @@ def _with_collision_setup(
     """
     motion_group_setup = motion_group_setup.model_copy(deep=True)
     if motion_group_setup.collision_setups is None:
-        motion_group_setup.collision_setups = api.models.CollisionSetups({})
+        motion_group_setup.collision_setups = {}
     if collision_setup is not None:
-        motion_group_setup.collision_setups.root[key] = collision_setup
+        motion_group_setup.collision_setups[key] = collision_setup
     return motion_group_setup
 
 
@@ -185,13 +185,13 @@ class MotionGroup(AbstractRobot):
 
             if action.origin == api.models.IOOrigin.BUS_IO:
                 await self._api_client.bus_ios_api.set_bus_io_values(
-                    cell=self._cell, io_value=[api.models.IOValue(action.to_api_model())]
+                    cell=self._cell, io_value=[action.to_api_model()]
                 )
             else:
                 await self._api_client.controller_ios_api.set_output_values(
                     cell=self._cell,
                     controller=self._controller_id,
-                    io_value=[action.to_api_model()],  # ty: ignore[invalid-argument-type]
+                    io_value=[action.to_api_model()],
                 )
 
     # TODO: does this needs to be cached?
@@ -215,7 +215,7 @@ class MotionGroup(AbstractRobot):
             api.models.MotionGroupModel: The motion group model.
         """
         motion_group_description = await self._fetch_motion_group_description()
-        return motion_group_description.motion_group_model.root
+        return motion_group_description.motion_group_model
 
     async def get_setup(
         self, tcp_name: str | None = None, payload_override: str | api.models.Payload | None = None
@@ -369,11 +369,11 @@ class MotionGroup(AbstractRobot):
         description = await self._fetch_motion_group_description()
         collision_model = (
             await self._api_client.motion_group_models_api.get_motion_group_collision_model(
-                motion_group_model=description.motion_group_model.root
+                motion_group_model=description.motion_group_model
             )
         )
 
-        return api.models.LinkChain([api.models.Link(link) for link in collision_model])
+        return list(collision_model)
 
     # TODO: check the response type, it is not easy to use
     # API returns list of list of list of float ( 3 inner lists )
@@ -415,7 +415,7 @@ class MotionGroup(AbstractRobot):
         response = await self._api_client.kinematics_api.inverse_kinematics(
             cell=self._cell,
             inverse_kinematics_request=api.models.InverseKinematicsRequest(
-                motion_group_model=api.models.MotionGroupModel(motion_group_model),
+                motion_group_model=motion_group_model,
                 tcp_poses=[pose.to_api_model() for pose in poses],
                 tcp_offset=tcp_offset.to_api_model(),
                 mounting=mounting.to_api_model() if mounting is not None else None,
@@ -441,7 +441,7 @@ class MotionGroup(AbstractRobot):
         if len(joints) == 0:
             raise ValueError("Provide at least one joint configuration")
 
-        joint_positions = [api.models.DoubleArray(list(joint_config)) for joint_config in joints]
+        joint_positions = [list(joint_config) for joint_config in joints]
 
         tcp_offset = (await self.tcp_offset(tcp)).to_api_model() if tcp is not None else None
         motion_group_model = await self.get_model()
@@ -450,7 +450,7 @@ class MotionGroup(AbstractRobot):
         response = await self._api_client.kinematics_api.forward_kinematics(
             cell=self._cell,
             forward_kinematics_request=api.models.ForwardKinematicsRequest(
-                motion_group_model=api.models.MotionGroupModel(motion_group_model),
+                motion_group_model=motion_group_model,
                 joint_positions=joint_positions,
                 tcp_offset=tcp_offset,
                 mounting=mounting.to_api_model() if mounting is not None else None,
@@ -461,6 +461,35 @@ class MotionGroup(AbstractRobot):
             raise ValueError("No TCP poses returned from forward kinematics")
 
         return [Pose(tcp_pose) for tcp_pose in response.tcp_poses]
+
+    async def get_kinematic_configuration(
+        self, joints: list[tuple[float, ...]]
+    ) -> list[api.models.KinematicConfiguration]:
+        """Get the kinematic configuration for each joint configuration.
+
+        Only supported for 6-DOF robots with spherical or offset wrist. Raises an API
+        error (422) for unsupported motion groups.
+
+        Args:
+            joints: The joint configurations to compute kinematic configurations for.
+
+        Returns:
+            list[KinematicConfiguration]: One entry per input joint configuration.
+        """
+        if len(joints) == 0:
+            raise ValueError("Provide at least one joint configuration")
+
+        joint_positions = [list(j) for j in joints]
+        motion_group_model = await self.get_model()
+
+        response = await self._api_client.kinematics_api.get_kinematic_configuration(
+            cell=self._cell,
+            get_kinematic_configuration_request=api.models.GetKinematicConfigurationRequest(
+                motion_group_model=motion_group_model, joint_positions=joint_positions
+            ),
+        )
+
+        return response.kinematic_configurations
 
     async def open(self):
         # TODO if there is no explicit motion group activation, what should we do here?
@@ -572,7 +601,7 @@ class MotionGroup(AbstractRobot):
                 name=tcp_offset.name,
                 position=tcp_offset.pose.position,
                 # TODO: what is the correct rotation type here then?
-                orientation=api.models.Orientation(tcp_offset.pose.orientation.root)
+                orientation=list(tcp_offset.pose.orientation)
                 if tcp_offset.pose.orientation is not None
                 else None,
             )
@@ -728,7 +757,7 @@ class MotionGroup(AbstractRobot):
             cell=self._cell,
             plan_trajectory_request=api.models.PlanTrajectoryRequest(
                 motion_group_setup=motion_group_setup,
-                start_joint_position=api.models.DoubleArray(list(start_joint_position)),
+                start_joint_position=list(start_joint_position),
                 motion_commands=motion_commands,
                 singularity_handling=singularity_handling or api.models.SingularityHandling.NONE,
             ),
@@ -827,8 +856,8 @@ class MotionGroup(AbstractRobot):
                     cell=self._cell,
                     plan_collision_free_request=api.models.PlanCollisionFreeRequest(
                         motion_group_setup=motion_group_setup,
-                        start_joint_position=api.models.DoubleArray(list(start_joint_position)),
-                        target=api.models.DoubleArray(list(best_joint_solution)),
+                        start_joint_position=list(start_joint_position),
+                        target=list(best_joint_solution),
                         algorithm=action.algorithm,
                     ),
                 )
@@ -894,7 +923,7 @@ class MotionGroup(AbstractRobot):
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
 
-                current_joints = tuple(trajectory.joint_positions[-1].root)
+                current_joints = tuple(trajectory.joint_positions[-1])
             elif isinstance(batch[0], WaitAction):
                 trajectory = self._build_wait_trajectory(
                     current_joints, batch[0].wait_for_in_seconds
@@ -955,14 +984,12 @@ class MotionGroup(AbstractRobot):
         timestep = 0.050  # 50ms timestep
         num_steps = max(2, int(wait_time / timestep) + 1)  # Ensure at least 2 points
 
-        joint_positions = [api.models.Joints(list(current_joints)) for _ in range(num_steps)]
+        joint_positions = [list(current_joints) for _ in range(num_steps)]
         times = [i * timestep for i in range(num_steps)]
         # Ensure the last timestep is exactly the wait duration
         times[-1] = wait_time
         return api.models.JointTrajectory(
-            joint_positions=joint_positions,
-            times=times,
-            locations=[api.models.Location(0.0) for _ in range(num_steps)],
+            joint_positions=joint_positions, times=times, locations=[0.0 for _ in range(num_steps)]
         )
 
     # TODO: refactor and simplify code, tests are already there

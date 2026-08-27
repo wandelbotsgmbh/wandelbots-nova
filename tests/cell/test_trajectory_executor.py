@@ -79,8 +79,8 @@ class TestBuilder:
         )
 
         conditions = _driver_of(executor).start_conditions()
-        assert conditions["a"].io.root.io == "sync-io"
-        assert conditions["a"].io.root.value is False
+        assert conditions["a"].io.io == "sync-io"
+        assert conditions["a"].io.value is False
         assert conditions["a"] == conditions["b"]
         await _driver_of(executor).clear()
         await _driver_of(executor).release()
@@ -113,7 +113,7 @@ class TestBuilder:
         )
 
         assert _driver_of(executor).start_conditions()["b"] is wired_input
-        assert _driver_of(executor).start_conditions()["a"].io.root.io == "sync-io"
+        assert _driver_of(executor).start_conditions()["a"].io.io == "sync-io"
 
     async def test_build__writes_set_one_at_a_time__replace_what_sync_on_io_states(self):
         gateway = IOGateway()
@@ -189,7 +189,7 @@ class TestIOSyncDriver:
         )
 
         assert driver.start_conditions()["b"] is condition
-        assert driver.start_conditions()["a"].io.root.io == "out-a"
+        assert driver.start_conditions()["a"].io.io == "out-a"
 
     async def test_clear_and_release__write_their_configured_values(self):
         gateway = IOGateway()
@@ -213,8 +213,8 @@ class TestIOSyncDriver:
         gateway.bus_ios_api.set_bus_io_values = AsyncMock()
         gateway.bus_ios_api.get_bus_io_values = AsyncMock(
             side_effect=[
-                [api.models.IOValue(api.models.IOBooleanValue(io="bus-sync", value=False))],
-                [api.models.IOValue(api.models.IOBooleanValue(io="bus-sync", value=True))],
+                [api.models.IOBooleanValue(io="bus-sync", value=False)],
+                [api.models.IOBooleanValue(io="bus-sync", value=True)],
             ]
         )
         bus_trigger = io_write("bus-sync", True, origin=api.models.IOOrigin.BUS_IO)
