@@ -160,10 +160,9 @@ class TrajectoryExecutor:
         cursor = MultiTrajectoryCursor(cursors, self._sync)
         try:
             async with asyncio.TaskGroup() as task_group:
-                # The cursor's control() loop is its cntrl analog: driven here, it
-                # owns the barrier and the state fan-out in its own TaskGroup. The
-                # executor only adds what needs its motion groups — the
-                # executeTrajectory sockets — and the session monitors.
+                # control() owns the barrier and the state fan-out in its own
+                # TaskGroup; the executor only adds what needs its motion groups —
+                # the executeTrajectory sockets — and the session monitors.
                 for name in cursors:
                     task_group.create_task(
                         self._run_execute_trajectory(name, cursors[name]),

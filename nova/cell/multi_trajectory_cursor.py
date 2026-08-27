@@ -273,26 +273,23 @@ class MultiTrajectoryCursor:
     ``executeTrajectory`` to come alive, this cursor's :meth:`control` must be
     driven by :meth:`TrajectoryExecutor.attach`. Inside ``control`` the cursor
     opens its *own* TaskGroup — hosting the state fan-out and the barrier — so no
-    TaskGroup is handed to it from outside; ``forward``/``pause`` only feed that
-    loop, exactly as the single cursor's ``forward`` feeds its ``cntrl``.
+    TaskGroup is handed in from outside; ``forward``/``pause`` only feed that loop.
 
-    Offers the same interactive contract as the single cursor: ``forward`` /
-    ``forward_to`` / ``pause``, ``current_location`` and ``stream_state``.
-    Backward movement is not exposed: driving the barrier in reverse is
-    mechanically symmetric but unverified against real controllers.
+    Same interactive contract as the single cursor: ``forward`` / ``forward_to``
+    / ``pause``, ``current_location`` and ``stream_state``. Backward movement is
+    not exposed: driving the barrier in reverse is mechanically symmetric but
+    unverified against real controllers.
     """
 
     def __init__(self, cursors: dict[str, TrajectoryCursor], sync: SyncDriver):
         self._cursors = cursors
         self._sync = sync
-        # One fan-out per group, hidden here rather than wired by the caller: a
-        # cursor tees its states into a single queue, but the session has several
-        # consumers (barrier arm-wait, end detacher, drift monitors, user streams).
+        # One fan-out per group: a cursor tees its states into a single queue, but
+        # the session has several consumers (barrier arm-wait, end detacher, drift
+        # monitors, user streams).
         self._broadcasters = {name: _StreamBroadcaster(cursor) for name, cursor in cursors.items()}
-        # The intent mailbox and the stop signal, the single cursor's own shape
-        # (its _intent_event/_stop_event): a pending intent not yet consumed is
-        # silently overwritten — only the most recent one matters — and pause()
-        # may void it before it ever runs.
+        # A pending intent not yet consumed is silently overwritten — only the
+        # most recent one matters — and pause() may void it before it ever runs.
         self._pending_intent: _ForwardIntent | None = None
         self._intent_event = asyncio.Event()
         self._stop_event = asyncio.Event()
@@ -307,8 +304,7 @@ class MultiTrajectoryCursor:
         detachers into it, then serves the intent mailbox: a forward runs a
         barrier as a child task (so pause/supersede can cancel it), a stop ends
         the loop. A barrier that fails for real propagates out and aborts the
-        session, the same coupling the single cursor gets from running inside
-        ``executeTrajectory``.
+        session.
         """
         try:
             async with asyncio.TaskGroup() as task_group:
@@ -322,9 +318,8 @@ class MultiTrajectoryCursor:
                     )
                 while True:
                     await self._intent_event.wait()
-                    # Take-and-clear with no await in between (the single
-                    # cursor's _set_intent contract): an intent posted after
-                    # this read re-sets the event, so it cannot be lost.
+                    # Take-and-clear with no await in between, so an intent
+                    # posted after this read re-sets the event and cannot be lost.
                     intent, self._pending_intent = self._pending_intent, None
                     self._intent_event.clear()
                     if self._stop_event.is_set():
@@ -415,10 +410,8 @@ class MultiTrajectoryCursor:
         """Run one barrier and resolve the caller's future with its outcome.
 
         A cancel (pause or a superseding forward) cancels the future. A real
-        failure is re-raised only — it aborts the session through ``control``'s
-        TaskGroup, and the awaiter learns the cause from the ``attach`` exit, not
-        the future (setting both would surface the same error twice in the
-        session group). Same asymmetry the single cursor's failures have.
+        failure is left off the future: it propagates to abort the session, and
+        the awaiter learns the cause from the ``attach`` exit instead.
         """
         try:
             results = await self._forward(intent.target_location, intent.playback_speed_in_percent)
@@ -426,8 +419,8 @@ class MultiTrajectoryCursor:
             if not intent.future.done():
                 intent.future.cancel()
             raise
-        # A real failure propagates untouched: it aborts the session and the
-        # cause surfaces from the attach exit, not the future.
+        # A real failure is deliberately not caught here: setting it on the
+        # future too would surface the same error twice in the session group.
         if not intent.future.done():
             intent.future.set_result(results)
 
@@ -480,8 +473,7 @@ class MultiTrajectoryCursor:
     def pause(self) -> asyncio.Future[dict[str, OperationResult]] | None:
         """Pause every group. Returns None when no group had an active operation."""
         # A forward posted but not yet consumed by control() must not run after
-        # the pause — void the mailbox first, as the single cursor's pause
-        # overwrites a pending intent that hasn't been consumed.
+        # the pause — void the mailbox first.
         pending, self._pending_intent = self._pending_intent, None
         if pending is not None and not pending.future.done():
             pending.future.cancel()
