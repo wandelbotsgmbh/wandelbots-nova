@@ -41,7 +41,7 @@ async def bus_io_service(ctx: nova.ProgramContext, gateway, cell: str) -> api.mo
             connected.set()
 
     await ctx.nova.nats.subscribe(f"nova.v2.cells.{cell}.bus-ios.status", cb=on_status)
-    service = api.models.BusIOType(api.models.BusIOModbusVirtual())
+    service = api.models.BusIOModbusVirtual()
     await gateway.bus_ios_api.add_bus_io_service(cell=cell, bus_io_type=service)
     # A service that just reported itself connected still rejects the first
     # requests, so the settle is on top of waiting for the state.
@@ -53,7 +53,7 @@ async def bus_io_service(ctx: nova.ProgramContext, gateway, cell: str) -> api.mo
 async def declare_bus_trigger(ctx: nova.ProgramContext, gateway, cell: str) -> None:
     """Declare the trigger as a boolean on whichever bus the cell runs."""
     service = await bus_io_service(ctx, gateway, cell)
-    match service.root:
+    match service:
         case api.models.BusIOProfinet() | api.models.BusIOProfinetVirtual():
             await gateway.bus_ios_api.add_profinet_io(
                 cell=cell,
