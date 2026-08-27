@@ -268,17 +268,13 @@ class _ForwardIntent:
 class MultiTrajectoryCursor:
     """Cursor-compatible handle over one synchronized execution session.
 
-    The ensemble analog of :class:`TrajectoryCursor`, and driven the same way:
-    just as a single cursor's :meth:`~TrajectoryCursor.cntrl` must be consumed by
-    ``executeTrajectory`` to come alive, this cursor's :meth:`control` must be
-    driven by :meth:`TrajectoryExecutor.attach`. Inside ``control`` the cursor
-    opens its *own* TaskGroup — hosting the state fan-out and the barrier — so no
-    TaskGroup is handed in from outside; ``forward``/``pause`` only feed that loop.
+    Obtained from :meth:`TrajectoryExecutor.attach`; drives all groups together
+    through the start barrier with the single cursor's interactive contract —
+    ``forward`` / ``forward_to`` / ``pause``, ``current_location`` and
+    ``stream_state``.
 
-    Same interactive contract as the single cursor: ``forward`` / ``forward_to``
-    / ``pause``, ``current_location`` and ``stream_state``. Backward movement is
-    not exposed: driving the barrier in reverse is mechanically symmetric but
-    unverified against real controllers.
+    Backward movement is not exposed: driving the barrier in reverse is
+    mechanically symmetric but unverified against real controllers.
     """
 
     def __init__(self, cursors: dict[str, TrajectoryCursor], sync: SyncDriver):
@@ -298,13 +294,13 @@ class MultiTrajectoryCursor:
         self._current: asyncio.Task[None] | None = None
 
     async def control(self) -> None:
-        """The ensemble's ``cntrl`` analog — drive this for the cursor to work.
+        """Run the session loop; must be running for ``forward``/``pause`` to make
+        progress (:meth:`TrajectoryExecutor.attach` drives it).
 
-        Opens the cursor's own TaskGroup, spawns the per-group state pumps and end
-        detachers into it, then serves the intent mailbox: a forward runs a
-        barrier as a child task (so pause/supersede can cancel it), a stop ends
-        the loop. A barrier that fails for real propagates out and aborts the
-        session.
+        Owns the TaskGroup, spawns the per-group state pumps and end detachers
+        into it, then serves the intent mailbox: a forward runs a barrier as a
+        child task (so pause/supersede can cancel it), a stop ends the loop. A
+        barrier that fails for real propagates out and aborts the session.
         """
         try:
             async with asyncio.TaskGroup() as task_group:
