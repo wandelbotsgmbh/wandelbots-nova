@@ -14,7 +14,6 @@ through ``TrajectoryExecutor`` directly; this one plans live and adds IO.
 from pathlib import Path
 
 import nova
-from nova import api, run_program
 from nova.actions import io_write, jnt, multi_collision_free
 from nova.cell import MultiMotionGroup, virtual_controller
 
@@ -31,11 +30,11 @@ STAGE_DONE_IO_ID = "OUT#2"
 _HERE = Path(__file__).parent
 
 
-def recorded() -> api.models.MultiJointTrajectory:
+def recorded() -> nova.api.models.MultiJointTrajectory:
     """Two known-good joint configs per group, reused here as plan endpoints so the
     example needs no live poses: sample 0 is the start, the last sample the target."""
     path = _HERE / "multi_motion_group_trajectory.json"
-    return api.models.MultiJointTrajectory.model_validate_json(path.read_text())
+    return nova.api.models.MultiJointTrajectory.model_validate_json(path.read_text())
 
 
 def sample(group: str, index: int) -> list[float]:
@@ -48,7 +47,7 @@ def sample(group: str, index: int) -> list[float]:
         controllers=[
             virtual_controller(
                 name=CONTROLLER,
-                manufacturer=api.models.Manufacturer.KUKA,
+                manufacturer=nova.api.models.Manufacturer.KUKA,
                 type="kuka-kr210_r2700_2",
                 controller_config_json=(_HERE / "multi_motion_group_controller.json").read_text(),
                 # Spawn the robot where the plan starts; ``position`` places the
@@ -88,4 +87,4 @@ async def multi_motion_group_facade(ctx: nova.ProgramContext):
 
 
 if __name__ == "__main__":
-    run_program(multi_motion_group_facade)
+    nova.run_program(multi_motion_group_facade)
