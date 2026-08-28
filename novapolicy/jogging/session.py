@@ -1,7 +1,15 @@
-"""Jogging state tracking — detects blocking pause conditions.
+"""Jogging state tracking — blocking pauses and standstill detection.
 
-Monitors the NOVA jogging state stream and raises ``MotionError``
-after a confirmed blocking pause (joint limit, collision, singularity).
+``JoggingStateTracker`` monitors the NOVA jogging state stream and raises
+``MotionError`` after a confirmed blocking pause (joint limit, collision,
+singularity).
+
+``StandstillDetector`` answers the separate question of whether the robot has
+actually stopped moving. The server has no state for "the commanded waypoints
+ran out": since NOVA 26.6 ``PAUSED_BY_USER`` is reported only in response to a
+Pause/Stop *request*, and this SDK never sends one, so a drained queue leaves
+the stream reporting ``RUNNING`` forever. Standstill therefore has to be
+measured from the joint positions themselves.
 """
 
 from __future__ import annotations
@@ -18,6 +26,74 @@ _BLOCKING_PAUSES = frozenset({
     "PAUSED_NEAR_COLLISION",
     "PAUSED_NEAR_SINGULARITY",
 })
+
+
+# How far a joint may drift from its reference before the robot counts as moving
+# [rad] (~0.06 deg). Above encoder noise at standstill, far below any commanded
+# motion. The reference only moves when this is exceeded, so noise stays bounded
+# under it forever while a slow crawl keeps accumulating until it trips.
+_STANDSTILL_EPS_RAD = 1e-3
+
+# How long every joint must sit inside that band before the robot is settled
+# [server ms]. Long enough to outlast the tail of a braking ramp, short enough
+# not to dominate a sequential policy's cycle time.
+_STANDSTILL_HOLD_MS = 60
+
+
+class StandstillDetector:
+    """Decides whether the joints have stopped moving, from state samples alone.
+
+    Fed ``(server_ms, joints)`` from the state stream. A *reference* posture is
+    held and only replaced once some joint leaves the
+    ``_STANDSTILL_EPS_RAD`` band around it; the moment that happens is recorded
+    as the last motion. Keeping the reference fixed while inside the band is
+    what makes a slow crawl detectable: the deviation accumulates against an
+    anchor instead of against the previous sample, where a creep of less than
+    one epsilon per sample would read as standstill indefinitely.
+
+    The hold is measured in *server* milliseconds. State packets arrive in
+    bursts on some deployments — stretches of near-silence followed by a dozen
+    at once — so counting samples, or measuring on the client clock, would call
+    a burst-delivered standstill either far too early or far too late.
+    """
+
+    def __init__(self, *, hold_ms: float = _STANDSTILL_HOLD_MS) -> None:
+        self._hold_ms = hold_ms
+        self._reference: list[float] | None = None
+        self._last_motion_ms: int | None = None
+        self._last_sample_ms: int | None = None
+
+    def update(self, server_ms: int, joints: list[float]) -> None:
+        """Record one state sample, taken at ``server_ms``."""
+        self._last_sample_ms = server_ms
+        reference = self._reference
+        if reference is None or len(reference) != len(joints):
+            self._reference = list(joints)
+            self._last_motion_ms = server_ms
+            return
+        if any(
+            abs(now - ref) > _STANDSTILL_EPS_RAD for now, ref in zip(joints, reference, strict=True)
+        ):
+            self._reference = list(joints)
+            self._last_motion_ms = server_ms
+
+    @property
+    def standstill_ms(self) -> float:
+        """How long the joints have held their reference posture [server ms].
+
+        ``0.0`` before the first sample, and whenever motion was just seen.
+        """
+        if self._last_sample_ms is None or self._last_motion_ms is None:
+            return 0.0
+        return max(0.0, float(self._last_sample_ms - self._last_motion_ms))
+
+    @property
+    def is_settled(self) -> bool:
+        """Whether the joints have been still for the full hold window."""
+        if self._last_sample_ms is None:
+            # No state yet: unknown, and "unknown" must not read as stopped.
+            return False
+        return self.standstill_ms >= self._hold_ms
 
 
 class JoggingStateTracker:

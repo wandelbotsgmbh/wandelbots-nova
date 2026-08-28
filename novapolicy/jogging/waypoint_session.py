@@ -22,7 +22,7 @@ from nova.types import Pose, RobotState
 from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.io import IOWriter
 from novapolicy.jogging.clock import JoggingTimeClock
-from novapolicy.jogging.session import JoggingStateTracker
+from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
 from novapolicy.jogging.waypoints import (
     PendingChunk,
     anchor_timestamp_ms,
@@ -97,6 +97,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._io_values: dict[str, object] | None = None
         self._io_writer = IOWriter(motion_group)
         self._jog_tracker = JoggingStateTracker(motion_group.id)
+        self._standstill = StandstillDetector()
 
         # Current robot state (updated by state stream)
         self._current_joints: list[float] | None = None
@@ -236,6 +237,23 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         — the right moment to start a time-parameterised target.
         """
         return self._jog_tracker.last_kind == "RUNNING"
+
+    @property
+    def is_at_standstill(self) -> bool:
+        """Whether the joints have stopped moving, measured from the state stream.
+
+        The server reports no "commanded waypoints ran out" state: since NOVA
+        26.6, ``PAUSED_BY_USER`` follows a Pause/Stop *request* only, and this
+        session never sends one — a drained queue keeps reporting ``RUNNING``.
+        Anything that has to know the robot actually came to rest, rather than
+        that its last deadline passed, has to ask this.
+        """
+        return self._standstill.is_settled
+
+    @property
+    def standstill_ms(self) -> float:
+        """How long the joints have been still [server ms]; ``0.0`` if moving."""
+        return self._standstill.standstill_ms
 
     @property
     def has_failed(self) -> bool:
@@ -580,6 +598,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                     continue
                 self._clock.update(ts_ms, state_timestamp)
                 self._current_state_server_ms = ts_ms
+                # Only samples carrying a server timestamp can date the hold,
+                # and those are exactly the ones the settle check compares
+                # against its schedule.
+                self._standstill.update(ts_ms, self._current_joints)
                 self._notify_state_observer(ts_ms)
                 self._measure_waypoint_tracking(ts_ms)
         except asyncio.CancelledError:

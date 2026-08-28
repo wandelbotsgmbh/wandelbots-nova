@@ -423,7 +423,9 @@ class PolicyExecutor:
                 if boundary_termination is not None:
                     return boundary_termination
             else:
-                sent_chunk = self._apply_endpoint_ramp(trimmed)
+                sent_chunk = self._align_seam_to_observation(
+                    self._apply_endpoint_ramp(trimmed), observation_time
+                )
                 await self._schema.run_computed_actions(action)
                 self._log_policy_action(action, step)
                 self._send(sent_chunk)
@@ -498,14 +500,56 @@ class PolicyExecutor:
         )
         if isinstance(self._execution, ContinuousExecution) and not needs_continuous_bridge:
             return None
+        # Anchor on where the robot is now, not on where it was when the
+        # observation was taken. A bridge's first waypoint is a measured-state
+        # hold, and `robot_states` is one inference old by the time it is sent -
+        # in continuous execution a median 0.37 deg of travel and up to 2.9 deg,
+        # which anchoring on it commands the arm back through. At a settled
+        # standstill the two are the same to 0.004 deg, so this costs sequential
+        # execution nothing.
         connected = connect_action_chunk(
             chunk,
-            robot_states,
+            self._observe() or robot_states,
             always_anchor=continuous_bridge,
         )
         if connected is None:
             return None
         return self._apply_connected_endpoint_ramp(connected)
+
+    def _align_seam_to_observation(
+        self, chunk: ActionChunk, observation_time: float
+    ) -> ActionChunk:
+        """Backdate a continuous chunk by the time inference took.
+
+        The chunk's step zero answers the observation, so on the session's
+        timeline it belongs at the moment the observation was taken - not at
+        "now", which is one inference later. Anchoring it at "now" replays the
+        motion the robot made while the policy was thinking, and every
+        replacement visibly pulls the arm back through it.
+
+        `seam_backdate_steps` is the existing seam contract for exactly this
+        (`placement` shifts the anchor, the session skips its discontinuity
+        warning, the server discards the past-stamped head), and a client that
+        computed its own - the RTC path - is left alone.
+        """
+        if (
+            not isinstance(self._execution, ContinuousExecution)
+            or chunk.seam_backdate_steps != 0
+            or chunk.dt_ms <= 0
+            # A chunk on a policy timeline is placed by its own absolute
+            # timestamps; there is no "now" anchor to correct.
+            or chunk.action_timestep >= 0
+        ):
+            return chunk
+        shortest = min(
+            (len(steps) for steps in (*chunk.joints.values(), *chunk.tcp.values())),
+            default=0,
+        )
+        elapsed_steps = int((time.monotonic() - observation_time) * 1000.0 / chunk.dt_ms)
+        backdate = min(elapsed_steps, max(0, shortest - 2))
+        if backdate <= 0:
+            return chunk
+        return chunk.model_copy(update={"seam_backdate_steps": backdate})
 
     def _apply_endpoint_ramp(self, chunk: ActionChunk) -> ActionChunk:
         ramp = (
@@ -756,7 +800,22 @@ class PolicyExecutor:
                 await asyncio.sleep(sleep_time)
 
     async def _wait_until_sessions_settled(self, exec_start: float) -> None:
-        """Wait until each submitted NOVA chunk reaches its exact final timestamp."""
+        """Wait until every submitted chunk has run out *and* the robot has stopped.
+
+        Both halves are needed. The server clock passing a chunk's last commanded
+        timestamp says the deadline elapsed, not that the robot came to rest — it
+        is still braking through the hold padding that follows. Standstill alone
+        is just as insufficient: before a chunk's waypoints are reached the robot
+        is legitimately still, so it would end the wait before any motion began.
+
+        Standstill is measured from the joint positions
+        (:attr:`WaypointJoggingSession.is_at_standstill`) rather than taken from
+        the jogging state stream. NOVA reports no "commanded waypoints ran out"
+        state: since 26.6 ``PAUSED_BY_USER`` follows a Pause/Stop *request* only,
+        and this executor never sends one, so a drained queue reports ``RUNNING``
+        indefinitely. It is still accepted here when it does appear, which is a
+        genuine standstill by any other route.
+        """
         target_chunks = {
             group_id: session.queued_chunk_count for group_id, session in self._sessions.items()
         }
@@ -773,7 +832,7 @@ class PolicyExecutor:
             if all(
                 session.scheduled_chunk_count >= target_chunks[group_id]
                 and session.last_server_timestamp_ms >= session.scheduled_until_server_ms
-                and session.jogging_state == "PAUSED_BY_USER"
+                and (session.is_at_standstill or session.jogging_state == "PAUSED_BY_USER")
                 for group_id, session in self._sessions.items()
             ):
                 return

@@ -23,7 +23,7 @@ flowchart LR
 2. Query policy → get action chunk
 3. Bridge from the observed state when the first target is farther than normal waypoint spacing
 4. Send bridge + policy waypoints as one continuous request
-5. Wait for the exact final NOVA timestamp and standstill
+5. Wait for the exact final NOVA timestamp *and* a measured standstill
 6. Go to 1
 ```
 
@@ -176,6 +176,37 @@ finish end at the last waypoint the caller asked for rather than sitting through
 the hold.
 With 20 Hz and 1s lookahead chunks, there is ~95% overlap between
 consecutive chunks, providing ample buffer.
+
+## Detecting standstill
+
+`SequentialExecution` promises to observe the robot at rest, so it has to know
+when the robot has actually stopped. Two conditions are needed and neither
+suffices alone:
+
+1. **The schedule ran out** — the server clock has reached
+   `scheduled_until_server_ms`, the timestamp of the last waypoint the caller
+   asked for. This says the deadline elapsed, not that the robot stopped: it is
+   still braking through the hold padding that follows.
+2. **The joints stopped moving** — `WaypointJoggingSession.is_at_standstill`.
+   Before a chunk's waypoints are reached the robot is legitimately still, so
+   this on its own would end the wait before any motion began.
+
+Standstill is measured client-side, from the joint positions in the state
+stream, because NOVA reports no "the commanded waypoints ran out" state. Since
+26.6 `PAUSED_BY_USER` follows a Pause/Stop *request* only — and the executor
+never sends one, since pausing also pauses the session clock the fixed timeline
+is anchored on — so a drained queue reports `RUNNING` indefinitely. Relying on
+that state instead made every episode execute exactly one chunk and then hang
+until the timeout. It is still accepted when it does appear.
+
+`StandstillDetector` holds a *reference* posture and replaces it only once some
+joint leaves a small band around it (`_STANDSTILL_EPS_RAD`, ~0.06°); the robot
+counts as settled after `_STANDSTILL_HOLD_MS` of server time inside the band.
+Holding the reference rather than differencing consecutive samples is what makes
+a slow crawl detectable — a creep of less than one epsilon per sample would
+otherwise read as standstill forever — while bounded encoder noise never
+accumulates out of the band. The hold is measured in server milliseconds, not
+sample counts, because state packets arrive in bursts on some deployments.
 
 ## Timestamp Protocol
 

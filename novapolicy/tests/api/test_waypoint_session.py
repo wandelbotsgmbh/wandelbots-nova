@@ -596,6 +596,57 @@ async def test_is_running_reflects_the_jogging_state():
 
 
 @pytest.mark.asyncio
+async def test_standstill_is_reported_once_the_joints_stop_changing():
+    """``is_at_standstill`` is driven by the joint positions, not by a pause state.
+
+    The stream here only ever reports ``RUNNING`` — which is all a NOVA 26.6
+    jogger reports once a waypoint queue drains — so a session that inferred
+    standstill from the jogging state would never report it at all.
+    """
+    still = SimpleNamespace(joints=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6))
+    # Identical joints, advancing server timestamps: a robot sitting still.
+    states = [_stream_state(still, ts_ms=1_000 + 10 * i, kind="RUNNING") for i in range(20)]
+    session, server = _build_session(states=states)
+    try:
+        await session.start()
+        assert session.is_at_standstill is False  # no state sampled yet
+        await _wait_until(lambda: session.is_at_standstill)
+        assert session.jogging_state == "RUNNING"  # never anything else
+        assert session.standstill_ms > 0
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_moving_robot_is_never_reported_as_at_standstill():
+    """Joints changing between samples keep resetting the hold."""
+    moving = [
+        _stream_state(
+            SimpleNamespace(joints=tuple(0.1 * i for _ in range(6))),
+            ts_ms=1_000 + 10 * i,
+            kind="RUNNING",
+        )
+        for i in range(1, 25)
+    ]
+    session, server = _build_session(states=moving)
+    try:
+        await session.start()
+        await session.wait_ready()
+        # Sample across the whole moving stretch; it must never read as settled.
+        for _ in range(20):
+            assert session.is_at_standstill is False
+            await asyncio.sleep(0.003)
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
 async def test_a_fired_stop_condition_ends_the_session_without_failing():
     """A stop condition that returns True stops the session as a normal end."""
 

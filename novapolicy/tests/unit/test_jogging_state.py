@@ -61,14 +61,14 @@ def test_singularity_raises():
 
 
 def test_paused_by_user_is_recoverable_and_never_raises():
-    """PAUSED_BY_USER (waypoint buffer exhausted) is recoverable, not a fault.
+    """PAUSED_BY_USER is recoverable, not a fault.
 
-    jogging.md lists PAUSED_BY_USER alongside the fatal pause states, but it
-    means "the buffer emptied, send chunks faster" — the robot resumes once a
-    new chunk arrives. It must NOT be in _BLOCKING_PAUSES and must never raise,
-    no matter how many consecutive ticks report it. This pins that contract so a
-    well-meaning edit that "completes" the table by adding PAUSED_BY_USER to the
-    blocking set would fail here.
+    It sits alongside the fatal pause states in the state enum but is not one:
+    since NOVA 26.6 it means "a Pause/Stop request was honoured", and the robot
+    resumes on unpause or on a fresh session. It must NOT be in
+    _BLOCKING_PAUSES and must never raise, no matter how many consecutive ticks
+    report it. This pins that contract so a well-meaning edit that "completes"
+    the table by adding PAUSED_BY_USER to the blocking set would fail here.
     """
     assert "PAUSED_BY_USER" not in _BLOCKING_PAUSES
     t = JoggingStateTracker("0@ur10e", confirm_ticks=2)

@@ -285,9 +285,15 @@ states, a `MotionError` is raised:
 | `PAUSED_NEAR_COLLISION` | Self-collision detected |
 | `PAUSED_NEAR_SINGULARITY` | Kinematic singularity |
 
-One pause is **recoverable** and never raises — the robot resumes on its own
-once a fresh chunk arrives:
+One pause is **recoverable** and never raises:
 
 | State | Meaning |
 |-------|---------|
-| `PAUSED_BY_USER` | Waypoint buffer exhausted (send chunks faster) |
+| `PAUSED_BY_USER` | A Pause/Stop request was honoured (the session clock is paused too) |
+
+Note what is *not* in either table: there is no state for "the commanded
+waypoints ran out". A drained queue keeps reporting `RUNNING` — the robot simply
+brakes at the end of the last waypoint. Since NOVA 26.6 `PAUSED_BY_USER` follows
+a Pause/Stop request only, and this SDK never sends one, so anything that needs
+to know the robot came to rest measures it from the joint positions instead (see
+[executor.md](executor.md)).

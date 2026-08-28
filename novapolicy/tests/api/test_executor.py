@@ -151,6 +151,11 @@ def _fake_session() -> MagicMock:
     session.session_elapsed_ms = 0
     session.is_running = False
     session.jogging_state = None
+    # Explicit, not left to auto-attribute: a bare MagicMock attribute is
+    # truthy, which would silently satisfy the settle check's standstill term
+    # and stop these tests exercising it at all.
+    session.is_at_standstill = False
+    session.standstill_ms = 0.0
     session.queued_chunk_count = 0
     session.scheduled_chunk_count = 0
     session.scheduled_until_server_ms = 0
@@ -231,9 +236,15 @@ async def test_a_run_ends_with_timeout_once_the_deadline_passes(robot: _Robot):
     assert result.steps > 0
 
 
-@pytest.mark.asyncio
-async def test_sequential_mode_delays_next_inference_until_chunk_deadline_and_pause(robot: _Robot):
-    """Sequential mode waits for the submitted chunk's final timestamp and pause."""
+async def _sequential_second_inference(
+    robot: _Robot,
+) -> tuple[asyncio.Task[object], asyncio.Event, Callable[[], int]]:
+    """Start a sequential run that stops itself on its second inference.
+
+    Returns the run task, an event set when that second inference happens, and a
+    reader for the inference count, so each test only has to script the session
+    signals it cares about.
+    """
     inference_count = 0
     second_inference = asyncio.Event()
     executor: PolicyExecutor
@@ -246,29 +257,102 @@ async def test_sequential_mode_delays_next_inference_until_chunk_deadline_and_pa
             executor.stop()
         return ActionChunk(joints={MG_ID: [[0.0] * 6]}, dt_ms=10.0)
 
-    executor = PolicyExecutor(
-        _schema(),
-        _callback(policy),
-        timeout_s=1.0,
-    )
+    executor = PolicyExecutor(_schema(), _callback(policy), timeout_s=1.0)
     run_task = asyncio.create_task(executor.run())
-
     await _wait_until(lambda: robot.session.update_chunk.call_count > 0)
     await asyncio.sleep(0.05)
     assert inference_count == 1
-    inference_count_before_deadline = inference_count
+    return run_task, second_inference, lambda: inference_count
 
+
+@pytest.mark.asyncio
+async def test_sequential_mode_delays_next_inference_until_deadline_and_standstill(robot: _Robot):
+    """Sequential mode waits for the chunk's final timestamp *and* a standstill."""
+    run_task, second_inference, inference_count = await _sequential_second_inference(robot)
+
+    before = inference_count()
     robot.session.scheduled_chunk_count = 1
     robot.session.scheduled_until_server_ms = 100
-    robot.session.jogging_state = "PAUSED_BY_USER"
+    robot.session.is_at_standstill = True
     robot.session.last_server_timestamp_ms = 99
     await asyncio.sleep(0.03)
-    assert inference_count == inference_count_before_deadline
+    assert inference_count() == before  # standstill alone is not enough
 
     robot.session.last_server_timestamp_ms = 100
     await asyncio.wait_for(second_inference.wait(), timeout=0.5)
     _ = await run_task
-    assert inference_count == 2
+    assert inference_count() == 2
+
+
+@pytest.mark.asyncio
+async def test_sequential_mode_waits_out_the_braking_ramp_after_the_deadline(robot: _Robot):
+    """A passed deadline with the robot still moving does not release the wait.
+
+    The server clock reaching the last commanded timestamp only means the
+    deadline elapsed; the robot is still braking through the hold padding that
+    follows. Inferring here observes a moving robot, which is the one thing
+    sequential execution exists to avoid.
+    """
+    run_task, second_inference, inference_count = await _sequential_second_inference(robot)
+
+    before = inference_count()
+    robot.session.scheduled_chunk_count = 1
+    robot.session.scheduled_until_server_ms = 100
+    robot.session.last_server_timestamp_ms = 150  # deadline well past
+    robot.session.is_at_standstill = False  # ...but still braking
+    await asyncio.sleep(0.05)
+    assert inference_count() == before
+
+    robot.session.is_at_standstill = True
+    await asyncio.wait_for(second_inference.wait(), timeout=0.5)
+    _ = await run_task
+    assert inference_count() == 2
+
+
+@pytest.mark.asyncio
+async def test_sequential_mode_settles_while_the_state_stream_only_reports_running(
+    robot: _Robot,
+):
+    """A jogger that never leaves RUNNING must not stall sequential execution.
+
+    Regression test for NOVA 26.6. ``PAUSED_BY_USER`` is now reported only in
+    response to a Pause/Stop request, which this executor never sends, so a
+    drained waypoint queue reports ``RUNNING`` forever. Requiring that state
+    made every episode execute exactly one chunk and then hang until the
+    timeout.
+    """
+    run_task, second_inference, inference_count = await _sequential_second_inference(robot)
+
+    robot.session.scheduled_chunk_count = 1
+    robot.session.scheduled_until_server_ms = 100
+    robot.session.last_server_timestamp_ms = 100
+    robot.session.jogging_state = "RUNNING"  # and it never becomes anything else
+    robot.session.is_at_standstill = True
+
+    await asyncio.wait_for(second_inference.wait(), timeout=0.5)
+    _ = await run_task
+    assert inference_count() == 2
+
+
+@pytest.mark.asyncio
+async def test_sequential_mode_still_accepts_a_server_reported_pause(robot: _Robot):
+    """``PAUSED_BY_USER`` remains a valid settle signal on its own.
+
+    The standstill measurement replaced this state as the *primary* signal, but
+    a server that does report it has genuinely brought the robot to rest, and
+    that must keep ending the wait.
+    """
+    run_task, second_inference, inference_count = await _sequential_second_inference(robot)
+
+    robot.session.scheduled_chunk_count = 1
+    robot.session.scheduled_until_server_ms = 100
+    robot.session.last_server_timestamp_ms = 100
+    robot.session.is_at_standstill = False
+    robot.session.jogging_state = "PAUSED_BY_USER"
+
+    await asyncio.wait_for(second_inference.wait(), timeout=0.5)
+    _ = await run_task
+    assert inference_count() == 2
 
 
 @pytest.mark.asyncio
@@ -782,3 +866,28 @@ def test_rtc_with_continuous_execution_is_accepted():
         motion=WaypointConfig(),
         execution=ContinuousExecution(rate_hz=20),
     )  # no raise
+
+
+def test_continuous_chunks_are_backdated_by_inference_time():
+    """A continuous chunk's step zero belongs where the observation was taken."""
+    import time
+
+    from novapolicy.types import ActionChunk
+
+    executor = PolicyExecutor(
+        _schema(),
+        _callback(AsyncMock()),
+        execution=ContinuousExecution(),
+    )
+    chunk = ActionChunk(joints={MG_ID: [[0.0] * 6] * 48}, dt_ms=66.7)
+
+    aligned = executor._align_seam_to_observation(chunk, time.monotonic() - 0.2)
+    assert aligned.seam_backdate_steps == 2  # 200 ms of thinking at 66.7 ms steps
+
+    # A chunk whose client already computed its own seam is left alone.
+    rtc = chunk.model_copy(update={"seam_backdate_steps": 5})
+    assert executor._align_seam_to_observation(rtc, time.monotonic() - 0.2) is rtc
+
+    # Sequential execution never backdates: its chunks start from standstill.
+    settled = PolicyExecutor(_schema(), _callback(AsyncMock()), execution=SequentialExecution())
+    assert settled._align_seam_to_observation(chunk, time.monotonic() - 0.2) is chunk
