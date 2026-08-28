@@ -4,6 +4,7 @@ import inspect
 import json
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import (
     Annotated,
     Any,
@@ -104,6 +105,17 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
         return program
 
+    def _source_dir(self) -> Path | None:
+        """Directory of the file this program is defined in.
+
+        Relative dataset paths are resolved against it, so a program finds the files it
+        declares no matter which working directory it is started from. `unwrap` follows
+        ``functools.wraps`` chains, so a decorated program still reports its own file
+        rather than the decorator's.
+        """
+        code = getattr(inspect.unwrap(self._wrapped), "__code__", None)
+        return Path(code.co_filename).resolve().parent if code is not None else None
+
     async def __call__(self, *args: Parameters.args, **kwargs: Parameters.kwargs) -> Return:  # pylint: disable=no-member
         if args:
             raise TypeError(
@@ -139,8 +151,9 @@ class Program(BaseModel, Generic[Parameters, Return]):
             )
 
         if ctx is None:
+            source_dir = self._source_dir()
             dataset = (
-                await ds.load_dataset(nova, self.preconditions.dataset)
+                await ds.load_dataset(nova, self.preconditions.dataset, relative_to=source_dir)
                 if self.preconditions and self.preconditions.dataset
                 else None
             )

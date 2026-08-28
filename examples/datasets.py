@@ -99,7 +99,7 @@ async def _move_through_dataset_poses(ctx: nova.ProgramContext, count: int):
                 type="kuka-kr16_r2010_2",
             )
         ],
-        dataset=ds.local_dataset("examples/example_dataset.json"),
+        dataset=ds.local_dataset("example_dataset.json"),
         cleanup_controllers=False,
     ),
 )

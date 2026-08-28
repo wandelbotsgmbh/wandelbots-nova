@@ -131,14 +131,42 @@ async def resolve_to_world(
     )
 
 
-async def load_dataset(nova: Nova, dataset_request: LoadDatasetRequest) -> Dataset:
-    """Load a dataset from the NOVA instance or from a local file."""
+def _resolve_local_path(local_dataset: LoadLocalDatasetRequest, relative_to: Path | None) -> Path:
+    """Resolve a local dataset path, anchoring a relative one on `relative_to`.
+
+    Relative paths are deliberately not resolved against the working directory: the
+    dataset belongs to the program that declares it, so that program's own directory
+    is the only anchor that stays correct wherever the process is started from.
+    """
+    path = Path(local_dataset.path)
+    if path.is_absolute():
+        return path
+    if relative_to is None:
+        raise ValueError(
+            f"Cannot resolve the relative dataset path '{path}': no directory to resolve it "
+            "against. Relative paths are resolved against the file of the @nova.program that "
+            "declares the dataset, so either load this through a program or use an absolute path."
+        )
+    return relative_to / path
+
+
+async def load_dataset(
+    nova: Nova, dataset_request: LoadDatasetRequest, *, relative_to: Path | None = None
+) -> Dataset:
+    """Load a dataset from the NOVA instance or from a local file.
+
+    Args:
+        nova: A connected NOVA instance.
+        dataset_request: The dataset to load.
+        relative_to: Directory a relative local path is resolved against. Programs pass
+            the directory of the file that declares the dataset.
+    """
     if dataset_request.type == "remote":
         # A remote dataset is addressed by its id, so it already carries the right one.
         return await fetch_remote_dataset(nova, dataset_request.dataset, dataset_request.revision)
 
     else:
-        return await read_local_dataset(dataset_request)
+        return await read_local_dataset(dataset_request, relative_to=relative_to)
 
 
 async def fetch_remote_dataset(
@@ -158,15 +186,24 @@ async def fetch_remote_dataset(
         raise
 
 
-async def read_local_dataset(local_dataset: LoadLocalDatasetRequest) -> Dataset:
-    """Read a local dataset from a JSON file"""
+async def read_local_dataset(
+    local_dataset: LoadLocalDatasetRequest, *, relative_to: Path | None = None
+) -> Dataset:
+    """Read a local dataset from a JSON file.
+
+    Args:
+        local_dataset: The dataset file to read.
+        relative_to: Directory a relative path is resolved against. Programs pass the
+            directory of the file that declares the dataset.
+    """
+    path = _resolve_local_path(local_dataset, relative_to)
 
     try:
-        data = await asyncio.to_thread(Path(local_dataset.path).read_text)
+        data = await asyncio.to_thread(path.read_text)
         response = api.models.GetDatasetResponse.model_validate_json(data)
         return _dataset_from_api(response)
     except Exception:
-        logger.exception(f"Failed to read local dataset from '{local_dataset.path}'")
+        logger.exception(f"Failed to read local dataset from '{path}'")
         raise
 
 
@@ -183,5 +220,15 @@ def remote_dataset(
 
 
 def local_dataset(path: str) -> LoadLocalDatasetRequest:
-    """Create a configuration for loading a dataset from a local JSON file."""
+    """Create a configuration for loading a dataset from a local JSON file.
+
+    `path` should be a plain string literal, e.g. ``ds.local_dataset("my_dataset.json")``
+    - not an expression such as ``Path(__file__).parent / "..."``, since external
+    tooling reads it directly from the program's source code.
+
+    A relative `path` is stored as written and resolved when the dataset is loaded,
+    against the file of the ``@nova.program`` that declares it. So the dataset is
+    found next to its program regardless of the working directory, and the request
+    stays portable if it is serialized and run on another machine.
+    """
     return LoadLocalDatasetRequest(path=Path(path))
