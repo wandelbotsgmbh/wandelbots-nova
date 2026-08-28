@@ -31,9 +31,9 @@ def _dataset_response(dataset_id: str = "source-set") -> api.models.GetDatasetRe
                 dataset=dataset_id,
             )
         ],
-        coordinate_systems=[
-            api.models.DatasetCoordinateSystem(
-                coordinate_system="fixture",
+        frames=[
+            api.models.DatasetFrame(
+                frame="fixture",
                 pose=api.models.Pose(position=[0, 0, 0], orientation=[0, 0, 0]),
                 dataset=dataset_id,
             )
@@ -46,6 +46,7 @@ def _nova_mock(**api_returns) -> Nova:
     """A connected Nova whose `datasets_api` methods return the given values."""
     nova = Mock(spec=Nova)
     nova.is_connected.return_value = True
+    nova.cell.return_value = Mock(id="cell")
     datasets_api = Mock()
     for name, value in api_returns.items():
         setattr(datasets_api, name, AsyncMock(return_value=value))

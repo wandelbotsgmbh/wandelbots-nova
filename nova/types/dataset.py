@@ -8,17 +8,15 @@ from nova import api
 
 
 class Dataset(api.models.Dataset):
-    """A Dataset with its persisted poses, coordinate systems and command routines.
-    Convenience class that equals the according GetDatasetResponse from the API, but with the poses, command routines and coordinate systems as dictionaries instead of lists.
+    """A Dataset with its persisted poses, frames and command routines.
+    Convenience class that equals the according GetDatasetResponse from the API, but with the poses, command routines and frames as dictionaries instead of lists.
     """
 
     poses: dict[api.models.DatasetPoseId, api.models.DatasetPose] = Field(default_factory=dict)
     command_routines: dict[api.models.CommandRoutineId, api.models.CommandRoutine] = Field(
         default_factory=dict
     )
-    coordinate_systems: dict[api.models.CoordinateSystemId, api.models.DatasetCoordinateSystem] = (
-        Field(default_factory=dict)
-    )
+    frames: dict[api.models.FrameId, api.models.DatasetFrame] = Field(default_factory=dict)
 
 
 @dataclass(frozen=True)

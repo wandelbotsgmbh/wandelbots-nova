@@ -36,7 +36,7 @@ def _dataset_file(tmp_path: Path, dataset_id: str = "default") -> Path:
                 dataset=dataset_id,
             )
         ],
-        coordinate_systems=[],
+        frames=[],
         command_routines=[],
     )
     path.write_text(response.model_dump_json())

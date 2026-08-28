@@ -43,14 +43,14 @@ class TestDataset:
 
         assert dataset.poses == {}
         assert dataset.command_routines == {}
-        assert dataset.coordinate_systems == {}
+        assert dataset.frames == {}
 
-    def test_accepts_poses_and_coordinate_systems_keyed_by_their_identifier(self):
+    def test_accepts_poses_and_frames_keyed_by_their_identifier(self):
         dataset = _dataset(
             poses={"pick": _pose("pick"), "place": _pose("place")},
-            coordinate_systems={
-                "fixture": api.models.DatasetCoordinateSystem(
-                    coordinate_system="fixture",
+            frames={
+                "fixture": api.models.DatasetFrame(
+                    frame="fixture",
                     pose=api.models.Pose(position=[0, 0, 0], orientation=[0, 0, 0]),
                     dataset="default",
                 )
@@ -59,7 +59,7 @@ class TestDataset:
 
         assert set(dataset.poses) == {"pick", "place"}
         assert dataset.poses["pick"].dataset_pose == "pick"
-        assert set(dataset.coordinate_systems) == {"fixture"}
+        assert set(dataset.frames) == {"fixture"}
 
 
 class TestLoadRequests:
