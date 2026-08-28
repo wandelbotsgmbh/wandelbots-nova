@@ -1,5 +1,5 @@
 """
-This example shows how to load a NOVA dataset (poses, coordinate systems and
+This example shows how to load a NOVA dataset (poses, frames and
 command routines) and use its poses inside a motion program.
 
 This demonstrates:
@@ -8,8 +8,8 @@ This demonstrates:
 - Reading poses from the loaded dataset and using them directly as motion targets
 
 Note: This example only uses dataset poses that are defined in the world
-coordinate system (coordinate_system=None), e.g. "home", "pick" and "place".
-Poses that are defined relative to a dataset coordinate system (e.g.
+frame (frame=None), e.g. "home", "pick" and "place".
+Poses that are defined relative to a dataset frame (e.g.
 "table-corner" or "fixture-slot-a") first need to be resolved to world
 coordinates via `nova.datasets.resolve_to_world` - that is outside the scope
 of this minimal example.
@@ -47,12 +47,12 @@ async def _move_through_dataset_poses(ctx: nova.ProgramContext, count: int):
     # Translating a pose between world and local frame
     pick_pose_fixture = (
         await ds.localize_pose_from_world(
-            ctx.nova, [pick_pose.pose], coordinate_system="fixture", dataset=ctx.dataset.dataset
+            ctx.nova, [pick_pose.pose], frame="fixture", dataset=ctx.dataset.dataset
         )
     )[0]
     pick_pose_world = (
         await ds.resolve_to_world(
-            ctx.nova, [pick_pose_fixture], coordinate_system="fixture", dataset=ctx.dataset.dataset
+            ctx.nova, [pick_pose_fixture], frame="fixture", dataset=ctx.dataset.dataset
         )
     )[0]
 
