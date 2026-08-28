@@ -146,3 +146,28 @@ class TestReadLocalDataset:
 
         with pytest.raises(ValidationError):
             await ds.read_local_dataset(ds.local_dataset(str(path)))
+
+    async def test_relative_path_is_resolved_against_relative_to(self, tmp_path: Path):
+        (tmp_path / "dataset.json").write_text(_dataset_response("source-set").model_dump_json())
+
+        result = await ds.read_local_dataset(ds.local_dataset("dataset.json"), relative_to=tmp_path)
+
+        assert result.dataset == "source-set"
+
+    async def test_relative_path_ignores_the_working_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The anchor wins even when a same-named file sits in the working directory."""
+        (tmp_path / "dataset.json").write_text(_dataset_response("anchored").model_dump_json())
+        decoy = tmp_path / "decoy"
+        decoy.mkdir()
+        (decoy / "dataset.json").write_text(_dataset_response("from-cwd").model_dump_json())
+        monkeypatch.chdir(decoy)
+
+        result = await ds.read_local_dataset(ds.local_dataset("dataset.json"), relative_to=tmp_path)
+
+        assert result.dataset == "anchored"
+
+    async def test_relative_path_without_an_anchor_raises(self):
+        with pytest.raises(ValueError, match="Cannot resolve the relative dataset path"):
+            await ds.read_local_dataset(ds.local_dataset("dataset.json"))
