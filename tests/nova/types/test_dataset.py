@@ -6,9 +6,11 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+import nova
 from nova import api
 from nova import datasets as ds
 from nova.types import Dataset
+from nova.types.dataset import LoadLocalDatasetRequest
 
 _TIMESTAMP = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
 
@@ -70,11 +72,30 @@ class TestLoadRequests:
         assert request.dataset == "default"
         assert request.revision is None
 
-    def test_local_request_wraps_path(self):
-        request = ds.local_dataset("examples/example_dataset.json")
+    def test_local_request_keeps_a_relative_path_as_written(self):
+        """Resolution is deferred to load time, so the request stays machine-portable."""
+        request = ds.local_dataset("example_dataset.json")
 
         assert request.type == "local"
-        assert request.path == Path("examples/example_dataset.json")
+        assert request.path == Path("example_dataset.json")
+
+    def test_local_request_keeps_an_absolute_path_untouched(self, tmp_path: Path):
+        path = tmp_path / "dataset.json"
+
+        request = ds.local_dataset(str(path))
+
+        assert request.path == path
+
+    def test_relative_local_request_survives_a_serialization_round_trip(self):
+        """novax publishes preconditions as JSON - a relative path must stay relative."""
+        preconditions = nova.ProgramPreconditions(dataset=ds.local_dataset("example_dataset.json"))
+
+        dumped = preconditions.model_dump(mode="json")
+        restored = nova.ProgramPreconditions.model_validate(dumped)
+
+        assert dumped["dataset"]["path"] == "example_dataset.json"
+        assert isinstance(restored.dataset, LoadLocalDatasetRequest)
+        assert Path(restored.dataset.path) == Path("example_dataset.json")
 
     def test_remote_dataset_id_must_match_the_id_pattern(self):
         with pytest.raises(ValidationError):

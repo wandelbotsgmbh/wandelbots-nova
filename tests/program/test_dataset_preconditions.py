@@ -1,8 +1,14 @@
 """Tests for wiring a dataset through `ProgramPreconditions` into `ProgramContext`."""
 
 import datetime
+import importlib.util
+import sys
+import textwrap
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
+
+import pytest
 
 import nova
 from nova import api
@@ -126,3 +132,81 @@ class TestDatasetIsLoadedIntoContext:
             return ctx.dataset is None
 
         assert await no_dataset(nova=_connected_nova()) is True
+
+
+class TestRelativeDatasetPathResolution:
+    """End-to-end: a program declaring a relative dataset path finds it next to itself."""
+
+    # Declares its dataset in the preconditions, loaded before the body runs.
+    _PRECONDITION_PROGRAM = """
+        import nova
+        from nova import datasets as ds
+
+        @nova.program(
+            id="relative-dataset",
+            preconditions=nova.ProgramPreconditions(dataset=ds.local_dataset("dataset.json")),
+        )
+        async def relative_dataset(ctx: nova.ProgramContext) -> str:
+            assert ctx.dataset is not None
+            return ctx.dataset.dataset
+    """
+
+    # Loads its dataset from inside the body, through the running context.
+    _RUNTIME_PROGRAM = """
+        import nova
+        from nova import datasets as ds
+
+        @nova.program(id="relative-dataset")
+        async def relative_dataset(ctx: nova.ProgramContext) -> str:
+            loaded = await ctx.load_dataset(ds.local_dataset("dataset.json"))
+            return loaded.dataset
+    """
+
+    @staticmethod
+    def _write_program(directory: Path, source: str) -> Any:
+        """Write and import a program module that declares a dataset by bare filename."""
+        module_file = directory / "relative_dataset_program.py"
+        module_file.write_text(textwrap.dedent(source))
+        spec = importlib.util.spec_from_file_location("relative_dataset_program", module_file)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.modules.pop(spec.name, None)
+        return module
+
+    async def test_resolves_next_to_the_program_file(self, tmp_path: Path):
+        _dataset_file(tmp_path, "next-to-program")
+        module = self._write_program(tmp_path, self._PRECONDITION_PROGRAM)
+
+        assert await module.relative_dataset(nova=_connected_nova()) == "next-to-program"
+
+    async def test_ignores_the_working_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A same-named dataset in the working directory must not win over the program's own."""
+        _dataset_file(tmp_path, "next-to-program")
+        module = self._write_program(tmp_path, self._PRECONDITION_PROGRAM)
+
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        _dataset_file(elsewhere, "from-working-directory")
+        monkeypatch.chdir(elsewhere)
+
+        assert await module.relative_dataset(nova=_connected_nova()) == "next-to-program"
+
+    async def test_context_load_dataset_uses_the_same_anchor(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Datasets loaded at runtime resolve against the program file, not the cwd."""
+        _dataset_file(tmp_path, "next-to-program")
+        module = self._write_program(tmp_path, self._RUNTIME_PROGRAM)
+
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        _dataset_file(elsewhere, "from-working-directory")
+        monkeypatch.chdir(elsewhere)
+
+        assert await module.relative_dataset(nova=_connected_nova()) == "next-to-program"
