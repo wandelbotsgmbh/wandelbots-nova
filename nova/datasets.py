@@ -17,16 +17,14 @@ logger = logging.getLogger(__name__)
 def _dataset_from_api(api_dataset: api.models.GetDatasetResponse) -> Dataset:
     """Convert the api datasets response into the convinience class Dataset"""
     return Dataset(
-        **api_dataset.model_dump(exclude={"poses", "command_routines", "coordinate_systems"}),
+        **api_dataset.model_dump(exclude={"poses", "command_routines", "frames"}),
         poses={pose.dataset_pose: pose for pose in api_dataset.poses} if api_dataset.poses else {},
         command_routines={
             routine.command_routine: routine for routine in api_dataset.command_routines
         }
         if api_dataset.command_routines
         else {},
-        coordinate_systems={cs.coordinate_system: cs for cs in api_dataset.coordinate_systems}
-        if api_dataset.coordinate_systems
-        else {},
+        frames={frame.frame: frame for frame in api_dataset.frames} if api_dataset.frames else {},
     )
 
 
@@ -56,7 +54,7 @@ async def list_datasets(
 
 
 async def create_dataset(nova: Nova, create_request: api.models.CreateDatasetRequest) -> Dataset:
-    """Create a dataset together with its poses, coordinate systems and command routines.
+    """Create a dataset together with its poses, frames and command routines.
 
     Args:
         nova: A connected NOVA instance.
@@ -93,11 +91,11 @@ async def delete_dataset(
 async def localize_pose_from_world(
     nova: Nova,
     poses: list[api.models.Pose],
-    coordinate_system: api.models.CoordinateSystemId,
+    frame: api.models.FrameId,
     dataset: api.models.DatasetId,
     revision: int | None = None,
 ) -> list[api.models.Pose]:
-    """Localize poses that are expressed in the world coordinate system into the given dataset coordinate system."""
+    """Localize poses that are expressed in the world frame into the given dataset frame."""
 
     if not len(poses):
         logger.warning("No dataset poses provided, returning empty list.")
@@ -107,19 +105,15 @@ async def localize_pose_from_world(
         "NOVA instance needs to be connected, in order to resolve dataset poses."
     )
 
-    return await nova.api.datasets_api.localize_dataset_coordinate_system_pose(
-        cell=nova.cell().id,
-        dataset=str(dataset),
-        revision=revision,
-        coordinate_system=str(coordinate_system),
-        poses=poses,
+    return await nova.api.datasets_api.localize_dataset_frame_pose(
+        cell=nova.cell().id, dataset=str(dataset), revision=revision, frame=str(frame), poses=poses
     )
 
 
 async def resolve_to_world(
     nova: Nova,
     poses: list[api.models.Pose],
-    coordinate_system: api.models.CoordinateSystemId,
+    frame: api.models.FrameId,
     dataset: api.models.DatasetId,
     revision: int | None = None,
 ) -> list[api.models.Pose]:
@@ -132,12 +126,8 @@ async def resolve_to_world(
         "NOVA instance needs to be connected, in order to resolve dataset poses."
     )
 
-    return await nova.api.datasets_api.resolve_dataset_coordinate_system_pose(
-        cell=nova.cell().id,
-        dataset=str(dataset),
-        revision=revision,
-        coordinate_system=str(coordinate_system),
-        poses=poses,
+    return await nova.api.datasets_api.resolve_dataset_frame_pose(
+        cell=nova.cell().id, dataset=str(dataset), revision=revision, frame=str(frame), poses=poses
     )
 
 

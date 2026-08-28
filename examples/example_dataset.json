@@ -20,7 +20,6 @@
         ]
       },
       "kinematic_configuration": null,
-      "coordinate_system": null,
       "dataset_pose": "home",
       "dataset": "default",
       "name": "home",
@@ -29,7 +28,8 @@
       "updated_at": "2026-08-24T08:07:42.193534Z",
       "metadata": {
         "seeded": "true"
-      }
+      },
+      "frame": null
     },
     {
       "pose": {
@@ -45,7 +45,6 @@
         ]
       },
       "kinematic_configuration": null,
-      "coordinate_system": null,
       "dataset_pose": "pick",
       "dataset": "default",
       "name": "pick",
@@ -54,7 +53,8 @@
       "updated_at": "2026-08-24T08:07:42.193534Z",
       "metadata": {
         "seeded": "true"
-      }
+      },
+      "frame": null
     },
     {
       "pose": {
@@ -70,7 +70,6 @@
         ]
       },
       "kinematic_configuration": null,
-      "coordinate_system": null,
       "dataset_pose": "place",
       "dataset": "default",
       "name": "place",
@@ -79,7 +78,8 @@
       "updated_at": "2026-08-24T08:07:42.193534Z",
       "metadata": {
         "seeded": "true"
-      }
+      },
+      "frame": null
     },
     {
       "pose": {
@@ -95,7 +95,6 @@
         ]
       },
       "kinematic_configuration": null,
-      "coordinate_system": "table",
       "dataset_pose": "table-origin",
       "dataset": "default",
       "name": "table_origin",
@@ -104,7 +103,8 @@
       "updated_at": "2026-08-24T08:07:42.193534Z",
       "metadata": {
         "seeded": "true"
-      }
+      },
+      "frame": "table"
     },
     {
       "pose": {
@@ -120,7 +120,6 @@
         ]
       },
       "kinematic_configuration": null,
-      "coordinate_system": "table",
       "dataset_pose": "table-corner",
       "dataset": "default",
       "name": "table_corner",
@@ -129,7 +128,8 @@
       "updated_at": "2026-08-24T08:07:42.193534Z",
       "metadata": {
         "seeded": "true"
-      }
+      },
+      "frame": "table"
     },
     {
       "pose": {
@@ -145,7 +145,6 @@
         ]
       },
       "kinematic_configuration": null,
-      "coordinate_system": "fixture",
       "dataset_pose": "fixture-slot-a",
       "dataset": "default",
       "name": "fixture_slot_a",
@@ -154,7 +153,8 @@
       "updated_at": "2026-08-24T08:07:42.193534Z",
       "metadata": {
         "seeded": "true"
-      }
+      },
+      "frame": "fixture"
     },
     {
       "pose": {
@@ -170,7 +170,6 @@
         ]
       },
       "kinematic_configuration": null,
-      "coordinate_system": "fixture",
       "dataset_pose": "fixture-slot-b",
       "dataset": "default",
       "name": "fixture_slot_b",
@@ -179,7 +178,8 @@
       "updated_at": "2026-08-24T08:07:42.193534Z",
       "metadata": {
         "seeded": "true"
-      }
+      },
+      "frame": "fixture"
     },
     {
       "pose": {
@@ -195,7 +195,6 @@
         ]
       },
       "kinematic_configuration": null,
-      "coordinate_system": "tool-frame",
       "dataset_pose": "tool-tip",
       "dataset": "default",
       "name": "tool_tip",
@@ -204,63 +203,8 @@
       "updated_at": "2026-08-24T08:07:42.193534Z",
       "metadata": {
         "seeded": "true"
-      }
-    }
-  ],
-  "coordinate_systems": [
-    {
-      "coordinate_system": "table",
-      "name": "Table",
-      "parent": null,
-      "pose": {
-        "position": [
-          0.5,
-          0,
-          0
-        ],
-        "orientation": [
-          0,
-          0,
-          0
-        ]
       },
-      "dataset": "default"
-    },
-    {
-      "coordinate_system": "fixture",
-      "name": "Fixture",
-      "parent": "table",
-      "pose": {
-        "position": [
-          0.1,
-          0.1,
-          0.05
-        ],
-        "orientation": [
-          0,
-          0,
-          0
-        ]
-      },
-      "dataset": "default"
-    },
-    {
-      "coordinate_system": "tool-frame",
-      "name": "Tool frame",
-      "parent": "fixture",
-      "pose": {
-        "position": [
-          0,
-          0,
-          0.15
-        ],
-        "orientation": [
-          0,
-          0,
-          0
-        ]
-      },
-      "dataset": "default"
+      "frame": "tool-frame"
     }
   ],
   "command_routines": [
@@ -288,6 +232,62 @@
       },
       "created_at": "2026-08-24T08:07:42.193534Z",
       "updated_at": "2026-08-24T08:07:42.193534Z"
+    }
+  ],
+  "frames": [
+    {
+      "frame": "table",
+      "name": "Table",
+      "reference_frame": null,
+      "pose": {
+        "position": [
+          0.5,
+          0,
+          0
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "dataset": "default"
+    },
+    {
+      "frame": "fixture",
+      "name": "Fixture",
+      "reference_frame": "table",
+      "pose": {
+        "position": [
+          0.1,
+          0.1,
+          0.05
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "dataset": "default"
+    },
+    {
+      "frame": "tool-frame",
+      "name": "Tool frame",
+      "reference_frame": "fixture",
+      "pose": {
+        "position": [
+          0,
+          0,
+          0.15
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "dataset": "default"
     }
   ]
 }
