@@ -21,7 +21,6 @@ async def main(ctx: nova.ProgramContext):
     amplitude = 0.3
     frequency = 0.5
     ramp_s = 0.5
-    settle_s = 0.5
     chunk_size = 8
     dt_ms = 33.0
     dt_s = dt_ms / 1000.0
@@ -32,6 +31,10 @@ async def main(ctx: nova.ProgramContext):
         return x**3 * (x * (x * 6 - 15) + 10)
 
     def target_at(t: float) -> list[float]:
+        # Clamped because the chunk looks past ``duration``: those steps hold the
+        # envelope's end value, so the motion finishes at zero velocity. Leaving
+        # the context manager then waits for the waypoints already sent to run
+        # out, so there is no need to keep sending a hold to drain the lookahead.
         bounded_t = min(max(t, 0.0), duration)
         envelope = smootherstep(bounded_t / ramp_s) * smootherstep((duration - bounded_t) / ramp_s)
         target = list(HOME)
@@ -42,12 +45,12 @@ async def main(ctx: nova.ProgramContext):
     async with jog_joints(mg, start_joint_position=HOME) as jogger:
         async for _ in jogger:
             t = jogger.elapsed
-            if t >= duration + settle_s:
+            if t >= duration:
                 break
             if t - last_send_t < send_period_s:
                 continue
             chunk = [target_at(t + i * dt_s) for i in range(chunk_size)]
-            jogger.set_target(chunk, dt_ms=dt_ms)
+            jogger.set_chunk(chunk, dt_ms=dt_ms)
             last_send_t = t
 
 

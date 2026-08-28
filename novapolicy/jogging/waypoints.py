@@ -1,9 +1,9 @@
-"""Waypoint request construction for jogging.
+"""Waypoint request construction for action chunk streaming.
 
 Pure helpers that turn raw action steps + timing into NOVA API request models
-(``JointWaypointsRequest`` / ``PoseWaypointsRequest``), plus the small
-pending-chunk record. No session state lives here — the session passes in its
-:class:`~novapolicy.jogging.clock.JoggingTimeClock` and mode.
+(``ActionChunkRequest``, carrying joint- or pose-flavoured waypoints), plus the
+small pending-chunk record. No session state lives here — the session passes in
+its :class:`~novapolicy.jogging.clock.JoggingTimeClock` and mode.
 """
 
 from __future__ import annotations
@@ -84,8 +84,8 @@ def make_waypoints_request(
     first_timestamp_ms: int | None = None,
     timestamp_offset_steps: int = 0,
     server_dt_ms: float | None = None,
-) -> api.models.JointWaypointsRequest | api.models.PoseWaypointsRequest:
-    """Build a JointWaypointsRequest or PoseWaypointsRequest at stream-yield time.
+) -> api.models.ActionChunkRequest:
+    """Build the ActionChunkRequest for a chunk at stream-yield time.
 
     Every waypoint carries an absolute server-time timestamp laid out as
     ``base + i*dt``. The only decision is where ``base`` (step 0) sits:
@@ -112,31 +112,28 @@ def make_waypoints_request(
     base_ms = max(0, anchor_timestamp_ms(base_ms, timestamp_offset_steps, step_dt_ms))
     timestamps = [base_ms + int(i * step_dt_ms) for i in range(len(steps))]
 
-    if mode == "cartesian":
-        return _build_pose_request(timestamps, steps)
-    return _build_joint_request(timestamps, steps)
+    coordinates = _pose_coordinates(steps) if mode == "cartesian" else _joint_coordinates(steps)
 
-
-def _build_joint_request(
-    timestamps: list[int], steps: list[list[float]]
-) -> api.models.JointWaypointsRequest:
-    """Build a JointWaypointsRequest from timestamps and joint steps.
-
-    The request uses the array-of-structs layout: a single ``waypoints``
-    list where each ``JointWaypoint`` bundles its timestamp with its joints.
-    """
-    return api.models.JointWaypointsRequest(
+    return api.models.ActionChunkRequest(
         waypoints=[
-            api.models.JointWaypoint(timestamp=ts, joints=api.models.Joints(root=step))
-            for ts, step in zip(timestamps, steps, strict=True)
+            api.models.Waypoint(timestamp=ts, waypoint=coordinate)
+            for ts, coordinate in zip(timestamps, coordinates, strict=True)
         ],
     )
 
 
-def _build_pose_request(
-    timestamps: list[int], steps: list[list[float]]
-) -> api.models.PoseWaypointsRequest:
-    """Build a PoseWaypointsRequest from timestamps and TCP pose steps.
+def _joint_coordinates(steps: list[list[float]]) -> list[api.models.WaypointCoordinates]:
+    """Wrap joint steps [rad] as ``JOINTS`` waypoint coordinates."""
+    return [
+        api.models.WaypointCoordinates(
+            api.models.JointWaypoint(joints=api.models.Joints(root=step))
+        )
+        for step in steps
+    ]
+
+
+def _pose_coordinates(steps: list[list[float]]) -> list[api.models.WaypointCoordinates]:
+    """Wrap TCP pose steps as ``POSE`` waypoint coordinates.
 
     Each step is [x, y, z, rx, ry, rz] where position is in mm and
     orientation is a rotation vector in radians.
@@ -147,12 +144,14 @@ def _build_pose_request(
         Vector3d,
     )
 
-    waypoints = []
-    for ts, step in zip(timestamps, steps, strict=True):
-        pos = Vector3d(root=list(step[:3]))
-        orient = RotationVector(root=list(step[3:6]))
-        waypoints.append(
-            api.models.PoseWaypoint(timestamp=ts, pose=ApiPose(position=pos, orientation=orient))
+    return [
+        api.models.WaypointCoordinates(
+            api.models.PoseWaypoint(
+                pose=ApiPose(
+                    position=Vector3d(root=list(step[:3])),
+                    orientation=RotationVector(root=list(step[3:6])),
+                )
+            )
         )
-
-    return api.models.PoseWaypointsRequest(waypoints=waypoints)
+        for step in steps
+    ]

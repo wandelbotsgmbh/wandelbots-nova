@@ -1,7 +1,7 @@
 # Jogging
 
-Stream waypoints to the NOVA Jogging API directly — no policy, no schema, no
-cameras. This is the simplest way to move a robot: open a session, send targets,
+Stream waypoints to the NOVA Action Chunk Streaming API directly — no policy, no
+schema, no cameras. The simplest way to move a robot: open a session, send targets,
 and the server handles velocity profiling, interpolation, limits, and servo
 control internally.
 
@@ -49,7 +49,7 @@ async with jog_joints(mg) as jogger:
     async for state in jogger:
         # 8 future targets at 33ms spacing
         chunk = [compute_target(t + i * 0.033) for i in range(8)]
-        jogger.set_target(chunk, dt_ms=33.0)
+        jogger.set_chunk(chunk, dt_ms=33.0)
 ```
 
 Regenerate chunks at a stable cadence that leaves multiple future waypoints in
@@ -58,7 +58,15 @@ the server profile; replacing too slowly lets the queue run dry. For finite
 motion, ramp the target to zero velocity and acceleration. The chunked examples
 show this pattern.
 
-`dt_ms` is required for a chunk — it is the spacing between its steps.
+Chunks go to `set_chunk`, live targets to `set_target`. The two are separate
+methods because they take different settings: a chunk needs `dt_ms` (the spacing
+between its steps, required) and gets its horizon from `min_chunk_horizon_ms`,
+while a live target needs no spacing and gets its horizon from
+`buffer_window_ms`. Handing a chunk to `set_target` raises `TypeError` rather
+than silently ignoring the buffer, and vice versa.
+
+For TCP jogging, note the asymmetry: `set_target` takes a `Pose`, while
+`set_chunk` takes raw `[x, y, z, rx, ry, rz]` steps.
 
 ### Where a chunk lands
 
@@ -93,11 +101,33 @@ step indices.
 
 ### Closing the session
 
-Leaving the `async with` block waits for the waypoints already accepted by the
-server to finish executing before tearing the session down, so a clean exit does
-not truncate commanded motion part-way through. That wait is skipped when the loop
-ended for a reason that wants the robot stopped now — a fault, an e-stop, or a
-fired stop condition.
+The robot stops when the jogging connection closes, wherever it happens to be on
+the path. Two things follow.
+
+First, leaving the `async with` block waits for the waypoints already accepted by
+the server to finish executing before tearing the session down, so a clean exit
+does not truncate commanded motion part-way through. That wait is skipped when the
+loop ended for a reason that wants the robot stopped now — a fault, an e-stop, or
+a fired stop condition — where closing the connection *is* the stop. It is also
+abandoned after `_DRAIN_TIMEOUT_S` if the server stops reporting progress, which
+is logged.
+
+Second, **end your motion at rest**. Nothing in the session decelerates for you:
+if the last commanded waypoint still carries full velocity, that is the velocity
+the robot is at when the connection closes. Shape the trajectory so it arrives at
+zero velocity instead. What to shape depends on the path:
+
+| motion | ease | why |
+|--------|------|-----|
+| oscillation about a home pose | its **amplitude** | ramping the amplitude to zero returns to the home pose and stops there |
+| a closed or fixed path (circle, line) | its **phase** | an amplitude envelope drags the TCP off the path — to a circle's centre, for one — while warping the phase keeps it exactly on the path and only slows it |
+
+Use a curve that is zero in both the first and second derivative at the ends —
+`smootherstep`, `6x⁵ − 15x⁴ + 10x³`. Plain `smoothstep` (`3x² − 2x³`) zeroes the
+velocity but enters and leaves at peak acceleration, which the robot executes as a
+stumble; that is the same defect as a linear ramp, one order up. This is also the
+curve `ease_in_s` uses internally. `jogging_single_tcp.py` shows the phase warp and
+`jogging_single_joint_chunked.py` the amplitude envelope.
 
 Rerun state visualization should not be configured faster than the controller
 state source: duplicate states cost sampling and serialisation work without adding
@@ -140,12 +170,12 @@ buffer is resampled onto a uniform grid (`WaypointConfig.single_step_dt_ms`) by
 interpolating at those stamps. Handing the samples over with an averaged `dt`
 instead replays each one at the wrong moment, which time-warps the trajectory.
 
-`buffer_window_ms` applies to live targets only. A chunk carries its own horizon,
-so there is nothing to buffer and no latency to pay — see
-[Chunked targets](#chunked-targets). Pushing a chunk also clears the ring buffer;
-alternating the two forms on one motion group means the live targets after each
-chunk go out alone until the buffer refills, and the jogger warns once per motion
-group when that happens.
+`buffer_window_ms` applies to `set_target` only. Chunks go to `set_chunk` and
+carry their own horizon, so there is nothing to buffer and no latency to pay
+there — see [Chunked targets](#chunked-targets). Sending a chunk clears the ring
+buffer; alternating the two methods on one motion group means the live targets
+after each chunk go out alone until the buffer refills, and the jogger warns once
+per motion group when that happens.
 
 ## Timing targets (`jogger.elapsed`)
 
@@ -221,19 +251,25 @@ async with jog_joints([mg1, mg2]) as jogger:
 async with jog_tcp({mg1: "Flange", mg2: "Gripper"}) as jogger:
     async for states in jogger:
         jogger.set_target({mg1: pose1, mg2: pose2})
+
+# Chunks take the same per-motion-group dict form
+async with jog_joints([mg1, mg2]) as jogger:
+    async for states in jogger:
+        jogger.set_chunk({mg1: chunk1, mg2: chunk2}, dt_ms=33.0)
 ```
 
-## Waypoint request types
+## Waypoint kinds
 
-The NOVA Jogging API accepts **timestamped waypoints** — either joint positions
-or TCP poses:
+The NOVA Action Chunk Streaming API accepts **timestamped waypoints** in a single
+`ActionChunkRequest`. Each waypoint carries either joint positions or a TCP pose,
+and the mode picks which:
 
-| Mode | Request | Steps format | Use case |
-|------|---------|--------------|----------|
-| `"joint"` | `JointWaypointsRequest` | Joint radians `[j1, j2, ..., j6]` | Joint-space (default) |
-| `"cartesian"` | `PoseWaypointsRequest` | TCP pose `[x, y, z, rx, ry, rz]` (mm + rad) | Cartesian-space |
+| Mode | Waypoint kind | Steps format | Use case |
+|------|---------------|--------------|----------|
+| `"joint"` | `JointWaypoint` (`JOINTS`) | Joint radians `[j1, j2, ..., j6]` | Joint-space (default) |
+| `"cartesian"` | `PoseWaypoint` (`POSE`) | TCP pose `[x, y, z, rx, ry, rz]` (mm + rad) | Cartesian-space |
 
-`jog_joints` / `jog_tcp` pick the request type for you. Under a policy, the mode
+`jog_joints` / `jog_tcp` pick the waypoint kind for you. Under a policy, the mode
 is selected automatically based on whether the schema contains
 `Observation.tcp(..., action=True)` entries.
 

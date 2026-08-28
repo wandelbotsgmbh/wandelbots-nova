@@ -1,4 +1,4 @@
-"""Jogging — waypoint-based motion control via the NOVA Jogging API.
+"""Jogging — waypoint-based motion control via NOVA action chunk streaming.
 
 This subpackage owns all jogging functionality: the low-level
 ``WaypointJoggingSession`` that streams timestamped waypoints, the

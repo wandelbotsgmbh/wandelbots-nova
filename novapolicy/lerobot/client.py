@@ -41,11 +41,17 @@ class LeRobotPolicyClient(PolicyClient):
         timeout_s: Deadline for individual gRPC calls.
         use_async_queue: Use timestamp-aligned asynchronous inference.
         async_queue_aggregation: How predictions for an existing future
-            timestep are aggregated.
+            timestep are aggregated. Defaults to ``AVERAGE``: on both cells
+            measured so far (UR3 plug task, UR10e pick-and-place) it showed
+            lower peak path curvature than LeRobot's own weighted average.
         async_queue_refill_threshold: Remaining queue fraction that starts an
             asynchronous refill.
         async_queue_smoothing: Smooth only the replaceable lookahead after
-            aggregation while retaining the active prefix exactly.
+            aggregation while retaining the active prefix exactly. On by
+            default: it removes the waypoint-scale kinks aggregation seams
+            leave, at the cost of rounding intended corners by about two
+            waypoints - pass ``False`` for tasks that need sharp contact
+            transitions.
 
     Note:
         LeRobot's protocol uses pickle and must only be used on trusted networks.
@@ -63,9 +69,9 @@ class LeRobotPolicyClient(PolicyClient):
         device: str = "cpu",
         timeout_s: float = 15.0,
         use_async_queue: bool = False,
-        async_queue_aggregation: AsyncQueueAggregation = AsyncQueueAggregation.WEIGHTED_AVERAGE,
+        async_queue_aggregation: AsyncQueueAggregation = AsyncQueueAggregation.AVERAGE,
         async_queue_refill_threshold: float = _DEFAULT_ASYNC_QUEUE_REFILL_THRESHOLD,
-        async_queue_smoothing: bool = False,
+        async_queue_smoothing: bool = True,
     ) -> None:
         if fps <= 0:
             raise ValueError(f"fps must be positive, got {fps}")

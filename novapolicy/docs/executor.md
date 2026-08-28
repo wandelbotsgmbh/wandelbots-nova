@@ -10,7 +10,7 @@ API (`jog_joints` / `jog_tcp`), see [jogging.md](jogging.md).
 flowchart LR
     Policy["Policy"] -->|"action chunk\n(positions + dt_ms)"| Executor
     Executor -->|"trimmed chunk"| Session["WaypointJoggingSession"]
-    Session -->|"JointWaypointsRequest\nor PoseWaypointsRequest"| NOVA["NOVA Jogging API"]
+    Session -->|"ActionChunkRequest\n(JOINTS or POSE waypoints)"| NOVA["NOVA Action Chunk Streaming API"]
     NOVA -->|"state stream\n(jogger_session_timestamp_ms)"| Session
 ```
 
@@ -180,8 +180,8 @@ consecutive chunks, providing ample buffer.
 ## Timestamp Protocol
 
 Each waypoint carries a timestamp (milliseconds since session start). The server
-maintains an internal clock that starts when the first `JointWaypointsRequest`
-or `PoseWaypointsRequest` is received.
+maintains an internal clock that starts when the first `ActionChunkRequest` is
+received.
 
 The server exposes that clock as `jogger_session_timestamp_ms` in the state
 stream (`JoggingDetails`). One server millisecond is one millisecond of motion:

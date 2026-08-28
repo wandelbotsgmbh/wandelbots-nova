@@ -164,7 +164,7 @@ This produces observations like:
 }
 ```
 
-The policy returns an `ActionChunk` keyed by motion-group id. Joint targets are sent as `JointWaypointsRequest`, TCP targets as `PoseWaypointsRequest`, and IO values get written to hardware (use `BoolMapping`/`Mapping` on the matching observation so a learned policy's scaled outputs map back to hardware values).
+The policy returns an `ActionChunk` keyed by motion-group id. Targets are sent as an `ActionChunkRequest` — joint targets as `JOINTS` waypoints, TCP targets as `POSE` waypoints — and IO values get written to hardware (use `BoolMapping`/`Mapping` on the matching observation so a learned policy's scaled outputs map back to hardware values).
 
 ### Cameras
 

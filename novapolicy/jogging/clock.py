@@ -58,8 +58,9 @@ class JoggingTimeClock:
     """Tracks and extrapolates the server's jogger session clock.
 
     The server exposes ``jogger_session_timestamp_ms`` in the state stream
-    (field on ``JoggingDetails``). It starts at 0 after ``InitializeJoggingRequest``
-    and increments while waypoints are being executed.
+    (field on ``JoggingDetails``). It starts at 0 after
+    ``InitializeActionChunksRequest`` and increments while waypoints are being
+    executed.
 
     This class observes that timestamp alongside client monotonic time so that
     server "now" can be extrapolated between state samples. Timestamps are used

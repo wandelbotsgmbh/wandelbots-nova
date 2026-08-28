@@ -1,8 +1,8 @@
 """Waypoint jogging session — sends timestamped position waypoints directly.
 
-Uses NOVA's JointWaypointsRequest and PoseWaypointsRequest to stream action
-chunks. The server handles velocity profiling, interpolation, and limits
-internally.
+Uses NOVA's action chunk streaming endpoint (``ActionChunkRequest``, carrying
+joint- or pose-flavoured waypoints) to stream action chunks. The server handles
+velocity profiling, interpolation, and limits internally.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ _DRAIN_TIMEOUT_S = 3.0
 class _ScheduledRequest:
     """A pending chunk resolved into the request that goes on the wire."""
 
-    request: api.models.JointWaypointsRequest | api.models.PoseWaypointsRequest | None
+    request: api.models.ActionChunkRequest | None
     """``None`` when every waypoint had already elapsed and nothing was sent."""
 
     skipped: int
@@ -74,7 +74,7 @@ _DISCONTINUITY_WARN_DEG = 10.0
 
 
 class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
-    """Sends action chunks as timestamped waypoints via the NOVA Jogging API.
+    """Sends action chunks as timestamped waypoints via NOVA action chunk streaming.
 
     Sends raw position waypoints (joint or TCP) with timing info.
     The server computes the motion profile and handles IK (for TCP mode).
@@ -364,10 +364,11 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     ) -> None:
         """Queue a new action chunk as waypoints.
 
-        Builds a JointWaypointsRequest or PoseWaypointsRequest (based on mode)
-        with absolute server-time timestamps laid out as ``base + i*dt``. The
-        request is sent on the next jogging loop iteration; the timestamps are
-        computed at *yield time* (see :func:`make_waypoints_request`).
+        Builds an ActionChunkRequest carrying joint- or pose-flavoured waypoints
+        (based on mode) with absolute server-time timestamps laid out as
+        ``base + i*dt``. The request is sent on the next jogging loop iteration;
+        the timestamps are computed at *yield time* (see
+        :func:`make_waypoints_request`).
 
         Args:
             steps: Joint waypoints [rad] or TCP poses [x,y,z,rx,ry,rz] (mm/rad).
@@ -648,7 +649,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
     async def _consume_jogging_responses(
         self,
-        response_stream: AsyncGenerator[api.models.ExecuteWaypointJoggingResponse, None],
+        response_stream: AsyncGenerator[api.models.ExecuteActionChunksResponse, None],
     ) -> None:
         """Monitor acknowledgements and failures without gating outgoing chunks."""
         async for response in response_stream:
@@ -687,7 +688,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     async def _pending_waypoint_requests(
         self,
         response_task: asyncio.Task[None],
-    ) -> AsyncGenerator[api.models.ExecuteWaypointJoggingRequest, None]:
+    ) -> AsyncGenerator[api.models.ExecuteActionChunksRequest, None]:
         """Yield fresh pending chunks at the producer cadence."""
         first_chunk = True
         while self._running:
@@ -743,7 +744,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
             self._start_waypoint_tracking_measurement(request)
 
-            yield api.models.ExecuteWaypointJoggingRequest(request)
+            yield api.models.ExecuteActionChunksRequest(request)
 
     def _record_dropped_chunk(self, pending: PendingChunk, step_timestamps: list[int]) -> None:
         """Account for a chunk that was dropped for being entirely in the past.
@@ -858,13 +859,15 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         tcp = await self._resolve_tcp()
 
         async def client_request_generator(
-            response_stream: AsyncGenerator[api.models.ExecuteWaypointJoggingResponse, None],
-        ) -> AsyncGenerator[api.models.ExecuteWaypointJoggingRequest, None]:
-            # 1. Initialize the jogging session.
+            response_stream: AsyncGenerator[api.models.ExecuteActionChunksResponse, None],
+        ) -> AsyncGenerator[api.models.ExecuteActionChunksRequest, None]:
+            # 1. Initialize the action chunk session.
             # The server starts its internal timer when the first waypoint
-            # request arrives (not on InitializeJoggingRequest).
-            yield api.models.ExecuteWaypointJoggingRequest(
-                api.models.InitializeJoggingRequest(motion_group=self._motion_group.id, tcp=tcp)
+            # request arrives (not on InitializeActionChunksRequest).
+            yield api.models.ExecuteActionChunksRequest(
+                api.models.InitializeActionChunksRequest(
+                    motion_group=self._motion_group.id, tcp=tcp
+                )
             )
 
             response_task = asyncio.create_task(
@@ -885,7 +888,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                     _ = await response_task
 
         try:
-            await api_gateway.jogging_api.execute_waypoint_jogging(
+            await api_gateway.action_chunk_streaming_api.execute_action_chunks(
                 cell=cell,
                 controller=controller_id,
                 client_request_generator=client_request_generator,
@@ -894,7 +897,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             # Expected on shutdown; cancellation is not a jogging failure.
             pass
         except InvalidStatus as e:
-            # An old api-gateway (< 26.5) has no executeWaypointJogging endpoint
+            # An old api-gateway (< 26.6) has no executeActionChunks endpoint
             # and rejects the websocket upgrade with HTTP 404. Surface that as an
             # actionable error rather than a generic connection loss.
             if e.response.status_code == _HTTP_NOT_FOUND:
@@ -932,7 +935,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             return
         self._monitor_chunk_index = self._waypoint_chunk_count
         self._monitor_waypoints = [
-            (waypoint.timestamp, list(waypoint.joints.root)) for waypoint in waypoints
+            (waypoint.timestamp, list(waypoint.waypoint.root.joints.root)) for waypoint in waypoints
         ]
         self._monitor_next_waypoint = 0
 

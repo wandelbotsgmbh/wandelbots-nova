@@ -3,7 +3,7 @@
 These drive the *real* async jogging + state-stream loops, substituting only
 the NOVA SDK boundary: the motion group, the API gateway, and the small
 ``_sdk`` accessors. The fake gateway plays the role of the server — it feeds the
-session a response stream and records the ``ExecuteWaypointJoggingRequest`` messages the
+session a response stream and records the ``ExecuteActionChunksRequest`` messages the
 session yields back.
 
 Assertions are on the contract, not internals:
@@ -39,7 +39,7 @@ _SESSION = "novapolicy.jogging.waypoint_session"
 
 
 # ---------------------------------------------------------------------------
-# Fake server: stands in for api_gateway.jogging_api.execute_waypoint_jogging
+# Fake server: stands in for api_gateway.action_chunk_streaming_api.execute_action_chunks
 # ---------------------------------------------------------------------------
 
 
@@ -56,8 +56,8 @@ def _motion_error(message: str = "joint_limit") -> object:
 class FakeJoggingServer:
     """Consumes the session's request generator and replays scripted responses.
 
-    The session yields an ``InitializeJoggingRequest`` first, then waypoint
-    requests independently of response latency. We keep emitting ``_ok()``
+    The session yields an ``InitializeActionChunksRequest`` first, then action
+    chunk requests independently of response latency. We keep emitting ``_ok()``
     responses on a configurable cadence until stopped, recording every request
     the session produces.
     """
@@ -75,7 +75,7 @@ class FakeJoggingServer:
         self._response_delay = response_delay
         self._stop = asyncio.Event()
 
-    async def execute_waypoint_jogging(
+    async def execute_action_chunks(
         self,
         *,
         cell: str,
@@ -165,7 +165,7 @@ def _build_session(
     mg.tcp_names = AsyncMock(return_value=["Flange"])
 
     gateway = MagicMock()
-    gateway.jogging_api.execute_waypoint_jogging = server.execute_waypoint_jogging
+    gateway.action_chunk_streaming_api.execute_action_chunks = server.execute_action_chunks
 
     session = WaypointJoggingSession(
         motion_group=mg,
@@ -196,8 +196,36 @@ async def _wait_until(predicate: Callable[[], bool], *, timeout: float = 1.0) ->
 
 
 def _inner(request: object) -> object:
-    """Unwrap the ExecuteWaypointJoggingRequest envelope to the concrete message."""
+    """Unwrap the ExecuteActionChunksRequest envelope to the concrete message."""
     return getattr(request, "root", request)
+
+
+def _is_joint_chunk(message: object) -> bool:
+    """True for an ActionChunkRequest whose waypoints carry joint coordinates.
+
+    Both modes share one request type now, so the mode a chunk was built for
+    only shows up on the waypoints themselves.
+    """
+    return isinstance(message, api.models.ActionChunkRequest) and all(
+        waypoint.waypoint.root.kind == "JOINTS" for waypoint in message.waypoints
+    )
+
+
+def _is_pose_chunk(message: object) -> bool:
+    """True for an ActionChunkRequest whose waypoints carry pose coordinates."""
+    return isinstance(message, api.models.ActionChunkRequest) and all(
+        waypoint.waypoint.root.kind == "POSE" for waypoint in message.waypoints
+    )
+
+
+def _joints(waypoint: object) -> list[float]:
+    """Joint values of one waypoint, past the coordinates envelope."""
+    return list(waypoint.waypoint.root.joints.root)
+
+
+def _pose(waypoint: object) -> object:
+    """Pose of one waypoint, past the coordinates envelope."""
+    return waypoint.waypoint.root.pose
 
 
 # ---------------------------------------------------------------------------
@@ -207,13 +235,13 @@ def _inner(request: object) -> object:
 
 @pytest.mark.asyncio
 async def test_it_initializes_the_jogging_session_before_any_waypoints():
-    """The very first message to the server is an InitializeJoggingRequest."""
+    """The very first message to the server is an InitializeActionChunksRequest."""
     session, server = _build_session()
     try:
         await session.start()
         await session.wait_ready()
         await _wait_until(lambda: len(server.requests) >= 1)
-        assert isinstance(_inner(server.requests[0]), api.models.InitializeJoggingRequest)
+        assert isinstance(_inner(server.requests[0]), api.models.InitializeActionChunksRequest)
     finally:
         server.stop()
         await session.stop()
@@ -223,7 +251,7 @@ async def test_it_initializes_the_jogging_session_before_any_waypoints():
 
 @pytest.mark.asyncio
 async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
-    """update_chunk(step) reaches the server as a JointWaypointsRequest."""
+    """update_chunk(step) reaches the server as a joint-flavoured ActionChunkRequest."""
     session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
     try:
         await session.start()
@@ -238,10 +266,10 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
 
         await _wait_until(lambda: len(server.requests) >= 2)
         waypoint_req = _inner(server.requests[1])
-        assert isinstance(waypoint_req, api.models.JointWaypointsRequest)
+        assert _is_joint_chunk(waypoint_req)
         assert len(waypoint_req.waypoints) == 1
         sent = waypoint_req.waypoints[0]
-        assert list(sent.joints.root) == target
+        assert _joints(sent) == target
         assert sent.timestamp == 5_000  # absolute anchor honoured exactly
         assert session.scheduled_action_timestep == 7
         assert session.scheduled_waypoint_timestamps == (5_000,)
@@ -263,8 +291,8 @@ async def test_a_short_chunk_holds_its_final_target_to_fill_the_buffer():
 
         await _wait_until(lambda: len(server.requests) >= 2)
         request = _inner(server.requests[1])
-        assert isinstance(request, api.models.JointWaypointsRequest)
-        assert [list(waypoint.joints.root) for waypoint in request.waypoints] == [target, target]
+        assert _is_joint_chunk(request)
+        assert [_joints(waypoint) for waypoint in request.waypoints] == [target, target]
         assert [waypoint.timestamp for waypoint in request.waypoints] == [5_000, 5_050]
     finally:
         server.stop()
@@ -294,7 +322,7 @@ async def test_waypoints_already_in_the_past_are_trimmed_before_sending():
         await _wait_until(lambda: len(server.requests) >= 2)
         request = _inner(server.requests[1])
         timestamps = [waypoint.timestamp for waypoint in request.waypoints]
-        sent = [list(waypoint.joints.root) for waypoint in request.waypoints]
+        sent = [_joints(waypoint) for waypoint in request.waypoints]
 
         assert timestamps  # something survived
         assert len(timestamps) < len(steps)  # but not the whole chunk
@@ -356,7 +384,7 @@ async def test_a_trimmed_chunk_still_reports_where_each_caller_step_landed():
 
         await _wait_until(lambda: len(server.requests) >= 2)
         request = _inner(server.requests[1])
-        assert isinstance(request, api.models.JointWaypointsRequest)
+        assert _is_joint_chunk(request)
         skipped = len(steps) - len(request.waypoints)
         assert skipped > 0  # the premise: something was trimmed
 
@@ -392,7 +420,7 @@ async def test_the_padded_tail_of_a_short_chunk_is_not_motion_anyone_waits_for()
 
         await _wait_until(lambda: len(server.requests) >= 2)
         request = _inner(server.requests[1])
-        assert isinstance(request, api.models.JointWaypointsRequest)
+        assert _is_joint_chunk(request)
         sent = [waypoint.timestamp for waypoint in request.waypoints]
 
         # The padding really was sent, so the server still gets its horizon.
@@ -417,9 +445,7 @@ async def test_a_fully_elapsed_chunk_is_dropped_instead_of_sent():
         session.update_chunk(steps=[[1.0] * 6, [2.0] * 6], dt_ms=1.0, first_timestamp_ms=0)
         await _wait_until(lambda: session.scheduled_chunk_count == session.queued_chunk_count)
 
-        waypoint_requests = [
-            r for r in server.requests if isinstance(_inner(r), api.models.JointWaypointsRequest)
-        ]
+        waypoint_requests = [r for r in server.requests if _is_joint_chunk(_inner(r))]
         assert waypoint_requests == []
         # Nothing went on the wire...
         assert session.scheduled_waypoint_timestamps == ()
@@ -460,8 +486,8 @@ async def test_live_updates_are_sent_without_waiting_for_the_next_response():
         await _wait_until(lambda: len(server.requests) >= 3, timeout=0.1)
 
         sent = _inner(server.requests[2])
-        assert isinstance(sent, api.models.JointWaypointsRequest)
-        assert [list(waypoint.joints.root) for waypoint in sent.waypoints] == [freshest]
+        assert _is_joint_chunk(sent)
+        assert [_joints(waypoint) for waypoint in sent.waypoints] == [freshest]
     finally:
         server.stop()
         await session.stop()
@@ -592,7 +618,7 @@ async def test_a_fired_stop_condition_ends_the_session_without_failing():
 @pytest.mark.asyncio
 async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
     """A TCP chunk pushed through ``jog_tcp`` reaches the server as a single
-    ``PoseWaypointsRequest`` whose waypoints carry the chunk's poses and
+    ``ActionChunkRequest`` whose waypoints carry the chunk's poses and
     timestamps laid out exactly as the waypoint API expects: absolute,
     non-negative, strictly increasing, and spaced by ``dt_ms``.
 
@@ -617,7 +643,7 @@ async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
     mg.tcp_names = AsyncMock(return_value=["Flange"])
 
     gateway = MagicMock()
-    gateway.jogging_api.execute_waypoint_jogging = server.execute_waypoint_jogging
+    gateway.action_chunk_streaming_api.execute_action_chunks = server.execute_action_chunks
 
     estop = MagicMock()
     estop.start = AsyncMock()
@@ -641,31 +667,23 @@ async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
         p.start()
     try:
         async with jog_tcp(mg, tcp="Flange") as jogger:
-            jogger.set_target(chunk, dt_ms=dt_ms)
-            await _wait_until(
-                lambda: any(
-                    isinstance(_inner(r), api.models.PoseWaypointsRequest) for r in server.requests
-                )
-            )
+            jogger.set_chunk(chunk, dt_ms=dt_ms)
+            await _wait_until(lambda: any(_is_pose_chunk(_inner(r)) for r in server.requests))
 
-        pose_req = next(
-            _inner(r)
-            for r in server.requests
-            if isinstance(_inner(r), api.models.PoseWaypointsRequest)
-        )
+        pose_req = next(_inner(r) for r in server.requests if _is_pose_chunk(_inner(r)))
         waypoints = pose_req.waypoints
 
         # The chunk steps became pose waypoints, in order, starting at the first
         # step that is still reachable (earlier ones are trimmed as past). A
         # chunk shorter than the configured horizon is extended by holding its
         # final pose, so the robot is never handed a lone terminal waypoint.
-        sent_positions = [[w.pose.position.root[k] for k in range(3)] for w in waypoints]
+        sent_positions = [[_pose(w).position.root[k] for k in range(3)] for w in waypoints]
         chunk_positions = [step[:3] for step in chunk]
         offset = chunk_positions.index(sent_positions[0])
         for sent, expected in zip(sent_positions, chunk_positions[offset:], strict=False):
             assert sent == expected
         for waypoint in waypoints:
-            assert [waypoint.pose.orientation.root[k] for k in range(3)] == chunk[0][3:6]
+            assert [_pose(waypoint).orientation.root[k] for k in range(3)] == chunk[0][3:6]
 
         # Timestamps: the layout the waypoint API expects.
         timestamps = [w.timestamp for w in waypoints]
@@ -686,11 +704,7 @@ async def test_overlapping_joint_chunks_share_one_absolute_timeline():
     session, server = _build_session(mode="joint")
 
     def _joint_requests() -> list[object]:
-        return [
-            r
-            for r in (_inner(x) for x in server.requests)
-            if isinstance(r, api.models.JointWaypointsRequest)
-        ]
+        return [r for r in (_inner(x) for x in server.requests) if _is_joint_chunk(r)]
 
     try:
         await session.start()
@@ -711,8 +725,8 @@ async def test_overlapping_joint_chunks_share_one_absolute_timeline():
         # Compare only the caller's own waypoints: anything beyond them is hold
         # padding that exists to avoid a terminal waypoint, and it is always
         # superseded by the next chunk before the robot reaches it.
-        a_by_ts = {w.timestamp: tuple(w.joints.root) for w in first.waypoints[: len(joints_a)]}
-        b_by_ts = {w.timestamp: tuple(w.joints.root) for w in second.waypoints[: len(joints_b)]}
+        a_by_ts = {w.timestamp: tuple(_joints(w)) for w in first.waypoints[: len(joints_a)]}
+        b_by_ts = {w.timestamp: tuple(_joints(w)) for w in second.waypoints[: len(joints_b)]}
 
         overlap = set(a_by_ts) & set(b_by_ts)
         assert overlap == {150, 200, 250, 300}

@@ -346,11 +346,13 @@ Aggregation is applied only when an old and a new action target the same future 
 | `WEIGHTED_AVERAGE` | `0.3 * old + 0.7 * new` (LeRobot default) |
 | `AVERAGE` | arithmetic mean of every prediction received for the timestep |
 
-The generic client retains LeRobot's weighted-average default. Physical UR3 plug-task runs used
-`AVERAGE`, which showed lower peak path curvature. Those runs also enabled ``async_queue_smoothing``, which applies the
-generic ``novapolicy.smooth_action_chunk(...)`` transform to the outgoing aggregated
-lookahead. The four-point active prefix is restored unchanged after filtering. The generic client
-leaves this disabled, and IO action values are never filtered.
+The client defaults to `AVERAGE`: physical UR3 plug-task runs and a simulated UR10e
+pick-and-place both measured lower peak path curvature with it than with LeRobot's
+weighted average, which stays available as `WEIGHTED_AVERAGE`. ``async_queue_smoothing``
+is also on by default; it applies the generic ``novapolicy.smooth_action_chunk(...)``
+transform to the outgoing aggregated lookahead. The four-point active prefix is restored
+unchanged after filtering, and IO action values are never filtered. Disable it for tasks
+that need sharp contact transitions.
 
 The client normally consumes one action each policy control tick, requests a refill when 75% of the
 previous chunk remains by default, and merges overlapping actions using the selected enum mode.

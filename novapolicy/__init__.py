@@ -6,8 +6,8 @@
     Do not depend on it for stable deployments.
 
 This package enables AI policies to stream joint position targets (+ optional IO commands)
-to one or more motion groups. Timestamped waypoints are sent via the NOVA Jogging API;
-the server handles velocity profiling, interpolation, and IK internally.
+to one or more motion groups. Timestamped waypoints are sent via NOVA action chunk
+streaming; the server handles velocity profiling, interpolation, and IK internally.
 """
 
 from __future__ import annotations

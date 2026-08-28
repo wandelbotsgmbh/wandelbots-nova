@@ -103,6 +103,33 @@ def test_ease_in_releases_without_a_velocity_step() -> None:
     assert max(accel) < 3 * (sum(accel) / len(accel))
 
 
+def test_ease_in_starts_and_ends_without_an_acceleration_step() -> None:
+    """The blend must be smooth in acceleration too, not just in velocity.
+
+    A plain smoothstep zeroes the blend velocity at both ends but enters and
+    leaves at its *peak* acceleration — the same defect as a linear ramp, one
+    order up. Smootherstep zeroes both derivatives, so the edges of the window
+    sit well below the peak. Measured over the window on the jogger's 10ms grid:
+    smoothstep gives 1.00x peak at both edges, smootherstep 0.19x.
+    """
+    jogger, mg, _session = _jogger()
+    jogger._ease_in_s = 0.5
+    jogger._ease_baseline = cast("dict[MotionGroup, list[float]]", {mg: [0.0] * 6})
+
+    target = [100.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    positions = []
+    for i in range(51):  # exactly the 500ms window, inclusive of both ends
+        jogger._tick_ms = i * 10.0
+        positions.append(jogger._ease_steps(mg, [list(target)], 0.0)[0][0])
+
+    velocity = [b - a for a, b in pairwise(positions)]
+    accel = [abs(b - a) for a, b in pairwise(velocity)]
+    peak = max(accel)
+
+    assert accel[0] < 0.5 * peak, f"entered the window at {accel[0] / peak:.2f}x peak accel"
+    assert accel[-1] < 0.5 * peak, f"left the window at {accel[-1] / peak:.2f}x peak accel"
+
+
 def test_ease_in_spans_the_full_window() -> None:
     """Easing still starts at the baseline and finishes exactly on the target."""
     jogger, mg, _session = _jogger()

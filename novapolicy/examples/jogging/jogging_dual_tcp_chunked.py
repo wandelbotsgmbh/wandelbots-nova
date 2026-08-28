@@ -31,6 +31,16 @@ async def main(ctx: nova.ProgramContext):
     dt_ms = 10.0
     dt_s = dt_ms / 1000.0
 
+    def smootherstep(x: float) -> float:
+        """Monotone 0->1 warp with zero velocity *and* zero acceleration at both ends.
+
+        Warping the circle's phase, rather than enveloping its amplitude, keeps the
+        TCP exactly on the circle and simply slows it at each end. An amplitude
+        envelope would drag it to the circle's centre and back out.
+        """
+        x = min(1.0, max(0.0, x))
+        return x**3 * (x * (x * 6 - 15) + 10)
+
     async with jog_tcp(
         {mg1: tcp1, mg2: tcp2},
         start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT},
@@ -56,7 +66,7 @@ async def main(ctx: nova.ProgramContext):
             chunk2 = []
             for i in range(chunk_size):
                 future_t = t + i * dt_s
-                angle = 2 * math.pi * frequency * future_t
+                angle = 2 * math.pi * frequency * duration * smootherstep(future_t / duration)
                 chunk1.append([
                     center1_x + radius * math.cos(angle),
                     start1.position[1],
@@ -69,7 +79,9 @@ async def main(ctx: nova.ProgramContext):
                     center2_z + radius * math.sin(-angle),
                     *start2.orientation,
                 ])
-            jogger.set_target({mg1: chunk1, mg2: chunk2}, dt_ms=dt_ms)
+            # set_chunk takes raw [x, y, z, rx, ry, rz] steps, not Pose objects —
+            # unlike set_target, which takes a Pose.
+            jogger.set_chunk({mg1: chunk1, mg2: chunk2}, dt_ms=dt_ms)
 
 
 if __name__ == "__main__":

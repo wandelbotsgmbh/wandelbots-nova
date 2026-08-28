@@ -329,6 +329,9 @@ async def test_async_queue_refills_and_blends_overlapping_timesteps(
         actions_per_chunk=8,
         use_async_queue=True,
         async_queue_refill_threshold=1.0,
+        # This test checks refill and blend bookkeeping; smoothing (on by
+        # default) would filter the exact values the assertions read.
+        async_queue_smoothing=False,
     )
 
     await client.connect([mg.id])

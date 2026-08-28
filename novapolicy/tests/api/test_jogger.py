@@ -182,7 +182,7 @@ def test_setting_a_chunk_streams_every_step_and_tracks_the_last():
     """A chunk of future targets is streamed whole; the last step is the target."""
     chunk = [[float(i)] * 6 for i in range(4)]
     jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
-    jogger.set_target(chunk, dt_ms=33.0)
+    jogger.set_chunk(chunk, dt_ms=33.0)
     sessions[mg].update_chunk.assert_called_once_with(
         steps=chunk,
         dt_ms=33.0,
@@ -258,7 +258,7 @@ def test_explicit_chunk_clears_buffered_live_samples():
     for i, value in enumerate((1.0, 2.0, 3.0)):
         _tick(jogger, sessions, i * 10.0)
         jogger.set_target([value] * 6)
-    jogger.set_target([[9.0] * 6, [9.0] * 6], dt_ms=10.0)
+    jogger.set_chunk([[9.0] * 6, [9.0] * 6], dt_ms=10.0)
 
     for i, value in enumerate((10.0, 11.0, 12.0)):
         _tick(jogger, sessions, 30.0 + i * 10.0)
@@ -287,14 +287,14 @@ def test_mixing_target_forms_is_reported_once_per_motion_group(caplog):
         jogger.set_target([value] * 6)
 
     with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.jogger"):
-        jogger.set_target([[9.0] * 6, [9.0] * 6], dt_ms=10.0)
+        jogger.set_chunk([[9.0] * 6, [9.0] * 6], dt_ms=10.0)
         first = [r.getMessage() for r in caplog.records]
 
         # Refill, then push another chunk: the same advice must not repeat.
         for i, value in enumerate((4.0, 5.0, 6.0)):
             _tick(jogger, sessions, 40.0 + i * 10.0)
             jogger.set_target([value] * 6)
-        jogger.set_target([[8.0] * 6, [8.0] * 6], dt_ms=10.0)
+        jogger.set_chunk([[8.0] * 6, [8.0] * 6], dt_ms=10.0)
         both = [r.getMessage() for r in caplog.records]
 
     assert len(first) == 1, first
@@ -309,7 +309,7 @@ def test_a_chunk_only_caller_is_never_warned_about_mixing(caplog):
     with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.jogger"):
         for i in range(3):
             _tick(jogger, sessions, i * 10.0)
-            jogger.set_target([[float(i)] * 6, [float(i)] * 6], dt_ms=10.0)
+            jogger.set_chunk([[float(i)] * 6, [float(i)] * 6], dt_ms=10.0)
 
     assert [r.getMessage() for r in caplog.records] == []
 
@@ -326,6 +326,50 @@ def test_each_arm_in_a_dual_setup_receives_its_own_target():
 # ---------------------------------------------------------------------------
 # Bad targets are rejected before anything is streamed
 # ---------------------------------------------------------------------------
+
+
+def test_a_chunk_handed_to_set_target_is_rejected():
+    """The split exists so a chunk cannot arrive where buffer_window_ms applies.
+
+    Accepting it there meant buffer_window_ms was silently irrelevant for that
+    push, with nothing to tell the caller.
+    """
+    jogger, _, _ = _build_joint_jogger("0@ur10e")
+
+    with pytest.raises(TypeError, match="set_chunk"):
+        jogger.set_target([[1.0] * 6, [2.0] * 6])
+
+
+def test_a_single_target_handed_to_set_chunk_is_rejected():
+    """And the reverse, so dt_ms is never applied to something without steps."""
+    jogger, _, _ = _build_joint_jogger("0@ur10e")
+
+    with pytest.raises(TypeError, match="set_target"):
+        jogger.set_chunk([1.0] * 6, dt_ms=10.0)
+
+
+def test_set_chunk_requires_a_positive_dt_ms():
+    """dt_ms is the step spacing; there is no meaningful default for it."""
+    jogger, _, _ = _build_joint_jogger("0@ur10e")
+
+    with pytest.raises(ValueError, match="dt_ms"):
+        jogger.set_chunk([[1.0] * 6, [2.0] * 6], dt_ms=0.0)
+
+
+def test_an_empty_chunk_is_rejected_rather_than_sent():
+    """An empty list has no shape to infer and no waypoints to send."""
+    jogger, _, _ = _build_joint_jogger("0@ur10e")
+
+    with pytest.raises(TypeError, match="empty"):
+        jogger.set_chunk([], dt_ms=10.0)
+
+
+def test_a_pose_chunk_handed_to_tcp_set_target_is_rejected():
+    """Same split on the TCP jogger, where the live form is a Pose."""
+    jogger, _, _ = _build_tcp_jogger("0@ur10e")
+
+    with pytest.raises(TypeError, match="set_chunk"):
+        jogger.set_target([[500.0, 200.0, 300.0, 0.0, 3.14, 0.0]])
 
 
 def test_a_target_with_the_wrong_joint_count_is_rejected():
@@ -407,7 +451,7 @@ def test_tcp_jogging_streams_a_chunk_of_future_poses():
     """jog_tcp accepts a chunk of [x, y, z, rx, ry, rz] steps for smoother motion."""
     chunk = [[500.0 + i, 200.0, 300.0, 0.0, 3.14, 0.0] for i in range(4)]
     jogger, mg, sessions = _build_tcp_jogger("0@ur10e", tcp="Flange")
-    jogger.set_target(chunk, dt_ms=33.0)
+    jogger.set_chunk(chunk, dt_ms=33.0)
     sessions[mg].update_chunk.assert_called_once_with(
         steps=chunk,
         dt_ms=33.0,
