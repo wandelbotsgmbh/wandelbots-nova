@@ -357,4 +357,9 @@ arm, keyboard, gamepad, spacemouse) in your own script. See
 
 ▶ [`execute_custom_policy_on_dual_arm.py`](examples/execute_custom_policy_on_dual_arm.py): two UR5e robots with cameras, IOs, and stop conditions\
 ▶ [`execute_gr00t_dual_arm.py`](examples/execute_gr00t_dual_arm.py): dual arm with GR00T ZMQ + 4 cameras\
-▶ [`jogging/`](examples/jogging/): standalone jogging (single/dual arm, joint/TCP, chunked), no policy
+▶ [`jogging/`](examples/jogging/): standalone jogging (single/dual arm, joint/TCP, chunked), no policy\
+▶ [`pick_and_place_umi_ur10e.py`](examples/pick_and_place_umi_ur10e.py): the same pick-and-place the choreo3 checkpoints learn, written out by hand — a way to prove a cell before a policy runs on it
+
+Cells for the examples are installed with
+[`setup_cell.sh`](examples/setup_cell.sh): `dual-arm` for the two-UR5e examples,
+`umi` for the UR10e carrying the UMI gripper and its `umi_corrected` TCP.

@@ -30,7 +30,20 @@ python -m pip install --upgrade pip
 python -m pip install 'wandelbots-nova[novapolicy-lerobot]'
 ```
 
-### 2. Put the checkpoint where the LeRobot server can read it
+### 2. Set the cell up
+
+The LeRobot examples here run on a UR10e carrying the UMI gripper, whose
+`umi_corrected` TCP is the frame the demonstrations were recorded in — not the cell's `Flange`,
+221.7 mm further down the tool. Fed the wrong frame a policy does not fail, it stalls in a hover.
+
+```bash
+./novapolicy/examples/setup_cell.sh http://<nova-host> umi
+```
+
+[`pick_and_place_umi_ur10e.py`](../examples/pick_and_place_umi_ur10e.py) drives the same task by
+hand. Run it first: if the scripted version cannot pick the cube up, no checkpoint will.
+
+### 3. Put the checkpoint where the LeRobot server can read it
 
 Use either:
 
@@ -49,7 +62,7 @@ The NOVA client will later pass that same server-side path:
 pretrained_name_or_path = "/models/my_lerobot_policy"
 ```
 
-### 3. Start the LeRobot async server
+### 4. Start the LeRobot async server
 
 Run the server on the machine that has the checkpoint and should execute model inference. The server
 starts without a checkpoint argument; it loads the checkpoint path sent by the NOVA client when that
@@ -72,7 +85,7 @@ starts.
 The server also accepts `--fps`, `--inference_latency`, and `--obs_queue_timeout`. They are not
 required for the basic setup. If you set server `--fps`, keep it aligned with the client's `fps`.
 
-### 4. Execute the policy through NOVA
+### 5. Execute the policy through NOVA
 
 Save the following as `run_lerobot_policy.py` on the NOVA client machine. Replace the host names,
 controller, camera device, checkpoint paths, and IO key with values for your cell and checkpoint.
