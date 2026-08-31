@@ -207,8 +207,10 @@ schema = PolicySchema(
         Observation.joint_positions("arm", source=mg, ops=[Rad2Deg()]),
         # Position is millimetres and orientation radians, so they convert apart.
         Observation.tcp(
-            "eef", source=mg, action=True,
-            position_ops=[Scale(0.001)],       # mm -> m
+            "eef",
+            source=mg,
+            action=True,
+            position_ops=[Scale(0.001)],  # mm -> m
             orientation_ops=[Rad2Deg()],
         ),
     ]

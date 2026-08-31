@@ -168,6 +168,15 @@ def _resolve_source(pretrained_name_or_path: str | Path) -> str | Path:
     if source.is_dir():
         return source
     if source.is_file():
+        # Only the checkpoint's own config.json maps to its directory. Accepting
+        # any file would silently read the config.json beside it instead, which
+        # is worse than refusing.
+        if source.name != _CONFIG_NAME:
+            msg = (
+                f"LeRobot checkpoint must be a directory or its {_CONFIG_NAME}, "
+                f"not {source.name!r}: {source}"
+            )
+            raise FileNotFoundError(msg)
         return source.parent
 
     source_text = str(pretrained_name_or_path)

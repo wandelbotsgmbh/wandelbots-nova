@@ -38,11 +38,14 @@ def test_load_execution_settings_from_config_file(tmp_path) -> None:
 
 
 def test_a_json_file_under_another_name_is_not_a_checkpoint(tmp_path) -> None:
-    """LeRobot's loader reads config.json specifically."""
+    """A differently named file must not silently read the config.json beside it."""
+    (tmp_path / "config.json").write_text(
+        json.dumps({"type": "act", "chunk_size": 11, "n_action_steps": 4}), encoding="utf-8"
+    )
     other = tmp_path / "policy.json"
-    other.write_text(json.dumps({"type": "act", "chunk_size": 16}), encoding="utf-8")
+    other.write_text(json.dumps({"type": "act", "chunk_size": 99}), encoding="utf-8")
 
-    with pytest.raises(FileNotFoundError, match=r"config\.json not found"):
+    with pytest.raises(FileNotFoundError, match=r"must be a directory or its config\.json"):
         load_execution_settings(other)
 
 
