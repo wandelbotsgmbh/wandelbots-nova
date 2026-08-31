@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+import json
 import pickle
 import threading
 from types import SimpleNamespace
@@ -157,6 +158,7 @@ def test_playback_speed_scales_physical_action_timing() -> None:
     client = LeRobotPolicyClient(
         "127.0.0.1:8080",
         "model",
+        policy_type="act",
         fps=15,
         playback_speed=0.75,
         actions_per_chunk=11,
@@ -170,6 +172,7 @@ def test_playback_speed_must_be_positive() -> None:
         LeRobotPolicyClient(
             "127.0.0.1:8080",
             "model",
+            policy_type="act",
             fps=15,
             playback_speed=0.0,
             actions_per_chunk=11,
@@ -182,6 +185,7 @@ def test_async_queue_refill_threshold_must_be_a_fraction(threshold: float) -> No
         LeRobotPolicyClient(
             "127.0.0.1:8080",
             "model",
+            policy_type="act",
             actions_per_chunk=11,
             async_queue_refill_threshold=threshold,
         )
@@ -269,6 +273,7 @@ async def test_get_actions_decodes_tcp_targets_and_tcp_state_features(
     client = LeRobotPolicyClient(
         fake_lerobot.address,
         "model",
+        policy_type="act",
         fps=20,
         actions_per_chunk=2,
     )
@@ -325,6 +330,7 @@ async def test_async_queue_refills_and_blends_overlapping_timesteps(
     client = LeRobotPolicyClient(
         fake_lerobot.address,
         "model",
+        policy_type="act",
         fps=15,
         actions_per_chunk=8,
         use_async_queue=True,
@@ -384,6 +390,7 @@ async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
     client = LeRobotPolicyClient(
         fake_lerobot.address,
         "model",
+        policy_type="act",
         actions_per_chunk=3,
         use_async_queue=True,
         async_queue_smoothing=True,
@@ -421,6 +428,7 @@ async def test_async_queue_keeps_sending_observations_while_refill_is_pending(
     client = LeRobotPolicyClient(
         fake_lerobot.address,
         "model",
+        policy_type="act",
         fps=15,
         actions_per_chunk=5,
         use_async_queue=True,
@@ -465,7 +473,9 @@ async def test_prepare_sends_policy_instructions_before_first_inference(
     mg = _mg()
     schema = _schema(mg)
     image = np.zeros((120, 160, 3), dtype=np.uint8)
-    client = LeRobotPolicyClient(fake_lerobot.address, "model", fps=15, actions_per_chunk=8)
+    client = LeRobotPolicyClient(
+        fake_lerobot.address, "model", policy_type="act", fps=15, actions_per_chunk=8
+    )
 
     await client.prepare(
         {mg.id: _state((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))},
@@ -494,7 +504,9 @@ async def test_get_actions_requires_actual_image_frame_for_feature_metadata(
     fake_lerobot: _FakeLeRobot,
 ) -> None:
     mg = _mg()
-    client = LeRobotPolicyClient(fake_lerobot.address, "model", fps=15, actions_per_chunk=8)
+    client = LeRobotPolicyClient(
+        fake_lerobot.address, "model", policy_type="act", fps=15, actions_per_chunk=8
+    )
 
     with pytest.raises(ValueError, match="needs the first camera frame"):
         await client.get_actions(
@@ -533,7 +545,9 @@ async def test_validate_schema_rejects_joint_and_tcp_control_for_the_same_group(
 
 @pytest.mark.asyncio
 async def test_close_allows_protocol_reconnection(fake_lerobot: _FakeLeRobot) -> None:
-    client = LeRobotPolicyClient(fake_lerobot.address, "model", fps=15, actions_per_chunk=8)
+    client = LeRobotPolicyClient(
+        fake_lerobot.address, "model", policy_type="act", fps=15, actions_per_chunk=8
+    )
 
     await client.connect([])
     await client.close()
@@ -541,3 +555,351 @@ async def test_close_allows_protocol_reconnection(fake_lerobot: _FakeLeRobot) ->
     await client.close()
 
     assert fake_lerobot.stub.ready_calls == 2
+
+
+# ---------------------------------------------------------------------------
+# Deriving execution settings from the checkpoint
+# ---------------------------------------------------------------------------
+
+
+def _write_checkpoint(tmp_path, **overrides):
+    import json
+
+    config = {
+        "type": "act",
+        "chunk_size": 16,
+        "n_action_steps": 8,
+        "input_features": {
+            "observation.state": {"type": "STATE", "shape": [7]},
+            "observation.images.cam_scene_1": {"type": "VISUAL", "shape": [3, 120, 160]},
+        },
+        "output_features": {"action": {"type": "ACTION", "shape": [7]}},
+    }
+    config.update(overrides)
+    (tmp_path / "config.json").write_text(json.dumps(config), encoding="utf-8")
+    return tmp_path
+
+
+class _FakeCamera:
+    """Camera source that can report and change its read-time size."""
+
+    def __init__(self, resize: tuple[int, int] | None = None) -> None:
+        self._resize = resize
+
+    @property
+    def resize(self) -> tuple[int, int] | None:
+        return self._resize
+
+    def set_resize(self, size: tuple[int, int] | None) -> None:
+        self._resize = size
+
+    async def connect(self) -> None: ...
+
+    def read(self, max_age_s: float = 5.0):
+        return np.zeros((120, 160, 3), dtype=np.uint8)
+
+    async def disconnect(self) -> None: ...
+
+
+@pytest.mark.asyncio
+async def test_settings_are_derived_from_the_checkpoint(fake_lerobot, tmp_path) -> None:
+    client = LeRobotPolicyClient(fake_lerobot.address, str(_write_checkpoint(tmp_path)))
+
+    await client.connect([])
+
+    assert client._policy_type == "act"
+    assert client._actions_per_chunk == 16
+    assert client.n_action_steps == 8
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_config_path_derives_while_the_server_loads_its_own_checkpoint(
+    fake_lerobot, tmp_path
+) -> None:
+    client = LeRobotPolicyClient(
+        fake_lerobot.address,
+        "/server-only/checkpoint",
+        policy_type="act",
+        config_path=str(_write_checkpoint(tmp_path)),
+    )
+
+    await client.connect([])
+
+    assert client._actions_per_chunk == 16
+    assert client._pretrained_name_or_path == "/server-only/checkpoint"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_an_override_that_agrees_with_the_checkpoint_is_accepted(
+    fake_lerobot, tmp_path
+) -> None:
+    client = LeRobotPolicyClient(
+        fake_lerobot.address,
+        str(_write_checkpoint(tmp_path)),
+        policy_type="act",
+        actions_per_chunk=16,
+        n_action_steps=8,
+    )
+
+    await client.connect([])
+
+    assert client._actions_per_chunk == 16
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_contradicting_policy_type_is_rejected(fake_lerobot, tmp_path) -> None:
+    client = LeRobotPolicyClient(
+        fake_lerobot.address,
+        str(_write_checkpoint(tmp_path)),
+        policy_type="diffusion",
+    )
+
+    with pytest.raises(ValueError, match="contradicts the checkpoint"):
+        await client.connect([])
+
+
+@pytest.mark.asyncio
+async def test_actions_per_chunk_above_chunk_size_is_rejected(fake_lerobot, tmp_path) -> None:
+    client = LeRobotPolicyClient(
+        fake_lerobot.address,
+        str(_write_checkpoint(tmp_path)),
+        policy_type="act",
+        actions_per_chunk=32,
+    )
+
+    with pytest.raises(ValueError, match="exceeds the checkpoint's action chunk"):
+        await client.connect([])
+
+
+@pytest.mark.asyncio
+async def test_a_shortened_horizon_is_allowed_with_a_warning(
+    fake_lerobot, tmp_path, caplog
+) -> None:
+    client = LeRobotPolicyClient(
+        fake_lerobot.address,
+        str(_write_checkpoint(tmp_path)),
+        policy_type="act",
+        n_action_steps=4,
+    )
+
+    with caplog.at_level("WARNING"):
+        await client.connect([])
+
+    assert client.n_action_steps == 4
+    assert "differs from the checkpoint" in caplog.text
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_n_action_steps_above_chunk_size_is_rejected(fake_lerobot, tmp_path) -> None:
+    client = LeRobotPolicyClient(
+        fake_lerobot.address,
+        str(_write_checkpoint(tmp_path)),
+        policy_type="act",
+        n_action_steps=32,
+    )
+
+    with pytest.raises(ValueError, match="exceeds the checkpoint's action chunk"):
+        await client.connect([])
+
+
+@pytest.mark.asyncio
+async def test_server_only_checkpoint_falls_back_to_explicit_settings(fake_lerobot, caplog) -> None:
+    client = LeRobotPolicyClient(
+        fake_lerobot.address,
+        "/server-only/checkpoint",
+        policy_type="act",
+        actions_per_chunk=11,
+    )
+
+    with caplog.at_level("WARNING"):
+        await client.connect([])
+
+    assert client._actions_per_chunk == 11
+    assert "not readable by the client" in caplog.text
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_server_only_checkpoint_without_explicit_chunk_says_what_to_do(
+    fake_lerobot,
+) -> None:
+    client = LeRobotPolicyClient(fake_lerobot.address, "/server-only/checkpoint")
+
+    with pytest.raises(ValueError, match="actions_per_chunk cannot be derived"):
+        await client.connect([])
+
+
+@pytest.mark.asyncio
+async def test_a_camera_frame_size_mismatch_warns_and_keeps_running(
+    fake_lerobot, tmp_path, caplog
+) -> None:
+    """Frame size is fixed at the camera stream, so a mismatch must not block a run."""
+    mg = _mg()
+    schema = _schema(mg)
+    client = LeRobotPolicyClient(fake_lerobot.address, str(_write_checkpoint(tmp_path)))
+
+    await client.connect([])
+    with caplog.at_level("WARNING"):
+        await client.prepare(
+            {mg.id: _state((1.0,) * 6)},
+            schema,
+            images={"cam_scene_1": np.zeros((480, 640, 3), dtype=np.uint8)},
+            io_values={"digital_out[0]": True},
+        )
+
+    assert "aspect ratio matches" in caplog.text
+    assert fake_lerobot.stub.policy_setup_calls == 1
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_schema_mismatch_fails_before_the_setup_message_is_sent(
+    fake_lerobot, tmp_path
+) -> None:
+    """A 6-DOF schema against a 7-wide checkpoint must not reach the server."""
+    mg = _mg()
+    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+    client = LeRobotPolicyClient(fake_lerobot.address, str(_write_checkpoint(tmp_path)))
+
+    await client.connect([])
+    with pytest.raises(ValueError, match="does not match the LeRobot checkpoint"):
+        await client.prepare({mg.id: _state((0.0,) * 6)}, schema)
+
+    assert fake_lerobot.stub.policy_setup_calls == 0
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_the_checkpoint_is_read_once_across_reconnects(
+    fake_lerobot, tmp_path, monkeypatch
+) -> None:
+    """Reconnecting must not re-read (or re-download) the checkpoint."""
+    checkpoint = _write_checkpoint(tmp_path)
+    calls = 0
+    real = client_module.try_load_execution_settings
+
+    def counting_load(path):
+        nonlocal calls
+        calls += 1
+        return real(path)
+
+    monkeypatch.setattr(client_module, "try_load_execution_settings", counting_load)
+    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint))
+
+    await client.connect([])
+    await client.connect([])
+
+    assert calls == 1
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_a_contradicting_override_keeps_raising_on_reconnect(fake_lerobot, tmp_path) -> None:
+    """A failed resolution must not leave the client running on half-applied settings."""
+    client = LeRobotPolicyClient(
+        fake_lerobot.address,
+        str(_write_checkpoint(tmp_path)),
+        policy_type="diffusion",
+    )
+
+    with pytest.raises(ValueError, match="contradicts the checkpoint"):
+        await client.connect([])
+    with pytest.raises(ValueError, match="contradicts the checkpoint"):
+        await client.connect([])
+
+
+@pytest.mark.asyncio
+async def test_a_degrees_dataset_observes_in_degrees_and_commands_in_radians(
+    fake_lerobot, tmp_path
+) -> None:
+    """End to end: ops convert on the way in and are inverted on the way out."""
+    import math
+
+    from novapolicy.ops import Rad2Deg
+
+    mg = _mg()
+    schema = PolicySchema(
+        observations=[Observation.joint_positions("arm", source=mg, ops=[Rad2Deg()])]
+    )
+    checkpoint = _write_checkpoint(
+        tmp_path,
+        input_features={"observation.state": {"type": "STATE", "shape": [6]}},
+        output_features={"action": {"type": "ACTION", "shape": [6]}},
+    )
+    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint))
+    fake_lerobot.stub.action_values = [[180.0] * 6, [-90.0] * 6]
+
+    await client.connect([])
+    chunk = await client.get_actions({mg.id: _state((math.pi,) * 6)}, schema)
+
+    # The server saw degrees...
+    sent = fake_lerobot.stub.observations[-1].observation
+    assert [sent[f"arm_{i}"] for i in range(1, 7)] == pytest.approx([180.0] * 6)
+    # ...and the chunk comes back in the policy's units, which the executor
+    # inverts through the schema before anything reaches the robot.
+    assert chunk.joints[mg.id][0] == pytest.approx([180.0] * 6)
+    commanded = schema.apply_inverse_ops(chunk)
+    assert commanded.joints[mg.id][0] == pytest.approx([math.pi] * 6)
+    assert commanded.joints[mg.id][1] == pytest.approx([-math.pi / 2] * 6)
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_a_units_mismatch_is_caught_against_the_checkpoints_statistics(
+    fake_lerobot, tmp_path
+) -> None:
+    """A stray Rad2Deg against a radian-trained checkpoint is caught before moving.
+
+    Note the asymmetry: bounds catch values that are too *large* for the
+    training range — degrees where radians were expected. The reverse, radians
+    where degrees were expected, sits comfortably inside a degree range and
+    cannot be caught this way.
+    """
+    import math
+
+    import numpy as np
+    from safetensors.numpy import save_file
+
+    from novapolicy.ops import Rad2Deg
+
+    mg = _mg()
+    schema = PolicySchema(
+        observations=[Observation.joint_positions("arm", source=mg, ops=[Rad2Deg()])]
+    )
+    checkpoint = _write_checkpoint(
+        tmp_path,
+        input_features={"observation.state": {"type": "STATE", "shape": [6]}},
+        output_features={"action": {"type": "ACTION", "shape": [6]}},
+    )
+    (checkpoint / "policy_preprocessor.json").write_text(
+        json.dumps({
+            "name": "policy_preprocessor",
+            "steps": [
+                {
+                    "registry_name": "normalizer_processor",
+                    "config": {},
+                    "state_file": "normalizer_processor.safetensors",
+                }
+            ],
+        }),
+        encoding="utf-8",
+    )
+    save_file(
+        {
+            "observation.state.min": np.full(6, -math.pi, dtype=np.float32),
+            "observation.state.max": np.full(6, math.pi, dtype=np.float32),
+        },
+        checkpoint / "normalizer_processor.safetensors",
+    )
+
+    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint))
+    await client.connect([])
+
+    with pytest.raises(ValueError, match="implausibly far outside"):
+        await client.get_actions({mg.id: _state((math.pi,) * 6)}, schema)
+
+    await client.close()

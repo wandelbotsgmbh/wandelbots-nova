@@ -121,3 +121,350 @@ def test_validate_schema_rejects_duplicate_io_targets_for_one_group() -> None:
 
     with pytest.raises(ValueError, match="multiple actions for the same IO target"):
         LeRobotSchema.validate_schema(schema)
+
+
+# ---------------------------------------------------------------------------
+# assert_matches: schema against the checkpoint's feature contract
+# ---------------------------------------------------------------------------
+
+LeRobotExecutionSettings = pytest.importorskip("novapolicy.lerobot.config").LeRobotExecutionSettings
+_types = pytest.importorskip("lerobot.configs.types")
+FeatureType = _types.FeatureType
+PolicyFeature = _types.PolicyFeature
+
+
+def _settings(
+    *,
+    inputs: dict | None = None,
+    outputs: dict | None = None,
+) -> object:
+    """Checkpoint settings for a 6-DOF arm with one 320x240 camera."""
+    if inputs is None:
+        inputs = {
+            "observation.state": PolicyFeature(type=FeatureType.STATE, shape=(6,)),
+            "observation.images.scene": PolicyFeature(type=FeatureType.VISUAL, shape=(3, 240, 320)),
+        }
+    if outputs is None:
+        outputs = {"action": PolicyFeature(type=FeatureType.ACTION, shape=(6,))}
+    return LeRobotExecutionSettings(
+        policy_type="act",
+        chunk_size=16,
+        n_action_steps=8,
+        input_features=inputs,
+        output_features=outputs,
+    )
+
+
+def _matching_schema(mg) -> PolicySchema:
+    camera = MagicMock()
+    return PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.image("scene", source=camera),
+        ]
+    )
+
+
+def _check(schema, settings, *, state_names, images, layout=None) -> None:
+    lerobot_schema = LeRobotSchema(dt_ms=50.0)
+    if layout is None:
+        layout = FlatActionLayout(joints=[("0@cobot", slice(0, 6))], tcp=[], ios=[])
+    lerobot_schema.assert_matches(settings, schema, state_names, images, layout)
+
+
+def _frame(height: int = 240, width: int = 320):
+    return np.zeros((height, width, 3), dtype=np.uint8)
+
+
+def test_assert_matches_accepts_a_schema_that_matches_the_checkpoint() -> None:
+    mg = _mg()
+    _check(
+        _matching_schema(mg),
+        _settings(),
+        state_names=[f"arm_{i}" for i in range(1, 7)],
+        images={"scene": _frame()},
+    )
+
+
+def test_assert_matches_rejects_a_wrong_state_width() -> None:
+    mg = _mg()
+
+    with pytest.raises(ValueError, match=r"observation\.state.*shape \(7,\).*expects \(6,\)"):
+        _check(
+            _matching_schema(mg),
+            _settings(),
+            state_names=[f"arm_{i}" for i in range(1, 8)],
+            images={"scene": _frame()},
+        )
+
+
+def test_assert_matches_reports_a_camera_the_checkpoint_does_not_declare() -> None:
+    mg = _mg()
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.image("scene", source=MagicMock()),
+            Observation.image("wrist", source=MagicMock()),
+        ]
+    )
+
+    with pytest.raises(ValueError, match=r"observation\.images\.wrist.*not declared"):
+        _check(
+            schema,
+            _settings(),
+            state_names=[f"arm_{i}" for i in range(1, 7)],
+            images={"scene": _frame(), "wrist": _frame()},
+        )
+
+
+def test_assert_matches_reports_a_camera_missing_from_the_schema() -> None:
+    mg = _mg()
+    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+
+    with pytest.raises(ValueError, match=r"observation\.images\.scene.*is missing"):
+        _check(
+            schema,
+            _settings(),
+            state_names=[f"arm_{i}" for i in range(1, 7)],
+            images=None,
+        )
+
+
+def test_a_higher_resolution_at_the_same_aspect_warns_about_wasted_pixels(caplog) -> None:
+    """640x480 against a 320x240 checkpoint: both 4:3, so rescaling is clean.
+
+    The comparison is channel-first: our HWC frame against the checkpoint's CHW
+    declaration.
+    """
+    mg = _mg()
+
+    with caplog.at_level("WARNING"):
+        _check(
+            _matching_schema(mg),
+            _settings(),
+            state_names=[f"arm_{i}" for i in range(1, 7)],
+            images={"scene": _frame(height=480, width=640)},
+        )
+
+    assert "aspect ratio matches" in caplog.text
+    assert "640x480" in caplog.text
+    assert "320x240" in caplog.text
+    assert "stretched" not in caplog.text
+
+
+def test_a_different_aspect_ratio_warns_that_rescaling_cannot_fix_it(caplog) -> None:
+    """1920x1080 against a 320x240 checkpoint: 16:9 into 4:3 distorts."""
+    mg = _mg()
+
+    with caplog.at_level("WARNING"):
+        _check(
+            _matching_schema(mg),
+            _settings(),
+            state_names=[f"arm_{i}" for i in range(1, 7)],
+            images={"scene": _frame(height=1080, width=1920)},
+        )
+
+    assert "different aspect ratio" in caplog.text
+    assert "stretched" in caplog.text
+    assert "1920x1080" in caplog.text
+
+
+def test_a_matching_frame_size_says_nothing(caplog) -> None:
+    mg = _mg()
+
+    with caplog.at_level("WARNING"):
+        _check(
+            _matching_schema(mg),
+            _settings(),
+            state_names=[f"arm_{i}" for i in range(1, 7)],
+            images={"scene": _frame()},
+        )
+
+    assert not caplog.text
+
+
+def test_assert_matches_rejects_a_wrong_action_width() -> None:
+    mg = _mg()
+
+    with pytest.raises(ValueError, match="action width is 7, checkpoint expects 6"):
+        _check(
+            _matching_schema(mg),
+            _settings(),
+            state_names=[f"arm_{i}" for i in range(1, 7)],
+            images={"scene": _frame()},
+            layout=FlatActionLayout(
+                joints=[("0@cobot", slice(0, 6))],
+                tcp=[],
+                ios=[("0@cobot", "digital_out[0]", None, slice(6, 7))],
+            ),
+        )
+
+
+def test_assert_matches_reports_every_structural_problem_at_once() -> None:
+    mg = _mg()
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.image("scene", source=MagicMock()),
+            Observation.image("wrist", source=MagicMock()),
+        ]
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        _check(
+            schema,
+            _settings(),
+            state_names=[f"arm_{i}" for i in range(1, 8)],
+            images={"scene": _frame(), "wrist": _frame()},
+        )
+
+    message = str(excinfo.value)
+    assert "observation.state" in message
+    assert "observation.images.wrist" in message
+
+
+def test_assert_matches_ignores_language_features_it_cannot_produce() -> None:
+    """A task-conditioned checkpoint must not fail on its LANGUAGE feature."""
+    mg = _mg()
+    settings = _settings(
+        inputs={
+            "observation.state": PolicyFeature(type=FeatureType.STATE, shape=(6,)),
+            "observation.images.scene": PolicyFeature(type=FeatureType.VISUAL, shape=(3, 240, 320)),
+            "task": PolicyFeature(type=FeatureType.LANGUAGE, shape=(1,)),
+        }
+    )
+
+    _check(
+        _matching_schema(mg),
+        settings,
+        state_names=[f"arm_{i}" for i in range(1, 7)],
+        images={"scene": _frame()},
+    )
+
+
+def test_assert_matches_warns_and_skips_when_the_checkpoint_declares_no_features(caplog) -> None:
+    mg = _mg()
+
+    with caplog.at_level("WARNING"):
+        _check(
+            _matching_schema(mg),
+            _settings(inputs={}, outputs={}),
+            state_names=[f"arm_{i}" for i in range(1, 9)],
+            images={"scene": _frame()},
+        )
+
+    assert "declares no input features" in caplog.text
+
+
+def test_flat_action_layout_width_spans_every_slice() -> None:
+    layout = FlatActionLayout(
+        joints=[("0@left", slice(0, 6)), ("0@right", slice(6, 12))],
+        tcp=[],
+        ios=[("0@left", "digital_out[0]", None, slice(12, 13))],
+    )
+
+    assert layout.width == 13
+    assert FlatActionLayout(joints=[], tcp=[], ios=[]).width == 0
+
+
+# ---------------------------------------------------------------------------
+# The first live observation against the checkpoint's own statistics
+# ---------------------------------------------------------------------------
+
+check_observation_range = schema_module.check_observation_range
+FeatureStats = pytest.importorskip("novapolicy.lerobot.config").FeatureStats
+
+
+def _stats_settings(**stats) -> object:
+    return LeRobotExecutionSettings(
+        policy_type="act",
+        chunk_size=16,
+        n_action_steps=8,
+        stats={"observation.state": FeatureStats(**stats)},
+    )
+
+
+_NAMES = ["arm_1", "arm_2"]
+
+
+def test_an_in_range_observation_passes_quietly(caplog) -> None:
+    settings = _stats_settings(minimum=(-3.14, -3.14), maximum=(3.14, 3.14))
+
+    with caplog.at_level("WARNING"):
+        check_observation_range(settings, {"arm_1": 1.0, "arm_2": -2.0}, _NAMES)
+
+    assert not caplog.text
+
+
+def test_a_pose_just_outside_the_demonstrations_only_warns(caplog) -> None:
+    """A start pose the demonstrations never visited is normal, not a unit error."""
+    settings = _stats_settings(minimum=(-1.0, -1.0), maximum=(1.0, 1.0))
+
+    with caplog.at_level("WARNING"):
+        check_observation_range(settings, {"arm_1": 5.0, "arm_2": 0.0}, _NAMES)
+
+    assert "outside the training distribution" in caplog.text
+
+
+def test_degrees_against_a_radian_checkpoint_is_rejected() -> None:
+    """The case this exists for: a ~57x error lands far outside any pose."""
+    settings = _stats_settings(minimum=(-3.14, -3.14), maximum=(3.14, 3.14))
+
+    with pytest.raises(ValueError, match="implausibly far outside"):
+        check_observation_range(settings, {"arm_1": 180.0, "arm_2": -90.0}, _NAMES)
+
+
+def test_the_rejection_names_the_dimension_and_both_ranges() -> None:
+    settings = _stats_settings(minimum=(-3.14, -3.14), maximum=(3.14, 3.14))
+
+    with pytest.raises(ValueError) as excinfo:
+        check_observation_range(settings, {"arm_1": 0.0, "arm_2": 180.0}, _NAMES)
+
+    message = str(excinfo.value)
+    assert "'arm_2'" in message
+    assert "180" in message
+    assert "arm_1" not in message
+
+
+def test_no_statistics_means_no_check() -> None:
+    settings = LeRobotExecutionSettings(policy_type="act")
+
+    check_observation_range(settings, {"arm_1": 999.0}, _NAMES)
+
+
+def test_a_state_width_mismatch_skips_the_check() -> None:
+    """Width disagreement is the feature contract's failure to report, not this one."""
+    settings = _stats_settings(minimum=(-1.0,), maximum=(1.0,))
+
+    check_observation_range(settings, {"arm_1": 500.0, "arm_2": 500.0}, _NAMES)
+
+
+def test_dimensions_without_usable_bounds_are_skipped() -> None:
+    settings = _stats_settings(mean=(0.0, 0.0), std=(0.0, 1.0))
+
+    with pytest.raises(ValueError, match="'arm_2'"):
+        check_observation_range(settings, {"arm_1": 999.0, "arm_2": 999.0}, _NAMES)
+
+
+def test_a_near_constant_dimension_does_not_fail_a_legitimate_pose(caplog) -> None:
+    """Regression, measured against a live UR10e.
+
+    Wrist joint 5 barely moved across the choreo3 demonstrations — a trained
+    span of 0.022 rad. Scaling the failure threshold by that span gave a
+    +/-0.09 rad window, so the arm's own park pose was reported as a unit
+    mismatch. A units error is an error of scale, so magnitude decides.
+    """
+    settings = _stats_settings(minimum=(-1.577, 2.005), maximum=(-1.555, 2.662))
+
+    with caplog.at_level("WARNING"):
+        check_observation_range(settings, {"arm_1": 1.571, "arm_2": -1.571}, _NAMES)
+
+    assert "outside the training distribution" in caplog.text
+
+
+def test_the_same_pose_in_the_wrong_units_is_still_rejected() -> None:
+    """The park pose above, reported in degrees against a radian checkpoint."""
+    settings = _stats_settings(minimum=(-1.577, 2.005), maximum=(-1.555, 2.662))
+
+    with pytest.raises(ValueError, match="implausibly far outside"):
+        check_observation_range(settings, {"arm_1": 90.0, "arm_2": -90.0}, _NAMES)

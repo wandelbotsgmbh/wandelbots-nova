@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 import math
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
@@ -50,7 +51,18 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     """Motion group id → sequence of TCP targets [x, y, z, rx, ry, rz]."""
 
     ios: dict[str, dict[str, bool | int | float | str]] | None = None
-    """Motion group id → {io_key: value}. Fired once on send()."""
+    """Motion group id → {io_key: value}, in **hardware** units. Fired once on send().
+
+    Unlike joint and TCP targets, IO values arrive already converted: a policy
+    client applies the schema's ``Mapping`` when it decodes its own wire format,
+    because only the client knows where in that format the value sits. A chunk
+    built by hand therefore carries hardware values directly — ``True``, or
+    ``100.0`` for an analogue output — and nothing converts them again.
+
+    Joint and TCP targets are the other way round: they arrive in the policy's
+    units and the executor inverts them through
+    :meth:`PolicySchema.apply_inverse_ops` before they reach the robot.
+    """
 
     dt_ms: float = 0.0
     """Time spacing between steps in milliseconds. 0 = single-step."""
@@ -130,6 +142,37 @@ class ContinuousExecution:
 
 
 ExecutionMode: TypeAlias = SequentialExecution | ContinuousExecution
+
+
+class OnStale(StrEnum):
+    """What the executor does when data does not arrive in time.
+
+    The trigger is per channel — one camera can go stale on its own — but the
+    response is not: one policy drives the whole cell, so holding one arm while
+    aborting another is incoherent. This is therefore an executor-wide setting.
+
+    ``zeros``, the third option in ROS-side equivalents, is deliberately absent.
+    It suits velocity and effort channels; NOVA streams absolute joint
+    positions, where zero commands the arm to its zero pose.
+    """
+
+    HOLD = "hold"
+    """Skip the tick and retry. The jogging session holds its last target while
+    the robot decelerates. Escalates to ``CONTROLLED_STOP`` once the data has
+    been stale for longer than the executor's hold budget.
+
+    Honoured for observation staleness only. An inference deadline always ends
+    the run: the timed-out call is still in flight on a worker thread, and
+    re-entering the client while it may still complete would corrupt the
+    policy's timestep sequence.
+    """
+
+    CONTROLLED_STOP = "controlled_stop"
+    """Run out the waypoints already accepted, then end the run normally with a
+    ``stale: ...`` reason."""
+
+    ABORT = "abort"
+    """Raise. The default, and what the executor did before this was declared."""
 
 
 @dataclass(frozen=True, slots=True)

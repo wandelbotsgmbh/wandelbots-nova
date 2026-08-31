@@ -188,6 +188,121 @@ schema = PolicySchema(
 
 Images arrive as `numpy.ndarray` (H×W×3, uint8, RGB) in the observation dict.
 
+### Units
+
+NOVA speaks radians and millimetres. A dataset does not necessarily. LeRobot's policy server
+applies the checkpoint's own normalization, so **do not** normalize here — but those statistics are
+in the *recording* robot's units, so a dataset captured in degrees normalizes perfectly cleanly and
+moves the arm to the wrong place.
+
+Declare the conversion once and it applies in both directions: forward on the observation,
+inverted on the action.
+
+```python
+from novapolicy import Clamp, Observation, Rad2Deg, Scale
+
+schema = PolicySchema(
+    observations=[
+        # Dataset recorded in degrees; NOVA reports radians.
+        Observation.joint_positions("arm", source=mg, ops=[Rad2Deg()]),
+        # Position is millimetres and orientation radians, so they convert apart.
+        Observation.tcp(
+            "eef", source=mg, action=True,
+            position_ops=[Scale(0.001)],       # mm -> m
+            orientation_ops=[Rad2Deg()],
+        ),
+    ]
+)
+```
+
+| Operator | Direction | Notes |
+| --- | --- | --- |
+| `Rad2Deg()` | bijective | Exact both ways. |
+| `Scale(factor)` | bijective | `Scale(0.001)` is mm → m. A zero or non-finite factor is rejected at construction. |
+| `Clamp(low, high)` | bidirectional | Bounds the observation forward *and* the command on the way back — limiting a command is the safety-relevant direction. |
+
+Operators run front-to-back on the observation and back-to-front on the action, so
+`[Scale(0.001), Clamp(-1, 1)]` clamps in metres in both directions. They are element-wise, apply to
+joints and TCP but not to `computed` or `constant` observations, and an operator that declares
+itself forward-only is rejected on a channel the policy writes — the executor would have nothing to
+send back.
+
+The inversion happens in the executor, **before** relative targets resolve: a delta in degrees
+added to a state in radians is exactly the error this exists to prevent.
+
+> Rotation-representation conversion — rotation vector to quaternion or Euler — is out of scope.
+> These operators are element-wise scalars.
+
+### Checking units against the checkpoint
+
+Declared units are an assertion by whoever wrote the schema. When the client can read the
+checkpoint's normalization statistics (`policy_preprocessor.json` and its safetensors, alongside
+`config.json`), it holds the first live observation against them and reports what it finds:
+
+- **Far outside** the training range — ten spans or more — raises before the robot moves. That is
+  what a unit mismatch looks like; a pose does not land there.
+- **Somewhat outside** warns. Starting from a pose the demonstrations never visited is normal.
+
+A checkpoint shipped as `config.json` alone simply skips the check. One asymmetry worth knowing:
+bounds catch values that are too *large* for the training range — degrees where radians were
+expected. The reverse sits comfortably inside a degree range and cannot be caught this way.
+
+### Stale inputs
+
+A camera can freeze and a policy service can hang. Both mean the same thing to the executor —
+the data needed for this tick did not arrive — and what happens next is declared, not implicit.
+
+Freshness is declared per channel; the response is declared once, because one policy drives the
+whole cell and holding one arm while aborting another is incoherent.
+
+```python
+from novapolicy import Observation, OnStale, PolicyExecutor
+
+schema = PolicySchema(
+    observations=[
+        Observation.joint_positions("arm", source=mg),
+        # This camera runs slower than the rest, so it declares its own bound.
+        Observation.image("wrist", source=cameras.device(DEVICE), max_age_s=0.5),
+    ]
+)
+
+executor = PolicyExecutor(
+    schema,
+    policy,
+    camera_max_age_s=1.0,  # default bound for channels that declare none
+    inference_timeout_s=30.0,  # liveness guard on one get_actions call
+    on_stale=OnStale.CONTROLLED_STOP,
+)
+```
+
+| `on_stale` | What happens |
+| --- | --- |
+| `ABORT` (default) | Raises. What the executor did before this was declared. |
+| `CONTROLLED_STOP` | Runs out the waypoints already accepted, then ends the run with `result.reason == "stale: ..."`. |
+| `HOLD` | Skips the tick and retries, so the robot decelerates against its last target. Escalates to `CONTROLLED_STOP` after `hold_budget_s`. |
+
+`HOLD` applies to **camera staleness only**. An inference that misses its deadline always ends the
+run: the timed-out call is still running on a worker thread, and re-entering the policy client
+while it may still complete would corrupt the policy's timestep sequence.
+
+There is no `zeros` option. It is standard in ROS-side equivalents and suits velocity or effort
+channels, but NOVA streams absolute joint positions — where zero commands the arm to its zero pose.
+
+Under `SequentialExecution` the robot is already at a measured standstill while inference runs, so
+the inference deadline mostly changes the error message. The declared response earns its keep under
+`ContinuousExecution`, where the lookahead is live.
+
+### How a run ends
+
+How the run ended decides what happens to motion the controller already accepted:
+
+- **Normal end** — a stop condition, the execution timeout, an external `stop()`, or stale data
+  under `CONTROLLED_STOP` — drains the accepted waypoints before the sessions close. They were
+  owed to the caller.
+- **Error or e-stop** drops them. Cancelling immediately is the point on a failure path.
+
+> These are **software** guards running in the executor loop, not a safety system.
+
 ### Stop conditions
 
 Policies run open-ended: they don't signal "finished". A stop condition is a fast,

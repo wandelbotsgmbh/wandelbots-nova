@@ -93,7 +93,6 @@ from novapolicy import (
     SequentialExecution,
     WebRTCCameras,
 )
-from novapolicy.lerobot import load_execution_settings
 
 NOVA_HOST = "http://<nova-host>"
 LEROBOT_SERVER = "<lerobot-server-host>:8080"
@@ -106,8 +105,9 @@ PLAYBACK_SPEED = 1.0
 
 
 async def main() -> None:
-    settings = load_execution_settings(CLIENT_CHECKPOINT_CONFIG)
-    cameras = WebRTCCameras(api_url=CAMERA_API, resize=(320, 240))
+    # Configure the camera stream at the checkpoint's resolution; add
+    # resize=(w, h) only if the stream cannot be reconfigured.
+    cameras = WebRTCCameras(api_url=CAMERA_API)
 
     async with Nova(config=NovaConfig(host=NOVA_HOST)) as nova:
         arm = (await nova.cell("cell").controller("cobot"))[0]
@@ -129,17 +129,17 @@ async def main() -> None:
         policy = LeRobotPolicyClient(
             server_address=LEROBOT_SERVER,
             pretrained_name_or_path=SERVER_CHECKPOINT,
-            policy_type=settings.policy_type,
+            # The server loads SERVER_CHECKPOINT; the client reads this local
+            # copy to derive policy_type, chunking, and the camera frame size.
+            config_path=CLIENT_CHECKPOINT_CONFIG,
             fps=FPS,
             playback_speed=PLAYBACK_SPEED,
-            actions_per_chunk=settings.chunk_size,
             device="cuda",
         )
         executor = PolicyExecutor(
             schema,
             policy,
             execution=SequentialExecution(),
-            n_action_steps=settings.n_action_steps,
             timeout_s=80,
         )
         result = await executor.run()
@@ -174,10 +174,9 @@ from novapolicy.lerobot import AsyncQueueAggregation
 policy = LeRobotPolicyClient(
     server_address=LEROBOT_SERVER,
     pretrained_name_or_path=SERVER_CHECKPOINT,
-    policy_type=settings.policy_type,
+    config_path=CLIENT_CHECKPOINT_CONFIG,
     fps=FPS,
     playback_speed=PLAYBACK_SPEED,
-    actions_per_chunk=settings.chunk_size,
     device="cuda",
     use_async_queue=True,
     async_queue_aggregation=AsyncQueueAggregation.AVERAGE,
@@ -223,7 +222,8 @@ pretrained_name_or_path = "org/my-policy"
 
 ### `policy_type`
 
-LeRobot policy type sent to the server, for example:
+LeRobot policy type sent to the server. Read from the checkpoint's `type`; pass it only to
+override, and only with a value that agrees with the checkpoint:
 
 ```python
 policy_type = "act"
@@ -266,12 +266,61 @@ collection controller.
 
 ### Checkpoint execution settings
 
-LeRobot checkpoints define both values needed for ACT chunk execution:
+`LeRobotPolicyClient` reads what the checkpoint already declares instead of asking for it:
 
-- `chunk_size`: number of actions predicted by the model
-- `n_action_steps`: number of predicted actions intended for execution before replanning
+| Derived from the checkpoint | Read from |
+| --- | --- |
+| `policy_type` | `type` |
+| `actions_per_chunk` | `len(action_delta_indices)` |
+| `n_action_steps` (used by `PolicyExecutor`) | `n_action_steps` |
 
-Load them rather than duplicating magic numbers:
+Values are read through LeRobot's own `PreTrainedConfig`, not by parsing `config.json` field by
+field, so **every LeRobot policy works without a per-policy table here**. Policies disagree about
+what the action chunk is called — ACT says `chunk_size`, diffusion says `horizon`, fastwam says
+`action_horizon`, vqbet names it nothing — but every policy config must implement the abstract
+`action_delta_indices` property, and its length is the chunk length for all of them. A new or
+renamed LeRobot policy needs no change in novapolicy.
+
+A policy that declares no action chunk at all (`action_delta_indices is None`) needs
+`actions_per_chunk` explicitly.
+
+`fps` and `playback_speed` cannot be derived — frame rate is a property of the dataset, not the
+policy — so they stay explicit.
+
+Pass any of the derived arguments only to override it. An override that contradicts the checkpoint
+is reported rather than silently accepted: a different `policy_type`, or a chunk length above the
+checkpoint's action chunk, both raise. A *shorter* horizon is allowed with a warning, since a
+receding horizon is a legitimate choice.
+
+The client also holds the schema against the checkpoint's `input_features` / `output_features`
+before the setup message goes out: the observation key set, the shape behind each key, and the
+width of the flat action vector. A mismatch fails at startup rather than after the robot has
+started moving. This runs automatically; there is nothing to call. A checkpoint that declares no
+features (they were inferred from the dataset at train time) is warned about and skipped.
+
+One exception: a **camera frame size** that disagrees only warns. See
+[camera resolution](#camera-resolution) below.
+
+**Derivation needs a checkpoint the client can read.** If `pretrained_name_or_path` names a path
+that exists only on the inference server, the NOVA client cannot inspect it — LeRobot's async RPC
+has no checkpoint-metadata method. Pass `config_path` pointing at a client-local copy of the
+checkpoint directory or its `config.json`:
+
+```python
+policy = LeRobotPolicyClient(
+    server_address=LEROBOT_SERVER,
+    pretrained_name_or_path="/models/my_lerobot_policy",  # read by the server
+    config_path="./my_lerobot_policy/config.json",  # read by the client
+    fps=15.0,
+)
+```
+
+Without one, the client warns that neither derivation nor validation could run and falls back to
+the explicit arguments; `policy_type` and `actions_per_chunk` then both have to be supplied. The
+client never assumes a policy type it could not read — sending the wrong one makes the server build
+the wrong policy class.
+
+`load_execution_settings` remains available for reading the same values directly:
 
 ```python
 from novapolicy.lerobot import load_execution_settings
@@ -279,22 +328,14 @@ from novapolicy.lerobot import load_execution_settings
 settings = load_execution_settings("./pretrained_model")
 # settings.chunk_size == 11
 # settings.n_action_steps == 8
+# settings.input_features["observation.state"].shape == (7,)
 ```
-
-The source can be a local checkpoint directory, a direct `config.json` path, or a Hugging Face
-model id. If `pretrained_name_or_path` names a path that exists only on a remote inference server,
-the NOVA client cannot inspect it: LeRobot's current async RPC has no checkpoint-metadata method.
-Provide a client-local copy of `config.json` or set both values explicitly.
-
-Applications should pass these values to ``LeRobotPolicyClient.actions_per_chunk`` and
-``PolicyExecutor.n_action_steps``. Explicit application configuration may override checkpoint
-metadata.
 
 ### `actions_per_chunk`
 
-Number of action steps requested from the server. For ACT, use the checkpoint's `chunk_size` so the
-full prediction remains available for logging and visualization. `PolicyExecutor.n_action_steps`
-then limits execution to the checkpoint's intended execution horizon.
+Number of action steps requested from the server. Defaults to the checkpoint's `chunk_size`, so the
+full prediction stays available for logging and visualization while `n_action_steps` limits what is
+actually executed. Pass it only to request a shorter chunk; a value above `chunk_size` raises.
 
 The LeRobot async server does not infer this. It is part of LeRobot's `RemotePolicyConfig`, and the
 server slices `policy.predict_action_chunk(...)` to the requested length.
@@ -309,7 +350,9 @@ PolicyExecutor(
     schema,
     policy,
     execution=SequentialExecution(),
-    n_action_steps=settings.n_action_steps,
+    # n_action_steps defaults to the checkpoint's execution horizon,
+    # which LeRobotPolicyClient reports. Pass a value to override it,
+    # or 0 to execute the whole predicted chunk.
 )
 ```
 
@@ -412,12 +455,36 @@ becomes:
 }
 ```
 
-Image shape comes from the first camera frame. Configure image dimensions in the camera source, for
-example:
+Image shape comes from the first camera frame.
+
+### Camera resolution
+
+**Camera resolution stays yours to choose.** Configure the stream in the Camera App at the
+resolution and aspect ratio the checkpoint was trained on where the hardware allows it — cameras
+do not offer arbitrary resolutions, so novapolicy never overrides your choice. It only tells you
+when the frames disagree with the checkpoint.
+
+When the client can read the checkpoint, it compares the first frame against the declared `VISUAL`
+shape and warns, distinguishing two cases:
+
+| Difference | What it means |
+| --- | --- |
+| **Resolution**, same aspect ratio | Frames rescale cleanly. You are paying network and decode cost for pixels that get downscaled again, and losing some detail. Worth fixing when the camera supports it. |
+| **Aspect ratio** | Rescaling cannot fix this. `resize=` is a plain rescale, not a crop or a pad, so a 16:9 stream squeezed into a 4:3 target is stretched. pi0, pi0_fast, pi05, smolvla and xvla resize with padding internally and tolerate it; **ACT does not resize at all** and sees the distorted geometry directly. |
+
+Neither stops the run.
 
 ```python
-WebRTCCameras(..., resize=(320, 240))
+# Preferred: the camera stream is already at the checkpoint's resolution.
+WebRTCCameras(api_url=CAMERA_API)
+
+# Rescale on read when the hardware cannot deliver the checkpoint's resolution.
+WebRTCCameras(api_url=CAMERA_API, resize=(320, 240))
 ```
+
+`resize=` scales frames on read, after they have crossed the network, so it fixes the shape the
+policy sees but not the bandwidth. Match the aspect ratio at the stream even when the resolution
+cannot match exactly.
 
 Returned LeRobot actions use a fixed flat layout: joint targets first, then TCP targets, then IO
 actions. Joint targets are split according to the schema's joint action motion groups. Each TCP
@@ -463,8 +530,10 @@ readiness/model-loading time is excluded from `timeout_s`.
 - `device`
 - `rename_map` (left empty by this client)
 
-The server does not expose model metadata before setup. Keep `policy_type`, `fps`, and
-`actions_per_chunk` in your deployment configuration next to the checkpoint path.
+The server does not expose model metadata before setup, which is why the client reads the
+checkpoint itself. Keep `fps` in your deployment configuration next to the checkpoint path, and
+make sure the client can reach a copy of `config.json` — see
+[Checkpoint execution settings](#checkpoint-execution-settings).
 
 ## Troubleshooting
 

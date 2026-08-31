@@ -12,12 +12,15 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
+import math
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import numpy as np
 import pytest
 
 from novapolicy.executor import Phase, PolicyExecutor
+from novapolicy.ops import Rad2Deg
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.schema import Action, Observation, ObservationEntry, PolicySchema
 from novapolicy.types import (
@@ -27,6 +30,7 @@ from novapolicy.types import (
     EmergencyStopError,
     EndpointRamp,
     MotionError,
+    OnStale,
     SequentialExecution,
     StopContext,
     WaypointConfig,
@@ -176,6 +180,7 @@ def _fake_session() -> MagicMock:
     session.scheduled_timestamp_for_step = MagicMock(side_effect=scheduled_timestamp_for_step)
     session.start = AsyncMock()
     session.stop = AsyncMock()
+    session.drain = AsyncMock(return_value=True)
     session.wait_ready = AsyncMock()
     session.write_ios = AsyncMock()
 
@@ -891,3 +896,366 @@ def test_continuous_chunks_are_backdated_by_inference_time():
     # Sequential execution never backdates: its chunks start from standstill.
     settled = PolicyExecutor(_schema(), _callback(AsyncMock()), execution=SequentialExecution())
     assert settled._align_seam_to_observation(chunk, time.monotonic() - 0.2) is chunk
+
+
+# ---------------------------------------------------------------------------
+# n_action_steps: policy-declared horizon vs. explicit executor argument
+# ---------------------------------------------------------------------------
+
+
+class _HorizonPolicy(PolicyClient):
+    """Policy returning a four-step chunk and declaring its own horizon."""
+
+    def __init__(self, declared: int | None) -> None:
+        self._declared = declared
+
+    @property
+    def n_action_steps(self) -> int | None:
+        return self._declared
+
+    async def get_actions(self, states, schema, images=None, io_values=None) -> ActionChunk:
+        return ActionChunk(joints={MG_ID: [[float(step)] * 6 for step in range(4)]}, dt_ms=10.0)
+
+
+async def _first_sent_steps(policy: PolicyClient, robot: _Robot, **kwargs) -> list:
+    """Steps in the first chunk sent, with the endpoint ramp off so the count is the trim."""
+    executor = PolicyExecutor(
+        _schema(),
+        policy,
+        timeout_s=0.2,
+        execution=SequentialExecution(endpoint_ramp=None),
+        **kwargs,
+    )
+    await executor.run()
+    return robot.session.update_chunk.call_args_list[0].kwargs["steps"]
+
+
+@pytest.mark.asyncio
+async def test_the_policys_declared_horizon_is_used_when_none_is_given(robot: _Robot):
+    """A client that reads its horizon from a checkpoint needs no executor argument."""
+    steps = await _first_sent_steps(_HorizonPolicy(2), robot)
+
+    assert len(steps) == 2
+
+
+@pytest.mark.asyncio
+async def test_an_explicit_zero_keeps_the_full_horizon(robot: _Robot):
+    """`n_action_steps=0` means 'all steps' and must override a declared horizon.
+
+    The continuous asynchronous-queue setup passes 0 deliberately; deriving
+    over it would silently start trimming that path.
+    """
+    steps = await _first_sent_steps(_HorizonPolicy(2), robot, n_action_steps=0)
+
+    assert len(steps) == 4
+
+
+@pytest.mark.asyncio
+async def test_an_explicit_horizon_overrides_the_policys(robot: _Robot):
+    steps = await _first_sent_steps(_HorizonPolicy(2), robot, n_action_steps=3)
+
+    assert len(steps) == 3
+
+
+@pytest.mark.asyncio
+async def test_a_policy_declaring_no_horizon_executes_every_step(robot: _Robot):
+    steps = await _first_sent_steps(_HorizonPolicy(None), robot)
+
+    assert len(steps) == 4
+
+
+# ---------------------------------------------------------------------------
+# Stale inputs: a declared response instead of an implicit one
+# ---------------------------------------------------------------------------
+
+
+class _StaleCamera:
+    """Camera whose frames go stale after a given number of reads."""
+
+    def __init__(self, fresh_reads: int = 0) -> None:
+        self._remaining = fresh_reads
+        self.reads = 0
+
+    async def connect(self) -> None: ...
+
+    def read(self, max_age_s: float = 5.0):
+        self.reads += 1
+        if self._remaining > 0:
+            self._remaining -= 1
+            return np.zeros((4, 4, 3), dtype=np.uint8)
+        raise RuntimeError(f"frame stale (9.9s > {max_age_s:.1f}s)")
+
+    def get_latest_frame(self, max_age_s: float = 5.0):
+        return np.zeros((4, 4, 3), dtype=np.uint8)
+
+    async def disconnect(self) -> None: ...
+
+
+def _camera_schema(camera: object, *, max_age_s: float | None = None) -> PolicySchema:
+    return PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=_mg()),
+            Observation.image("scene", source=camera, max_age_s=max_age_s),
+        ]
+    )
+
+
+class _SleepingPolicy(PolicyClient):
+    """Policy whose first inference outlasts the deadline, then returns anyway.
+
+    Mirrors the real hazard: a timed-out gRPC call keeps running on a worker
+    thread after the executor has given up on it.
+    """
+
+    def __init__(self, delay_s: float) -> None:
+        self._delay_s = delay_s
+        self.calls = 0
+        self.completed = 0
+
+    async def get_actions(self, states, schema, images=None, io_values=None) -> ActionChunk:
+        self.calls += 1
+        await asyncio.sleep(self._delay_s)
+        self.completed += 1
+        return ActionChunk(joints={MG_ID: [[0.0] * 6]}, dt_ms=10.0)
+
+
+@pytest.mark.asyncio
+async def test_a_stale_camera_aborts_by_default(robot: _Robot):
+    """ABORT is the default and keeps the pre-declaration behaviour: it raises."""
+    executor = PolicyExecutor(_camera_schema(_StaleCamera()), _hold, timeout_s=1.0)
+
+    with pytest.raises(RuntimeError, match="Stale policy input"):
+        await executor.run()
+
+    assert executor.phase is Phase.ERROR
+
+
+@pytest.mark.asyncio
+async def test_controlled_stop_ends_the_run_and_names_the_stale_input(robot: _Robot):
+    executor = PolicyExecutor(
+        _camera_schema(_StaleCamera()),
+        _hold,
+        timeout_s=1.0,
+        on_stale=OnStale.CONTROLLED_STOP,
+    )
+
+    result = await executor.run()
+
+    assert result.reason.startswith("stale: camera")
+    assert "frame stale" in result.reason
+    assert executor.phase is Phase.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_controlled_stop_runs_out_the_waypoints_already_accepted(robot: _Robot):
+    """The accepted lookahead is owed to the caller, so it drains before stopping."""
+    executor = PolicyExecutor(
+        _camera_schema(_StaleCamera(fresh_reads=1)),
+        _hold,
+        timeout_s=1.0,
+        on_stale=OnStale.CONTROLLED_STOP,
+    )
+
+    await executor.run()
+
+    assert robot.session.drain.await_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_hold_retries_then_escalates_when_the_budget_runs_out(robot: _Robot):
+    """A camera that never recovers must not hold forever."""
+    camera = _StaleCamera()
+    executor = PolicyExecutor(
+        _camera_schema(camera),
+        _hold,
+        timeout_s=2.0,
+        on_stale=OnStale.HOLD,
+        hold_budget_s=0.15,
+    )
+
+    result = await executor.run()
+
+    assert result.reason.startswith("stale: camera")
+    assert camera.reads > 1, "expected retries before escalating"
+
+
+@pytest.mark.asyncio
+async def test_hold_recovers_when_the_camera_comes_back(robot: _Robot):
+    """A transient stale frame must not end the run."""
+
+    class _FlakyCamera(_StaleCamera):
+        def read(self, max_age_s: float = 5.0):
+            self.reads += 1
+            if self.reads == 2:
+                raise RuntimeError("frame stale (9.9s > 1.0s)")
+            return np.zeros((4, 4, 3), dtype=np.uint8)
+
+    camera = _FlakyCamera()
+    executor = PolicyExecutor(
+        _camera_schema(camera),
+        _hold,
+        timeout_s=0.4,
+        # Continuous mode ticks without waiting for a standstill, so the loop
+        # reaches the recovered frame within the test's deadline.
+        execution=ContinuousExecution(),
+        on_stale=OnStale.HOLD,
+        hold_budget_s=1.0,
+    )
+
+    result = await executor.run()
+
+    assert result.reason == "timeout"
+    assert camera.reads > 2
+
+
+@pytest.mark.asyncio
+async def test_a_per_channel_max_age_overrides_the_executor_default(robot: _Robot):
+    """The tolerance is declared per camera; the executor default is the fallback."""
+    seen: list[float] = []
+
+    class _RecordingCamera(_StaleCamera):
+        def read(self, max_age_s: float = 5.0):
+            seen.append(max_age_s)
+            return super().read(max_age_s=max_age_s)
+
+    camera = _RecordingCamera(fresh_reads=1)
+    executor = PolicyExecutor(
+        _camera_schema(camera, max_age_s=0.25),
+        _hold,
+        timeout_s=1.0,
+        camera_max_age_s=9.0,
+        on_stale=OnStale.CONTROLLED_STOP,
+    )
+
+    await executor.run()
+
+    assert seen and all(age == 0.25 for age in seen)
+
+
+@pytest.mark.asyncio
+async def test_an_inference_deadline_ends_the_run(robot: _Robot):
+    policy = _SleepingPolicy(delay_s=5.0)
+    executor = PolicyExecutor(
+        _schema(),
+        policy,
+        timeout_s=2.0,
+        inference_timeout_s=0.1,
+        on_stale=OnStale.CONTROLLED_STOP,
+    )
+
+    result = await executor.run()
+
+    assert result.reason.startswith("stale: inference exceeded")
+
+
+@pytest.mark.asyncio
+async def test_hold_is_refused_for_an_inference_deadline(robot: _Robot):
+    """The timed-out call is still in flight, so re-entering the client is unsafe."""
+    policy = _SleepingPolicy(delay_s=5.0)
+    executor = PolicyExecutor(
+        _schema(),
+        policy,
+        timeout_s=2.0,
+        inference_timeout_s=0.1,
+        on_stale=OnStale.HOLD,
+        hold_budget_s=10.0,
+    )
+
+    result = await executor.run()
+
+    assert result.reason.startswith("stale: inference exceeded")
+    assert policy.calls == 1, "the client must not be re-entered while a call is in flight"
+
+
+@pytest.mark.asyncio
+async def test_no_inference_deadline_when_it_is_disabled(robot: _Robot):
+    policy = _SleepingPolicy(delay_s=0.2)
+    executor = PolicyExecutor(_schema(), policy, timeout_s=0.5, inference_timeout_s=0)
+
+    result = await executor.run()
+
+    assert result.reason == "timeout"
+    assert policy.completed >= 1
+
+
+@pytest.mark.asyncio
+async def test_an_error_drops_the_accepted_waypoints_instead_of_draining(robot: _Robot):
+    """`stop` cancels immediately — that is the point on a failure path."""
+    robot.estop.error = EmergencyStopError("protective stop")
+
+    with pytest.raises(EmergencyStopError):
+        await PolicyExecutor(_schema(), _hold, timeout_s=1.0).run()
+
+    assert robot.session.drain.await_count == 0
+    assert robot.session.stop.await_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_a_normal_end_drains_before_stopping(robot: _Robot):
+    await PolicyExecutor(_schema(), _hold, timeout_s=0.2).run()
+
+    assert robot.session.drain.await_count >= 1
+    assert robot.session.stop.await_count >= 1
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("inference_timeout_s", -1.0), ("hold_budget_s", -1.0)]
+)
+def test_negative_stale_settings_are_rejected(field: str, value: float):
+    with pytest.raises(ValueError, match="must not be negative"):
+        PolicyExecutor(_schema(), _hold, **{field: value})
+
+
+# ---------------------------------------------------------------------------
+# Unit operators on the action path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_units_are_inverted_before_relative_deltas_resolve(robot: _Robot):
+    """A degree-space delta added to a radian state is the bug ops exist to prevent.
+
+    The policy returns +90 in its own (degree) units against a robot at zero.
+    Correct: 90deg -> pi/2 rad, added to 0 rad. Wrong: 90 added to 0 rad, then
+    converted, or converted after the addition — both land somewhere else.
+    """
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=_mg(), mode="relative", ops=[Rad2Deg()])
+        ]
+    )
+
+    async def policy(_obs: object) -> ActionChunk:
+        return ActionChunk(joints={MG_ID: [[90.0] * 6]}, dt_ms=10.0)
+
+    executor = PolicyExecutor(
+        schema,
+        _callback(policy),
+        timeout_s=0.2,
+        execution=SequentialExecution(endpoint_ramp=None),
+    )
+    await executor.run()
+
+    sent = robot.session.update_chunk.call_args_list[0].kwargs["steps"][0]
+    assert sent == pytest.approx([math.pi / 2] * 6)
+
+
+@pytest.mark.asyncio
+async def test_absolute_targets_reach_the_robot_in_nova_units(robot: _Robot):
+    schema = PolicySchema(
+        observations=[Observation.joint_positions("arm", source=_mg(), ops=[Rad2Deg()])]
+    )
+
+    async def policy(_obs: object) -> ActionChunk:
+        return ActionChunk(joints={MG_ID: [[180.0] * 6]}, dt_ms=10.0)
+
+    executor = PolicyExecutor(
+        schema,
+        _callback(policy),
+        timeout_s=0.2,
+        execution=SequentialExecution(endpoint_ramp=None),
+    )
+    await executor.run()
+
+    sent = robot.session.update_chunk.call_args_list[0].kwargs["steps"][0]
+    assert sent == pytest.approx([math.pi] * 6)

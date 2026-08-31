@@ -31,6 +31,7 @@ from novapolicy.types import (
     EmergencyStopError,
     ExecutionMode,
     MotionError,
+    OnStale,
     SequentialExecution,
     StopContext,
     WaypointConfig,
@@ -49,6 +50,38 @@ _ASYNC_SEAM_STEPS = 4
 _ASYNC_REPLACEMENT_LEAD_STEPS = 1
 _DEFAULT_WAYPOINT_CONFIG = WaypointConfig()
 _DEFAULT_EXECUTION = SequentialExecution()
+
+# A camera feeding a control loop should be fresh in frame terms, not in tens of
+# seconds. One second is loose enough for a slow stream and tight enough that a
+# frozen feed surfaces before it has driven many chunks of motion.
+_DEFAULT_CAMERA_MAX_AGE_S = 1.0
+
+# Outer liveness guard on one inference. Generous by design: it exists to catch a
+# hung service, not to police latency. Transports may have tighter deadlines of
+# their own (LeRobot's gRPC calls use 15s).
+_DEFAULT_INFERENCE_TIMEOUT_S = 30.0
+
+# How long OnStale.HOLD may retry before escalating.
+_DEFAULT_HOLD_BUDGET_S = 2.0
+
+# Pause between HOLD retries, so a stale channel cannot spin the loop hot.
+_HOLD_RETRY_PERIOD_S = 0.05
+
+
+class _StaleSignal(Exception):  # ruff: ignore[error-suffix-on-exception-name] - control flow
+    """Base for the two stale-input outcomes that do not raise to the caller."""
+
+    def __init__(self, what: str) -> None:
+        super().__init__(what)
+        self.what = what
+
+
+class _StaleHold(_StaleSignal):
+    """Retry the tick after a pause."""
+
+
+class _StaleStop(_StaleSignal):
+    """End the run normally, running out the waypoints already accepted."""
 
 
 class Phase(StrEnum):
@@ -106,10 +139,13 @@ class PolicyExecutor:
         *,
         stop_conditions: list[StopCondition] | None = None,
         timeout_s: float = 0,
-        camera_max_age_s: float = 30.0,
+        camera_max_age_s: float = _DEFAULT_CAMERA_MAX_AGE_S,
+        inference_timeout_s: float = _DEFAULT_INFERENCE_TIMEOUT_S,
+        on_stale: OnStale = OnStale.ABORT,
+        hold_budget_s: float = _DEFAULT_HOLD_BUDGET_S,
         motion: WaypointConfig = _DEFAULT_WAYPOINT_CONFIG,
         execution: ExecutionMode = _DEFAULT_EXECUTION,
-        n_action_steps: int = 0,
+        n_action_steps: int | None = None,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
     ) -> None:
         """Create a policy executor.
@@ -120,14 +156,36 @@ class PolicyExecutor:
             stop_conditions: Optional checks run each tick; one returning ``True``
                 stops the run normally (its name appears in ``result.reason``).
             timeout_s: Maximum execution duration in seconds. 0 = no timeout.
-            camera_max_age_s: Maximum allowed age of a camera frame before raising.
+
+            camera_max_age_s: Default freshness bound for camera frames, in
+                seconds. A channel can override it with
+                ``Observation.image(..., max_age_s=...)``. Frames older than the
+                bound are stale; see ``on_stale``. Applies to the policy's
+                frames only — visualization uses a looser bound of its own.
+            inference_timeout_s: Deadline for one ``get_actions`` call, in
+                seconds. 0 = no deadline. This is a liveness guard against a
+                hung policy service, applied uniformly whatever the transport's
+                own timeout is; it is not a real-time guarantee.
+            on_stale: What to do when a camera frame or an inference misses its
+                deadline. ``ABORT`` (default) raises, as the executor did before
+                this was declared. ``CONTROLLED_STOP`` runs out the accepted
+                waypoints and ends the run with a ``stale: ...`` reason.
+                ``HOLD`` retries, and applies to camera staleness only — see
+                :class:`OnStale`.
+            hold_budget_s: How long ``HOLD`` may keep retrying before escalating
+                to ``CONTROLLED_STOP``. Measured from the first stale tick, so
+                it does not depend on how fast the loop spins.
             motion: Waypoint jogging configuration. Defaults to WaypointConfig().
             execution: Explicit execution strategy. ``SequentialExecution``
                 completes and settles each chunk before the next inference;
                 ``ContinuousExecution`` replaces the active lookahead either as
                 fast as possible or at its configured fixed rate.
             n_action_steps: Number of steps from each action chunk to execute.
-                0 (default): Execute all steps returned by the policy.
+                None (default): Use the policy's own horizon when it declares
+                one (a LeRobot client reports its checkpoint's value), else all
+                steps.
+                0: Execute all steps returned by the policy, ignoring any
+                horizon the policy declares.
                 >0: Trim to first N steps (receding horizon). Later steps
                 have higher prediction uncertainty and are discarded.
                 The policy still predicts the full action_horizon (e.g. 16)
@@ -147,6 +205,14 @@ class PolicyExecutor:
         self._start_joint_position = start_joint_position
         self._stop_conditions = stop_conditions or []
         self._timeout_s = timeout_s
+        if inference_timeout_s < 0:
+            raise ValueError("inference_timeout_s must not be negative")
+        if hold_budget_s < 0:
+            raise ValueError("hold_budget_s must not be negative")
+        self._inference_timeout_s = inference_timeout_s
+        self._on_stale = OnStale(on_stale)
+        self._hold_budget_s = hold_budget_s
+        self._stale_since: float | None = None
         if not isinstance(execution, ExecutionMode):
             raise TypeError("execution must be SequentialExecution or ContinuousExecution")
         self._execution = execution
@@ -240,7 +306,17 @@ class PolicyExecutor:
         Owns the resources allocated *before* and *around* ``_run_episode``:
         the jogging sessions, pending IO write tasks, and the policy
         connection. Also performs the final status reset and result logging.
+
+        How the run ended decides what happens to motion already accepted by the
+        controller. A run that ended normally — a stop condition, the execution
+        timeout, an external :meth:`stop`, or stale data under
+        ``CONTROLLED_STOP`` — owes the caller the waypoints it accepted, so they
+        are drained first. A run that ended in an error or an e-stop drops them:
+        ``session.stop`` cancels immediately, which is the point.
         """
+        if self.status.phase is not Phase.ERROR:
+            await self._drain_sessions()
+
         for session in self._sessions.values():
             with contextlib.suppress(MotionError, EmergencyStopError, OSError, RuntimeError):
                 await session.stop()
@@ -307,7 +383,7 @@ class PolicyExecutor:
         image_sources = self._schema.image_sources
         if image_sources:
             logger.info("Connecting cameras...")
-            await self._cameras.connect(image_sources)
+            await self._cameras.connect(image_sources, self._schema.image_max_age_s)
             logger.info("All cameras ready")
 
         for session in self._sessions.values():
@@ -382,53 +458,35 @@ class PolicyExecutor:
                 await asyncio.sleep(0.01)  # retry shortly
                 continue
             observation_time = time.monotonic()
-            images = self._cameras.read() if self._cameras.active else None
-            self._log_first_image_shapes(images)
-            self._last_obs = robot_states
-            last_obs = robot_states
-
-            self._log_policy_observation(robot_states, images, step)
-
-            if start_time is None:
-                await self._prepare_policy(robot_states, images)
-                start_time = time.monotonic()
+            try:
+                action, start_time = await self._observe_and_infer(robot_states, step, start_time)
+            except _StaleHold:
+                await asyncio.sleep(_HOLD_RETRY_PERIOD_S)
+                continue
+            except _StaleStop as stale:
+                await self._drain_sessions()
+                return _result(
+                    f"stale: {stale.what}", step, start_time or time.monotonic(), last_obs
+                )
+            if step == 0:
                 tick_start = start_time
-                self.status.phase = Phase.EXECUTING
-                self.status.message = "Running policy..."
-
-            # Query policy → send to robot
-            action = await self._get_policy_actions(robot_states, images)
+            last_obs = robot_states
             self._log_observation_to_first_waypoint(
                 action,
                 robot_states,
                 step=step + 1,
                 observation_time=observation_time,
             )
-            stopped_by = self._check_stop_conditions_pre_send(action, robot_states)
-            if stopped_by is not None:
-                return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
-
-            trimmed = trim_chunk(action, self._n_action_steps)
-            if self._rerun is not None:
-                self._rerun.log_target_tracking(trimmed, robot_states, step)
-            connected = self._connected_motion(trimmed, robot_states)
-            if connected is not None:
-                boundary_termination = await self._send_connected_policy_chunk(
-                    connected,
-                    action,
-                    step=step,
-                    start_time=start_time,
-                    last_obs=last_obs,
-                )
-                if boundary_termination is not None:
-                    return boundary_termination
-            else:
-                sent_chunk = self._align_seam_to_observation(
-                    self._apply_endpoint_ramp(trimmed), observation_time
-                )
-                await self._schema.run_computed_actions(action)
-                self._log_policy_action(action, step)
-                self._send(sent_chunk)
+            termination = await self._send_policy_action(
+                action,
+                robot_states,
+                step=step,
+                start_time=start_time,
+                last_obs=last_obs,
+                observation_time=observation_time,
+            )
+            if termination is not None:
+                return termination
             step += 1
             self.status.step = step
 
@@ -452,12 +510,17 @@ class PolicyExecutor:
     ) -> ActionChunk:
         """Synchronize a queue, request its action, and apply relative targets."""
         self._synchronize_policy_action_timestep()
-        action = await self._policy.get_actions(
-            robot_states,
-            self._schema,
-            images,
-            self._all_io_values or None,
-        )
+        async with asyncio.timeout(self._inference_timeout_s or None):
+            action = await self._policy.get_actions(
+                robot_states,
+                self._schema,
+                images,
+                self._all_io_values or None,
+            )
+        # Units first: a relative target is a delta in the policy's units, and
+        # adding a degree-space delta to a radian state is exactly the error the
+        # operators exist to prevent.
+        action = self._schema.apply_inverse_ops(action)
         return self._apply_relative_mode(action, robot_states)
 
     def _synchronize_policy_action_timestep(self) -> None:
@@ -725,6 +788,157 @@ class PolicyExecutor:
             if seam.joints or seam.tcp:
                 self._rerun.log_bridge_chunk(seam, step)
         self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
+
+    # -------------------------------------------------------------------------
+    # Stale data
+    # -------------------------------------------------------------------------
+
+    async def _send_policy_action(
+        self,
+        action: ActionChunk,
+        robot_states: dict[str, RobotState],
+        *,
+        step: int,
+        start_time: float,
+        last_obs: dict[str, Any] | None,
+        observation_time: float,
+    ) -> ExecutionResult | None:
+        """Trim, place and send one chunk. Returns a result when the run ends here."""
+        stopped_by = self._check_stop_conditions_pre_send(action, robot_states)
+        if stopped_by is not None:
+            return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
+
+        trimmed = trim_chunk(action, self._n_action_steps)
+        if self._rerun is not None:
+            self._rerun.log_target_tracking(trimmed, robot_states, step)
+
+        connected = self._connected_motion(trimmed, robot_states)
+        if connected is not None:
+            return await self._send_connected_policy_chunk(
+                connected,
+                action,
+                step=step,
+                start_time=start_time,
+                last_obs=last_obs,
+            )
+
+        sent_chunk = self._align_seam_to_observation(
+            self._apply_endpoint_ramp(trimmed), observation_time
+        )
+        await self._schema.run_computed_actions(action)
+        self._log_policy_action(action, step)
+        self._send(sent_chunk)
+        return None
+
+    async def _observe_and_infer(
+        self,
+        robot_states: dict[str, RobotState],
+        step: int,
+        start_time: float | None,
+    ) -> tuple[ActionChunk, float]:
+        """Read the cameras, prepare on the first tick, and query the policy.
+
+        Returns ``(action, start_time)``; ``start_time`` is set on the
+        first tick, after policy preparation, so model loading is excluded from
+        the execution timeout.
+
+        Raises:
+            _StaleHold: An input missed its deadline and the run should retry.
+            _StaleStop: An input missed its deadline and the run should end.
+        """
+        images = self._read_policy_images()
+        self._log_first_image_shapes(images)
+        self._last_obs = robot_states
+        self._log_policy_observation(robot_states, images, step)
+
+        if start_time is None:
+            await self._prepare_policy(robot_states, images)
+            start_time = time.monotonic()
+            self.status.phase = Phase.EXECUTING
+            self.status.message = "Running policy..."
+
+        return await self._infer(robot_states, images), start_time
+
+    def _read_policy_images(self) -> dict[str, Any] | None:
+        """Read one frame per camera, or report the channel as stale."""
+        if not self._cameras.active:
+            return None
+        try:
+            images = self._cameras.read()
+        except RuntimeError as exc:
+            self._on_stale_input(f"camera: {exc}", allow_hold=True)
+            raise  # unreachable: _on_stale_input always raises
+        self._stale_since = None
+        return images
+
+    async def _infer(
+        self,
+        robot_states: dict[str, RobotState],
+        images: dict[str, Any] | None,
+    ) -> ActionChunk:
+        """Query the policy under the executor's inference deadline."""
+        try:
+            action = await self._get_policy_actions(robot_states, images)
+        except TimeoutError:
+            # The timed-out call is still running on a worker thread, so
+            # retrying would re-enter a client whose previous call may still
+            # complete and advance its timestep. HOLD is refused here; see
+            # OnStale.
+            self._on_stale_input(
+                f"inference exceeded {self._inference_timeout_s:.0f}s", allow_hold=False
+            )
+            raise  # unreachable: _on_stale_input always raises
+        self._stale_since = None
+        return action
+
+    def _on_stale_input(self, what: str, *, allow_hold: bool) -> None:
+        """Turn a missed deadline into the declared response. Never returns.
+
+        Args:
+            what: Human-readable description, carried into the result reason.
+            allow_hold: Whether ``HOLD`` is meaningful for this trigger. False
+                for an inference deadline, whose timed-out call is still in
+                flight on a worker thread.
+
+        Raises:
+            RuntimeError: ``on_stale`` is ``ABORT``.
+            _StaleHold: Retry after a pause.
+            _StaleStop: End the run, running out the accepted waypoints.
+        """
+        now = time.monotonic()
+        if self._stale_since is None:
+            self._stale_since = now
+
+        if self._on_stale is OnStale.ABORT:
+            msg = f"Stale policy input ({what})"
+            raise RuntimeError(msg)
+
+        if self._on_stale is OnStale.HOLD:
+            if not allow_hold:
+                logger.warning("Stale policy input (%s) cannot be held through; stopping.", what)
+                raise _StaleStop(what)
+            held_for = now - self._stale_since
+            if held_for < self._hold_budget_s:
+                logger.warning(
+                    "Holding: stale policy input (%s), %.1fs of %.1fs budget used.",
+                    what,
+                    held_for,
+                    self._hold_budget_s,
+                )
+                raise _StaleHold(what)
+            logger.warning(
+                "Stale policy input (%s) outlasted the %.1fs hold budget; stopping.",
+                what,
+                self._hold_budget_s,
+            )
+
+        raise _StaleStop(what)
+
+    async def _drain_sessions(self) -> None:
+        """Let the waypoints already accepted run out before the sessions stop."""
+        for session in self._sessions.values():
+            with contextlib.suppress(MotionError, EmergencyStopError, OSError, RuntimeError):
+                await session.drain()
 
     def _termination_result(
         self,
@@ -1036,8 +1250,15 @@ class PolicyExecutor:
 
     @property
     def _n_action_steps(self) -> int:
-        """Number of action steps to execute from each chunk (0 = all)."""
-        return self._n_action_steps_cfg
+        """Number of action steps to execute from each chunk (0 = all).
+
+        An explicit executor argument always wins, including an explicit ``0``
+        that keeps the full horizon for an asynchronous queue. Only when none
+        was given does the policy's own declared horizon apply.
+        """
+        if self._n_action_steps_cfg is not None:
+            return self._n_action_steps_cfg
+        return self._policy.n_action_steps or 0
 
     def _apply_relative_mode(self, chunk: ActionChunk, states: dict[str, Any]) -> ActionChunk:
         """Convert relative (delta) action targets to absolute (see chunking)."""

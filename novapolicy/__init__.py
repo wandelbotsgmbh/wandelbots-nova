@@ -27,6 +27,7 @@ from novapolicy.chunking import (
 from novapolicy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
 from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
 from novapolicy.jogging import JointJogger, TcpJogger, jog_joints, jog_tcp
+from novapolicy.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.schema import (
     Action,
@@ -45,6 +46,7 @@ from novapolicy.types import (
     JoggingMode,
     JoggingNotSupportedError,
     MotionError,
+    OnStale,
     SequentialExecution,
     StopCondition,
     StopContext,
@@ -76,6 +78,7 @@ __all__ = [
     "BoolMapping",
     "CallbackPolicyClient",
     "CameraSource",
+    "Clamp",
     "ConnectedActionChunk",
     "ContinuousExecution",
     "EmergencyStopError",
@@ -91,15 +94,20 @@ __all__ = [
     "Mapping",
     "MotionError",
     "Observation",
+    "OnStale",
+    "OpDirection",
     "Phase",
     "PolicyClient",
     "PolicyExecutor",
     "PolicySchema",
     "RTCConfig",
+    "Rad2Deg",
+    "Scale",
     "SequentialExecution",
     "StopCondition",
     "StopContext",
     "TcpJogger",
+    "ValueOp",
     "WaypointConfig",
     "WebRTCCameras",
     "connect_action_chunk",

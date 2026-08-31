@@ -60,6 +60,15 @@ class PolicyClient(ABC):
         return False
 
     @property
+    def n_action_steps(self) -> int | None:
+        """Steps to execute per chunk when the policy declares its own horizon.
+
+        ``None`` leaves the choice to the executor. Clients that read a
+        checkpoint report its value here so the caller does not have to copy it.
+        """
+        return None
+
+    @property
     def rtc(self) -> object | None:
         """Model-side RTC configuration, or ``None`` when RTC is disabled."""
         return None
