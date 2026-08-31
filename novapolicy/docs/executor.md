@@ -55,7 +55,10 @@ from an asynchronous action queue or from model-side [Real-Time Chunking](rtc.md
 
 ## Configuration
 
-Execution behavior is selected with an explicit mode object:
+Execution behavior is selected with an explicit mode object. Note `n_action_steps`: it defaults to
+`None`, meaning "use the horizon the policy declares" — a `LeRobotPolicyClient` reports its
+checkpoint's `n_action_steps`. Pass `0` to execute every returned step regardless, which is what
+the continuous asynchronous-queue setup wants, or a positive number to trim explicitly.
 
 ```python
 from novapolicy import (
@@ -176,6 +179,65 @@ finish end at the last waypoint the caller asked for rather than sitting through
 the hold.
 With 20 Hz and 1s lookahead chunks, there is ~95% overlap between
 consecutive chunks, providing ample buffer.
+
+## Stale inputs and how a run ends
+
+A camera can freeze and a policy service can hang. Both mean the same thing to the executor — the
+data this tick needs did not arrive — and what happens next is declared rather than implicit.
+
+Freshness is declared **per channel**; the response is declared **once**. One policy drives the
+whole cell, so holding one arm while aborting another is incoherent.
+
+```python
+from novapolicy import Observation, OnStale, PolicyExecutor
+
+schema = PolicySchema(
+    observations=[
+        Observation.joint_positions("arm", source=mg),
+        # This camera runs slower than the rest, so it declares its own bound.
+        Observation.image("wrist", source=cameras.device(DEVICE), max_age_s=0.5),
+    ]
+)
+
+executor = PolicyExecutor(
+    schema,
+    policy,
+    camera_max_age_s=1.0,      # default bound for channels declaring none
+    inference_timeout_s=30.0,  # liveness guard on one get_actions call; 0 disables
+    on_stale=OnStale.CONTROLLED_STOP,
+    hold_budget_s=2.0,         # how long HOLD may retry before escalating
+)
+```
+
+| `on_stale` | Behaviour |
+| --- | --- |
+| `ABORT` (default) | Raises `RuntimeError`. What the executor did before this was declared. |
+| `CONTROLLED_STOP` | Runs out the waypoints already accepted, then ends with `result.reason == "stale: ..."`. |
+| `HOLD` | Skips the tick and retries; the session holds its last target while the robot decelerates. Escalates to `CONTROLLED_STOP` after `hold_budget_s`. |
+
+`HOLD` applies to **camera staleness only**. An inference that misses its deadline always ends the
+run: the timed-out call is still running on a worker thread, and re-entering the policy client
+while it may still complete would corrupt the policy's timestep sequence.
+
+There is no `zeros` option. It is standard in ROS-side equivalents and suits velocity or effort
+channels, but NOVA streams absolute joint positions — where zero commands the arm to its zero pose.
+
+Under `SequentialExecution` the robot is already at a measured standstill while inference runs, so
+the inference deadline mostly changes the error message. The declared response earns its keep under
+`ContinuousExecution`, where the lookahead is live.
+
+### Teardown follows the reason
+
+How a run ended decides what happens to motion the controller already accepted:
+
+- **A normal end** — a stop condition, the execution timeout, an external `stop()`, or stale data
+  under `CONTROLLED_STOP` — drains the accepted waypoints before the sessions close. They were owed
+  to the caller.
+- **An error or e-stop** drops them. `session.stop()` cancels immediately, which is the point on a
+  failure path.
+
+> These are **software** guards running in the executor loop, not a safety system. Rely on the
+> safety zones and protective stops configured on the robot controller.
 
 ## Detecting standstill
 

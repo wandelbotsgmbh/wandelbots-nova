@@ -76,8 +76,9 @@ required for the basic setup. If you set server `--fps`, keep it aligned with th
 
 Save the following as `run_lerobot_policy.py` on the NOVA client machine. Replace the host names,
 controller, camera device, checkpoint paths, and IO key with values for your cell and checkpoint.
-The checkpoint's `config.json` must be readable by the client; model weights only need to exist on
-the inference server.
+Model weights only need to exist on the inference server. The client reads the checkpoint's
+`config.json` to derive its settings, and its normalization statistics too when they are there —
+see [checkpoint execution settings](#checkpoint-execution-settings).
 
 ```python
 import asyncio
@@ -300,6 +301,28 @@ features (they were inferred from the dataset at train time) is warned about and
 
 One exception: a **camera frame size** that disagrees only warns. See
 [camera resolution](#camera-resolution) below.
+
+### Checking the observation against the checkpoint's statistics
+
+Feature shapes prove the schema is the right *width*. They cannot prove it carries the right
+*numbers* — `PolicyFeature` has no per-dimension names, so a permuted joint order or a unit
+mismatch passes the contract check untouched.
+
+The checkpoint's own training statistics settle it. When `policy_preprocessor.json` and its
+safetensors are readable — alongside `config.json`, on the Hub or locally — the client holds the
+first live observation against them:
+
+- **An order of magnitude larger** than anything in training raises before the robot moves. That is
+  what a unit mismatch looks like; a pose does not land there.
+- **Outside the demonstrated range** warns. Starting from a pose the demonstrations never visited is
+  normal — a robot at its park pose before homing will warn, and should.
+
+A checkpoint shipped as `config.json` alone skips the check. One asymmetry worth knowing: bounds
+catch values that are too *large* for the training range — degrees where radians were expected. The
+reverse sits comfortably inside a degree range and cannot be caught this way.
+
+If the dataset genuinely used different units than NOVA reports, declare the conversion rather than
+working around the warning — see [Units](../docs/schema.md#units).
 
 **Derivation needs a checkpoint the client can read.** If `pretrained_name_or_path` names a path
 that exists only on the inference server, the NOVA client cannot inspect it — LeRobot's async RPC
@@ -542,15 +565,32 @@ make sure the client can reach a copy of `config.json` — see
 Check that `pretrained_name_or_path` exists on the LeRobot server machine, not just on the NOVA
 client machine.
 
-### Image shape or missing image errors
+### `PolicySchema does not match the LeRobot checkpoint`
 
-`LeRobotPolicyClient` needs the first image frame to declare LeRobot feature metadata. Make sure the
-camera is connected and that the image key in `Observation.image(...)` matches the key expected by
-the checkpoint.
+The schema does not produce what the checkpoint declares, and the client says exactly which keys or
+shapes disagree. Common causes: an observation the checkpoint expects and the schema omits, an image
+key that does not match the dataset's name, or a state width that is off.
 
-### Actions are the wrong dimension
+The flat action vector must contain the total DOF of all joint action motion groups, six values for
+every TCP action target, and one value for every IO action. A single 6-axis arm with one gripper IO
+returns seven values per step; a TCP-controlled arm with one gripper IO also returns seven — six
+Cartesian components followed by the IO value.
 
-The returned flat action vector must contain the total DOF of all joint action motion groups, six
-values for every TCP action target, and one value for every IO action. For a single 6-axis arm with
-one gripper IO action, the policy should return seven action values per step. A TCP-controlled arm
-with one gripper IO also returns seven values: six Cartesian components followed by the IO value.
+This check needs a client-readable checkpoint. Without one it cannot run, and the client warns that
+it was skipped.
+
+### `Observations are implausibly far outside what this checkpoint was trained on`
+
+The live observation does not resemble the training data — most often a unit mismatch. Compare the
+values in the message against the training ranges it prints. If the dataset used different units,
+declare the conversion with `ops=` on the observation; see [Units](../docs/schema.md#units).
+
+Warnings about being *outside the training distribution*, as opposed to this error, are expected
+before homing: the robot is simply somewhere the demonstrations never visited.
+
+### Missing image errors
+
+`LeRobotPolicyClient` needs the first image frame to declare LeRobot feature metadata, so the camera
+has to be connected and streaming before the first inference. A frame older than the executor's
+`camera_max_age_s` (1 s by default) counts as stale — see
+[stale inputs](../docs/executor.md#stale-inputs-and-how-a-run-ends) for what happens then.
