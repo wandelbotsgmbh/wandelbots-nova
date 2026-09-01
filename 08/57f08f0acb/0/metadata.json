@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "0857f08f0acb",
+  "session_id": "d0d2e2f2-9a3e-4200-acf7-23ca6ea8c9df",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-01T18:02:50.21379Z",
+  "branch": "feat/execute-without-cancel-into-close",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/cell/motion_group.py",
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "tests/cell/test_execute_shared_stream.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "e1e4dca8df59",
+  "checkpoint_transcript_start": 406,
+  "transcript_lines_at_start": 406,
+  "compact_transcript_start": 78,
+  "token_usage": {
+    "input_tokens": 36,
+    "cache_creation_tokens": 32937,
+    "cache_read_tokens": 3718144,
+    "output_tokens": 20854,
+    "api_call_count": 18
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-01T18:02:50.146847Z",
+    "agent_lines": 223,
+    "agent_removed": 25,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 223,
+    "total_lines_changed": 248,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}

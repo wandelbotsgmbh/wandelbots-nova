@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "0857f08f0acb",
+  "strategy": "manual-commit",
+  "branch": "feat/execute-without-cancel-into-close",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/cell/motion_group.py",
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "tests/cell/test_execute_shared_stream.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/08/57f08f0acb/0/metadata.json",
+      "transcript": "/08/57f08f0acb/0/full.jsonl",
+      "compact_transcript": "/08/57f08f0acb/0/transcript.jsonl",
+      "content_hash": "/08/57f08f0acb/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 36,
+    "cache_creation_tokens": 32937,
+    "cache_read_tokens": 3718144,
+    "output_tokens": 20854,
+    "api_call_count": 18
+  }
+}
