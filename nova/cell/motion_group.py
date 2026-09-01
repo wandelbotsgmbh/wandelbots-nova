@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from contextlib import aclosing
 from functools import partial
 from typing import AsyncGenerator
 
@@ -547,20 +546,26 @@ class MotionGroup(AbstractRobot):
 
         This method provides a real-time stream of robot state information including
         joint positions and TCP pose data for the motion group.
+
+        All consumers of one motion group share a single underlying websocket per
+        gateway; this call only subscribes to it. The websocket is opened at the
+        rate of its first subscriber: a later subscriber asking for a slower rate
+        is downsampled client-side, one asking for a faster rate receives the
+        socket's (slower) rate and a warning is logged.
+
         Args:
             response_rate_msecs (int | None): The rate at which state updates are streamed
-                                             in milliseconds. Defaults to None for maximum rate.
+                                             in milliseconds. Defaults to None, which is the
+                                             server default of 200 ms.
         """
-        response_stream = self._api_client.motion_group_api.stream_motion_group_state(
-            cell=self._cell,
-            controller=self._controller_id,
-            motion_group=self.id,
-            response_rate=response_rate_msecs,
-        )
-
-        async with aclosing(response_stream) as response_stream:
-            async for response in response_stream:
-                yield response
+        subscription = self._api_client.motion_group_state_stream(
+            cell=self._cell, controller_id=self._controller_id, motion_group_id=self.id
+        ).subscribe(response_rate_msecs)
+        try:
+            async for state in subscription:
+                yield state
+        finally:
+            await subscription.aclose()
 
     async def joints(self) -> tuple[float, ...]:
         """Returns the current joint positions of the motion group."""

@@ -7,6 +7,7 @@ from typing import TypeVar
 
 from nova import api
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
+from nova.cell.state_stream import MotionGroupStateStreamRegistry, SharedMotionGroupStateStream
 from nova.config import NovaConfig
 from nova.version import version as pkg_version
 
@@ -75,6 +76,30 @@ class ApiGateway:
     def __init__(self, config: NovaConfig):
         self.config = config
         self._init_api_client()
+        # One shared state stream per motion group for every consumer of this
+        # gateway. Created once here (not in _init_api_client) so a client
+        # reinitialization cannot orphan running pumps; the opener resolves
+        # self.motion_group_api late for the same reason.
+        self._motion_group_state_streams = MotionGroupStateStreamRegistry(
+            open_stream=self._open_motion_group_state_stream,
+            linger_secs=config.motion_group_state_stream_linger_secs,
+        )
+
+    def _open_motion_group_state_stream(
+        self, cell: str, controller_id: str, motion_group_id: str, response_rate_msecs: int | None
+    ):
+        return self.motion_group_api.stream_motion_group_state(
+            cell=cell,
+            controller=controller_id,
+            motion_group=motion_group_id,
+            response_rate=response_rate_msecs,
+        )
+
+    def motion_group_state_stream(
+        self, cell: str, controller_id: str, motion_group_id: str
+    ) -> SharedMotionGroupStateStream:
+        """The shared motion-group state stream for one motion group of this gateway."""
+        return self._motion_group_state_streams.stream(cell, controller_id, motion_group_id)
 
     def _init_api_client(self):
         """Initialize or reinitialize the API client with current credentials"""
@@ -139,6 +164,7 @@ class ApiGateway:
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")
 
     async def close(self):
+        await self._motion_group_state_streams.aclose()
         await self._api_client.close()
 
 

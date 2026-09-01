@@ -38,6 +38,14 @@ class NovaConfig(BaseModel):
     host: str = Field(..., description="Nova API host.")
     access_token: str | None = Field(default=None, description="Access token for Nova API.")
     verify_ssl: bool = Field(default=True)
+    motion_group_state_stream_linger_secs: float = Field(
+        default=0.0,
+        description=(
+            "How long the shared motion-group state websocket stays open after its last "
+            "subscriber unsubscribed, in seconds. 0 closes it immediately; a positive value "
+            "avoids a close/reopen cycle between back-to-back executions."
+        ),
+    )
     nats_client_config: dict | None = Field(
         default=None,
         description="Client configuration to pass to the nats library. See: https://nats-io.github.io/nats.py/modules.html#nats.aio.client.Client.connect",
