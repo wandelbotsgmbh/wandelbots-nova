@@ -45,6 +45,7 @@ Example usage:
 """
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator as AsyncIteratorABC
 from dataclasses import dataclass
@@ -1395,6 +1396,16 @@ class TrajectoryCursor:
             self.detach()
             # stop the cursor iterator (TODO is this the right place?)
             self._in_queue.put_nowait(_QUEUE_SENTINEL)
+            # Release the state stream. For a shared-stream subscription this
+            # only deregisters — cheap, idempotent, no websocket teardown here
+            # (the shared pump owns that); for a plain async generator it just
+            # closes the generator. Suppressing RuntimeError mirrors the
+            # session's broadcaster teardown: aclose() raises when the
+            # generator is still suspended in a sibling of a failed gather.
+            aclose = getattr(self._motion_group_state_stream, "aclose", None)
+            if aclose is not None:
+                with contextlib.suppress(RuntimeError):
+                    await aclose()
 
     async def _held_at_first_dispatch(
         self, stream: AsyncIterator[api.models.MotionGroupState]

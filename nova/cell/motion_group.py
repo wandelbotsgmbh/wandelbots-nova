@@ -558,14 +558,18 @@ class MotionGroup(AbstractRobot):
                                              in milliseconds. Defaults to None, which is the
                                              server default of 200 ms.
         """
-        subscription = self._api_client.motion_group_state_stream(
-            cell=self._cell, controller_id=self._controller_id, motion_group_id=self.id
-        ).subscribe(response_rate_msecs)
+        subscription = self._state_stream().subscribe(response_rate_msecs)
         try:
             async for state in subscription:
                 yield state
         finally:
             await subscription.aclose()
+
+    def _state_stream(self):
+        """The shared state stream of this motion group on its gateway."""
+        return self._api_client.motion_group_state_stream(
+            cell=self._cell, controller_id=self._controller_id, motion_group_id=self.id
+        )
 
     async def joints(self) -> tuple[float, ...]:
         """Returns the current joint positions of the motion group."""
@@ -1032,21 +1036,20 @@ class MotionGroup(AbstractRobot):
                 motion_id=trajectory_id,
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
-                motion_group_state_stream_gen=self.stream_state,
+                # The cursor subscribes to the same shared stream this relay
+                # reads from: one state websocket per motion group, however many
+                # consumers an execution has.
+                motion_group_state_stream_gen=lambda: self._state_stream().subscribe(),
                 joint_trajectory=joint_trajectory,
             )
         )
 
-        class MotionGroupStateSentinel:
-            pass
-
-        states = asyncio.Queue[api.models.MotionGroupState | MotionGroupStateSentinel]()
-        SENTINEL = MotionGroupStateSentinel()
-
-        async def monitor_motion_group_state():
-            async for motion_group_state in self.stream_state():
-                if motion_group_state.execute:
-                    states.put_nowait(motion_group_state)
+        # The relay's own subscription. The execution task acloses it when the
+        # protocol ends, which ends the iteration below; the TaskGroup exits
+        # with all children already finished, so nothing is ever cancelled into
+        # a websocket teardown (the socket itself is closed by the shared
+        # stream's pump, in its own context).
+        subscription = self._state_stream().subscribe()
 
         async def execution():
             try:
@@ -1056,21 +1059,14 @@ class MotionGroup(AbstractRobot):
                     client_request_generator=controller,  # ty: ignore[invalid-argument-type]
                 )
             finally:
-                states.put_nowait(SENTINEL)
+                await subscription.aclose()
 
         async with asyncio.TaskGroup() as tg:
-            monitor_task = tg.create_task(monitor_motion_group_state())
-
             tg.create_task(execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}")
 
-            while (motion_group_state_ := await states.get()) is not SENTINEL:
-                assert isinstance(motion_group_state_, api.models.MotionGroupState)
-                yield motion_group_state_to_motion_state(motion_group_state_)
-
-            # when the execution task finished
-            # task group will still wait for the monitoring task
-            # so we need to cancel it
-            monitor_task.cancel()
+            async for motion_group_state in subscription:
+                if motion_group_state.execute:
+                    yield motion_group_state_to_motion_state(motion_group_state)
 
     async def _tune_trajectory(
         self, joint_trajectory: api.models.JointTrajectory, tcp: str | None, actions: list[Action]
