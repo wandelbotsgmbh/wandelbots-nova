@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "7c8b24813a25",
+  "strategy": "manual-commit",
+  "branch": "feat/state-stream-rate-control",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/cell/motion_group.py",
+    "nova/cell/robot_cell.py",
+    "nova/cell/simulation.py",
+    "nova/cell/trajectory_executor.py",
+    "nova/config.py",
+    "tests/cell/test_state_stream_rate.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/7c/8b24813a25/0/metadata.json",
+      "transcript": "/7c/8b24813a25/0/full.jsonl",
+      "compact_transcript": "/7c/8b24813a25/0/transcript.jsonl",
+      "content_hash": "/7c/8b24813a25/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 58,
+    "cache_creation_tokens": 33059,
+    "cache_read_tokens": 6926489,
+    "output_tokens": 24523,
+    "api_call_count": 29
+  }
+}

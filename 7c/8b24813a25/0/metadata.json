@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "7c8b24813a25",
+  "session_id": "d0d2e2f2-9a3e-4200-acf7-23ca6ea8c9df",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-01T18:09:38.306199Z",
+  "branch": "feat/state-stream-rate-control",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/cell/robot_cell.py",
+    "nova/cell/motion_group.py",
+    "nova/cell/simulation.py",
+    "nova/config.py",
+    "nova/cell/trajectory_executor.py",
+    "tests/cell/test_state_stream_rate.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "e1e4dca8df59",
+  "checkpoint_transcript_start": 512,
+  "transcript_lines_at_start": 512,
+  "compact_transcript_start": 97,
+  "token_usage": {
+    "input_tokens": 58,
+    "cache_creation_tokens": 33059,
+    "cache_read_tokens": 6926489,
+    "output_tokens": 24523,
+    "api_call_count": 29
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-01T18:09:38.24753Z",
+    "agent_lines": 189,
+    "agent_removed": 3,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 189,
+    "total_lines_changed": 192,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
