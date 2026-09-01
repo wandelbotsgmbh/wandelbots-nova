@@ -571,6 +571,13 @@ class MotionGroup(AbstractRobot):
             cell=self._cell, controller_id=self._controller_id, motion_group_id=self.id
         )
 
+    def _resolve_state_stream_rate(self, explicit_rate_msecs: int | None) -> int | None:
+        """Resolution: explicit parameter, then NovaConfig, then the server default (None)."""
+        if explicit_rate_msecs is not None:
+            return explicit_rate_msecs
+        config = getattr(self._api_client, "config", None)
+        return config.motion_group_state_rate_msecs if config is not None else None
+
     async def joints(self) -> tuple[float, ...]:
         """Returns the current joint positions of the motion group."""
         return (await self.get_state()).joints
@@ -1010,7 +1017,10 @@ class MotionGroup(AbstractRobot):
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncGenerator[MotionState, None]:
+        state_stream_rate = self._resolve_state_stream_rate(state_stream_rate_msecs)
         # This is the entrypoint for the trajectory tuning mode
         if ENABLE_TRAJECTORY_TUNING:
             logger.info("Entering trajectory tuning mode...")
@@ -1039,7 +1049,9 @@ class MotionGroup(AbstractRobot):
                 # The cursor subscribes to the same shared stream this relay
                 # reads from: one state websocket per motion group, however many
                 # consumers an execution has.
-                motion_group_state_stream_gen=lambda: self._state_stream().subscribe(),
+                motion_group_state_stream_gen=lambda: self._state_stream().subscribe(
+                    state_stream_rate
+                ),
                 joint_trajectory=joint_trajectory,
             )
         )
@@ -1049,7 +1061,7 @@ class MotionGroup(AbstractRobot):
         # with all children already finished, so nothing is ever cancelled into
         # a websocket teardown (the socket itself is closed by the shared
         # stream's pump, in its own context).
-        subscription = self._state_stream().subscribe()
+        subscription = self._state_stream().subscribe(state_stream_rate)
 
         async def execution():
             try:

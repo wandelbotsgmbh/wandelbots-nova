@@ -38,6 +38,7 @@ Example:
 """
 
 import asyncio
+import functools
 from collections.abc import AsyncGenerator, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -75,10 +76,15 @@ class GroupArgs:
             limits, so skipping the check costs nothing here and is the only
             way to keep it as planned. Turn it off for a group whose trajectory
             was not planned by Nova.
+        state_stream_rate_msecs: Rate of this group's motion-group state
+            stream, in milliseconds. None means the server default (200 ms).
+            The shared stream is opened at the rate of its first subscriber;
+            see :meth:`MotionGroup.stream_state`.
     """
 
     tcp: str | None = None
     ignore_controller_limits: bool = True
+    state_stream_rate_msecs: int | None = None
 
 
 class TrajectoryExecutor:
@@ -148,9 +154,17 @@ class TrajectoryExecutor:
             trajectory_id = await motion_group._load_planned_motion(
                 joint_trajectory, group_args.tcp
             )
+            # Binding the rate keeps the cursor's zero-arg stream factory seam
+            # untouched; with no rate the bare bound method is passed, exactly
+            # as before.
+            state_stream_source = (
+                functools.partial(motion_group.stream_state, group_args.state_stream_rate_msecs)
+                if group_args.state_stream_rate_msecs is not None
+                else motion_group.stream_state
+            )
             cursors[name] = TrajectoryCursor(
                 motion_id=trajectory_id,
-                motion_group_state_stream=motion_group.stream_state,
+                motion_group_state_stream=state_stream_source,
                 joint_trajectory=joint_trajectory,
                 detach_on_standstill=False,
                 emit_motion_events=False,

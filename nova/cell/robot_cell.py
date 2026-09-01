@@ -361,6 +361,8 @@ class AbstractRobot(Device):
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -371,6 +373,9 @@ class AbstractRobot(Device):
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
+                execution progress, in milliseconds. None falls back to
+                NovaConfig.motion_group_state_rate_msecs, then to the server default (200 ms).
         """
 
     async def stream_execute(
@@ -381,6 +386,8 @@ class AbstractRobot(Device):
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -394,6 +401,9 @@ class AbstractRobot(Device):
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
+                execution progress, in milliseconds. None falls back to
+                NovaConfig.motion_group_state_rate_msecs, then to the server default (200 ms).
         """
         actions_list = _normalize_actions(actions)
 
@@ -404,6 +414,7 @@ class AbstractRobot(Device):
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
+            state_stream_rate_msecs=state_stream_rate_msecs,
         )
 
         async with aclosing(motion_state_stream) as motion_state_stream:
@@ -418,6 +429,8 @@ class AbstractRobot(Device):
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> None:
         """Execute a planned motion
 
@@ -428,6 +441,9 @@ class AbstractRobot(Device):
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
+                execution progress, in milliseconds. None falls back to
+                NovaConfig.motion_group_state_rate_msecs, then to the server default (200 ms).
         """
 
         motion_state_stream = self.stream_execute(
@@ -437,6 +453,7 @@ class AbstractRobot(Device):
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
+            state_stream_rate_msecs=state_stream_rate_msecs,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for _ in motion_state_stream:
@@ -452,6 +469,8 @@ class AbstractRobot(Device):
         pause_on_io: api.models.PauseOnIO | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncIterable[MotionState]:
         """Plan and execute a trajectory for the given actions.
 
@@ -467,6 +486,9 @@ class AbstractRobot(Device):
             singularity_handling (api.models.SingularityHandling | None): Strategy for handling
                 wrist singularities along a cartesian path. If None, the API default (NONE) is
                 used. Experimental.
+            state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
+                execution progress, in milliseconds. None falls back to
+                NovaConfig.motion_group_state_rate_msecs, then to the server default (200 ms).
         """
         actions_list = _normalize_actions(actions)
 
@@ -488,6 +510,7 @@ class AbstractRobot(Device):
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
+            state_stream_rate_msecs=state_stream_rate_msecs,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for motion_state in motion_state_stream:
@@ -503,6 +526,8 @@ class AbstractRobot(Device):
         pause_on_io: api.models.PauseOnIO | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> None:
         """Plan and execute a trajectory for the given actions.
 
@@ -518,6 +543,9 @@ class AbstractRobot(Device):
             singularity_handling (api.models.SingularityHandling | None): Strategy for handling
                 wrist singularities along a cartesian path. If None, the API default (NONE) is
                 used. Experimental.
+            state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
+                execution progress, in milliseconds. None falls back to
+                NovaConfig.motion_group_state_rate_msecs, then to the server default (200 ms).
 
         Raises:
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
@@ -543,6 +571,7 @@ class AbstractRobot(Device):
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
+            state_stream_rate_msecs=state_stream_rate_msecs,
         )
 
     @abstractmethod
