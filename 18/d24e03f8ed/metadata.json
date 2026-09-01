@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "18d24e03f8ed",
+  "strategy": "manual-commit",
+  "branch": "fix/multi-motion-group-example",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "examples/multi_motion_group.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/18/d24e03f8ed/0/metadata.json",
+      "transcript": "/18/d24e03f8ed/0/full.jsonl",
+      "compact_transcript": "/18/d24e03f8ed/0/transcript.jsonl",
+      "content_hash": "/18/d24e03f8ed/0/content_hash.txt",
+      "prompt": "/18/d24e03f8ed/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 72,
+    "cache_creation_tokens": 53887,
+    "cache_read_tokens": 10901239,
+    "output_tokens": 21484,
+    "api_call_count": 36
+  }
+}

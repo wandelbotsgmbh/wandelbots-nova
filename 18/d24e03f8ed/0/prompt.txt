@@ -1,0 +1,27 @@
+<task-notification>
+<task-id>bgd91r9dh</task-id>
+<tool-use-id>toolu_01B9Dd8jtADmD8V5trrPo318</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/d0d2e2f2-9a3e-4200-acf7-23ca6ea8c9df/tasks/bgd91r9dh.output</output-file>
+<status>completed</status>
+<summary>Background command "Run zero_motion_loop probe (450 iterations, no mitigation)" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>blxuna0uw</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/d0d2e2f2-9a3e-4200-acf7-23ca6ea8c9df/tasks/blxuna0uw.output</output-file>
+<status>completed</status>
+<summary>Background command "Rerun probe with close_timeout=8 discriminator" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bqxp1c3il</task-id>
+<summary>Monitor event: "CI results for PRs #499-#501"</summary>
+<event>PR #499: 2 fail, 20 pass
+PR #499 FAILED check: integration-summary
+PR #499 FAILED check: test-integration (multi_motion_group, python examples/multi_motion_group.py)</event>
+</task-notification>
