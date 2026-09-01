@@ -1,0 +1,339 @@
+{
+  "dataset": "ur10e-pick-and-place-demo",
+  "name": "UR10e Pick and Place Demo",
+  "revision": 1,
+  "description": "Teaching dataset for the command_routine_plan_and_execute.py example: a 'pick-place-station' coordinate system offset from world, five poses taught within it, and a pick-and-place CommandRoutine that references those poses by id.",
+  "created_at": "2026-05-20T07:20:10.411751Z",
+  "updated_at": "2026-05-20T07:20:10.411751Z",
+  "coordinate_systems": [
+    {
+      "coordinate_system": "world",
+      "pose": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "dataset": "ur10e-pick-and-place-demo"
+    },
+    {
+      "coordinate_system": "pick-place-station",
+      "name": "Pick and Place Station",
+      "parent": "world",
+      "pose": {
+        "position": [
+          500,
+          0,
+          0
+        ],
+        "orientation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "dataset": "ur10e-pick-and-place-demo"
+    }
+  ],
+  "poses": [
+    {
+      "pose": {
+        "position": [
+          0,
+          0,
+          400
+        ],
+        "orientation": [
+          3.14159,
+          0,
+          0
+        ]
+      },
+      "coordinate_system": "pick-place-station",
+      "dataset_pose": "ready",
+      "dataset": "ur10e-pick-and-place-demo",
+      "name": "ready",
+      "description": "Ready pose above the station"
+    },
+    {
+      "pose": {
+        "position": [
+          0,
+          100,
+          300
+        ],
+        "orientation": [
+          3.14159,
+          0,
+          0
+        ]
+      },
+      "coordinate_system": "pick-place-station",
+      "dataset_pose": "approach-pick",
+      "dataset": "ur10e-pick-and-place-demo",
+      "name": "approach-pick",
+      "description": "Approach pose above the pick location"
+    },
+    {
+      "pose": {
+        "position": [
+          0,
+          100,
+          150
+        ],
+        "orientation": [
+          3.14159,
+          0,
+          0
+        ]
+      },
+      "coordinate_system": "pick-place-station",
+      "dataset_pose": "pick",
+      "dataset": "ur10e-pick-and-place-demo",
+      "name": "pick",
+      "description": "Pick location",
+      "metadata": {}
+    },
+    {
+      "pose": {
+        "position": [
+          -50,
+          250,
+          220
+        ],
+        "orientation": [
+          3.14159,
+          0,
+          0
+        ]
+      },
+      "coordinate_system": "pick-place-station",
+      "dataset_pose": "via-sweep",
+      "dataset": "ur10e-pick-and-place-demo",
+      "name": "via-sweep",
+      "description": "Intermediate pose for the circular sweep to place",
+      "kinematic_configuration": {
+        "kinematic_branch": {
+          "wrist_branch": "FLIP",
+          "elbow_branch": "DOWN",
+          "shoulder_branch": "BACK"
+        },
+        "axis_ranges": [
+          {
+            "axis": 0,
+            "range": {
+              "lower_limit": -0.5236,
+              "upper_limit": 0.7854
+            }
+          },
+          {
+            "axis": 1,
+            "range": {
+              "lower_limit": -0.5236,
+              "upper_limit": 0.7854
+            }
+          },
+          {
+            "axis": 2,
+            "range": {
+              "lower_limit": -0.5236,
+              "upper_limit": 0.7854
+            }
+          }
+        ]
+      }
+    },
+    {
+      "pose": {
+        "position": [
+          0,
+          400,
+          300
+        ],
+        "orientation": [
+          3.14159,
+          0,
+          0
+        ]
+      },
+      "coordinate_system": "pick-place-station",
+      "dataset_pose": "place",
+      "dataset": "ur10e-pick-and-place-demo",
+      "name": "place",
+      "description": "Place location"
+    }
+  ],
+  "command_routines": [
+    {
+      "command_routine": "pick-and-place-demo",
+      "dataset": "ur10e-pick-and-place-demo",
+      "name": "Pick and Place Demo",
+      "description": "A pick-and-place cycle mixing joint, Cartesian PTP, linear and circular motions with varying velocities and blending settings. Cartesian targets are dataset poses resolved relative to the 'pick-place-station' coordinate system.",
+      "commands": [
+        {
+          "type": "motion_command",
+          "target": {
+            "type": "joint_position",
+            "joints": [
+              0,
+              -1.57,
+              -1.57,
+              0,
+              1.57,
+              0
+            ]
+          },
+          "path_type": {
+            "path_definition_name": "PathJointPTP"
+          },
+          "intent": "Move to a safe joint retract position"
+        },
+        {
+          "type": "motion_command",
+          "target": {
+            "type": "local_pose",
+            "pose_id": "ready"
+          },
+          "path_type": {
+            "path_definition_name": "PathCartesianPTP"
+          },
+          "intent": "Move to the ready pose"
+        },
+        {
+          "type": "motion_command",
+          "target": {
+            "type": "local_pose",
+            "pose_id": "approach-pick"
+          },
+          "path_type": {
+            "path_definition_name": "PathCartesianPTP"
+          },
+          "motion_settings": {
+            "blending": {
+              "min_velocity_in_percent": 50,
+              "blending_name": "BlendingAuto",
+              "type": "blending_auto"
+            },
+            "limits_override": {
+              "tcp_velocity_limit": 250
+            }
+          },
+          "intent": "Approach the pick location"
+        },
+        {
+          "type": "motion_command",
+          "target": {
+            "type": "local_pose",
+            "pose_id": "pick"
+          },
+          "path_type": {
+            "path_definition_name": "PathLine"
+          },
+          "motion_settings": {
+            "blending": {
+              "position_zone_radius": 5,
+              "blending_name": "BlendingPosition",
+              "type": "blending_position"
+            },
+            "limits_override": {
+              "tcp_velocity_limit": 60
+            }
+          },
+          "intent": "Descend in a straight line to the pick pose"
+        },
+        {
+          "type": "set_io",
+          "io_value": {
+            "io": "digital_out[0]",
+            "value": true,
+            "value_type": "boolean"
+          },
+          "io_origin": "CONTROLLER",
+          "intent": "Close the gripper"
+        },
+        {
+          "type": "wait_for_time",
+          "duration_ms": 300,
+          "intent": "Let the gripper close"
+        },
+        {
+          "type": "motion_command",
+          "target": {
+            "type": "local_pose",
+            "pose_id": "approach-pick"
+          },
+          "path_type": {
+            "path_definition_name": "PathLine"
+          },
+          "motion_settings": {
+            "blending": {
+              "position_zone_radius": 5,
+              "blending_name": "BlendingPosition",
+              "type": "blending_position"
+            },
+            "limits_override": {
+              "tcp_velocity_limit": 60
+            }
+          },
+          "intent": "Retract in a straight line from the pick pose"
+        },
+        {
+          "type": "motion_command",
+          "target": {
+            "type": "local_pose",
+            "pose_id": "place"
+          },
+          "path_type": {
+            "path_definition_name": "PathCircle",
+            "via_pose": {
+              "type": "local_pose",
+              "pose_id": "via-sweep"
+            }
+          },
+          "motion_settings": {
+            "limits_override": {
+              "tcp_velocity_limit": 150
+            }
+          },
+          "intent": "Sweep to the place location on a circular path"
+        },
+        {
+          "type": "set_io",
+          "io_value": {
+            "io": "digital_out[0]",
+            "value": false,
+            "value_type": "boolean"
+          },
+          "io_origin": "CONTROLLER",
+          "intent": "Open the gripper"
+        },
+        {
+          "type": "wait_for_time",
+          "duration_ms": 300,
+          "intent": "Let the gripper open"
+        },
+        {
+          "type": "motion_command",
+          "target": {
+            "type": "local_pose",
+            "pose_id": "ready"
+          },
+          "path_type": {
+            "path_definition_name": "PathCartesianPTP"
+          },
+          "intent": "Return to the ready pose"
+        }
+      ],
+      "metadata": {
+        "example": "command_routine_plan_and_execute"
+      },
+      "motion_group_setup": null
+    }
+  ]
+}

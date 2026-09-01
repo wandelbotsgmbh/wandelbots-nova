@@ -2,7 +2,7 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AsyncExitStack, aclosing
 from functools import reduce
 from typing import (
@@ -33,10 +33,11 @@ from nova.types import MotionState, Pose, RobotState
 
 logger = logging.getLogger(__name__)
 
-ActionsLike: TypeAlias = Action | Sequence[Action]
+ActionsLike: TypeAlias = Action | Sequence[Action] | api.models.CommandRoutine
+PoseResolver: TypeAlias = Mapping[str, Pose] | Callable[[str], Pose]
 
 
-def _normalize_actions(actions: ActionsLike) -> list[Action]:
+def _normalize_actions(actions: Action | Sequence[Action]) -> list[Action]:
     """
     Normalize `Action | Sequence[Action]` to `list[Action]`.
 
@@ -253,6 +254,43 @@ class AbstractRobot(Device):
             api.models.JointTrajectory: The planned joint trajectory
         """
 
+    def _resolve_actions_like(
+        self,
+        actions: ActionsLike,
+        tcp: str | None,
+        start_joint_position: tuple[float, ...] | None,
+        motion_group_setup: api.models.MotionGroupSetup | None,
+        pose_resolver: PoseResolver | None = None,
+    ) -> tuple[
+        list[Action], str | None, tuple[float, ...] | None, api.models.MotionGroupSetup | None
+    ]:
+        """Normalize `actions`, falling back to a CommandRoutine's own tcp,
+        start_joint_position and motion_group_setup for any left unset by the caller.
+
+        `pose_resolver` is forwarded to `actions_from_command_routine` to resolve any
+        `LocalPoseReference` targets; see :func:`nova.command_routines.actions_from_command_routine`
+        for which parts of a routine can be converted.
+        """
+        if not isinstance(actions, api.models.CommandRoutine):
+            return _normalize_actions(actions), tcp, start_joint_position, motion_group_setup
+
+        if actions.motion_group is not None and actions.motion_group.id != self.id:
+            raise ValueError(
+                f"CommandRoutine '{actions.command_routine}' targets motion group "
+                f"'{actions.motion_group.id}', not '{self.id}'."
+            )
+
+        from nova.command_routines import actions_from_command_routine
+
+        actions_list = actions_from_command_routine(actions, pose_resolver=pose_resolver)
+        if tcp is None:
+            tcp = actions.tcp
+        if start_joint_position is None and actions.start_joint_position is not None:
+            start_joint_position = tuple(actions.start_joint_position)
+        if motion_group_setup is None:
+            motion_group_setup = actions.motion_group_setup
+        return actions_list, tcp, start_joint_position, motion_group_setup
+
     async def plan(
         self,
         actions: ActionsLike,
@@ -261,17 +299,23 @@ class AbstractRobot(Device):
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
+        pose_resolver: PoseResolver | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions.
 
         Args:
-            actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
-                Only motion actions are considered for planning.
+            actions (list[Action] | Action | api.models.CommandRoutine): The actions to be planned.
+                Can be a single action, a list of actions, or a CommandRoutine (see
+                :func:`nova.command_routines.actions_from_command_routine` for which parts of a
+                routine can be converted). Only motion actions are considered for planning.
             tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
+                If `actions` is a CommandRoutine and this is None, the routine's own `tcp` is used.
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
-                position of the robot is used.
+                position of the robot is used, unless `actions` is a CommandRoutine with its own
+                `start_joint_position`.
             motion_group_setup (api.models.MotionGroupSetup | None): The motion group setup to be used for planning.
-                 If None, the motion group setup will be fetched from the robot.
+                 If None, the motion group setup will be fetched from the robot, unless `actions` is
+                 a CommandRoutine with its own `motion_group_setup`.
             payload_override (str | api.models.Payload | None): Override for the dynamics payload
                 used by the planner. A string is resolved against the controller's registered
                 payloads; an :class:`api.models.Payload` instance is used directly. When ``None``,
@@ -286,6 +330,10 @@ class AbstractRobot(Device):
             singularity_handling (api.models.SingularityHandling | None): Strategy for handling
                 wrist singularities along a cartesian path. If None, the API default (NONE) is
                 used. Experimental.
+            pose_resolver (PoseResolver | None): Used only when `actions` is a CommandRoutine, to
+                resolve any `LocalPoseReference` targets -- a `pose_id -> Pose` mapping or
+                callable. Build one from a dataset export with
+                :func:`nova.command_routines.resolve_dataset_poses`.
 
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
@@ -294,7 +342,9 @@ class AbstractRobot(Device):
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a
                 target pose in a collision-free motion.
         """
-        actions_list = _normalize_actions(actions)
+        actions_list, tcp, start_joint_position, motion_group_setup = self._resolve_actions_like(
+            actions, tcp, start_joint_position, motion_group_setup, pose_resolver
+        )
 
         if len(actions_list) == 0:
             raise ValueError("No actions provided")
@@ -381,6 +431,7 @@ class AbstractRobot(Device):
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        pose_resolver: PoseResolver | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -390,12 +441,18 @@ class AbstractRobot(Device):
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
             tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
-            actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
+                If `actions` is a CommandRoutine and this is None, the routine's own `tcp` is used.
+            actions (list[Action] | Action | api.models.CommandRoutine | None): The actions to be
+                executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            pose_resolver (PoseResolver | None): Used only when `actions` is a CommandRoutine, to
+                resolve any `LocalPoseReference` targets. See :meth:`plan`.
         """
-        actions_list = _normalize_actions(actions)
+        actions_list, tcp, _, _ = self._resolve_actions_like(
+            actions, tcp, None, None, pose_resolver
+        )
 
         motion_state_stream = self._execute(
             joint_trajectory=joint_trajectory,
@@ -418,16 +475,20 @@ class AbstractRobot(Device):
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        pose_resolver: PoseResolver | None = None,
     ) -> None:
         """Execute a planned motion
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
             tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
-            actions (list[Action] | Action): The actions to be executed.
+                If `actions` is a CommandRoutine and this is None, the routine's own `tcp` is used.
+            actions (list[Action] | Action | api.models.CommandRoutine): The actions to be executed.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            pose_resolver (PoseResolver | None): Used only when `actions` is a CommandRoutine, to
+                resolve any `LocalPoseReference` targets. See :meth:`plan`.
         """
 
         motion_state_stream = self.stream_execute(
@@ -437,6 +498,7 @@ class AbstractRobot(Device):
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
+            pose_resolver=pose_resolver,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for _ in motion_state_stream:
@@ -452,13 +514,18 @@ class AbstractRobot(Device):
         pause_on_io: api.models.PauseOnIO | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
+        pose_resolver: PoseResolver | None = None,
     ) -> AsyncIterable[MotionState]:
         """Plan and execute a trajectory for the given actions.
 
         Args:
-            actions (list[Action] | Action): The actions to be planned and executed.
+            actions (list[Action] | Action | api.models.CommandRoutine): The actions to be
+                planned and executed.
             tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
-            start_joint_position (tuple[float, ...] | None): The starting joint position.
+                If `actions` is a CommandRoutine and this is None, the routine's own `tcp` is used.
+            start_joint_position (tuple[float, ...] | None): The starting joint position. If
+                `actions` is a CommandRoutine with its own `start_joint_position` and this is
+                None, the routine's value is used.
             movement_controller (MovementController | None): The movement controller to be used. Defaults to move_forward.
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
@@ -467,8 +534,12 @@ class AbstractRobot(Device):
             singularity_handling (api.models.SingularityHandling | None): Strategy for handling
                 wrist singularities along a cartesian path. If None, the API default (NONE) is
                 used. Experimental.
+            pose_resolver (PoseResolver | None): Used only when `actions` is a CommandRoutine, to
+                resolve any `LocalPoseReference` targets. See :meth:`plan`.
         """
-        actions_list = _normalize_actions(actions)
+        actions_list, tcp, start_joint_position, motion_group_setup = self._resolve_actions_like(
+            actions, tcp, start_joint_position, None, pose_resolver
+        )
 
         if self._supports_direct_non_motion_actions(actions_list):
             await self._execute_direct_non_motion_actions(actions_list)
@@ -478,6 +549,7 @@ class AbstractRobot(Device):
             actions_list,
             tcp,
             start_joint_position=start_joint_position,
+            motion_group_setup=motion_group_setup,
             payload_override=payload_override,
             singularity_handling=singularity_handling,
         )
@@ -503,13 +575,18 @@ class AbstractRobot(Device):
         pause_on_io: api.models.PauseOnIO | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
+        pose_resolver: PoseResolver | None = None,
     ) -> None:
         """Plan and execute a trajectory for the given actions.
 
         Args:
-            actions (list[Action] | Action): The actions to be planned and executed.
+            actions (list[Action] | Action | api.models.CommandRoutine): The actions to be
+                planned and executed.
             tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
-            start_joint_position (tuple[float, ...] | None): The starting joint position.
+                If `actions` is a CommandRoutine and this is None, the routine's own `tcp` is used.
+            start_joint_position (tuple[float, ...] | None): The starting joint position. If
+                `actions` is a CommandRoutine with its own `start_joint_position` and this is
+                None, the routine's value is used.
             movement_controller (MovementController | None): The movement controller to be used. Defaults to move_forward.
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
@@ -518,12 +595,16 @@ class AbstractRobot(Device):
             singularity_handling (api.models.SingularityHandling | None): Strategy for handling
                 wrist singularities along a cartesian path. If None, the API default (NONE) is
                 used. Experimental.
+            pose_resolver (PoseResolver | None): Used only when `actions` is a CommandRoutine, to
+                resolve any `LocalPoseReference` targets. See :meth:`plan`.
 
         Raises:
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
                 pose in a collision-free motion.
         """
-        actions_list = _normalize_actions(actions)
+        actions_list, tcp, start_joint_position, motion_group_setup = self._resolve_actions_like(
+            actions, tcp, start_joint_position, None, pose_resolver
+        )
 
         if self._supports_direct_non_motion_actions(actions_list):
             await self._execute_direct_non_motion_actions(actions_list)
@@ -533,6 +614,7 @@ class AbstractRobot(Device):
             actions_list,
             tcp,
             start_joint_position=start_joint_position,
+            motion_group_setup=motion_group_setup,
             payload_override=payload_override,
             singularity_handling=singularity_handling,
         )

@@ -13,6 +13,7 @@ Examples on how to use the wandelbots-nova library.
 7. [Serialize program](serialize_program.py)
 8. [Merge trajectories with blending](merge_trajectories.py)
 9. [Kinematic configuration](kinematic_configuration.py)
+10. [Load and plan/execute a CommandRoutine](command_routine_plan_and_execute.py)
 
 ## Usage
 
