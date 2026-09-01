@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "b6598a7f9acb",
+  "strategy": "manual-commit",
+  "branch": "feat/shared-motion-group-state-stream",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/cell/motion_group.py",
+    "nova/cell/multi_trajectory_cursor.py",
+    "nova/cell/state_stream.py",
+    "nova/config.py",
+    "nova/core/gateway.py",
+    "tests/cell/test_state_stream.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b6/598a7f9acb/0/metadata.json",
+      "transcript": "/b6/598a7f9acb/0/full.jsonl",
+      "compact_transcript": "/b6/598a7f9acb/0/transcript.jsonl",
+      "content_hash": "/b6/598a7f9acb/0/content_hash.txt",
+      "prompt": "/b6/598a7f9acb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 120,
+    "cache_creation_tokens": 163143,
+    "cache_read_tokens": 8276670,
+    "output_tokens": 65861,
+    "api_call_count": 60
+  }
+}

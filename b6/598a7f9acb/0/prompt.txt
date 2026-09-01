@@ -1,0 +1,12 @@
+look at @~/.claude/plans/temporal-doodling-dove.md and How to run the three sessions
+S1 — service-manager (start anytime): open a session in /Users/q/0code/service-manager, point it at the plan file. Scope: templates/v2/api.mustache lines 146/222 get the websocket_options merge (options can override even open_timeout), pyproject.mustache pins websockets>=14, regenerate locally + mypy, MR against master. Small — an hour of work, mostly regeneration/verification. Merging it starts the clock on the dev client release S3 needs.
+
+S2 — nova-python-sdk (independent of S1, start anytime): session in /Users/q/0code/nova-python-sdk. The big one — three stacked MRs (shared stream foundation → _execute/cursor restructure → rate surfacing). PR1 alone likely kills the stall, since the pump-always-drains property removes the pause condition without any client change. Verification via the parity suite plus the lab probes from this repo against the virtual instance (pre-approved, endpoint check before each run).
+
+S3 — after S1's client publishes (small): bump the SDK's client pin, set websocket_options in gateway.py, then back here — bump this repo's SDK SHA pin, rerun zero_motion_loop.py with the mitigation off (WEBSOCKET_MAX_QUEUE = None), and write the after-fix numbers into FINDINGS.md.
+
+One thing worth doing when starting S1 and S2: paste the plan-file path into the first message — those checkouts can't see this project's memory, and the plan file is the full handoff (settled decisions included, so neither session needs to re-litigate the design).
+You are responsible for the S2 part.
+/goal a mergable PR to the wandelbots-nova repo
+use a worktree if it is necessary and advisable
+ask if things are unclear still
