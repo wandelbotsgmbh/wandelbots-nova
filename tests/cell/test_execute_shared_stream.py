@@ -185,7 +185,8 @@ async def test_cursor_subscription_is_released_when_the_monitor_ends():
     async with asyncio.timeout(5):
         async for _ in cursor.cntrl(responses()):
             pass
-        await operation
+        result = await operation
 
+    assert result.final_location == 2.0
     await asyncio.wait_for(upstream.closed.wait(), 1.0)
     assert upstream.aclose_count == 1
