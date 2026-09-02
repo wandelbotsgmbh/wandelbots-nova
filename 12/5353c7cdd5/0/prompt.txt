@@ -1,0 +1,9 @@
+<task-notification>
+<task-id>b8ps3aup8</task-id>
+<summary>Monitor event: "CI result for example-fix PR #503"</summary>
+<event>[Monitor timed out — re-arm if needed.]</event>
+</task-notification>
+
+---
+
+#503 got merged I' pushing for #499 now, pls address review comments
