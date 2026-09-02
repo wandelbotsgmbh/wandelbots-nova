@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [5.12.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.11.0...v5.12.0) (2026-09-02)
+
+
+### Features
+
+* wire singularity_handling feature flag through planning API ([#466](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/466)) ([0fd0896](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/0fd0896ac970f6820fb1cb16ffb1f2512211b97e))
+
 ## [5.11.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.10.0...v5.11.0) (2026-07-30)
 
 
