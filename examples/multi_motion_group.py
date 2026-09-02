@@ -15,7 +15,7 @@ _HERE = Path(__file__).parent
 
 
 def first_sample(group: str) -> list[float]:
-    return load_trajectory().joint_positions_by_motion_group_key.root[group].root[0].root
+    return load_trajectory().joint_positions_by_motion_group_key[group][0]
 
 
 def load_trajectory() -> api.models.MultiJointTrajectory:
@@ -48,10 +48,10 @@ async def multi_motion_group_trajectory(ctx: nova.ProgramContext):
     groups = {name: controller.motion_group(name) for name in TCPS}
 
     trajectory = load_trajectory()
-    samples = trajectory.joint_positions_by_motion_group_key.root
+    samples = trajectory.joint_positions_by_motion_group_key
     for name, group in groups.items():
         # A trajectory can only be executed from its own first sample.
-        await group.plan_and_execute([jnt(samples[name].root[0].root)], tcp=TCPS[name])
+        await group.plan_and_execute([jnt(samples[name][0])], tcp=TCPS[name])
 
     executor = (
         TrajectoryExecutor.builder(groups).sync_on_io(SYNC_IO_ID, controller=CONTROLLER).build()
