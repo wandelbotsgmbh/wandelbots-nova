@@ -176,6 +176,9 @@ class _PumpGeneration:
     )
     close_requested: asyncio.Event = field(default_factory=asyncio.Event)
     task: asyncio.Task | None = None
+    # The one pending linger countdown; rescheduled whenever the last
+    # subscriber leaves again, so an earlier countdown cannot fire early.
+    linger_task: asyncio.Task | None = None
 
 
 class SharedMotionGroupStateStream:
@@ -264,7 +267,12 @@ class SharedMotionGroupStateStream:
         if generation.queues or generation.close_requested.is_set():
             return
         if self._linger_secs > 0:
-            asyncio.create_task(
+            # One countdown per generation, measured from the *latest* departure:
+            # a stale countdown from an earlier leave/rejoin cycle would fire at
+            # the earlier deadline and cut the keep-alive short.
+            if generation.linger_task is not None:
+                generation.linger_task.cancel()
+            generation.linger_task = asyncio.create_task(
                 self._linger_then_close(generation), name=f"motion-group-state-linger-{self._name}"
             )
         else:
@@ -303,6 +311,11 @@ class SharedMotionGroupStateStream:
                         self._broadcast(generation, next_frame.result())
                 finally:
                     close_wait.cancel()
+                    # This generation stops serving here, but closing the
+                    # websocket below is an await point: a subscribe() landing
+                    # in that window must open a fresh generation instead of
+                    # joining this one moments before its queues are flushed.
+                    generation.close_requested.set()
             finally:
                 await stream.aclose()
         except StopAsyncIteration:
@@ -320,6 +333,11 @@ class SharedMotionGroupStateStream:
             queue.put_nowait(state)
 
     def _finish(self, generation: _PumpGeneration, error: BaseException | None) -> None:
+        # Covers the paths that never reach the pump loop (open_stream raising):
+        # a finished generation must never be joinable.
+        generation.close_requested.set()
+        if generation.linger_task is not None:
+            generation.linger_task.cancel()
         if error is not None:
             logger.warning(f"Motion group state stream '{self._name}' failed: {error!r}")
         for queue in generation.queues.values():

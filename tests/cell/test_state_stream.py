@@ -240,6 +240,72 @@ async def test_stream_aclose_ends_subscriptions_and_closes_the_socket(shared, up
         await next_state(subscription)
 
 
+async def test_subscribe_during_pump_teardown_gets_a_fresh_socket(upstream):
+    """A subscribe landing while the pump is closing the old websocket must not
+    join the dying generation (it would end after zero states, with no reopen)."""
+    close_started = asyncio.Event()
+    release_close = asyncio.Event()
+
+    class HoldOnClose:
+        """First socket only: closing it suspends until the test releases it."""
+
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            return await self._inner.__anext__()
+
+        async def aclose(self):
+            close_started.set()
+            await release_close.wait()
+            await self._inner.aclose()
+
+    def open_stream(rate):
+        stream = upstream.open(rate)
+        return HoldOnClose(stream) if len(upstream.open_rates) == 1 else stream
+
+    shared = SharedMotionGroupStateStream(open_stream=open_stream, name="cell/ctrl/0@ctrl")
+    first = shared.subscribe()
+    upstream.end()
+    await asyncio.wait_for(close_started.wait(), 1.0)  # pump suspended in aclose
+
+    second = shared.subscribe()
+    upstream.feed("s2")
+    assert await next_state(second) == "s2"
+    assert len(upstream.open_rates) == 2, "the race-losing subscriber must get a fresh socket"
+
+    release_close.set()
+    with pytest.raises(StopAsyncIteration):
+        await next_state(first)
+    await second.aclose()
+
+
+async def test_linger_is_measured_from_the_latest_departure(upstream):
+    """A stale linger countdown from an earlier leave/rejoin cycle must not
+    close the socket early relative to the most recent departure."""
+    shared = SharedMotionGroupStateStream(
+        open_stream=upstream.open, name="cell/ctrl/0@ctrl", linger_secs=0.4
+    )
+    first = shared.subscribe()
+    upstream.feed("s1")
+    assert await next_state(first) == "s1"
+    await first.aclose()  # countdown 1: would fire 0.4 s from now
+
+    await asyncio.sleep(0.1)
+    second = shared.subscribe()  # rejoin within the window: same socket
+    await asyncio.sleep(0.1)
+    await second.aclose()  # countdown must restart from here (fires at ~0.6)
+
+    await asyncio.sleep(0.25)  # past countdown 1's stale deadline (~0.4)
+    assert not upstream.closed.is_set(), "the stale countdown must not close the socket"
+
+    await asyncio.wait_for(upstream.closed.wait(), 2.0)
+    assert upstream.open_rates == [None]
+
+
 async def test_linger_keeps_the_socket_open_for_a_resubscriber(upstream):
     shared = SharedMotionGroupStateStream(
         open_stream=upstream.open, name="cell/ctrl/0@ctrl", linger_secs=0.05
