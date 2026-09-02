@@ -1,0 +1,74 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "3039c834f288",
+  "session_id": "d0d2e2f2-9a3e-4200-acf7-23ca6ea8c9df",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-02T09:14:36.835831Z",
+  "branch": "feat/execute-without-cancel-into-close",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "tests/cell/test_execute_shared_stream.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "5d8be8ad199d",
+  "checkpoint_transcript_start": 1188,
+  "transcript_lines_at_start": 1188,
+  "compact_transcript_start": 227,
+  "token_usage": {
+    "input_tokens": 6,
+    "cache_creation_tokens": 5306,
+    "cache_read_tokens": 1097857,
+    "output_tokens": 1086,
+    "api_call_count": 3
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01919yMXzsBZaESFabzxkUe4",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "pr"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "5d8be8ad199d",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 874,
+        "end": 875,
+        "entry_ids": [
+          "2be10e31-89c7-4874-a5c8-8d50ea968d4c"
+        ],
+        "tool_use_id": "toolu_01919yMXzsBZaESFabzxkUe4"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01919yMXzsBZaESFabzxkUe4"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: pr",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-02T09:14:36.753459Z",
+    "agent_lines": 192,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 192,
+    "total_lines_changed": 192,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
