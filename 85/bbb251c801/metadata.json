@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "85bbb251c801",
+  "strategy": "manual-commit",
+  "branch": "feat/execute-without-cancel-into-close",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "nova/cell/state_stream.py",
+    "tests/cell/test_state_stream.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/85/bbb251c801/0/metadata.json",
+      "transcript": "/85/bbb251c801/0/full.jsonl",
+      "compact_transcript": "/85/bbb251c801/0/transcript.jsonl",
+      "content_hash": "/85/bbb251c801/0/content_hash.txt",
+      "prompt": "/85/bbb251c801/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 26,
+    "cache_creation_tokens": 362866,
+    "cache_read_tokens": 4565823,
+    "output_tokens": 8319,
+    "api_call_count": 13
+  }
+}

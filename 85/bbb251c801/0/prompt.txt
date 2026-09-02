@@ -1,0 +1,17 @@
+<task-notification>
+<task-id>b17gwz6p4</task-id>
+<summary>Monitor event: "CI results after review-fix pushes to #499/#500"</summary>
+<event>PR #499 checks: 21 pass</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b17gwz6p4</task-id>
+<summary>Monitor event: "CI results after review-fix pushes to #499/#500"</summary>
+<event>[Monitor timed out — re-arm if needed.]</event>
+</task-notification>
+
+---
+
+#499 got merged now check the state and comments on #500
