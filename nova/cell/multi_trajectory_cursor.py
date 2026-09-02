@@ -5,11 +5,12 @@ import contextlib
 import logging
 from collections.abc import AsyncGenerator, AsyncIterable, Mapping
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypeVar
+from typing import Protocol
 
 from nova import api
 from nova.actions.io import WriteAction
 from nova.cell.movement_controller.trajectory_cursor import OperationResult, TrajectoryCursor
+from nova.cell.state_stream import StreamBroadcaster
 from nova.core.gateway import ApiGateway
 
 logger = logging.getLogger(__name__)
@@ -18,12 +19,6 @@ logger = logging.getLogger(__name__)
 # the barrier gives up rather than waiting for a controller that never answers.
 _TRIGGER_CONFIRM_TIMEOUT = 5.0
 _IO_POLL_INTERVAL = 0.05
-
-# Same bound the cursor applies to its own state queue: a subscriber that is
-# never consumed must not grow without limit.
-_MAX_QUEUED_STATES = 1024
-
-T = TypeVar("T")
 
 
 class SyncDriver(Protocol):
@@ -147,68 +142,6 @@ class IOSyncDriver:
         logger.debug(f"Sync IO '{action.key}' set to {action.value}")
 
 
-class _QueueSentinel:
-    """Marker type used only as a sentinel for queue termination."""
-
-
-_QUEUE_SENTINEL = _QueueSentinel()
-
-
-class _StreamBroadcaster(Generic[T]):
-    """Broadcast a single async stream to multiple subscribers.
-
-    A cursor tees its states into one internal queue, so it supports exactly one
-    consumer; the session needs several (barrier arm-wait, drift monitors, user
-    streams). A subscriber that closes its stream stops being fed; a
-    subscriber that never consumes is bounded by dropping its oldest items.
-    Subscribing after the source ended yields an immediately-finished stream.
-    """
-
-    def __init__(self, source: AsyncIterable[T]):
-        self._source = source
-        self._queues: list[asyncio.Queue[T | _QueueSentinel]] = []
-        self._is_finished = False
-
-    def subscribe(self) -> AsyncGenerator[T, None]:
-        """Subscribe to every item emitted from now on."""
-        if self._is_finished:
-
-            async def ended_stream() -> AsyncGenerator[T, None]:
-                return
-                yield  # unreachable; makes this function an async generator
-
-            return ended_stream()
-        queue: asyncio.Queue[T | _QueueSentinel] = asyncio.Queue()
-        self._queues.append(queue)
-        return self._queue_iterator(queue)
-
-    async def run(self) -> None:
-        try:
-            async for item in self._source:
-                for queue in self._queues:
-                    if queue.qsize() >= _MAX_QUEUED_STATES:
-                        with contextlib.suppress(asyncio.QueueEmpty):
-                            queue.get_nowait()
-                    queue.put_nowait(item)
-        finally:
-            self._is_finished = True
-            for queue in self._queues:
-                queue.put_nowait(_QUEUE_SENTINEL)
-
-    async def _queue_iterator(
-        self, queue: asyncio.Queue[T | _QueueSentinel]
-    ) -> AsyncGenerator[T, None]:
-        try:
-            while True:
-                item = await queue.get()
-                if isinstance(item, _QueueSentinel):
-                    return
-                yield item
-        finally:
-            if queue in self._queues:
-                self._queues.remove(queue)
-
-
 async def _wait_until_waiting_for_io(states: AsyncIterable[api.models.MotionGroupState]) -> None:
     async for state in states:
         if state.execute is not None and isinstance(
@@ -260,7 +193,7 @@ class MultiTrajectoryCursor:
         # One fan-out per group: a cursor tees its states into a single queue, but
         # the session has several consumers (barrier arm-wait, drift monitors,
         # user streams).
-        self._broadcasters = {name: _StreamBroadcaster(cursor) for name, cursor in cursors.items()}
+        self._broadcasters = {name: StreamBroadcaster(cursor) for name, cursor in cursors.items()}
         # A pending intent not yet consumed is silently overwritten — only the
         # most recent one matters — and pause() may void it before it ever runs.
         self._pending_intent: _ForwardIntent | None = None
