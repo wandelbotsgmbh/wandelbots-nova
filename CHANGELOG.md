@@ -9,10 +9,6 @@
 * wire singularity_handling feature flag through planning API ([#466](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/466)) ([df53aeb](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/df53aebca52867ca1593aeb145d957d827b87aeb))
 
 
-### Chores
-
-* run release-please job on release branch temporarily ([58bf587](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/58bf587cce5334ab77fa4d8087d6f62ae6ec2133))
-
 ## [5.11.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.10.0...v5.11.0) (2026-07-30)
 
 
