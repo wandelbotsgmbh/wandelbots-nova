@@ -110,6 +110,23 @@ async def test_aclose_is_idempotent_and_wakes_a_blocked_anext(shared, upstream):
         await blocked
 
 
+async def test_states_buffered_before_a_cross_task_aclose_still_drain(shared, upstream):
+    """The execute relay's subscription is aclosed by the execution task while
+    the relay may still be draining: frames buffered before the close must be
+    delivered, with the end marker behind them ending the stream — the old
+    sentinel-queue design's guarantee."""
+    subscription = shared.subscribe()
+    upstream.feed("s1")
+    upstream.feed("s2")
+    while not upstream._feed.empty():
+        await asyncio.sleep(0)
+    for _ in range(3):
+        await asyncio.sleep(0)  # both states are broadcast into the queue now
+
+    await subscription.aclose()  # another task closes; nothing consumed yet
+    assert [state async for state in subscription] == ["s1", "s2"]
+
+
 async def test_reopen_after_full_close(shared, upstream):
     first = shared.subscribe()
     upstream.feed("s1")

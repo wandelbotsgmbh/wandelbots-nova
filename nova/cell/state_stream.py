@@ -146,12 +146,19 @@ class StateSubscription:
         call from a ``finally``, a cancelled task, or a GC-driven generator
         finalizer. Contains no await point: it completes even when the calling
         context is already cancelled.
+
+        States already buffered at this point are still delivered to a consumer
+        that keeps iterating; the end marker enqueued *behind* them is what ends
+        the stream. That preserves at-least-the-buffered delivery for a consumer
+        whose subscription is closed by another task — the execute relay's
+        trailing frames must not be dropped by its own teardown.
         """
         if self._closed:
             return
         self._closed = True
         self._deregister(self)
-        # Wake a __anext__ blocked on the empty queue so it ends instead of hanging.
+        # Wake a __anext__ blocked on the empty queue so it ends instead of
+        # hanging; enqueued behind any buffered states so those still drain.
         self._queue.put_nowait(_EndOfStream())
 
     async def _drain_queue(self) -> AsyncGenerator[api.models.MotionGroupState, None]:
@@ -160,8 +167,6 @@ class StateSubscription:
             if isinstance(item, _EndOfStream):
                 if not self._closed and item.error is not None:
                     raise item.error
-                return
-            if self._closed:
                 return
             yield item
 
