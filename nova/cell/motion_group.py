@@ -15,6 +15,7 @@ from nova.actions.path_trigger_resolver import (
     has_path_triggers,
     resolve_set_outputs,
 )
+from nova.cell.io_condition import IOConditionWatcher
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, PlanTrajectoryFailed
@@ -1098,6 +1099,14 @@ class MotionGroup(AbstractRobot):
         combined_actions = CombinedActions(items=tuple(actions))  # ty: ignore[invalid-argument-type]
         set_outputs = await self._resolve_set_outputs(combined_actions, joint_trajectory, tcp)
 
+        # A controller-side IO pause is only resumed by a new start, and only
+        # once the condition has cleared; the movement controller needs a way
+        # to wait for that, which requires the API client this class holds.
+        wait_for_pause_on_io_release = None
+        if pause_on_io is not None:
+            watcher = IOConditionWatcher(self._api_client, self._cell, self._controller_id)
+            wait_for_pause_on_io_release = partial(watcher.wait_until_released, pause_on_io)
+
         controller = movement_controller(
             MovementControllerContext(
                 combined_actions=combined_actions,
@@ -1105,6 +1114,7 @@ class MotionGroup(AbstractRobot):
                 set_outputs=set_outputs,
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
+                wait_for_pause_on_io_release=wait_for_pause_on_io_release,
                 # The cursor subscribes to the same shared stream this relay
                 # reads from: one state websocket per motion group, however many
                 # consumers an execution has.

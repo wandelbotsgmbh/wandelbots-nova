@@ -667,3 +667,117 @@ class TestRecordedStreamReplay:
         for state in thinned:
             machine.process_motion_state(state)
         assert machine.is_paused
+
+
+# ---------------------------------------------------------------------------
+# Controller-side IO pause (PAUSED_ON_IO)
+# ---------------------------------------------------------------------------
+
+
+class TestPausedOnIO:
+    """``TrajectoryPausedOnIO`` is a pause, not completion (ADR 002).
+
+    Measured 2026-09-03 (docs/architecture/incoming/pause-on-signal-evaluation.md):
+    the controller holds the pause level-based and only resumes on a new start.
+    """
+
+    def test_paused_on_io_with_standstill_goes_to_paused_with_io_reason(self):
+        from nova.cell.movement_controller.trajectory_state_machine import PauseReason
+
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+
+        result = machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedOnIO())
+            )
+        )
+
+        assert machine.is_paused
+        assert not machine.is_ended
+        assert machine.pause_reason is PauseReason.IO
+        assert machine.is_paused_on_io
+        assert result.state_changed
+
+    def test_paused_on_io_without_standstill_goes_to_pausing_then_paused(self):
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=False, execute=_make_execute(api.models.TrajectoryPausedOnIO())
+            )
+        )
+        assert machine.is_pausing
+        assert machine.is_paused_on_io
+
+        # The decelerating frames keep the discriminator; a bare standstill concludes.
+        machine.process_motion_state(_make_motion_group_state(standstill=True))
+        assert machine.is_paused
+        assert machine.is_paused_on_io
+
+    def test_user_pause_records_the_user_reason(self):
+        from nova.cell.movement_controller.trajectory_state_machine import PauseReason
+
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedByUser())
+            )
+        )
+        assert machine.is_paused
+        assert machine.pause_reason is PauseReason.USER
+        assert not machine.is_paused_on_io
+
+    def test_start_from_io_pause_clears_the_reason(self):
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedOnIO())
+            )
+        )
+        machine.send("start")
+        assert machine.is_executing
+        assert machine.pause_reason is None
+        assert not machine.is_paused_on_io
+
+    def test_running_while_paused_is_an_observed_resume(self):
+        """Another client (or a future controller) resumed the execution: the
+        machine follows the wire instead of staying paused forever."""
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedOnIO())
+            )
+        )
+        assert machine.is_paused
+
+        result = machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=False,
+                execute=_make_execute(api.models.TrajectoryRunning(time_to_end=500), location=1.5),
+            )
+        )
+        assert machine.is_executing
+        assert machine.pause_reason is None
+        assert result.state_changed
+        assert result.location == 1.5
+
+    def test_io_pause_then_end_completes_the_lifecycle(self):
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedOnIO())
+            )
+        )
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), location=3.0)
+            )
+        )
+        assert machine.is_ended

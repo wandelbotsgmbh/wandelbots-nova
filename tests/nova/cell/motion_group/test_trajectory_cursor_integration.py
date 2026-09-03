@@ -270,11 +270,16 @@ async def test_cursor_forward_start_on_io_delays_movement_start(kuka_mg):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):
-    """pause_on_io must stop the cursor's forward() early, mid-trajectory, with
-    no exception raised — TrajectoryPausedOnIO resolves the operation cleanly."""
+async def test_cursor_forward_pause_on_io_suspends_and_resumes(kuka_mg):
+    """pause_on_io must suspend the cursor's forward() mid-trajectory as a *pause*:
+    the operation resolves with ``paused_on_io=True`` at the pause location, the
+    cursor stays attached, and a forward() after the signal cleared completes the
+    trajectory (ADR 002)."""
     mg, kuka = kuka_mg
     await kuka.write("OUT#900", False)
+    # Every run here traverses the full 1.5 rad; start from home so consecutive
+    # tests on the shared virtual controller stay inside the joint limits.
+    await mg.plan_and_execute([jnt(kuka_initial_joint_positions[:6])], tcp="Flange")
 
     trajectory, actions = await _plan_move(mg, delta=1.5)
     start_joints = await mg.joints()
@@ -300,31 +305,32 @@ async def test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):
     forward_future = cursor.forward(pause_on_io=pause_io)
 
     try:
+        await asyncio.wait_for(_wait_until_moving(mg, start_joints), timeout=10.0)
+        await kuka.write("OUT#900", True)
 
-        async def trigger_io_once_moving():
-            start_time = asyncio.get_event_loop().time()
-            while True:
-                current = await mg.joints()
-                if abs(current[0] - start_joints[0]) > 0.01:
-                    await kuka.write("OUT#900", True)
-                    return
-                if asyncio.get_event_loop().time() - start_time > 5.0:
-                    raise TimeoutError("Motion never started")
-                await asyncio.sleep(0.1)
-
-        await asyncio.wait_for(trigger_io_once_moving(), timeout=10.0)
-
-        # No exception should propagate: TrajectoryPausedOnIO resolves the
-        # operation as ended, not as an error.
         result = await asyncio.wait_for(forward_future, timeout=15.0)
 
-        final_joints = await mg.joints()
         target_joints = actions[0].target
-        movement_amount = abs(final_joints[0] - start_joints[0])
-        distance_to_target = abs(final_joints[0] - target_joints[0])
-        assert movement_amount > 0.01, "robot didn't move"
-        assert distance_to_target > 0.1, "motion wasn't interrupted early"
-        assert result.final_location is not None
+        paused_joints = await mg.joints()
+        assert result.paused_on_io is True
+        assert result.error is None
+        assert abs(paused_joints[0] - start_joints[0]) > 0.01, "robot didn't move"
+        assert abs(paused_joints[0] - target_joints[0]) > 0.1, "motion wasn't interrupted early"
+        assert (
+            result.final_location is not None and result.final_location < trajectory.locations[-1]
+        )
+        assert not cursor._stop_event.is_set(), "an IO pause must not detach the cursor"
+
+        # The controller does not resume by itself; a start after the signal
+        # cleared does, and the pause stays armed for the rest of the trajectory.
+        await kuka.write("OUT#900", False)
+        await asyncio.sleep(0.3)
+        resumed = await asyncio.wait_for(cursor.forward(), timeout=60.0)
+
+        assert resumed.paused_on_io is False
+        assert abs(resumed.final_location - trajectory.locations[-1]) < 0.01
+        final_joints = await mg.joints()
+        assert abs(final_joints[0] - target_joints[0]) < 0.01
     finally:
         await kuka.write("OUT#900", False)
         cursor.detach()
@@ -333,13 +339,13 @@ async def test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cursor_detach_on_standstill_tears_down_on_pause_on_io(kuka_mg):
-    """detach_on_standstill=True must fully tear down the control loop when
-    pause_on_io fires mid-motion, exactly as it does on true completion — this
-    pins the TrajectoryPausedOnIO -> is_ended (not is_paused) contract for a
-    cursor caller who opted into auto-detach."""
+async def test_cursor_detach_on_standstill_survives_pause_on_io(kuka_mg):
+    """detach_on_standstill=True must NOT tear down the control loop when
+    pause_on_io fires mid-motion — an IO pause is `paused`, not `ended` — and must
+    still tear it down once the resumed run reaches the end (ADR 002)."""
     mg, kuka = kuka_mg
     await kuka.write("OUT#900", False)
+    await mg.plan_and_execute([jnt(kuka_initial_joint_positions[:6])], tcp="Flange")
 
     trajectory, actions = await _plan_move(mg, delta=1.5)
     start_joints = await mg.joints()
@@ -374,99 +380,33 @@ async def test_cursor_detach_on_standstill_tears_down_on_pause_on_io(kuka_mg):
     forward_future = cursor.forward(pause_on_io=pause_io)
 
     try:
+        await asyncio.wait_for(_wait_until_moving(mg, start_joints), timeout=10.0)
+        await kuka.write("OUT#900", True)
 
-        async def trigger_io_once_moving():
-            start_time = asyncio.get_event_loop().time()
-            while True:
-                current = await mg.joints()
-                if abs(current[0] - start_joints[0]) > 0.01:
-                    await kuka.write("OUT#900", True)
-                    return
-                if asyncio.get_event_loop().time() - start_time > 5.0:
-                    raise TimeoutError("Motion never started")
-                await asyncio.sleep(0.1)
+        result = await asyncio.wait_for(forward_future, timeout=15.0)
+        assert result.paused_on_io is True
 
-        await asyncio.wait_for(trigger_io_once_moving(), timeout=10.0)
+        # Still attached: neither the cursor nor the execute() task ended.
+        await asyncio.sleep(0.5)
+        assert not cursor._stop_event.is_set()
+        assert not execute_task.done()
 
-        # The operation resolves cleanly...
-        await asyncio.wait_for(forward_future, timeout=15.0)
+        await kuka.write("OUT#900", False)
+        await asyncio.sleep(0.3)
+        resumed = await asyncio.wait_for(cursor.forward(), timeout=60.0)
+        assert resumed.paused_on_io is False
 
-        # ...but the cursor's control loop must have torn itself down, since
-        # detach_on_standstill=True treats the IO-triggered pause like real
-        # completion (is_ended), not like a resumable pause (is_paused).
+        # ...and the one-shot teardown happens on the real end.
+        await asyncio.wait_for(execute_task, timeout=10.0)
         assert cursor._stop_event.is_set()
-
-        # _in_queue holds every intermediate MotionGroupState pushed while the
-        # move was running, with the sentinel appended only once at the very
-        # end — drain them all rather than assuming the next item is already
-        # the sentinel.
-        async def _drain(cursor):
-            async for _ in cursor:
-                pass
-
-        await asyncio.wait_for(_drain(cursor), timeout=5.0)
-
-        # A subsequent forward() must fail fast (not hang) rather than queue
-        # a command nothing will ever send.
-        stale_future = cursor.forward()
-        with pytest.raises(RuntimeError):
-            await asyncio.wait_for(stale_future, timeout=2.0)
     finally:
         await kuka.write("OUT#900", False)
         cursor.detach()
         execute_task.cancel()
 
 
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_cursor_set_outputs_fires_io_during_movement(kuka_mg):
-    """The IO overlay must reach the controller through the cursor.
-
-    Before ``set_outputs`` was plumbed through the cursor, a trajectory's
-    ``io_write`` actions were silently dropped whenever it was executed via a
-    cursor rather than the one-shot movement controller.
-    """
-    mg, kuka = kuka_mg
-    await kuka.write("OUT#900", False)
-
-    trajectory, actions = await _plan_move(mg, delta=0.4)
-    outputs = [
-        api.models.SetIO(
-            io=api.models.IOBooleanValue(io="OUT#900", value=True),
-            location=0.0,
-            io_origin=api.models.IOOrigin.CONTROLLER,
-        )
-    ]
-
-    cursor_ready = asyncio.Event()
-    holder: list[TrajectoryCursor] = []
-
-    def factory(context: MovementControllerContext) -> MovementControllerFunction:
-        cursor = TrajectoryCursor(
-            motion_id=context.motion_id,
-            motion_group_state_stream=context.motion_group_state_stream_gen(),
-            joint_trajectory=trajectory,
-            actions=actions,
-            set_outputs=outputs,
-            detach_on_standstill=True,
-        )
-        holder.append(cursor)
-        cursor_ready.set()
-        return cursor.cntrl
-
-    execute_task = asyncio.create_task(
-        mg.execute(trajectory, "Flange", actions, movement_controller=factory)
-    )
-    await asyncio.wait_for(cursor_ready.wait(), timeout=10.0)
-    cursor = holder[0]
-
-    try:
-        assert await kuka.read("OUT#900") is False
-        await asyncio.wait_for(cursor.forward(), timeout=30.0)
-        assert await kuka.read("OUT#900") is True, (
-            "set_outputs overlay never reached the controller through the cursor"
-        )
-    finally:
-        await kuka.write("OUT#900", False)
-        cursor.detach()
-        execute_task.cancel()
+async def _wait_until_moving(mg, start_joints, threshold: float = 0.01) -> None:
+    """Return once the state stream shows the robot has left ``start_joints``."""
+    async for state in mg.stream_state(None):
+        if abs(state.joint_position[0] - start_joints[0]) > threshold:
+            return

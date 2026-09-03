@@ -192,3 +192,123 @@ async def test_empty_context_set_outputs_is_not_treated_as_missing():
 
     starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
     assert starts[0].set_outputs == []
+
+
+# ---------------------------------------------------------------------------
+# Controller-side IO pause: execute() must block through it and finish
+# ---------------------------------------------------------------------------
+
+
+def _paused_on_io(location: float) -> api.models.Execute:
+    return _execute(location, api.models.TrajectoryPausedOnIO())
+
+
+class _FedStates:
+    """A state stream fed by the test; ends when ``close()`` is called."""
+
+    def __init__(self):
+        self._queue: asyncio.Queue = asyncio.Queue()
+
+    def feed(self, *states):
+        for state in states:
+            self._queue.put_nowait(state)
+
+    def close(self):
+        self._queue.put_nowait(None)
+
+    def gen(self):
+        async def _gen():
+            while (state := await self._queue.get()) is not None:
+                yield state
+
+        return _gen
+
+
+def _pause_condition() -> api.models.PauseOnIO:
+    return api.models.PauseOnIO(
+        io=api.models.IOBooleanValue(io="hold", value=True),
+        comparator=api.models.Comparator.COMPARATOR_EQUALS,
+        io_origin=api.models.IOOrigin.BUS_IO,
+    )
+
+
+async def _collect(controller_fn, requests: list) -> None:
+    async for request in controller_fn(_responses()):
+        requests.append(request)
+
+
+async def _wait_for(predicate, timeout: float = 5.0) -> None:
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await asyncio.sleep(0)
+
+
+async def test_io_pause_is_resumed_once_the_signal_clears():
+    """The controller holds an IO pause until a new start arrives after the
+    condition cleared (measured). move_forward waits for the release and starts
+    again, so the one-shot execution completes at the target — with the pause
+    condition and the IO overlay re-attached to the resume."""
+    states = _FedStates()
+    release_requested = asyncio.Event()
+    release = asyncio.Event()
+
+    async def wait_for_release():
+        release_requested.set()
+        await release.wait()
+
+    context = _context(
+        motion_group_state_stream_gen=states.gen(),
+        pause_on_io=_pause_condition(),
+        set_outputs=[
+            api.models.SetIO(
+                io=api.models.IOBooleanValue(io="OUT#1", value=True),
+                location=1.5,
+                io_origin=api.models.IOOrigin.CONTROLLER,
+            )
+        ],
+        wait_for_pause_on_io_release=wait_for_release,
+    )
+    requests: list = []
+    run = asyncio.create_task(_collect(move_forward(context), requests))
+
+    states.feed(_state(True), _state(False, _execute(0.5)), _state(True, _paused_on_io(1.0)))
+    await _wait_for(release_requested.is_set)
+    assert not run.done(), "execute() must not end on a controller-side IO pause"
+    starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
+    assert len(starts) == 1
+
+    release.set()
+    await _wait_for(
+        lambda: sum(isinstance(r, api.models.StartMovementRequest) for r in requests) == 2
+    )
+    # Stale pause frames right after the resume, then the motion, then the end.
+    states.feed(
+        _state(True, _paused_on_io(1.0)),
+        _state(False, _execute(1.5)),
+        _state(True, _execute(2.0, api.models.TrajectoryEnded())),
+        _state(True),
+    )
+    async with asyncio.timeout(5):
+        await run
+
+    starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
+    assert len(starts) == 2
+    assert all(s.pause_on_io == _pause_condition() for s in starts)
+    assert all(s.set_outputs == context.set_outputs for s in starts)
+
+
+async def test_io_pause_without_a_release_waiter_ends_the_execution_early(caplog):
+    """A hand-built context has no way to observe the signal; the adapter then
+    keeps the previous contract (end early) rather than hanging forever."""
+    states = _FedStates()
+    context = _context(motion_group_state_stream_gen=states.gen(), pause_on_io=_pause_condition())
+    requests: list = []
+    run = asyncio.create_task(_collect(move_forward(context), requests))
+
+    states.feed(_state(True), _state(False, _execute(0.5)), _state(True, _paused_on_io(1.0)))
+    async with asyncio.timeout(5):
+        await run
+
+    starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
+    assert len(starts) == 1
+    assert "no release waiter" in caplog.text

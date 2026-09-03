@@ -81,11 +81,18 @@ class GroupArgs:
             rate — the fastest the server emits. The shared stream is opened
             at the rate of its first subscriber; see
             :meth:`MotionGroup.stream_state`.
+        pause_on_io: This group's pause signal, attached to every start the
+            group's cursor emits. The controller pauses the group on path while
+            the condition holds; the others keep running. Resume is the
+            caller's call (:meth:`MultiTrajectoryCursor.forward` once the
+            signal cleared) — the controller does not resume by itself. The
+            same condition may be given to several groups to pause them all.
     """
 
     tcp: str | None = None
     ignore_controller_limits: bool = True
     state_stream_rate_msecs: int | None = None
+    pause_on_io: api.models.PauseOnIO | None = None
 
 
 class TrajectoryExecutor:
@@ -170,6 +177,7 @@ class TrajectoryExecutor:
                 detach_on_standstill=False,
                 emit_motion_events=False,
                 ignore_controller_limits=group_args.ignore_controller_limits,
+                pause_on_io=group_args.pause_on_io,
             )
 
         cursor = MultiTrajectoryCursor(cursors, self._sync)

@@ -23,6 +23,12 @@ RAE publishes the execute state **level-based** (robotics/wbr!2262):
   operation was actually seen running (see the cursor rules below).
 - A stopped execution also reports `PAUSED_BY_USER` (there is no separate wire kind); after
   stop/teardown the `execute` block disappears.
+- `PAUSED_ON_IO` is published while the controller holds a `pause_on_io` pause. The controller
+  never resumes it by itself: a new `StartMovementRequest` (honoured once the condition has
+  cleared) resumes, re-arms the pause and re-attaches the IO overlay. A condition that already
+  holds at the start yields `PAUSED_ON_IO` at the start location without any motion; after a
+  resume the pause is re-published for a few control cycles before `RUNNING` appears
+  (measured, see `docs/architecture/incoming/pause-on-signal-evaluation.md` and ADR 002).
 
 Controllers **older than wbr!2262** instead drop the `execute` block the instant the robot
 settles: `END_OF_TRAJECTORY` / `PAUSED_BY_USER` are visible at standstill for only one or two
@@ -38,8 +44,8 @@ the standstill concludes it.
 | `idle` | Initial state — no trajectory active, waiting for `start` |
 | `executing` | Robot is moving (`TrajectoryRunning`) |
 | `ending` | `TrajectoryEnded` received but robot not yet at standstill |
-| `pausing` | `TrajectoryPausedByUser` received, not yet at standstill |
-| `paused` | Robot paused and at standstill — may `start` again to resume |
+| `pausing` | `TrajectoryPausedByUser` or `TrajectoryPausedOnIO` received, not yet at standstill |
+| `paused` | Robot paused and at standstill — may `start` again to resume; `pause_reason` is `USER` or `IO` |
 | `ended` | Trajectory finished **and** robot at standstill |
 | `error` | Unrecoverable error — terminal state |
 
@@ -53,8 +59,11 @@ the standstill concludes it.
 - `TrajectoryRunning` → stay in `executing`
 - `TrajectoryEnded` + standstill → `ended`
 - `TrajectoryEnded` (no standstill) → `ending` → (on standstill) → `ended`
-- `TrajectoryPausedByUser` + standstill → `paused`
+- `TrajectoryPausedByUser` + standstill → `paused` (`pause_reason = USER`)
 - `TrajectoryPausedByUser` (no standstill) → `pausing` → (on standstill) → `paused`
+- `TrajectoryPausedOnIO` + standstill → `paused` (`pause_reason = IO`)
+- `TrajectoryPausedOnIO` (no standstill) → `pausing` → (on standstill) → `paused`
+- `TrajectoryRunning` while `paused` → `executing` (a resume observed on the wire)
 
 The standstill that completes `ending → ended` and `pausing → paused` counts **with or without an
 `execute` block on the frame**: pre-!2262 controllers drop the block at settle, so a bare
@@ -73,9 +82,15 @@ publishing:
 - A `paused` machine state concludes only a PAUSE operation, or a movement operation that was
   seen running. This keeps the persistent pre-start `PAUSED_BY_USER` frames from resolving a
   movement that never moved.
+- A `paused` machine state with `pause_reason = IO` concludes any **commanded** operation as
+  `OperationResult.paused_on_io = True` — also one that never moved, since the controller only
+  reports `PAUSED_ON_IO` after a start armed with `pause_on_io`. An operation started while the
+  machine is still paused on IO ignores `PAUSED_ON_IO` frames until a frame with another state
+  arrived (the level-based re-publish after a resume).
 - `ended` concludes any commanded operation; in one-shot mode (`move_forward`) it also detaches
   the cursor, which closes the execution websocket — the client's teardown acknowledges the
-  persistent terminal state.
+  persistent terminal state. An IO pause is `paused`, never `ended`, so the cursor stays
+  attached; `move_forward` waits for the signal to clear and starts again (ADR 002).
 
 ---
 
@@ -100,8 +115,9 @@ ended --> executing : start
 executing --> executing : TrajectoryRunning
 executing --> ended : TrajectoryEnded\n[standstill]
 executing --> ending : TrajectoryEnded\n[!standstill]
-executing --> paused : TrajectoryPausedByUser\n[standstill]
-executing --> pausing : TrajectoryPausedByUser\n[!standstill]
+executing --> paused : TrajectoryPausedByUser | TrajectoryPausedOnIO\n[standstill]
+executing --> pausing : TrajectoryPausedByUser | TrajectoryPausedOnIO\n[!standstill]
+paused --> executing : TrajectoryRunning (observed resume)
 
 ending --> ending : [!standstill]
 ending --> ended : [standstill]
@@ -135,8 +151,9 @@ stateDiagram-v2
     executing --> executing : TrajectoryRunning
     executing --> ended : TrajectoryEnded [standstill]
     executing --> ending : TrajectoryEnded [!standstill]
-    executing --> paused : TrajectoryPausedByUser [standstill]
-    executing --> pausing : TrajectoryPausedByUser [!standstill]
+    executing --> paused : TrajectoryPausedByUser / TrajectoryPausedOnIO [standstill]
+    executing --> pausing : TrajectoryPausedByUser / TrajectoryPausedOnIO [!standstill]
+    paused --> executing : TrajectoryRunning (observed resume)
 
     ending --> ending : [!standstill]
     ending --> ended : [standstill]

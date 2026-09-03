@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, AsyncIterator, Callable
+from typing import Annotated, AsyncIterator, Awaitable, Callable
 
 import pydantic
 
@@ -164,6 +164,11 @@ class MovementControllerContext(pydantic.BaseModel):
     motion_id: str
     start_on_io: api.models.StartOnIO | None = None
     pause_on_io: api.models.PauseOnIO | None = None
+    # Awaits until the ``pause_on_io`` condition no longer holds. Set by the
+    # motion group (which has the API client); the one-shot movement controller
+    # uses it to resume a controller-side IO pause, since the controller never
+    # resumes by itself. Without it an IO pause ends the execution early.
+    wait_for_pause_on_io_release: Callable[[], Awaitable[None]] | None = None
     motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
     # The planned trajectory being executed. Optional: only location-bounded
     # cursor operations need it, one-shot execution does not.
