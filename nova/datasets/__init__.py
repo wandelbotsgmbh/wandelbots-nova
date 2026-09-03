@@ -11,6 +11,7 @@ from nova.datasets.datasets import (
     transform_to_frame,
     transform_to_world,
 )
+from nova.datasets.exceptions import DatasetError, DatasetNotFoundError
 from nova.datasets.types import (
     Dataset,
     LoadDatasetRequest,
@@ -22,6 +23,8 @@ from nova.datasets.types import (
 
 __all__ = [
     "Dataset",
+    "DatasetError",
+    "DatasetNotFoundError",
     "LoadDatasetRequest",
     "LoadLocalDatasetRequest",
     "LoadRemoteDatasetRequest",
