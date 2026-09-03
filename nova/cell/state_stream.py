@@ -29,8 +29,11 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# What ``response_rate=None`` means server-side; used to order subscriber rates.
-_SERVER_DEFAULT_RATE_MSECS = 200
+# ``response_rate=None`` means the controller's own step rate server-side —
+# the fastest the server emits (measured ~3-12 ms depending on controller) —
+# so for rate ordering ``None`` counts as faster than any explicit rate.
+# (The API documentation's "default is 200 ms" is wrong; verified empirically.)
+_STEP_RATE_ORDERING_MSECS = 0
 
 # Bound per subscriber queue: a subscriber that is never consumed must not grow
 # without limit; oldest states are dropped first.
@@ -194,7 +197,9 @@ class SharedMotionGroupStateStream:
     subscription deregisters (after ``linger_secs``). A later subscribe reopens
     it. The socket rate is fixed by the subscriber that opened it: a later
     subscriber asking for a slower rate is downsampled client-side, one asking
-    for a faster rate gets the socket's slower rate and a warning.
+    for a faster rate gets the socket's slower rate and a warning. A rate of
+    ``None`` means the controller's own step rate — the fastest the server
+    emits — so it opens the socket at full rate and is never downsampled.
 
     An upstream error ends every subscription with that error; a graceful
     upstream end just ends them. Either way the next subscribe opens a fresh
@@ -217,7 +222,8 @@ class SharedMotionGroupStateStream:
 
         Args:
             response_rate_msecs: Rate at which this subscriber wants states, in
-                milliseconds. ``None`` means the server default of 200 ms.
+                milliseconds. ``None`` means the controller's own step rate —
+                the fastest the server emits.
         """
         generation = self._generation
         if (
@@ -231,23 +237,31 @@ class SharedMotionGroupStateStream:
             )
             self._generation = generation
 
-        socket_rate = (
+        socket_order = (
             generation.rate_msecs
             if generation.rate_msecs is not None
-            else _SERVER_DEFAULT_RATE_MSECS
+            else _STEP_RATE_ORDERING_MSECS
         )
-        requested_rate = (
-            response_rate_msecs if response_rate_msecs is not None else _SERVER_DEFAULT_RATE_MSECS
+        requested_order = (
+            response_rate_msecs if response_rate_msecs is not None else _STEP_RATE_ORDERING_MSECS
         )
         downsample_to_msecs: int | None = None
-        if requested_rate < socket_rate:
+        if requested_order < socket_order:
+            # socket_order > requested_order >= 0 implies an explicit socket rate.
+            requested_label = (
+                "the controller step rate"
+                if response_rate_msecs is None
+                else f"{response_rate_msecs} ms"
+            )
             logger.warning(
                 f"Motion group state stream '{self._name}' is already open at "
-                f"{socket_rate} ms; a new subscription asking for {requested_rate} ms "
-                f"cannot make it faster and will receive states at {socket_rate} ms."
+                f"{generation.rate_msecs} ms; a new subscription asking for "
+                f"{requested_label} cannot make it faster and will receive states "
+                f"at {generation.rate_msecs} ms."
             )
-        elif requested_rate > socket_rate:
-            downsample_to_msecs = requested_rate
+        elif requested_order > socket_order:
+            # requested_order > 0 implies an explicit requested rate.
+            downsample_to_msecs = response_rate_msecs
 
         queue: asyncio.Queue[api.models.MotionGroupState | _EndOfStream] = asyncio.Queue()
         subscription = StateSubscription(

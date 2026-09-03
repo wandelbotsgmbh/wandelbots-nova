@@ -77,9 +77,10 @@ class GroupArgs:
             way to keep it as planned. Turn it off for a group whose trajectory
             was not planned by Nova.
         state_stream_rate_msecs: Rate of this group's motion-group state
-            stream, in milliseconds. None means the server default (200 ms).
-            The shared stream is opened at the rate of its first subscriber;
-            see :meth:`MotionGroup.stream_state`.
+            stream, in milliseconds. None means the controller's own step
+            rate — the fastest the server emits. The shared stream is opened
+            at the rate of its first subscriber; see
+            :meth:`MotionGroup.stream_state`.
     """
 
     tcp: str | None = None

@@ -23,7 +23,8 @@ LOG_DATETIME_FORMAT: str = config("LOG_DATETIME_FORMAT", default="%Y-%m-%d %H:%M
 ENABLE_TRAJECTORY_TUNING = config("ENABLE_TRAJECTORY_TUNING", cast=bool, default=False)
 
 # Default response rate for the motion-group state stream driving executions,
-# in milliseconds; unset means the server default (200 ms).
+# in milliseconds; unset means the controller's own step rate (the server's
+# behavior when no rate is requested).
 _MOTION_GROUP_STATE_RATE = config("NOVA_MOTION_GROUP_STATE_RATE_MSECS", default=None)
 MOTION_GROUP_STATE_RATE_MSECS: int | None = (
     int(_MOTION_GROUP_STATE_RATE) if _MOTION_GROUP_STATE_RATE is not None else None
@@ -50,7 +51,8 @@ class NovaConfig(BaseModel):
         description=(
             "Response rate of the motion-group state stream driving executions, in "
             "milliseconds; used when no explicit rate is passed to execute/stream_execute. "
-            "None means the server default (200 ms). Also settable via the "
+            "None means the controller's own step rate — the fastest the server emits, "
+            "its behavior when no rate is requested. Also settable via the "
             "NOVA_MOTION_GROUP_STATE_RATE_MSECS environment variable."
         ),
     )

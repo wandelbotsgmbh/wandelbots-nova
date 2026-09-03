@@ -375,7 +375,8 @@ class AbstractRobot(Device):
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
             state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
                 execution progress, in milliseconds. None falls back to
-                NovaConfig.motion_group_state_rate_msecs, then to the server default (200 ms).
+                NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
+                rate (the server's behavior when no rate is requested).
         """
 
     async def stream_execute(
@@ -403,7 +404,8 @@ class AbstractRobot(Device):
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
             state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
                 execution progress, in milliseconds. None falls back to
-                NovaConfig.motion_group_state_rate_msecs, then to the server default (200 ms).
+                NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
+                rate (the server's behavior when no rate is requested).
         """
         actions_list = _normalize_actions(actions)
 
@@ -443,7 +445,8 @@ class AbstractRobot(Device):
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
             state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
                 execution progress, in milliseconds. None falls back to
-                NovaConfig.motion_group_state_rate_msecs, then to the server default (200 ms).
+                NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
+                rate (the server's behavior when no rate is requested).
         """
 
         motion_state_stream = self.stream_execute(
@@ -488,7 +491,8 @@ class AbstractRobot(Device):
                 used. Experimental.
             state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
                 execution progress, in milliseconds. None falls back to
-                NovaConfig.motion_group_state_rate_msecs, then to the server default (200 ms).
+                NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
+                rate (the server's behavior when no rate is requested).
         """
         actions_list = _normalize_actions(actions)
 
@@ -545,7 +549,8 @@ class AbstractRobot(Device):
                 used. Experimental.
             state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
                 execution progress, in milliseconds. None falls back to
-                NovaConfig.motion_group_state_rate_msecs, then to the server default (200 ms).
+                NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
+                rate (the server's behavior when no rate is requested).
 
         Raises:
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
