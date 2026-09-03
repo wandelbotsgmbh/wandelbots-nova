@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "1e8177a45d05",
+  "strategy": "manual-commit",
+  "branch": "fix/state-stream-none-rate-docs",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "nova/cell/motion_group.py",
+    "nova/cell/state_stream.py",
+    "nova/cell/trajectory_executor.py",
+    "nova/config.py",
+    "tests/cell/test_state_stream.py",
+    "tests/cell/test_state_stream_rate.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/1e/8177a45d05/0/metadata.json",
+      "transcript": "/1e/8177a45d05/0/full.jsonl",
+      "compact_transcript": "/1e/8177a45d05/0/transcript.jsonl",
+      "content_hash": "/1e/8177a45d05/0/content_hash.txt",
+      "prompt": "/1e/8177a45d05/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 40,
+    "cache_creation_tokens": 22637,
+    "cache_read_tokens": 8278889,
+    "output_tokens": 13845,
+    "api_call_count": 20
+  }
+}

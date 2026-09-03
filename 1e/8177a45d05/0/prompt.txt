@@ -1,0 +1,23 @@
+<task-notification>
+<task-id>b00d2nw4e</task-id>
+<summary>Monitor event: "CI result after tuning-rate fix on #501"</summary>
+<event>PR #501 checks: 21 pass</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b00d2nw4e</task-id>
+<tool-use-id>toolu_01XJU1iCYDNzUg38Ej2J1EtR</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/d0d2e2f2-9a3e-4200-acf7-23ca6ea8c9df/tasks/b00d2nw4e.output</output-file>
+<status>completed</status>
+<summary>Monitor "CI result after tuning-rate fix on #501" stream ended</summary>
+</task-notification>
+
+---
+
+#501 has been merged too we can clean up the local branches now.
+One thing though before:
+[Image #2] this is from the documentation of the Nova Api regarding the state rate. You probably read it via the API itself much faster. 
+The docs there states 200ms as the default rate. But this is wrong. I tested using the python websocket module like so: uv run python -m websockets "ws://172.31.10.234/api/v2/cells/cell/controllers/kuka/motion-groups/0@kuka/state-stream?response_rate=200" (172.31.10.234 is the current k8s testing instance); if you leave out the response rate parameter it defaults to step rate of the controller instead of 200ms 
+if you have verified that, then go through the changes we made in the last 3 PRs and correct the doc blocks accordingly. In some of them the wrong default documentation got replicated. do this on a new branch with a new PR
