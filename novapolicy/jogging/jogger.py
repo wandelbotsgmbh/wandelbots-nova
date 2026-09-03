@@ -773,7 +773,6 @@ class _BaseJogger:
         """PTP move all motion groups to their start_joint_position positions."""
         import asyncio as _asyncio  # ruff: ignore[import-outside-top-level]
 
-        from nova import api  # ruff: ignore[import-outside-top-level]
         from nova.actions import jnt  # ruff: ignore[import-outside-top-level]
 
         async def _ptp(mg: MotionGroup, joints: list[float]) -> None:
@@ -782,7 +781,7 @@ class _BaseJogger:
             # planning at this exact start pose (the same relaxation a manual
             # PTP-to-home would use).
             setup = await mg.get_setup(tcp)
-            setup.collision_setups = api.models.CollisionSetups({})
+            setup.collision_setups = {}
             target = tuple(joints)
             traj = await mg.plan([jnt(target)], tcp, motion_group_setup=setup)
             await mg.execute(traj, tcp, actions=[jnt(target)])

@@ -124,12 +124,7 @@ def make_waypoints_request(
 
 def _joint_coordinates(steps: list[list[float]]) -> list[api.models.WaypointCoordinates]:
     """Wrap joint steps [rad] as ``JOINTS`` waypoint coordinates."""
-    return [
-        api.models.WaypointCoordinates(
-            api.models.JointWaypoint(joints=api.models.Joints(root=step))
-        )
-        for step in steps
-    ]
+    return [api.models.JointWaypoint(joints=step) for step in steps]
 
 
 def _pose_coordinates(steps: list[list[float]]) -> list[api.models.WaypointCoordinates]:
@@ -138,20 +133,9 @@ def _pose_coordinates(steps: list[list[float]]) -> list[api.models.WaypointCoord
     Each step is [x, y, z, rx, ry, rz] where position is in mm and
     orientation is a rotation vector in radians.
     """
-    from wandelbots_api_client.v2_pydantic.models.models import (  # ruff: ignore[import-outside-top-level]
-        Pose as ApiPose,
-        RotationVector,
-        Vector3d,
-    )
-
     return [
-        api.models.WaypointCoordinates(
-            api.models.PoseWaypoint(
-                pose=ApiPose(
-                    position=Vector3d(root=list(step[:3])),
-                    orientation=RotationVector(root=list(step[3:6])),
-                )
-            )
+        api.models.PoseWaypoint(
+            pose=api.models.Pose(position=tuple(step[:3]), orientation=tuple(step[3:6]))
         )
         for step in steps
     ]

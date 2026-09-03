@@ -679,8 +679,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 return
             if not self._ready.is_set():
                 self._ready.set()
-            if hasattr(response.root, "kind") and response.root.kind == "MOTION_ERROR":
-                msg = getattr(response.root, "message", "unknown motion error")
+            if hasattr(response, "kind") and response.kind == "MOTION_ERROR":
+                msg = getattr(response, "message", "unknown motion error")
                 raise MotionError(self.motion_group_id, msg)
             self._check_stop_conditions()
             self._jog_tracker.check()
@@ -766,7 +766,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
             self._start_waypoint_tracking_measurement(request)
 
-            yield api.models.ExecuteActionChunksRequest(request)
+            yield request
 
     def _record_dropped_chunk(self, pending: PendingChunk, step_timestamps: list[int]) -> None:
         """Account for a chunk that was dropped for being entirely in the past.
@@ -886,10 +886,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             # 1. Initialize the action chunk session.
             # The server starts its internal timer when the first waypoint
             # request arrives (not on InitializeActionChunksRequest).
-            yield api.models.ExecuteActionChunksRequest(
-                api.models.InitializeActionChunksRequest(
-                    motion_group=self._motion_group.id, tcp=tcp
-                )
+            yield api.models.InitializeActionChunksRequest(
+                motion_group=self._motion_group.id, tcp=tcp
             )
 
             response_task = asyncio.create_task(
@@ -957,7 +955,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             return
         self._monitor_chunk_index = self._waypoint_chunk_count
         self._monitor_waypoints = [
-            (waypoint.timestamp, list(waypoint.waypoint.root.joints.root)) for waypoint in waypoints
+            (waypoint.timestamp, list(waypoint.waypoint.joints)) for waypoint in waypoints
         ]
         self._monitor_next_waypoint = 0
 

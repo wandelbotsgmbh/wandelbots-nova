@@ -10,7 +10,6 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from nova import api
 from nova.actions import jnt
 from novapolicy.cameras.manager import CameraManager
 from novapolicy.chunking import (
@@ -352,7 +351,7 @@ class PolicyExecutor:
         async def ptp(mg: MotionGroup, joints: list[float]) -> None:
             tcp = await mg.active_tcp_name() or (await mg.tcp_names())[0]
             setup = await mg.get_setup(tcp)
-            setup.collision_setups = api.models.CollisionSetups({})
+            setup.collision_setups = {}
             target = tuple(joints)
             trajectory = await mg.plan([jnt(target)], tcp, motion_group_setup=setup)
             await mg.execute(trajectory, tcp, actions=[jnt(target)])

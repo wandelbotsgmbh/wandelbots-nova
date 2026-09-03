@@ -50,7 +50,7 @@ def _ok() -> object:
 
 def _motion_error(message: str = "joint_limit") -> object:
     """A response that tells the session the server hit a motion error."""
-    return SimpleNamespace(root=SimpleNamespace(kind="MOTION_ERROR", message=message))
+    return SimpleNamespace(kind="MOTION_ERROR", message=message)
 
 
 class FakeJoggingServer:
@@ -207,25 +207,25 @@ def _is_joint_chunk(message: object) -> bool:
     only shows up on the waypoints themselves.
     """
     return isinstance(message, api.models.ActionChunkRequest) and all(
-        waypoint.waypoint.root.kind == "JOINTS" for waypoint in message.waypoints
+        waypoint.waypoint.kind == "JOINTS" for waypoint in message.waypoints
     )
 
 
 def _is_pose_chunk(message: object) -> bool:
     """True for an ActionChunkRequest whose waypoints carry pose coordinates."""
     return isinstance(message, api.models.ActionChunkRequest) and all(
-        waypoint.waypoint.root.kind == "POSE" for waypoint in message.waypoints
+        waypoint.waypoint.kind == "POSE" for waypoint in message.waypoints
     )
 
 
 def _joints(waypoint: object) -> list[float]:
     """Joint values of one waypoint, past the coordinates envelope."""
-    return list(waypoint.waypoint.root.joints.root)
+    return list(waypoint.waypoint.joints)
 
 
 def _pose(waypoint: object) -> object:
     """Pose of one waypoint, past the coordinates envelope."""
-    return waypoint.waypoint.root.pose
+    return waypoint.waypoint.pose
 
 
 # ---------------------------------------------------------------------------
@@ -728,13 +728,13 @@ async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
         # step that is still reachable (earlier ones are trimmed as past). A
         # chunk shorter than the configured horizon is extended by holding its
         # final pose, so the robot is never handed a lone terminal waypoint.
-        sent_positions = [[_pose(w).position.root[k] for k in range(3)] for w in waypoints]
+        sent_positions = [[_pose(w).position[k] for k in range(3)] for w in waypoints]
         chunk_positions = [step[:3] for step in chunk]
         offset = chunk_positions.index(sent_positions[0])
         for sent, expected in zip(sent_positions, chunk_positions[offset:], strict=False):
             assert sent == expected
         for waypoint in waypoints:
-            assert [_pose(waypoint).orientation.root[k] for k in range(3)] == chunk[0][3:6]
+            assert [_pose(waypoint).orientation[k] for k in range(3)] == chunk[0][3:6]
 
         # Timestamps: the layout the waypoint API expects.
         timestamps = [w.timestamp for w in waypoints]

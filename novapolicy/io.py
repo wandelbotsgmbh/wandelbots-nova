@@ -80,7 +80,7 @@ class IOStreamCache:
             )
             async for response in stream:
                 for io_val in response.io_values:
-                    self.values[io_val.root.io] = io_val.root.value
+                    self.values[io_val.io] = io_val.value
                 if not self._ready.is_set():
                     self._ready.set()
         except asyncio.CancelledError:

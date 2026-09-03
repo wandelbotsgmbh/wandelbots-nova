@@ -23,7 +23,7 @@ def _joint_timestamps(req) -> list[int]:
 
 
 def _joint_steps(req) -> list[list[float]]:
-    return [list(w.waypoint.root.joints.root) for w in req.waypoints]
+    return [list(w.waypoint.joints) for w in req.waypoints]
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ def test_absolute_mode_places_timestamps_starting_at_the_exact_base():
         first_timestamp_ms=100,
     )
     assert isinstance(req, api.models.ActionChunkRequest)
-    assert all(w.waypoint.root.kind == "JOINTS" for w in req.waypoints)
+    assert all(w.waypoint.kind == "JOINTS" for w in req.waypoints)
     assert _joint_timestamps(req) == [100, 110, 120]
     assert _joint_steps(req) == steps
 
@@ -184,11 +184,11 @@ def test_cartesian_mode_builds_pose_waypoints_splitting_position_and_orientation
     )
     assert isinstance(req, api.models.ActionChunkRequest)
     waypoint = req.waypoints[0]
-    assert waypoint.waypoint.root.kind == "POSE"
+    assert waypoint.waypoint.kind == "POSE"
     assert waypoint.timestamp == 0
-    pose = waypoint.waypoint.root.pose
-    assert list(pose.position.root) == [500.0, 200.0, 300.0]
-    assert list(pose.orientation.root) == [0.1, 0.2, 0.3]
+    pose = waypoint.waypoint.pose
+    assert list(pose.position) == [500.0, 200.0, 300.0]
+    assert list(pose.orientation) == [0.1, 0.2, 0.3]
 
 
 def test_empty_steps_produce_no_waypoints():
