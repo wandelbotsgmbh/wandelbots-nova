@@ -1,0 +1,1087 @@
+we have a requirement to be able to pause execution based on an IO or BusIO or profinet signal.
+That means in a production cell with many motion groups running on many controllers the user/person responsible for the cell wants to set a signal and then all the robots (and other cell machinery we are not concerned about atm) should pause motion and operation in a way so that it can be resumed again.
+When it comes to robot motion in the SDK there seem to be two obvious mechanism to achieve this:
+1. the pause_on_io parameter to motiongroup.execute and the like, which would pause robot motion on the RAE/WBR side; But the might be a gap in the Trajectory cursrors execution model and more specifically in the execution state handling (state machine) which seems to not interact well when such a pause happens.
+2. the pause feature of the TrajectoryCursor; But this seems to have the issue of causing the motion to not ramp down and ramp up speed as nicely as with pause_on_io. The pause feature uses what is available via the execution websocket. 
+Both claims need to be verified but maybe you can see other options too.
+So our first step is evaluating existing options and test them as good as possible. Then looking for other options to maybe satisfy the requirement.
+If the way forward is one of the current options we will work on the potential deficiencies of it.
+So far this covers only the part of the programs where actual execution of robot motion is happening. In a follow up session we might also evaluate how the pausing mechanism could be implemented in a program wide manner, but this is out of scope for now as far as this is possible. Thinking about the implication the movement only solution might have on the broader program wide solution might still be benecicial now.
+create a plan for how we work on getting the requirement satisfied.
+
+---
+
+<task-notification>
+<task-id>a4a8e3280eff71661</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/5c37e167-9c8a-491f-a11d-382f474e7820/tasks/a4a8e3280eff71661.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore tests, lab, program layer" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## 1. Execution unit-test infrastructure
+
+All fast (non-integration) execution tests live in `tests/cell/`. There is **no root conftest** (`/Users/q/0code/nova-python-sdk/tests/conftest.py` is empty, 0 lines) — every fake is local to a test module or to the shared doubles file.
+
+**Shared doubles** — `/Users/q/0code/nova-python-sdk/tests/cell/multi_group_doubles.py` (132 lines)
+State-frame builders + an IO gateway + a motion-group double. This is where a controller-side pause frame is already modelled:
+- `state(standstill, execute, at_milliseconds)` :29, `execute_detail(location, trajectory_state)` :45
+- `running_state` :57, `ended_state` :63 (`TrajectoryEnded`), **`paused_state` :67 (`TrajectoryPausedByUser`)**, `wait_for_io_state` :53 (`TrajectoryWaitForIO`)
+- `IOGateway` :88 — `controller_ios_api.set_output_values` AsyncMock recording writes
+- `motion_group(api_client, states: asyncio.Queue, ...)` :107 — a `MagicMock` whose `stream_state()` yields an idle `state(True)` handshake frame then drains a queue the test pushes into. This is the primary "emit a state to the cursor" seam.
+
+**Fake execution websocket (bidirectional `executeTrajectory`)** — two variants:
+- `_FakeGateway` in `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_executor_session.py:40-92`. Implements `trajectory_execution_api.execute_trajectory` as a request/response loop with FIFO acks: consumes `InitializeMovementRequest` → `InitializeMovementResponse`, `StartMovementRequest` → `StartMovementResponse`, `PauseMovementRequest` → `PauseMovementResponse` (:88-92). Records `start_requests` / `initialize_requests`, and exposes milestone counters `await gateway.reached("start"|"pause"|"init"|"write", n)` (:61-69) so tests never sleep. `_settle()` :95 for negative assertions.
+- `_ExecuteProtocolFake` in `/Users/q/0code/nova-python-sdk/tests/cell/test_execute_shared_stream.py:49-80` — same protocol, but it *feeds states into the upstream socket as the protocol advances*: on `StartMovementRequest` it acks then pushes `running_state(0.5)` and `ended_state(2.0)` (or `upstream.fail(...)`). `_motion_group()` :82 builds a real `MotionGroup` over a `MagicMock(spec=ApiGateway)` + a real `MotionGroupStateStreamRegistry`. **This is the closest existing template for simulating a controller-side pause end-to-end through `MotionGroup._execute`** — you'd feed a `paused_state(...)` instead of `ended_state(...)`.
+
+**Fake state websocket** — `FakeUpstream` in `/Users/q/0code/nova-python-sdk/tests/cell/test_state_stream.py:22-56`: `feed(state)`, `end()`, `fail(error)`, `open(rate)` records requested rates, counts `aclose`. Fixtures `upstream` :59, `shared` :64.
+
+**TrajectoryCursor tests**
+- `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_cursor.py` (400 lines) — pure index/location math; `create_cursor()` :19 uses `object.__new__(TrajectoryCursor)` with MagicMocks, no async.
+- `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_cursor_concurrency.py` (692 lines) — `_make_cursor()` :111 builds a real cursor over `_never_ending_state_stream()` :80 or `_state_stream_from(list)` :86. Covers `OperationHandler` transitions (:134), instantiation races (:245), rapid forward/pause/backward switching (:291, `test_forward_then_pause_leaves_pause_intent` :314), `_intent_to_commands` (:371), state-monitor completion races (:484), detach (:560), and start-on-IO / pause-on-IO params on intents (:613, :669).
+- `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_cursor_parity.py` (≈660 lines) — the key driving helpers: `_gated_run()` :120 returns a `(state stream, response stream, start_sent event)` triple that withholds controller feedback until the start actually left the cursor; `_drive(cursor, responses, on_start=...)` :139 runs `cursor.cntrl(responses)` collecting emitted requests. Tests: IO overlay re-attached on every start (:164), stop-wins-over-pending-intent (:263), first-dispatch gate incl. `test_gate_holds_through_a_leading_playback_speed_request` :420, "operation requires acknowledgement" (:471), error propagation (:619).
+- `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_cursor_level_states.py` — the file most relevant to a controller-side pause. Docstring (:1-20) explains the two wire behaviours (`execute` block dropped at settle vs. level-based publishing per robotics/wbr!2262). Tests: `test_pause_edge_then_bare_standstill_completes_the_operation_as_paused` :170, `test_pre_start_paused_frames_do_not_complete_a_forward_operation` :208, `test_pause_after_motion_still_completes_the_operation_as_paused` :242, `test_frame_shows_motion` :275, and `may_complete_as_paused` cases :297-312.
+- `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_state_machine.py` (669 lines) — `TrajectoryExecutionMachine` driven by synthetic `MotionGroupState`s (`_make_motion_group_state` :22, `_make_execute` :37).
+- `/Users/q/0code/nova-python-sdk/tests/cell/test_move_forward_adapter.py` — `move_forward` is now a `TrajectoryCursor` adapter (ADR 001); pins first-dispatch gate + IO overlay/gates on the emitted start.
+- `/Users/q/0code/nova-python-sdk/tests/cell/test_state_stream_rate.py` — rate resolution (explicit → `NovaConfig` → controller step rate), incl. tuning mode.
+
+**Production code under test**
+- `/Users/q/0code/nova-python-sdk/nova/cell/movement_controller/trajectory_cursor.py` — `TrajectoryCursor` :523, `__init__` :561, `forward` :823 / `backward` :871 / `forward_to` :919 / `backward_to` :953 / `forward_to_next_action` :987 / `backward_to_previous_action` :1031, **`pause()` :1078**, `detach()` :1101, `cntrl()` :1144, `_request_loop` :1236, `_motion_group_state_monitor` :1308, `_response_consumer` :1439. `OperationHandler` :206 with `is_commanded()` :338 and `may_complete_as_paused()` :351. Completion guards at :1354-1380.
+- `/Users/q/0code/nova-python-sdk/nova/cell/movement_controller/trajectory_state_machine.py` — states `paused` :143, `pausing`, `ended`, `ending`; `_handle_executing` :328 maps `TrajectoryEnded | TrajectoryPausedOnIO` → ended (:343) and `TrajectoryPausedByUser` → paused (:349).
+- `/Users/q/0code/nova-python-sdk/nova/cell/movement_controller/README.md` — "How the controller publishes execution state" :5, "Completion rules in `TrajectoryCursor`" :65. Plus ADR `/Users/q/0code/nova-python-sdk/docs/architecture/adr/001-merge-movement-controllers-into-trajectory-cursor.md`.
+- `MotionGroup._execute` at `/Users/q/0code/nova-python-sdk/nova/cell/motion_group.py:1057` (public `execute`/`stream_execute`/`plan_and_execute` on `AbstractRobot`, `/Users/q/0code/nova-python-sdk/nova/cell/robot_cell.py:382, :426, :523`).
+
+Note: `playback_speed_in_percent` is a cursor/executor parameter only (`trajectory_cursor.py:450, 682, 826…`, `multi_trajectory_cursor.py:271-346`, `tuner.py:101-113`); the only test touching it is `test_trajectory_cursor_parity.py:317, 420, 437, 459`.
+
+## 2. Integration tests &amp; CI
+
+**Marker/config** — `/Users/q/0code/nova-python-sdk/pyproject.toml:123-145`: `asyncio_mode = "auto"`, `addopts` includes `--doctest-modules --timeout=300`, `testpaths = nova wandelscript tests`, marker `integration: mark a test as requiring a running Nova instance`. There is **no skip-guard conftest** — integration tests are selected/deselected purely with `-m integration` / `-m "not integration"`.
+
+**Env** — no `load_dotenv` in the test tree; `NOVA_API` / `NOVA_ACCESS_TOKEN` are read via `python-decouple` in `/Users/q/0code/nova-python-sdk/nova/config.py:8-9` (decouple reads `.env` from cwd). Fixtures just do `async with Nova() as nova`.
+
+**Fixture pattern** (repeated per file, no shared conftest): `Nova()` → `nova.cell()` → `cell.ensure_controller(virtual_controller(name=..., manufacturer=..., type=..., position=...))` → `cell.controller(name)` → `async with ctrl[0] as mg`. Examples: `tests/nova/cell/motion_group/test_trajectory_cursor_integration.py:47` (`ur_mg`) and `:67` (`kuka_mg`, yields `(mg, kuka)` for IO), `tests/cell/test_io.py:22` (`setup_controllers`: UR + KUKA), `:47` (`setup_virtual_profinet`: adds `BusIOProfinetVirtual` and waits on a NATS `bus-ios.status` CONNECTED message, then a 5 s settle).
+
+**Integration tests touching execution / IO**
+- `/Users/q/0code/nova-python-sdk/tests/nova/cell/motion_group/test_trajectory_cursor_integration.py` — `:220` start_on_io delays movement start, `:273` pause_on_io stops early mid-trajectory, `:336` detach-on-standstill on pause_on_io, `:422` set_outputs fires IO during movement. Cursor is plugged in as `movement_controller=` via a local `_make_cursor_controller` adapter (docstring :14-20).
+- `/Users/q/0code/nova-python-sdk/tests/nova/cell/motion_group/test_pause_on_io.py` — `:98` pause_on_io accepted by the execution API (only unit-level assertions on `MovementControllerContext` :17 and the `move_forward` start request :52 run in CI); `:148` the real "pause mid-motion" test is **commented out as flaky**.
+- `/Users/q/0code/nova-python-sdk/tests/nova/cell/test_trajectory_executor_integration.py` — module-scoped `synchronized_groups` fixture (:57), `:128` both groups start within `MAX_START_SKEW_SECONDS = 0.05`, `:160` forward_to intermediate keeps session open, **`:181` `test_pause_then_forward_rearms_the_barrier`** (calls `cursor.pause()`, asserts the pending `forward` future is cancelled, then resumes).
+- `/Users/q/0code/nova-python-sdk/tests/nova/cell/motion_group/test_motion_group_task_cancelation.py:76,119,188,227` — cancelling the task running `execute` must stop movement.
+- `/Users/q/0code/nova-python-sdk/tests/cell/test_io.py:122-175` (controller IO read/write), `:341` `test_set_io_on_path` (parametrized, `@pytest.mark.flaky(reruns=3)`), `:378-476` bus IO get/set and `wait_for_bus_io`.
+- `/Users/q/0code/nova-python-sdk/tests/nova/cell/motion_group/test_motion_group_movement.py:38,51,79`.
+
+**CI workflows**
+- `/Users/q/0code/nova-python-sdk/.github/workflows/nova-dev.yaml:40` — unit gate: `PYTHONPATH=. LOG_LEVEL=WARNING uv run pytest -rs -v -m "not integration"` (plus ruff format/isort/check and `ty check` at :28-37).
+- `/Users/q/0code/nova-python-sdk/.github/workflows/nova-run-examples.yaml` — on PRs to `main`, concurrency group `run-examples-workflow` (serialized). Jobs: `setup-instance` (creates a throwaway NOVA via `scripts/create_nova_instance.py`, token GPG-encoded into job outputs), `create_motion_group_models`, then `test-integration` (matrix, `max-parallel: 1`, 45 min timeout) with `NOVA_API=https://&lt;PORTAL_PROD_HOST&gt;`, `CELL_NAME=cell`, `BASE_PATH=/cell/novax`, each entry retried up to 3×. Matrix entries: `pytest -rs -v -m integration`, then `examples/start_here.py`, `plan_and_execute.py`, `move_multiple_robots.py`, `multi_motion_group.py`, `bus_io_sync_two_controllers.py`, `welding.py`. **Commented out**: `multi_step_movement_with_collision_free.py` and `collision_setup.py` (rerun flaky). On failure it downloads a diagnosis package. `cleanup-instance` always deletes the instance.
+
+## 3. `examples/lab/` (untracked — `git status` shows `?? examples/lab/`, branch `feat/path-triggers`)
+
+- `/Users/q/0code/nova-python-sdk/examples/lab/wait_for_bus_io_repro.py` (176 lines) — minimal repro loop for a MAKRO 1000 zone-entry handshake: read a boolean bus IO, `wait_for_bus_io` for it to invert, read again, compare "[after]" vs "[event]" to see whether the wait returned for the right reason. Requires virtual profinet + a bool bus IO named `test_bool`.
+- `/Users/q/0code/nova-python-sdk/examples/lab/wait_for_bus_io_is_true_experiment.py` (313 lines) — deterministic repro of the **`new_value is True` on an INT bus IO** bug (integers arrive as Python `int`, so `1 is True` is False and the waiter hangs forever). Runs a matrix of bool/int × `is True` / `== True` / truthiness waiter cases, each bounded by a timeout; a non-returning waiter is the bug.
+- `/Users/q/0code/nova-python-sdk/examples/lab/bus_io_types_experiment.py` (337 lines) — round-trips one bus IO per SDK-supported value type (bool / int family / real family) through `get_bus_io_value` / `set_bus_io_value`, logs value+type stability across two reads, then runs all `wait_for_bus_io` waiters plus matching writers in one `asyncio.TaskGroup` with a bounded timeout and a completed-vs-timed-out summary.
+- `/Users/q/0code/nova-python-sdk/examples/lab/bus_io_toggler.html` — standalone dark-themed browser page ("Bus IO Output Toggler") to read/toggle a bus IO output by hand while a probe script runs.
+- `examples/lab/__pycache__/` — build artefacts only.
+
+**`examples/` top level**: nothing pause/resume-related (`grep -n "pause\|resume" examples/*.py` → no hits). IO-relevant ones: `signals.py` (bus IO get/set/`wait_for_bus_io` + IO in a motion plan; hangs at the end until you flip `test_bool`), `path_triggers.py` (io_write triggers at fractions/times/distances along the path), `bus_io_sync_two_controllers.py` (bus-IO barrier syncing two controllers via `TrajectoryExecutor` / `GroupArgs`), `plan_and_execute.py`, `multi_motion_group.py`, `cycle_events.py`, `state_stream.py`.
+
+## 4. Program layer &amp; novax
+
+- `/Users/q/0code/nova-python-sdk/nova/program/context.py:14` `ProgramContext` — only `nova` :23, `cell` :28, `program_id` :33, `cycle(extra)` :37. **No pause/stop surface on the context.**
+- `/Users/q/0code/nova-python-sdk/nova/program/runner.py`:
+  - `ProgramStatus` :60 (carries `state: api.models.ProgramRunState`).
+  - **`ExecutionContext` :80** — holds `robot_cell`, `stop_event: anyio.Event` (property :99), `motion_group_recordings`, `output_data`, `nova`. Marked `# TODO: should provide a number of tools to the program to control the execution` :79.
+  - `ProgramRunner` :165 (ABC): `state` :262, `stopped` :272, `is_running()` :281, `join()` :293, **`stop(sync=False)` :304** (sets a `threading.Event`; a `stopper` thread :343 bridges it to the anyio event), `start()` :313, abstract `_run(execution_context)` :585.
+  - Cancellation propagation: `stoppable_run(run, stop)` in `/Users/q/0code/nova-python-sdk/nova/program/utils.py:19` cancels the run scope when the stop event fires. In `_run_program`, the cancelled branch `runner.py:509-527` does `with anyio.CancelScope(shield=True): await robot_cell.stop()` then sets state `STOPPED`. So **stop = cancel the program task → the `asyncio.TaskGroup` inside `MotionGroup._execute` (motion_group.py:1124) is cancelled → the executeTrajectory websocket is torn down**, plus a best-effort `robot_cell.stop()`.
+  - `_estop_handler` :376 streams cell state at 1000 ms and calls `self.stop()` on a non-normal/non-reduced safety state (:401-403).
+- **State enum has no PAUSED**: `ProgramRunState` = `PREPARING | RUNNING | COMPLETED | FAILED | STOPPED` (`.venv/.../wandelbots_api_client/v2_pydantic/models/models.py:5772-5781`). Used at `runner.py:205, 289, 334, 496, 507, 525, 534, 541, 549, 553, 556, 578`.
+- `robot_cell.stop()` — `/Users/q/0code/nova-python-sdk/nova/cell/robot_cell.py:799`: starts `device.stop()` for every `StoppableDevice` (protocol :190) in a task group. `AbstractRobot.stop()` is abstract at :647.
+- **`MotionGroup.stop()` is broken/dead** — `/Users/q/0code/nova-python-sdk/nova/cell/motion_group.py:510-527`: raises `ValueError("No motion to stop")` when `_current_motion is None`, otherwise calls `self._api_client.motion_api.stop_execution(...)`, with an inline `# FIXME: motion_api does not exist on ApiGateway in the v2 API, so this call raises AttributeError if reached` and `# TODO: should we remove this until we fix it?`.
+- **novax** — `/Users/q/0code/nova-python-sdk/novax/api/programs.py`: `GET /programs` :10, `GET /programs/{program}` :17, `POST /programs/{program}/start` :30, **`POST /programs/{program}/stop` :46**. No pause/resume endpoint. `/Users/q/0code/nova-python-sdk/novax/program_manager.py`: `start_program` :100, `stop_program` :136 → `self._runner.stop(sync=True)` then drops the runner; `is_any_program_running` :41, `running_program` :45 (single-runner model — start returns 400 if one is running, `programs.py:40`).
+- Tests: `/Users/q/0code/nova-python-sdk/tests/program/test_runner.py` (`TestProgramRunner(ProgramRunner)` subclass :15, `test_program_runner_stop` :56), `/Users/q/0code/nova-python-sdk/tests/novax/api/test_program_run.py:124` `test_novax_program_stopped_run` (POSTs `/programs/long_running_program/stop` :155) and `:308` `test_stop_program_on_lifespan_end`; helpers in `tests/novax/api/wait_utils.py`, fixture `novax_app` in `tests/novax/conftest.py:30`.
+
+## 5. `nova/config.py` knobs
+
+Module-level, all via `decouple.config` (env or `.env`):
+- `NOVA_API` :8 (default `INTERNAL_CLUSTER_NOVA_API` = `http://api-gateway.wandelbots.svc.cluster.local:8080` :7), `NOVA_ACCESS_TOKEN` :9
+- `NATS_BROKER` :12, `CELL_NAME` :13 (default `"cell"`), `BASE_PATH` :14, `K8S_NAMESPACE` :15
+- `LOG_LEVEL` / `LOG_FORMAT` / `LOG_DATETIME_FORMAT` :18-20
+- **`ENABLE_TRAJECTORY_TUNING`** :23 (bool, default False) — flips `MotionGroup._execute` into `TrajectoryTuner` mode (`motion_group.py:1069`)
+- **`NOVA_MOTION_GROUP_STATE_RATE_MSECS`** :28 → `MOTION_GROUP_STATE_RATE_MSECS` :29
+
+`NovaConfig(BaseModel)` :34 fields: `host` :47, `access_token` :48, `verify_ssl` :49, **`motion_group_state_rate_msecs`** :50 (defaults to the env value; `None` = controller step rate), **`motion_group_state_stream_linger_secs`** :59 (float, default `0.0`; how long the shared state websocket stays open after the last unsubscribe — consumed at `/Users/q/0code/nova-python-sdk/nova/core/gateway.py:85` → `state_stream.py:213, 288-301`; **no env var**, constructor-only), `nats_client_config` :67. Validators: host normalization :72, NATS URL derivation :89 (`ws://host/api/nats` for http, `wss://token@host/api/nats` for https). `default_config = NovaConfig(host=NOVA_API, access_token=NOVA_ACCESS_TOKEN)` :138.
+
+No execution timeouts are configurable here — timeouts are hard-coded in tests (`asyncio.wait_for`) and via pytest's `--timeout=300`.
+
+## 6. `.env` / `.env.template`
+
+`/Users/q/0code/nova-python-sdk/.env` (24 non-empty lines, gitignored) — **`NOVA_API` is set**, active value `http://172.31.10.234` (:7, plain http, no token needed). Commented-out alternates kept as a history of lab instances: `http://192.168.102.50` (:4), `http://192.168.102.51` (:5), `http://172.31.10.66` (:6), `http://development-b3.rif` (:8). `CELL_NAME=cell` (:11, with `#CELL_NAME="urw1-agr3-sk1"` commented at :10). `NOVA_USERNAME`/`NOVA_PASSWORD` are set; `NOVA_ACCESS_TOKEN` lines are all commented out. `NATS_BROKER` entries all commented; `NATS_SUBJECT_CYCLE` set; `ENABLE_TRAJECTORY_TUNING` commented out. (No values printed.)
+
+`/Users/q/0code/nova-python-sdk/.env.template` — documents `NOVA_API` (must include scheme), `NOVA_ACCESS_TOKEN` (omit for IPC/VM), `CELL_NAME`, and commented `LOG_LEVEL` / `LOG_FORMAT` / `LOG_DATETIME_FORMAT`. There is also `/Users/q/0code/nova-python-sdk/devportal.env.tpl` used by `scripts/create_nova_instance.py` for CI instance provisioning.</result>
+<usage><subagent_tokens>103153</subagent_tokens><tool_uses>62</tool_uses><duration_ms>263319</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a4c94d6ce47bea0d8</task-id>
+<tool-use-id>toolu_018JasptEfCv6LZRNpqpMmut</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/5c37e167-9c8a-491f-a11d-382f474e7820/tasks/a4c94d6ce47bea0d8.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore execution model and pause" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete map. Here are the findings.
+
+---
+
+# 1. `MotionGroup.execute` / `stream_execute` / `_execute` — the `pause_on_io` path to the wire
+
+The public execute methods live on `AbstractRobot` in **`/Users/q/0code/nova-python-sdk/nova/cell/robot_cell.py`**; `MotionGroup` (in `/Users/q/0code/nova-python-sdk/nova/cell/motion_group.py:144`) only implements the abstract `_execute`.
+
+| Method | File:line |
+|---|---|
+| `AbstractRobot._execute` (abstract) | `nova/cell/robot_cell.py:356-380` |
+| `AbstractRobot.stream_execute` | `nova/cell/robot_cell.py:382-427` |
+| `AbstractRobot.execute` | `nova/cell/robot_cell.py:429-467` |
+| `AbstractRobot.stream_plan_and_execute` | `nova/cell/robot_cell.py:469-527` |
+| `AbstractRobot.plan_and_execute` | `nova/cell/robot_cell.py:529-583` |
+| `MotionGroup._execute` (concrete) | `nova/cell/motion_group.py:1056-1129` |
+| `SimulatedRobot._execute` | `nova/cell/simulation.py:249-...` |
+
+Identical signature shape across all of them:
+
+```python
+async def execute(
+    self,
+    joint_trajectory: api.models.JointTrajectory,
+    tcp: str | None,
+    actions: ActionsLike,
+    movement_controller: MovementController | None = None,
+    start_on_io: api.models.StartOnIO | None = None,
+    pause_on_io: api.models.PauseOnIO | None = None,
+    *,
+    state_stream_rate_msecs: int | None = None,
+) -&gt; None:
+```
+
+Docstring line, repeated at every level: `pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.`
+
+## Trace: public API → wire
+
+1. **`MotionGroup._execute`** (`nova/cell/motion_group.py:1056`) packs it into the controller context — `nova/cell/motion_group.py:1091-1105`:
+
+```python
+controller = movement_controller(
+    MovementControllerContext(
+        combined_actions=combined_actions,
+        motion_id=trajectory_id,
+        set_outputs=set_outputs,
+        start_on_io=start_on_io,
+        pause_on_io=pause_on_io,
+        motion_group_state_stream_gen=lambda: self._state_stream().subscribe(state_stream_rate),
+        joint_trajectory=joint_trajectory,
+    )
+)
+```
+
+2. **`MovementControllerContext`** is a pydantic model at **`nova/actions/container.py:161-176`** — field `pause_on_io: api.models.PauseOnIO | None = None` at line 166.
+
+3. **`move_forward`** (`nova/cell/movement_controller/move_forward.py:11-46`) forwards it into the cursor constructor at line 39: `pause_on_io=context.pause_on_io,`.
+
+4. **`TrajectoryCursor.__init__`** stores it as the cursor-wide default: `nova/cell/movement_controller/trajectory_cursor.py:571` (param) and `:662` (`self._pause_on_io = pause_on_io`).
+
+5. **`TrajectoryCursor._build_intent`** (`:677-699`) applies the default, per-call arg wins — line 697: `pause_on_io=pause_on_io if pause_on_io is not None else self._pause_on_io,`.
+
+6. **`Intent.to_commands`** (`nova/cell/movement_controller/trajectory_cursor.py:455-485`) constructs the wire message:
+
+```python
+commands.append(
+    api.models.StartMovementRequest(
+        direction=direction,
+        target_location=self.target_location,
+        start_on_io=self.start_on_io,
+        pause_on_io=self.pause_on_io,
+        # The server treats every start as an override of the attached
+        # overlay, so the full list must travel with each one; omitting
+        # it on a resume silently clears the remaining outputs.
+        set_outputs=self.set_outputs,
+    )
+)
+```
+
+7. **`_request_loop`** (`:1236-1307`) yields the command; **`cntrl`** (`:1144`) is passed to `trajectory_execution_api.execute_trajectory(..., client_request_generator=controller)` at `nova/cell/motion_group.py:1117-1121`. Gateway wiring: `nova/core/gateway.py:145`.
+
+Note: `pause_on_io` only rides on `StartMovementRequest`; `PauseMovementRequest` has no such field (comment at `trajectory_cursor.py:1096-1099`).
+
+---
+
+# 2. `TrajectoryCursor` — file `/Users/q/0code/nova-python-sdk/nova/cell/movement_controller/trajectory_cursor.py` (1625 lines)
+
+## Enums / dataclasses
+
+| Type | Lines | Members / fields |
+|---|---|---|
+| `OperationType(Enum)` | 108-127 | `FORWARD, BACKWARD, FORWARD_TO, BACKWARD_TO, FORWARD_TO_NEXT_ACTION, BACKWARD_TO_PREVIOUS_ACTION, PAUSE` |
+| `OperationState(Enum)` | 130-152 | `INITIAL, COMMANDED, RUNNING, COMPLETED, FAILED, CANCELLED` (docstring: `INITIAL -&gt; COMMANDED -&gt; RUNNING -&gt; COMPLETED / FAILED / CANCELLED`) |
+| `OperationResult` (dataclass) | 155-172 | `operation_type, target_location, start_location, final_location, error` |
+| `ExpectedResponseType` alias | 175-178 | `type[StartMovementResponse] | type[PauseMovementResponse]` |
+| `Operation` (dataclass) | 180-204 | `future, operation_type, operation_state, start_location, expected_response_type, target_location, interrupt_requested` |
+| `OperationHandler` | 206-375 | `start/set_commanded/set_running/complete/in_progress/is_commanded/may_complete_as_paused/current_operation/_reset` |
+| `MovementOption(StrEnum)` | 378-386 | `CAN_MOVE_FORWARD, CAN_MOVE_BACKWARD` |
+| `MotionEventType(StrEnum)` | 395-404 | `STARTED, STOPPED` |
+| `MotionEvent(pydantic.BaseModel)` | 407-430 | `type, current_location, current_action, current_action_source, target_location, target_action, target_action_source` |
+| `ExecuteTrajectoryRequestCommand` alias | 433-438 | `InitializeMovementRequest | StartMovementRequest | PauseMovementRequest | PlaybackSpeedRequest` |
+| `Intent` (frozen dataclass) | 437-485 | `operation_type, target_location, playback_speed_in_percent, start_on_io, pause_on_io, set_outputs` + `to_commands()` |
+| `_QueueSentinel` | 487-494 | queue terminator |
+| Blinker signals | 389-391 | `motion_started = signal("motion_started")`, `motion_stopped = signal("motion_stopped")` |
+
+## Public control methods
+
+| Method | Line | Emits |
+|---|---|---|
+| `forward(target_location, playback_speed_in_percent, start_on_io, pause_on_io)` | 823 | `Intent(FORWARD)` → `[PlaybackSpeedRequest?] + StartMovementRequest(DIRECTION_FORWARD)` |
+| `backward(...)` | 871 | `Intent(BACKWARD)` → `StartMovementRequest(DIRECTION_BACKWARD)` |
+| `forward_to(location, ...)` | 919 | delegates to `forward(target_location=...)` |
+| `backward_to(location, ...)` | 953 | delegates to `backward(...)` |
+| `forward_to_next_action(...)` | 987 | `forward_to(next_action_start)` |
+| `backward_to_previous_action(...)` | 1031 | `backward_to(previous_action_start)` |
+| `pause()` | 1078 | `Intent(PAUSE)` → `PauseMovementRequest()` |
+| `detach()` | 1101 | no wire message — sets `_stop_event`, cancels op future |
+| `cntrl(response_stream)` | 1144 | the protocol generator |
+| `__aiter__` / `__anext__` | 1573 / 1577 | tees `MotionGroupState` |
+
+There is **no `resume()` and no `stop()`** on the cursor. Resume is "call `forward()` again" — the state machine's `start` transition includes `paused.to(executing)`. There is **no `StopMovementRequest` anywhere** in the SDK or the generated client.
+
+`pause()` verbatim (`:1078-1100`):
+
+```python
+def pause(self) -&gt; asyncio.Future[OperationResult] | None:
+    if not self._is_operation_in_progress():
+        return None
+    future = self._start_operation(
+        OperationType.PAUSE, expected_response_type=api.models.PauseMovementResponse
+    )
+    self._set_intent(
+        Intent(
+            operation_type=OperationType.PAUSE
+            # A pause carries no overlay: PauseMovementRequest has no such field.
+        )
+    )
+    return future
+```
+
+Key: `pause()` returns `None` when no operation is in progress — a controller-side pause leaves no cursor-side operation, so a subsequent `pause()` is a no-op.
+
+## Websocket protocol (`cntrl`, `:1144-1235`)
+
+1. `await self._initialize_task`
+2. `init_movement_gen(...)` (`:1590-1625`) yields `InitializeMovementRequest(trajectory=TrajectoryId(id=motion_id), initial_location=..., ignore_controller_limits=...)`, then asserts the first response is `InitializeMovementResponse`, raising `InitMovementFailed` on `message` or `add_trajectory_error`.
+3. `_first_dispatch_gate` armed if an intent was queued pre-protocol (`:1181-1182`).
+4. TaskGroup with three children: `_motion_group_state_monitor`, `_response_consumer`, `_motion_event_updater`. 5 s `_STREAM_STARTUP_TIMEOUT` (`:69`) on the monitor's ready event.
+5. `async for request in self._request_loop(): yield request`.
+6. `BaseExceptionGroup` unwrapped to a single exception (`:1224-1231`).
+
+## Incoming response consumption — `_response_consumer` (`:1439-1503`)
+
+```python
+match response:
+    case api.models.PlaybackSpeedResponse():
+        pass  # no-op for now
+    case api.models.MovementErrorResponse():
+        error = ErrorDuringMovement(f"Error occurred during trajectory execution: {response.message}")
+        self._complete_operation(error=error)
+        raise error
+    case api.models.StartMovementResponse() | api.models.PauseMovementResponse():
+        if isinstance(response, current_op.expected_response_type):
+            self._operation_handler.set_commanded()
+    case _:
+        raise RuntimeError(...)
+```
+
+Responses are **acks only** — they carry no completion. Note the early `continue` at `:1454-1459` when no operation is in progress.
+
+## Incoming state consumption — `_motion_group_state_monitor` (`:1308-1409`)
+
+Drives the `TrajectoryExecutionMachine` from `MotionGroupState`:
+
+- `:1323-1330` auto-`send("start")` when an op is in progress and the machine isn't executing/ending/pausing.
+- `:1334-1338` `process_motion_state`; `result.location` updates `_current_location`.
+- `:1344-1345` skip logic; `:1347-1348` `set_running()` gated on `_frame_shows_motion`.
+- `:1350-1382` terminal handling — `is_ended or is_paused` → `is_commanded()` guard → `may_complete_as_paused()` guard → `_complete_operation()`; then `if self._detach_on_standstill and self._state_machine.is_ended: break`.
+- `finally` (`:1388-1409`): if an op is still in progress → `ErrorDuringMovement("Motion group state stream ended before the movement completed")`, then `detach()`, sentinel, `aclose()`.
+
+`_frame_shows_motion` (`:90-106`) — evidence-of-motion predicate:
+
+```python
+if not state.standstill:
+    return True
+return (
+    state.execute is not None
+    and isinstance(state.execute.details, api.models.TrajectoryDetails)
+    and isinstance(state.execute.details.state, api.models.TrajectoryRunning)
+)
+```
+
+---
+
+# 3. Movement-controller layer — where a controller-side IO pause shows up
+
+**`/Users/q/0code/nova-python-sdk/nova/cell/movement_controller/trajectory_state_machine.py`** (360 lines). `move_forward` is a thin adapter; all interpretation is here.
+
+## `TrajectoryExecutionMachine` (`:113-360`)
+
+States (`:139-145`): `idle` (initial), `executing`, `ending`, `pausing`, `paused`, `ended`, `error` (final).
+
+Transitions (`:149-173`):
+```python
+start = idle.to(executing) | paused.to(executing) | ended.to(executing)
+fail  = idle.to(error) | executing.to(error) | ending.to(error) | pausing.to(error) | paused.to(error)
+_keep_executing        = executing.to(executing, internal=True)
+_end_immediately       = executing.to(ended)
+_begin_ending          = executing.to(ending)
+_pause_immediately     = executing.to(paused)
+_begin_pausing         = executing.to(pausing)
+_end_after_standstill  = ending.to(ended)
+_keep_ending           = ending.to(ending, internal=True)
+_pause_after_standstill= pausing.to(paused)
+_keep_pausing          = pausing.to(pausing, internal=True)
+```
+
+`StateUpdate` (`:81-105`): `location, has_execute, state_changed, previous_state_id, current_state_id`, plus `skip` property.
+
+## THE CRITICAL LOCATION — `_handle_executing` (`:328-360`)
+
+```python
+match trajectory_state:
+    case api.models.TrajectoryEnded() | api.models.TrajectoryPausedOnIO():
+        if standstill:
+            self._end_immediately()
+        else:
+            self._begin_ending()
+
+    case api.models.TrajectoryPausedByUser():
+        if standstill:
+            self._pause_immediately()
+        else:
+            self._begin_pausing()
+
+    case api.models.TrajectoryRunning() | api.models.TrajectoryWaitForIO():
+        self._keep_executing()
+
+    case _:
+        # Unknown / None — stay executing
+        self._keep_executing()
+```
+
+**A controller-side `PAUSED_ON_IO` is mapped to `ended`, i.e. treated as trajectory completion**, not as `paused`. This is the only place `TrajectoryPausedOnIO` is handled anywhere in the SDK (grep-confirmed: only `trajectory_state_machine.py:334` in the type union and `:343` in the match).
+
+Consequences downstream:
+- `TrajectoryCursor._motion_group_state_monitor:1379-1381` — `is_ended` + `detach_on_standstill` → `break` → cursor detaches → `_request_loop` stops → `cntrl` generator ends → the `executeTrajectory` websocket is closed. In one-shot `move_forward` mode (`detach_on_standstill=True`, `move_forward.py:34`), an IO pause therefore terminates the execution and `execute()` returns **normally**, mid-trajectory.
+- The `forward()` future resolves with a successful `OperationResult` (no `error`), with `final_location` at the pause point.
+
+This behaviour is currently **pinned by tests**:
+- `tests/nova/cell/motion_group/test_trajectory_cursor_integration.py:271-329` — "No exception should propagate: TrajectoryPausedOnIO resolves the operation as ended, not as an error."
+- `tests/nova/cell/motion_group/test_trajectory_cursor_integration.py:333-...` — `test_cursor_detach_on_standstill_tears_down_on_pause_on_io`: "this pins the TrajectoryPausedOnIO -&gt; is_ended (not is_paused) contract".
+- `tests/nova/cell/motion_group/test_pause_on_io.py:148-...` (disabled/flaky, renamed with `_` prefix) — "No exception is raised (TrajectoryPausedOnIO treated as successful completion)".
+
+## `process_motion_state` (`:192-264`) — bare-standstill path
+
+```python
+if not has_execute:
+    if state.standstill:
+        if self.current_state == self.ending:
+            self._end_after_standstill()
+        elif self.current_state == self.pausing:
+            self._pause_after_standstill()
+    ...
+```
+
+Wire-behaviour documentation lives in **`/Users/q/0code/nova-python-sdk/nova/cell/movement_controller/README.md`** — notably that level-based publishing (robotics/wbr!2262) republishes `PAUSED_BY_USER` persistently between init and motion start, and that a *stopped* execution also reports `PAUSED_BY_USER` (there is no separate wire kind). Note the README's state tables and both diagrams **omit `PAUSED_ON_IO` entirely** — only the intro paragraph at line 10 lists it.
+
+`move_forward` (`nova/cell/movement_controller/move_forward.py`) has no pause handling of its own; `_consume_operation_outcome` (`:49-62`) just drains the future and `logger.debug`s errors.
+
+---
+
+# 4. Execution-state handling in `motion_group.py` that could mis-handle a controller-side pause
+
+`MotionGroup._execute` (`nova/cell/motion_group.py:1056-1129`), the relay loop:
+
+```python
+subscription = self._state_stream().subscribe(state_stream_rate)
+
+async def execution():
+    try:
+        await self._api_client.trajectory_execution_api.execute_trajectory(
+            cell=self._cell, controller=self._controller_id, client_request_generator=controller,
+        )
+    finally:
+        await subscription.aclose()
+
+async with asyncio.TaskGroup() as tg:
+    tg.create_task(execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}")
+    async for motion_group_state in subscription:
+        if motion_group_state.execute:
+            yield motion_group_state_to_motion_state(motion_group_state)
+```
+
+Relevant properties:
+- The relay never inspects `execute.details.state` — no discriminator awareness at this level; the completion decision is entirely delegated to the movement controller / cursor.
+- There is **no timeout, no stall detection, no watchdog** in `_execute`. Grep for `timeout|stall|watchdog` in `nova/cell/motion_group.py` returns only the unrelated `ensure_virtual_tcp` timeout at `:650/:689/:698`.
+- The generator ends when the cursor detaches → `cntrl` ends → `execute_trajectory` returns → `subscription.aclose()`. So an IO pause that maps to `ended` is indistinguishable from real completion at this layer.
+- `MotionGroup.stop()` (`nova/cell/motion_group.py:510-529`) is broken by its own admission: `# FIXME: motion_api does not exist on ApiGateway in the v2 API, so this call raises AttributeError if reached.`
+
+Shared state stream: `/Users/q/0code/nova-python-sdk/nova/cell/state_stream.py` — the module docstring (`:1-15`) describes the "end-of-motion stall" (paused websocket transport → `close_timeout`), and `_pump` (`:305-...`) is the only place the socket closes. Rate resolution: `MotionGroup._resolve_state_stream_rate` at `nova/cell/motion_group.py:580`.
+
+Relevant design docs (not implemented in `nova/`): `/Users/q/0code/nova-python-sdk/docs/architecture/incoming/execution-completion-detection.md` (esp. lines 200-235, describing a `run_standstill_watchdog` / `StandstillObservation` / `MovementStalled` design that explicitly wants to treat `TrajectoryWaitForIO`, `TrajectoryPausedOnIO`, `TrajectoryPausedByUser` as *legitimate* standstill) and `execution-completion-detection-research.md`. Grep confirms none of `MovementStalled`, `standstill_watchdog`, `StandstillObservation` exist in `nova/`.
+
+---
+
+# 5. `playback_speed` plumbing
+
+There is no `set_playback_speed` method. Speed is a per-call argument that piggybacks on an intent:
+
+- `Intent.playback_speed_in_percent` field: `trajectory_cursor.py:450`; `to_commands` prepends `api.models.PlaybackSpeedRequest(playback_speed_in_percent=...)` **before** the movement command (`:458-462`).
+- Accepted by `_build_intent` (`:682`), `forward` (`:826`), `backward` (`:874`), `forward_to` (`:922`), `backward_to` (`:956`), `forward_to_next_action` (`:989`), `backward_to_previous_action` (`:1033`). Documented as "Optional speed override (1-100)".
+- `pause()` never carries a speed.
+- `_request_loop` (`:1266-1296`) explicitly handles the two-command intent: a `detach` between the `PlaybackSpeedRequest` and its `StartMovementRequest` suppresses the movement ("A speed setting without its movement command is harmless; the reverse is not"). `_signal_first_dispatch()` is only released for the movement command, not the leading speed request.
+- `PlaybackSpeedResponse` is a documented no-op in `_response_consumer` (`:1471-1472`).
+- Multi-group: `nova/cell/multi_trajectory_cursor.py:175, 271, 292, 297, 308, 319, 330, 346`.
+- Tuner UI: `nova/cell/tuner.py:101, 105, 109, 113`.
+- Wire model: `PlaybackSpeedRequest.playback_speed_in_percent: Annotated[int, Field(le=100, strict=True, ge=0)]` — note `ge=0`, not 1.
+
+---
+
+# 6. Existing IO-reactive control flow in the SDK
+
+**Path-triggered IO writes** (`set_outputs` overlay, server-side):
+- `nova/actions/io.py:7` `WriteAction`, `:36` `io_write`; `nova/actions/path_trigger.py` (`at_path_fraction`, `after_time`, `before_time`, `after_distance`, `before_distance`).
+- Resolution: `MotionGroup._resolve_set_outputs` at `nova/cell/motion_group.py:1017-1054` (uses forward kinematics for distance triggers).
+- `CombinedActions.to_set_io()` at `nova/actions/container.py:149-158`.
+
+**`start_on_io` barrier / multi-group sync** — the one place the SDK *does* react to an IO-related trajectory state:
+- `nova/cell/trajectory_executor.py` (`TrajectoryExecutor`, `TrajectoryExecutorBuilder`, `sync_on_io` `:284`, `release_io` `:309`, `clear_io` `:322`, `watch` `:335`).
+- `nova/cell/multi_trajectory_cursor.py:145-153` — `_wait_until_waiting_for_io` checks `isinstance(state.execute.details.state, api.models.TrajectoryWaitForIO)`.
+- Example: `examples/bus_io_sync_two_controllers.py:104` matches `case api.models.TrajectoryWaitForIO():`.
+
+**Command-routine builders** (declarative trajectory commands, not execution-time) — `nova/command_routines/commands.py`:
+- `wait_for_io(condition, timeout_ms=..., at=...)` → `api.models.WaitForIOCommand` (`:227-239`)
+- `pause_on_io(condition, at=..., intent=..., metadata=...)` → `api.models.PauseOnIOCommand` (`:241-249`)
+- `wait_for_time(...)` → `WaitForTimeCommand`; `marker(...)` → `MarkerCommand`
+- Exported at `nova/command_routines/__init__.py:27, 46`.
+
+**Direct IO API**: `nova/cell/io.py:128` (`wait_for_io_event`), `nova/utils/io.py:137-139`.
+
+**`WaitAction`** (`nova/actions/mock.py:8-24`, `wait(seconds)`) is a *time* wait planned as a zero-length trajectory batch — `nova/cell/motion_group.py:61-62, 178-185, 949`; skipped in `CombinedActions` at `nova/actions/container.py:71-72`.
+
+---
+
+# 7. Program / novax pause-stop machinery
+
+**There is no program-level pause/resume concept.** Only stop.
+
+- `nova/program/runner.py` — `ProgramRunner`: `stop_event` property (`:99`), `stopped` (`:272`), `stop(sync=False)` (`:304-313`, sets a `threading.Event`), `stopper` thread bridge to an `anyio.Event` (`:343-346`), `_estop_handler` (`:374-402`) which calls `self.stop()` on E-STOP safety state, `_set_program_state` (`:419-426`). Line 333 carries `# TODO: introduce real state machine to manage the program run states`.
+- `nova/program/utils.py:19` — `stoppable_run(run, stop)`.
+- `nova/program/context.py` — `ExecutionContext.__init__(robot_cell, stop_event, nova)` at `:87`.
+- `novax/program_manager.py:136-146` — `stop_program(program_id)` → `self._runner.stop(sync=True)`. `start_program` at `:100`.
+- `novax/api/programs.py:47` — `stop_program` HTTP endpoint.
+- `api.models.ProgramRunState` values are only: `PREPARING, RUNNING, COMPLETED, FAILED, STOPPED` — **no PAUSED**.
+
+Multi-group session-level pause exists though: `MultiTrajectoryCursor.pause()` (`nova/cell/multi_trajectory_cursor.py:375-397`, fans out to every cursor's `pause()`) and `request_stop()` (`:261-268`).
+
+---
+
+# 8. Generated client `wandelbots_api_client` (v2 / v2_pydantic)
+
+Path: `/Users/q/0code/nova-python-sdk/.venv/lib/python3.12/site-packages/wandelbots_api_client/`, version `26.7.0.dev59`, OpenAPI doc `2.7.0 dev`. `nova.api` lazily re-exports `wandelbots_api_client.v2_pydantic` (`nova/api.py:14`). Structure is `v2/models/*.py` and `v2_pydantic/`; **there is no `docs/` or `README` directory in the package.**
+
+## Not present at all (grep-confirmed, zero hits)
+
+- `StandstillReason` — does not exist
+- `StopMovementRequest` / any `StopMovement*` — does not exist
+- `MovementStandstill` — does not exist
+- A `Standstill` model — does not exist; standstill is a plain bool field on `MotionGroupState`
+
+## `PauseOnIO` — `v2/models/pause_on_io.py:22-32`
+
+```python
+class PauseOnIO(BaseModel):
+    """
+    Defines an input/output that the motion will be paused for. The motion will stop gracefully on path.
+    """  # noqa: E501
+
+    io: IOValue
+    comparator: Comparator = Field(
+        description="Comparator for the comparison of two values. Use the measured I/O as the base value (a) and the expected input/output value as the comparator (b): e.g., a &gt; b. "
+    )
+    io_origin: IOOrigin
+    __properties: ClassVar[List[str]] = ["io", "comparator", "io_origin"]
+```
+
+`Comparator` (`v2/models/comparator.py`): `COMPARATOR_EQUALS, COMPARATOR_NOT_EQUALS, COMPARATOR_GREATER, COMPARATOR_GREATER_EQUAL, COMPARATOR_LESS, COMPARATOR_LESS_EQUAL`.
+`IOOrigin` (`v2/models/io_origin.py`): `CONTROLLER, BUS_IO`.
+
+## `StartMovementRequest` — `v2/models/start_movement_request.py:30-53`
+
+```python
+class StartMovementRequest(BaseModel):
+    """
+    Moves the motion group along a trajectory, added via [planTrajectory](#/operations/planTrajectory) or [planMotion](#/operations/planMotion). Trajectories can be executed forwards or backwards("in reverse").  Pause the execution with PauseMovementRequest. Resume execution with StartMovementRequest.  Precondition: To start execution, the motion group must be located at the trajectory's start location specified in InitializeMovementRequest.
+    """  # noqa: E501
+
+    message_type: StrictStr = Field(description="Type specifier for server, set automatically. ")
+    direction: Optional[Direction] = Direction.DIRECTION_FORWARD
+    target_location: Optional[Union[StrictFloat, StrictInt]] = Field(
+        default=None,
+        description="The target location to which the motion group moves along the trajectory to. If `direction` and `target_location` are both specified, target location takes precedence. If neither is specified, the default is `DIRECTION_FORWARD`. ",
+    )
+    set_outputs: Optional[List[SetIO]] = Field(default=None, description="Attaches a list of output commands to the trajectory. ...")
+    start_on_io: Optional[StartOnIO] = Field(
+        default=None,
+        description="Defines an input/output that is listened to before the movement. Execution starts if the defined comparator evaluates to `true`. ",
+    )
+    pause_on_io: Optional[PauseOnIO] = Field(
+        default=None,
+        description="Defines an input/output that is listened to during the movement. Execution pauses if the defined comparator evaluates to `true`. ",
+    )
+```
+
+Note the docstring's explicit protocol contract: **"Resume execution with StartMovementRequest."**
+
+## `PauseMovementRequest` — `v2/models/pause_movement_request.py:26-32`
+
+```python
+class PauseMovementRequest(BaseModel):
+    message_type: StrictStr = Field(description="Type specifier for server, set automatically. ")
+    __properties: ClassVar[List[str]] = ["message_type"]
+```
+No fields beyond the discriminator. `PauseMovementResponse` (`:26-33`): `message: Optional[StrictStr]` ("Error message in case of invalid PauseMovementRequest."), `kind: StrictStr`.
+
+## `PlaybackSpeedRequest` — `v2/models/playback_speed_request.py:27-36`
+`message_type`, `playback_speed_in_percent: Annotated[int, Field(le=100, strict=True, ge=0)]`. `PlaybackSpeedResponse`: `message`, `kind`.
+
+## `ExecuteTrajectoryRequest` — `v2/models/execute_trajectory_request.py:35-49` (oneOf)
+`InitializeMovementRequest | PauseMovementRequest | PlaybackSpeedRequest | StartMovementRequest`
+
+## `ExecuteTrajectoryResponse` — `v2/models/execute_trajectory_response.py:37-67` (oneOf)
+`InitializeMovementResponse | MovementErrorResponse | PauseMovementResponse | PlaybackSpeedResponse | StartMovementResponse`
+
+## `TrajectoryDetails` — `v2/models/trajectory_details.py:27-38`
+
+```python
+class TrajectoryDetails(BaseModel):
+    """
+    State of trajectory execution. This state is sent during trajectory movement, response-rate closest to the nearest multiple of controller step-rate but not exceeding the configured rate. The trajectory state can be one of the following: - RUNNING: Trajectory is being executed. - PAUSED_BY_USER: User has paused execution. - END_OF_TRAJECTORY: First or last sample (depending on direction) of trajectory has been sent. - WAIT_FOR_IO: Waiting for an I/O event to start execution. - PAUSED_ON_IO: Execution was paused because of an I/O event.
+    """  # noqa: E501
+
+    trajectory: StrictStr
+    location: Union[StrictFloat, StrictInt]
+    state: TrajectoryDetailsState
+    kind: StrictStr  # always "TRAJECTORY"
+```
+
+## `TrajectoryDetailsState` oneOf (`v2/models/trajectory_details_state.py:52-62`) — the closest thing to a "StandstillReason" enum
+
+| Class | File | `kind` value | Docstring |
+|---|---|---|---|
+| `TrajectoryRunning` | `trajectory_running.py:27` | `"RUNNING"` | `Trajectory is being executed.` — plus `time_to_end: int` ("Remaining time in milliseconds (ms) to reach the end of the motion.") |
+| `TrajectoryPausedByUser` | `trajectory_paused_by_user.py:19` | `"PAUSED_BY_USER"` | `User has paused execution.` |
+| `TrajectoryEnded` | `trajectory_ended.py:26` | `"END_OF_TRAJECTORY"` | `First or last sample (depending on direction) of trajectory has been sent.` |
+| `TrajectoryWaitForIO` | `trajectory_wait_for_io.py:26` | `"WAIT_FOR_IO"` | `Waiting for an I/O event to start execution.` |
+| `TrajectoryPausedOnIO` | `trajectory_paused_on_io.py:19` | `"PAUSED_ON_IO"` | `Execution was paused because of an I/O event.` |
+
+`TrajectoryPausedOnIO` verbatim:
+```python
+class TrajectoryPausedOnIO(BaseModel):
+    """
+    Execution was paused because of an I/O event.
+    """  # noqa: E501
+
+    kind: StrictStr
+    __properties: ClassVar[List[str]] = ["kind"]
+
+    @field_validator("kind")
+    def kind_validate_enum(cls, value):
+        """Validates the enum"""
+        if value not in set(["PAUSED_ON_IO"]):
+            raise ValueError("must be one of enum values ('PAUSED_ON_IO')")
+        return value
+```
+
+## `MotionGroupState` — `v2/models/motion_group_state.py:85-93`
+
+```python
+standstill: StrictBool = Field(
+    description="Indicates whether the motion group is in standstill. Convenience: Signals that NOVA treats measured joint velocities as 0. "
+)
+execute: Optional[Execute] = Field(
+    default=None,
+    description="Data that was commanded to the motion group. Includes additional data on NOVA's execution components for executing trajectories and jogging. This is a convenience field to indicate the last command sent to the motion group. It is not available in all cases, e.g., if the motion group is not moved by NOVA. ",
+)
+```
+
+## Parallel jogging models (unused by the trajectory path)
+`v2/models/jogging_paused_on_io.py` (`JoggingPausedOnIO`, `kind == "PAUSED_ON_IO"`, "Jogging was paused because of an I/O event."), plus `jogging_paused_by_user.py`, `jogging_paused_near_collision.py`, `jogging_paused_near_joint_limit.py`, `jogging_paused_near_singularity.py`, `pause_jogging_request.py`.
+
+## `PauseOnIOCommand` (command-routines DSL) — `v2/models/pause_on_io_command.py:26-38`
+
+```python
+class PauseOnIOCommand(BaseModel):
+    """
+    Monitors an I/O expression from a trajectory location and pauses while it is `true`.
+    """  # noqa: E501
+
+    type: StrictStr  # "pause_on_io"
+    condition: IOExpression
+    at: Optional[AtTrigger] = None
+    intent: Optional[StrictStr] = None
+    metadata: Optional[Dict[str, StrictStr]] = None
+```
+
+Also present: `pause_action_chunks_request.py` / `unpause_action_chunks_request.py` (action-chunk streaming, unrelated to trajectory execution).
+
+---
+
+## Summary of the single load-bearing fact
+
+`nova/cell/movement_controller/trajectory_state_machine.py:343` collapses `TrajectoryPausedOnIO` into the same branch as `TrajectoryEnded`, so every consumer above it (cursor operation futures, `detach_on_standstill`, `MotionGroup._execute`, `execute()`/`plan_and_execute()`) sees a controller-side IO pause as a clean trajectory completion at a location short of the end. There is no other handler for `PAUSED_ON_IO` in the codebase, no resume path from it, no stall/timeout backstop, and the current behaviour is asserted by three tests.</result>
+<usage><subagent_tokens>109994</subagent_tokens><tool_uses>47</tool_uses><duration_ms>379083</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a04ab462bcb890ed0</task-id>
+<tool-use-id>toolu_01B6ioW6m92aQ6Md6S1f4DpE</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/5c37e167-9c8a-491f-a11d-382f474e7820/tasks/a04ab462bcb890ed0.output</output-file>
+<status>completed</status>
+<summary>Agent "Explore IO surfaces and API" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have a complete picture. Here's the map.
+
+---
+
+# 1. IOs in the SDK (`nova/`)
+
+Generated client path: `/Users/q/0code/nova-python-sdk/.venv/lib/python3.12/site-packages/wandelbots_api_client/` (v2 package under `wandelbots_api_client/v2/`).
+
+## `IOAccess` — per-controller IO facade
+`/Users/q/0code/nova-python-sdk/nova/cell/io.py`
+
+| line | symbol |
+|---|---|
+| 10 | `class IOAccess(Device)` — docstring notes TODOs: "Add listener to value changes", "Handle integer masks" |
+| 18 | `io_descriptions_cache: dict[str, dict[str, api.models.IODescription]]` (class-level, keyed by controller id) |
+| 21 | `__init__(self, api_client: ApiGateway, cell: str, controller_id: str)` |
+| 28 | `async def get_io_descriptions(self) -&gt; dict[str, api.models.IODescription]` → `controller_ios_api.list_io_descriptions(cell, controller, ios=[])` (line 31) |
+| 41 | `@staticmethod def filter_io_descriptions(io_descriptions, filter_value_type=None, filter_io_direction=None) -&gt; list[str]` |
+| 56 | `async def read(self, key: str) -&gt; bool \| int \| float` → `list_io_values(cell, controller, ios=[key])` (line 58) |
+| 75 | `async def write(self, key: str, value: ValueType)` → `set_output_values(...)` (line 93), guarded by `self._io_operation_in_progress` asyncio.Lock |
+| 97 | `async def _ensure_value_type(self, key, value)` — bool→`IO_VALUE_BOOLEAN`, int→`IO_VALUE_ANALOG_INTEGER`, float→`IO_VALUE_ANALOG_FLOAT` |
+| 120 | `async def wait_for_bool_io(self, io: str, value: bool)` → `wait_for_io_event` with `Comparator.COMPARATOR_EQUALS`; has a `# TODO proper implementation utilising also the comparison operators` |
+
+**There is no `stream_io` / `subscribe_io` on `IOAccess`.** `stream_io_values` (the websocket) is never called anywhere in `nova/`, `wandelscript/`, `novax/`, `nova_rerun_bridge/`, `tests/` or `examples/`.
+
+## `Controller` — read/write pass-through
+`/Users/q/0code/nova-python-sdk/nova/cell/controller.py`
+- L11 `class Controller(Sized, AbstractController, NovaDevice, IODevice)`
+- L25 `self._io_access = IOAccess(...)`
+- L105 `async def read(self, key: str) -&gt; ValueType` → `self._io_access.read(key)`
+- L116 `async def write(self, key: str, value: ValueType) -&gt; None` → `self._io_access.write(key, value)`
+- L125 `async def stream_state(self, rate_msecs) -&gt; AsyncGenerator[api.models.RobotControllerState, None]` (controller state, not IOs)
+
+Protocols: `/Users/q/0code/nova-python-sdk/nova/cell/robot_cell.py` L158 `ValueType = Union[int, str, bool, float, Pose]`, L161 `InputDevice.read`, L169 `OutputDevice.write`, L177 `IODevice`.
+
+## Bus IOs (cell-scoped) — `nova/utils/io.py`
+`/Users/q/0code/nova-python-sdk/nova/utils/io.py`
+- L13 `@dataclass class IOChange` — `old_value: bool|float|int|None`, `new_value: bool|float|int|None`
+- L37 `_convert_value(value)` — **integers arrive as `str` on the wire and are `int()`-converted here**
+- L44 `_build_io_changes(bus_ios, old_values, new_values) -&gt; dict[str, IOChange]`
+- L61 `async def get_bus_io_value(ios: list[str], *, nova=None, cell="cell") -&gt; dict[str, bool|int|float]` → `bus_ios_api.get_bus_io_values` (L67)
+- L73 `async def set_bus_io_value(io_values: dict[str, bool|int|float], *, nova=None, cell="cell") -&gt; None` → `bus_ios_api.set_bus_io_values` (L92)
+- L95 `async def wait_for_bus_io(bus_ios, *, on_change: Callable[[dict[str,IOChange]], bool], nova=None, cell="cell", nats_subscription_kwargs=None) -&gt; None`
+
+**This is the only IO change-subscription in the SDK, and it is NATS-based, not websocket.** `/Users/q/0code/nova-python-sdk/nova/utils/io.py:141`:
+```python
+sub = await nova.nats.subscribe(f"nova.v2.cells.{cell}.bus-ios.ios", **nats_subscription_kwargs)
+```
+Messages are `TypeAdapter(list[api.models.IOValue]).validate_json(message.data)` (L154). Docstring explicitly warns: "does not guarantee that all IO changes are captured… at-most-once delivery". Initial state is read via `get_bus_io_values` and the callback is invoked once with `old_value=None` before subscribing (L144-148). A related subject `nova.v2.cells.cell.bus-ios.status` is used in `tests/cell/test_io.py:57`.
+
+## Gateway wiring
+`/Users/q/0code/nova-python-sdk/nova/core/gateway.py`
+- L116 `self.controller_ios_api = _intercept(api.api.ControllerInputsOutputsApi(...))`
+- L150 `self.controller_inputs_outputs_api = _intercept(api.api.ControllerInputsOutputsApi(...))` (duplicate alias, second instance)
+- L160 `self.bus_ios_api = _intercept(api.api.BUSInputsOutputsApi(...))`
+- No `VirtualControllerInputsOutputsApi` is exposed on the gateway.
+
+## IO actions / commands
+`/Users/q/0code/nova-python-sdk/nova/actions/io.py`
+- L7 `class WriteAction(Action)`: `key: str`, `value: bool|int|float`, `device_id: str|None`, `origin: api.models.IOOrigin = IOOrigin.CONTROLLER`, `at: api.models.AtTrigger|None`
+- L20 `to_api_model() -&gt; IOBooleanValue | IOIntegerValue | IOFloatValue`
+- L36 `def io_write(key, value, device_id=None, origin=IOOrigin.CONTROLLER, at=None) -&gt; WriteAction`
+- L66 `class ReadAction`
+- `/Users/q/0code/nova-python-sdk/nova/actions/container.py:150` `CombinedActions.to_set_io()` → `list[api.models.SetIO]`
+
+`/Users/q/0code/nova-python-sdk/nova/command_routines/commands.py` (new command-routine API): L17 `io_value()`, L199 `set_io()`, L227 `wait_for_io()`, L241 `pause_on_io()`, L82/87/94 trigger helpers.
+
+## Other IO consumers
+- `/Users/q/0code/nova-python-sdk/nova/cell/motion_group.py:191` (bus) / `:195` (controller) — direct non-motion action writes
+- `/Users/q/0code/nova-python-sdk/nova/cell/multi_trajectory_cursor.py:120,124,132,135` — `IOSyncDriver` barrier writes/polls
+- `/Users/q/0code/nova-python-sdk/nova/cell/trajectory_executor.py:301` — `sync_on_io()` builds `StartOnIO`; L335 `watch()`
+- `/Users/q/0code/nova-python-sdk/nova/cell/simulation.py:370` `SimulatedIO`, L392 `read`, L397 `write`, L402 `wait_for_bool_io`; L433/436/439 on `SimulatedController`
+- `/Users/q/0code/nova-python-sdk/wandelscript/builtins/wait.py:5` `wait_for_bool_io(device, io_id, value)`
+
+---
+
+# 2. Generated client — IO API classes
+
+Three distinct API classes (`.venv/lib/python3.12/site-packages/wandelbots_api_client/v2/api/__init__.py`):
+
+## `ControllerInputsOutputsApi` — `v2/api/controller_inputs_outputs_api.py`
+| line | method | verb + path | returns |
+|---|---|---|---|
+| 74 | `list_io_descriptions(cell, controller, ios, direction, value_type, group)` | GET `/cells/{cell}/controllers/{controller}/ios/description` | `List[IODescription]` |
+| 389 | `list_io_values(cell, controller, ios)` | GET `/cells/{cell}/controllers/{controller}/ios/values` | `List[IOValue]` |
+| 650 | `set_output_values(cell, controller, io_value: List[IOValue])` | PUT `/cells/{cell}/controllers/{controller}/ios/values` | `None` |
+| 921 | `stream_io_values(cell, controller, ios)` | **websocket** `/cells/{cell}/controllers/{controller}/ios/stream` | `AsyncGenerator[StreamIOValuesResponse, None]` |
+| 1002 | `wait_for_io_event(cell, controller, wait_for_io_event_request: WaitForIOEventRequest)` | POST `/cells/{cell}/controllers/{controller}/ios/wait-for` | `bool` |
+
+`stream_io_values` (L921-1000) opens a plain `websockets.connect`, unwraps `response_data["result"]` into `StreamIOValuesResponse`, returns silently on `ConnectionClosed`. Query params are `ios=` repeated, percent-quoted (L936).
+
+## `BUSInputsOutputsApi` — `v2/api/bus_inputs_outputs_api.py` — **a genuinely separate "bus IO" concept**
+Cell-scoped (no `controller` path param). Base: `/cells/{cell}/bus-ios`.
+
+| line | method | verb + path | returns |
+|---|---|---|---|
+| 81 | `add_bus_io_service(cell, bus_io_type: BusIOType, completion_timeout)` | POST `/cells/{cell}/bus-ios` | None |
+| 1161 | `clear_bus_io_service(cell, completion_timeout)` | DELETE `/cells/{cell}/bus-ios` | None |
+| 2758 | `get_bus_io_service(cell)` | GET `/cells/{cell}/bus-ios` | `BusIOType` |
+| 2974 | `get_bus_io_state(cell)` | GET `/cells/{cell}/bus-ios/state` | `BusIOsState` |
+| 3190 | `get_bus_io_values(cell, ios)` | GET `/cells/{cell}/bus-ios/ios/values` | `List[IOValue]` |
+| 5019 | `set_bus_io_values(cell, io_value: List[IOValue])` | PUT `/cells/{cell}/bus-ios/ios/values` | None |
+| 4155 | `list_bus_io_descriptions(cell)` | GET `/cells/{cell}/bus-ios/ios/description` | `List[BusIODescription]` |
+| 623 | `add_profinet_io(cell, io, profinet_io_data: ProfinetIOData)` | PUT `/cells/{cell}/bus-ios/profinet/ios/{io}` | None |
+| 4587 | `list_profinet_ios(cell)` | GET `/cells/{cell}/bus-ios/profinet/ios` | `List[ProfinetIO]` |
+| 2296 / 1627 | `delete_profinet_io(cell, io)` / `delete_all_profinet_ios(cell)` | DELETE `.../profinet/ios/{io}` / `.../profinet/ios` | None |
+| 3424 | `get_profinet_description(cell)` | GET `/cells/{cell}/bus-ios/profinet/description` | `ProfinetDescription` |
+| 3643 | `get_profinet_gsdml(cell)` | GET `/cells/{cell}/bus-ios/profinet/gsdml` | `str` |
+| 3859 | `get_profinet_ios_from_file(cell, offsets, input_offset, output_offset)` | GET `/cells/{cell}/bus-ios/profinet/iofile` | `str` |
+| 5275 | `set_profinet_ios_from_file(cell, profinet_input_output_config: ProfinetInputOutputConfig)` | PUT `/cells/{cell}/bus-ios/profinet/iofile` | None |
+| 354 / 4371 / 2065 / 1408 | modbus: `add_modbus_io(cell, io, modbus_io_data)` PUT, `list_modbus_ios` GET, `delete_modbus_io` DELETE, `delete_all_modbus_ios` DELETE | `.../bus-ios/modbus/ios[/{io}]` | `List[ModbusIO]` |
+| 892 / 4803 / 2527 / 1846 | snap7 (Siemens S7): same shape | `.../bus-ios/snap7/ios[/{io}]` | `List[Snap7IO]` |
+
+**Answer to "is there a bus IO / Profinet concept distinct from controller IOs?" — yes, emphatically.** Bus IOs are cell-scoped fieldbus variables served by a NOVA-hosted bus service; controller IOs are robot-controller-owned and addressed per controller. They are distinguished at request level by `IOOrigin`:
+
+`v2/models/io_origin.py`:
+```python
+class IOOrigin(str, Enum):
+    """
+    States the source of the input/output signal.
+    """
+    CONTROLLER = "CONTROLLER"
+    BUS_IO = "BUS_IO"
+```
+
+`BusIOType` (`v2/models/bus_io_type.py`) is a oneOf over `BusIOProfinet`, `BusIOProfinetVirtual`, `BusIOModbusServer`, `BusIOModbusClient`, `BusIOModbusVirtual`, `BusIOSnap7` (discriminated by `bus_type`: `"profinet"`, `"profinet_virtual"`, `"modbus_client"`, `"snap7"`, …).
+
+`v2/models/bus_ios_state_enum.py`:
+```python
+class BusIOsStateEnum(str, Enum):
+    BUS_IOS_STATE_UNKNOWN = "BUS_IOS_STATE_UNKNOWN"
+    BUS_IOS_STATE_INITIALIZING = "BUS_IOS_STATE_INITIALIZING"
+    BUS_IOS_STATE_CONNECTED = "BUS_IOS_STATE_CONNECTED"
+    BUS_IOS_STATE_DISCONNECTED = "BUS_IOS_STATE_DISCONNECTED"
+```
+
+`BusIODescription` (`v2/models/bus_io_description.py`) mirrors `IODescription` but **has no `group` field**.
+
+## `VirtualControllerInputsOutputsApi` — `v2/api/virtual_controller_inputs_outputs_api.py`
+| line | method | verb + path | returns |
+|---|---|---|---|
+| 72 | `list_ios(cell, controller, ios)` | GET `/cells/{cell}/virtual-controllers/{controller}/ios/values` | `List[IOValue]` |
+| 333 | `list_virtual_controller_io_descriptions(cell, controller, ios, direction, value_type, group)` | GET `.../ios/description` | `List[IODescription]` |
+| 648 | `set_io_values(cell, controller, io_value)` | PUT `.../ios/values` | None |
+
+No streaming and no `wait_for` on the virtual-controller variant.
+
+## Core IO models (`v2/models/`)
+```python
+# io_description.py
+class IODescription(BaseModel):
+    io: StrictStr            # "Unique identifier of the input/output. "
+    name: StrictStr
+    group: Optional[StrictStr]
+    direction: IODirection
+    value_type: IOValueType
+    unit: Optional[UnitType]
+    min: Optional[IOBoundary]
+    max: Optional[IOBoundary]
+```
+```python
+# io_value.py — oneOf
+actual_instance: Optional[Union[IOBooleanValue, IOFloatValue, IOIntegerValue]]
+```
+- `IOBooleanValue(io, value: bool, value_type="boolean")`
+- `IOIntegerValue(io, value: StrictStr, value_type="integer")` — *"The integral value is transmitted as a string to avoid precision loss"*
+- `IOFloatValue(io, value: float, value_type="float")`
+- `IOValueType`: `IO_VALUE_BOOLEAN`, `IO_VALUE_ANALOG_FLOAT`, `IO_VALUE_ANALOG_INTEGER`
+- `IODirection`: `IO_TYPE_INPUT`, `IO_TYPE_OUTPUT`
+- `Comparator`: `COMPARATOR_EQUALS`, `COMPARATOR_NOT_EQUALS`, `COMPARATOR_GREATER`, `COMPARATOR_GREATER_EQUAL`, `COMPARATOR_LESS`, `COMPARATOR_LESS_EQUAL`
+- `WaitForIOEventRequest(io: IOValue, comparator: Comparator)`
+- `StreamIOValuesResponse(io_values: List[IOValue], timestamp: datetime, sequence_number: int)`
+
+Note: there is **no `ComparisonType`, `IOCondition`, `IOTrigger` or `IOValueCondition`** — the operator enum is `Comparator`, and the condition shapes are `IOExpression` / `IOConditionExpression` (below).
+
+---
+
+# 3. `PauseOnIO` / `pause_on_io`
+
+Two unrelated shapes exist with confusingly similar names.
+
+## (a) `PauseOnIO` — the executeTrajectory websocket field
+`v2/models/pause_on_io.py:22`
+```python
+class PauseOnIO(BaseModel):
+    """
+    Defines an input/output that the motion will be paused for. The motion will stop gracefully on path.
+    """  # noqa: E501
+
+    io: IOValue
+    comparator: Comparator = Field(
+        description="Comparator for the comparison of two values. Use the measured I/O as the base value (a) and the expected input/output value as the comparator (b): e.g., a &gt; b. "
+    )
+    io_origin: IOOrigin
+    __properties: ClassVar[List[str]] = ["io", "comparator", "io_origin"]
+```
+
+Sibling `v2/models/start_on_io.py:22`:
+```python
+class StartOnIO(BaseModel):
+    """
+    Defines an input/output that the motion should wait for to start the execution.
+    """  # noqa: E501
+    io: IOValue
+    comparator: Comparator
+    io_origin: IOOrigin
+```
+
+Sibling `v2/models/set_io.py:22`:
+```python
+class SetIO(BaseModel):
+    """
+    Defines an input/output that should be set upon reaching a specified location on the trajectory.
+    """  # noqa: E501
+    io: IOValue
+    location: Union[StrictFloat, StrictInt]
+    io_origin: IOOrigin
+```
+
+**Which request carries it:** only `StartMovementRequest`. Not `ExecuteTrajectoryRequest` directly (that is a oneOf wrapper), not `InitializeMovementRequest`.
+
+`v2/models/start_movement_request.py`:
+- L22 `from ...pause_on_io import PauseOnIO`
+- L45 `start_on_io: Optional[StartOnIO]` — *"listened to before the movement. Execution starts if the defined comparator evaluates to `true`."*
+- L49 `pause_on_io: Optional[PauseOnIO]` — *"listened to during the movement. Execution pauses if the defined comparator evaluates to `true`."*
+- L53 `__properties = ["message_type", "direction", "target_location", "set_outputs", "start_on_io", "pause_on_io"]`
+- L106-111, L129-130 serialization
+
+All occurrences of `PauseOnIO`/`pause_on_io` in the generated client:
+- `v2/models/pause_on_io.py` (definition)
+- `v2/models/start_movement_request.py:22,49,53,109,110,111,130`
+- `v2/models/pause_on_io_command.py` (different concept, below)
+- `v2/models/command.py:22,34,54,55,65,75,121,122,123,139,145,186,188,208,214,238`
+
+## (b) `PauseOnIOCommand` — the command-routine / declarative program shape
+`v2/models/pause_on_io_command.py:21`
+```python
+class PauseOnIOCommand(BaseModel):
+    """
+    Monitors an I/O expression from a trajectory location and pauses while it is `true`.
+    """  # noqa: E501
+
+    type: StrictStr = Field(description="Identifies the conditionally pausing command variant.")
+    condition: IOExpression
+    at: Optional[AtTrigger] = None
+    intent: Optional[StrictStr] = Field(default=None, description="Contains a free-form authoring annotation.")
+    metadata: Optional[Dict[str, StrictStr]] = Field(
+        default=None, description="Contains string-valued annotations that are preserved on round-trip."
+    )
+    __properties: ClassVar[List[str]] = ["type", "condition", "at", "intent", "metadata"]
+    # type must be "pause_on_io"
+```
+
+Carried by `v2/models/command.py` — a oneOf of `ExplicitPathMotionCommand`, `GeneratedPathMotionCommand`, `MarkerCommand`, **`PauseOnIOCommand`**, `SetIOCommand`, `WaitForIOCommand`, `WaitForTimeCommand`. This is the trajectory-planning/command-routine payload, **not** the execution websocket.
+
+Related command models: `SetIOCommand` (`type="set_io"`, `io_value: IOValue`, `io_origin`, `at`), `WaitForIOCommand` (`type="wait_for_io"`, `condition: IOExpression`, `timeout_ms: Optional[int]`, `at`).
+
+## (c) `IOExpression` — the recursive condition tree used by (b)
+`v2/models/io_expression.py`:
+```python
+class IOExpression(BaseModel):
+    """
+    Defines a recursive boolean expression over baseline-shaped I/O comparisons.
+    """
+    actual_instance: Optional[Union[IOAllOfExpression, IOAnyOfExpression, IOConditionExpression, IONotExpression]]
+```
+`v2/models/io_condition_expression.py`:
+```python
+class IOConditionExpression(BaseModel):
+    """
+    Defines one baseline-shaped I/O comparison in a boolean expression.
+    """  # noqa: E501
+    type: StrictStr          # must be "condition"
+    io: IOValue
+    comparator: Comparator
+    negate: Optional[StrictBool] = Field(default=False, description="Inverts this comparison when set to `true`.")
+    io_origin: Optional[IOOrigin] = None
+```
+Plus `io_all_of_expression.py`, `io_any_of_expression.py`, `io_not_expression.py`.
+
+`AtTrigger` (`v2/models/at_trigger.py`) — *"Positions an overlay command relative to its nearest preceding motion command."* — oneOf `PathFractionTrigger | DistanceTrigger | TimeTrigger`.
+
+## SDK-side occurrences of `PauseOnIO`
+- `nova/cell/movement_controller/trajectory_cursor.py:452` (`_Intent.pause_on_io`), 477, 571, 662, 684, 697, 828, 876, 924, 958, 991, 1035 — one `pause_on_io` kwarg per cursor motion method
+- `nova/cell/movement_controller/move_forward.py:39`
+- `nova/actions/container.py:166` — `MovementControllerContext.pause_on_io`
+- `nova/cell/motion_group.py:1064, 1097`
+- `nova/cell/robot_cell.py:363, 389, 433, 472, 530` (`stream_execute` L382, `execute` L426, `stream_plan_and_execute`, `plan_and_execute` L523)
+- `nova/cell/simulation.py:257`
+- `nova/command_routines/commands.py:241` → `PauseOnIOCommand`
+
+---
+
+# 4. The execution websocket
+
+`v2/api/trajectory_execution_api.py` — class `TrajectoryExecutionApi`, **single method**:
+
+- L69 `async def execute_trajectory(cell, controller, client_request_generator: Callable[[AsyncGenerator[ExecuteTrajectoryResponse, None]], AsyncGenerator[ExecuteTrajectoryRequest, None]]) -&gt; None`
+- L107 path: `/cells/{cell}/controllers/{controller}/execution/trajectory` (upgraded to `ws://`/`wss://`)
+- L91-99 `iterate_responses` — breaks on the literal string `"Cancelled on the server side"`, otherwise unwraps `response_data["result"]`
+- L177 sends with `request.model_dump_json(exclude_none=True)`
+
+There is **no** `stream_move_forward` / `stream_move_backward` / `MotionGroupExecutionApi` in this client version — direction is a field on `StartMovementRequest` (`Direction.DIRECTION_FORWARD` / backward), and the sole execution API class is `TrajectoryExecutionApi`.
+
+## Request union — `ExecuteTrajectoryRequest` (`v2/models/execute_trajectory_request.py:41-48`)
+`Union[InitializeMovementRequest, StartMovementRequest, PauseMovementRequest, PlaybackSpeedRequest]`
+
+| model | fields |
+|---|---|
+| `InitializeMovementRequest` | `message_type`, `trajectory: InitializeMovementRequestTrajectory`, `initial_location: Optional[float]` (default 0.0), `response_coordinate_system: Optional[str]`, `ignore_controller_limits: Optional[bool]=False` |
+| `StartMovementRequest` | `message_type`, `direction: Optional[Direction]=DIRECTION_FORWARD`, `target_location: Optional[float]`, `set_outputs: Optional[List[SetIO]]`, `start_on_io: Optional[StartOnIO]`, `pause_on_io: Optional[PauseOnIO]` |
+| `PauseMovementRequest` | `message_type` only. Docstring: *"Movement pauses as soon as a [Standstill](Standstill.yaml) is sent back to the client. Resume movement with StartMovementRequest."* |
+| `PlaybackSpeedRequest` | `message_type`, `playback_speed_in_percent: int` (ge=0, le=100). *"Send after initializing the connection with InitializeMovementRequest."* |
+
+## Response union — `ExecuteTrajectoryResponse` (`v2/models/execute_trajectory_response.py:43-52`)
+`Union[InitializeMovementResponse, StartMovementResponse, PauseMovementResponse, PlaybackSpeedResponse, MovementErrorResponse]`
+
+| model | fields |
+|---|---|
+| `InitializeMovementResponse` | `message: Optional[str]`, `add_trajectory_error: Optional[AddTrajectoryError]`, `kind` |
+| `StartMovementResponse` | `message: Optional[str]`, `kind`. *"ATTENTION: No confirmation that the movement was started… Fields `execute` and `standstill` of streamMotionGroupState signal start of movement execution."* |
+| `PauseMovementResponse` | `message: Optional[str]`, `kind`. *"ATTENTION: No confirmation that the movement was paused… End of movement execution is signalled by state stream response."* |
+| `PlaybackSpeedResponse` | `message: Optional[str]`, `kind` |
+| `MovementErrorResponse` | `message: StrictStr` (required), `kind` |
+
+## Standstill / "Pause" state — **not on the websocket, on the state stream**
+There is no model named `Standstill` or `StandstillReason` in this client version (`Standstill` appears only as prose in `pause_movement_request.py`). The equivalent lives in `MotionGroupState.execute`:
+
+- `Execute` (`v2/models/execute.py`): `joint_position: List[float]`, `details: Optional[ExecuteDetails]`
+- `ExecuteDetails` = oneOf `JoggingDetails | TrajectoryDetails`
+- `TrajectoryDetails` (`v2/models/trajectory_details.py`): `trajectory: str`, `location: float`, `state: TrajectoryDetailsState`, `kind="TRAJECTORY"`. Docstring enumerates: *"RUNNING… PAUSED_BY_USER… END_OF_TRAJECTORY… WAIT_FOR_IO: Waiting for an I/O event to start execution. PAUSED_ON_IO: Execution was paused because of an I/O event."*
+- `TrajectoryDetailsState` = oneOf `TrajectoryRunning | TrajectoryPausedByUser | TrajectoryEnded | TrajectoryWaitForIO | TrajectoryPausedOnIO`
+  - `TrajectoryRunning`: `kind="RUNNING"`, `time_to_end: int` (ms)
+  - `TrajectoryPausedByUser`: `kind="PAUSED_BY_USER"`
+  - `TrajectoryEnded`: `kind="END_OF_TRAJECTORY"`
+  - `TrajectoryWaitForIO`: `kind="WAIT_FOR_IO"` — *"Waiting for an I/O event to start execution."*
+  - `TrajectoryPausedOnIO`: `kind="PAUSED_ON_IO"` — *"Execution was paused because of an I/O event."*
+- Jogging mirror: `JoggingDetailsState` = oneOf `JoggingRunning | JoggingPausedByUser | JoggingPausedOnIO | JoggingPausedNearJointLimit | JoggingPausedNearCollision | JoggingPausedNearSingularity`
+
+SDK consumers of those states: `nova/cell/movement_controller/trajectory_state_machine.py:334-355` (`TrajectoryEnded | TrajectoryPausedOnIO` → one branch; `TrajectoryRunning | TrajectoryWaitForIO` → another), `nova/cell/multi_trajectory_cursor.py:150`, `nova/cell/trajectory_executor.py:18`.
+
+## Second execution websocket — action chunk streaming (experimental)
+`v2/api/action_chunk_streaming_api.py:69` `execute_action_chunks(...)`, path `/experimental/cells/{cell}/controllers/{controller}/execution/action-chunk-streaming`.
+- Request union `ExecuteActionChunksRequest` = `InitializeActionChunksRequest | ActionChunkRequest | PauseActionChunksRequest | UnpauseActionChunksRequest | StopActionChunksRequest` (all `message_type`-only except `InitializeActionChunksRequest(motion_group, tcp)` and `ActionChunkRequest(waypoints: List[Waypoint])`)
+- Response union `ExecuteActionChunksResponse` = `InitializeActionChunksResponse | PauseActionChunksResponse | UnpauseActionChunksResponse | StopActionChunksResponse | ActionChunkResponse | MovementErrorResponse`
+- This is the only place with an explicit **Unpause/Resume** message type; the trajectory websocket resumes via `StartMovementRequest`.
+
+SDK type alias: `/Users/q/0code/nova-python-sdk/nova/types/__init__.py:10-20` `ExecuteTrajectoryRequestStream` / `ExecuteTrajectoryResponseStream` / `MovementControllerFunction`. Cursor-side union: `/Users/q/0code/nova-python-sdk/nova/cell/movement_controller/trajectory_cursor.py:429-434`.
+
+---
+
+# 5. Cell-wide / controller-wide pause, hold, safety
+
+**There is no cell-wide or controller-wide "pause all" / "hold" endpoint.** Pause is strictly per-motion-group over an execution websocket. What exists:
+
+- `RobotControllerState` (`v2/models/robot_controller_state.py`) — from `ControllerApi.get_current_robot_controller_state` (GET `/cells/{cell}/controllers/{controller}/state`, L1368) and `stream_robot_controller_state` (websocket `/cells/{cell}/controllers/{controller}/state-stream`, L2896). Fields: `mode: RobotSystemMode`, `last_error: Optional[List[str]]`, `timestamp`, `sequence_number`, `controller`, `operation_mode: OperationMode`, `safety_state: SafetyStateType`, `velocity_override: Optional[int]` (1-100, *"velocity override … adjusted on robot control panel"*), `motion_groups: List[MotionGroupState]`.
+- `SafetyStateType` (`v2/models/safety_state_type.py`) — 16 values incl. `SAFETY_STATE_PROTECTIVE_STOP`, `SAFETY_STATE_STOP_0/1/2`, `SAFETY_STATE_DEVICE_EMERGENCY_STOP`, `SAFETY_STATE_ROBOT_EMERGENCY_STOP`, `SAFETY_STATE_VIOLATION`, `SAFETY_STATE_NORMAL`, `SAFETY_STATE_REDUCED`. Read-only — no setter anywhere.
+- `OperationMode` (`v2/models/operation_mode.py`) — `OPERATION_MODE_AUTO`, `_MANUAL`, `_MANUAL_T1/T2`, `_RECOVERY`, `_DISCONNECTED`, … Read-only.
+- `RobotSystemMode` — `MODE_MONITOR`, `MODE_CONTROL`, `MODE_FREE_DRIVE`, `MODE_INITIALIZING`, `MODE_CONTROLLER_NOT_CONFIGURED`. Settable via `ControllerApi.set_default_mode(cell, controller, mode: SettableRobotSystemMode)` — PUT `/cells/{cell}/controllers/{controller}/mode` (L2560). This is the closest thing to a controller-wide gate: dropping to `MODE_MONITOR` rejects move requests. Not a pause.
+- `CellApi` (`v2/api/cell_api.py`): `get_cell_status` GET `/cells/{cell}/status` (L1011), `set_cell_status` PUT `/cells/{cell}/status` (L1422), plus deploy/update/delete. Cell *status* is lifecycle, not motion hold.
+- `SystemApi`: `get_system_status` `/system/status`, network/config/backup — nothing motion-related.
+- Safety geometry models (`safety_zone.py`, `safety_zones.py`, `safety_geometry*.py`) are configuration shapes for zones, not runtime state.
+- No `Hold`, `SafetyStop`, `pause_all`, or `estop` symbol exists in the client.
+- SDK-side: `nova/cell/cell.py:233` subscribes NATS `nova.v2.cells.{cell}.status`, `:253` `nova.v2.cells.{cell}.controllers.{name}.state`.
+
+---
+
+# 6. Examples and tests
+
+## `examples/`
+| file | one-liner |
+|---|---|
+| `/Users/q/0code/nova-python-sdk/examples/signals.py` | Primary bus-IO example — `get_bus_io_value` / `set_bus_io_value` / `wait_for_bus_io` plus an `io_write` inside a motion plan; requires virtual PROFINET and IOs `test_bool`, `test_int`; deliberately hangs at the end until `test_bool` flips |
+| `/Users/q/0code/nova-python-sdk/examples/bus_io_sync_two_controllers.py` | Cross-controller synchronized start: every group armed with the same `StartOnIO` on a cell-scoped bus variable; barrier writes it once all groups report waiting; uses `TrajectoryExecutor` + `GroupArgs` |
+| `/Users/q/0code/nova-python-sdk/examples/path_triggers.py` | Path triggers ("Bahnschaltpunkte") — `io_write(..., at=at_path_fraction/after_time/before_distance/…)` pulsing a controller digital output mid-segment |
+| `/Users/q/0code/nova-python-sdk/examples/plan_and_execute.py` | Plan/execute walkthrough; touches cursor/pause vocabulary |
+| `/Users/q/0code/nova-python-sdk/examples/multi_step_movement_with_collision_free.py` | Multi-step movement; incidental cursor/pause references |
+
+## `examples/lab/`
+| file | one-liner |
+|---|---|
+| `/Users/q/0code/nova-python-sdk/examples/lab/wait_for_bus_io_repro.py` | Minimal repro of `wait_for_bus_io` appearing not to wait (MAKRO 1000 zone-entry handshake); loops read → wait-for-inversion → read and compares |
+| `/Users/q/0code/nova-python-sdk/examples/lab/wait_for_bus_io_is_true_experiment.py` | Deterministic repro of the `new_value is True` identity bug on INT bus IOs (`1 is True` → False, so the waiter blocks forever); references `nova.utils.io._convert_value` |
+| `/Users/q/0code/nova-python-sdk/examples/lab/bus_io_types_experiment.py` | Matrix over all bus IO value types (BOOL / USINT-SINT-UINT-INT-UDINT-DINT / REAL-LREAL) — round-trip read/write plus parallel `wait_for_bus_io` waiters with timeouts; notes PROFINET has no string type |
+| `/Users/q/0code/nova-python-sdk/examples/lab/bus_io_toggler.html` | Standalone HTML page to toggle bus IOs by hand while a script runs |
+
+## `tests/` (no `intests/` directory exists)
+| file | one-liner |
+|---|---|
+| `/Users/q/0code/nova-python-sdk/tests/cell/test_io.py` | Main IO suite — `test_io_write`, `test_get_io_descriptions`, `test_read`, `test_write`, `test_set_io_on_path`, `test_bus_io_get_set_bool_int`, `test_bus_io_get_set_float`, `test_wait_io`, `test_wait_io_with_noisy_integer`, `test_wait_io_initial_state_already_met`; fixture `setup_virtual_profinet` (L48) and a NATS `bus-ios.status` subscription (L57) |
+| `/Users/q/0code/nova-python-sdk/tests/nova/cell/motion_group/test_pause_on_io.py` | Dedicated `pause_on_io` tests: `MovementControllerContext` storage, propagation through `move_forward` into `StartMovementRequest` (25 hits) |
+| `/Users/q/0code/nova-python-sdk/tests/nova/cell/motion_group/test_trajectory_cursor_integration.py` | Live integration tests for `TrajectoryCursor` (needs `NOVA_API` / `NOVA_ACCESS_TOKEN`) — forward/backward/pause/playback speed |
+| `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_cursor.py` | Cursor action-index and location logic |
+| `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_cursor_parity.py` | Regression tests for cursor vs. legacy movement-controller parity (33 pause/playback hits) |
+| `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_cursor_concurrency.py` | Cursor concurrency/timing state-management bugs (33 hits) |
+| `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_cursor_level_states.py` | Cursor against both `MotionGroupState.execute` publishing modes |
+| `/Users/q/0code/nova-python-sdk/tests/cell/test_move_forward_adapter.py` | `move_forward` as a cursor adapter; regression for `pause_on_io`/`set_outputs` plumbing |
+| `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_state_machine.py` | `TrajectoryExecutionMachine` lifecycle incl. `PAUSED_ON_IO` / `WAIT_FOR_IO` transitions |
+| `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_executor_session.py` | Synchronized session over a faked `executeTrajectory` protocol; barrier semantics with `StartOnIO` |
+| `/Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_executor.py` | Multi-motion-group execution wiring (`sync_on_io`, `watch`, `release_io`/`clear_io`) |
+| `/Users/q/0code/nova-python-sdk/tests/nova/cell/test_trajectory_executor_integration.py` | Live `TrajectoryExecutor` integration tests |
+| `/Users/q/0code/nova-python-sdk/tests/cell/test_execute_shared_stream.py` | Shared state-stream behaviour during execute |
+| `/Users/q/0code/nova-python-sdk/tests/cell/multi_group_doubles.py` | Test doubles for the multi-group execution protocol |
+| `/Users/q/0code/nova-python-sdk/tests/actions/test_path_triggers.py` | Path trigger resolution into `SetIO` locations |
+| `/Users/q/0code/nova-python-sdk/tests/nova/utils/test_io.py` | **Empty file (0 bytes)** — `nova/utils/io.py` has no unit tests |
+
+---
+
+## Notable gaps observed (stated, not solved)
+
+- `ControllerInputsOutputsApi.stream_io_values` (the controller IO change websocket) is fully generated but **entirely unused** by the SDK; the only change-subscription the SDK offers is `wait_for_bus_io`, which is bus-only and NATS-based with at-most-once delivery.
+- `IOAccess` has an explicit TODO for a value-change listener (`nova/cell/io.py:13-17`) and its `wait_for_bool_io` hardcodes `COMPARATOR_EQUALS` despite the API supporting six comparators.
+- `nova/core/gateway.py` registers `ControllerInputsOutputsApi` twice under two attribute names (`controller_ios_api` L116, `controller_inputs_outputs_api` L150) as two separate instances.
+- `tests/nova/utils/test_io.py` is empty while three lab examples exist reproducing `wait_for_bus_io` defects.</result>
+<usage><subagent_tokens>142939</subagent_tokens><tool_uses>60</tool_uses><duration_ms>534628</duration_ms></usage>
+</task-notification>
+
+---
+
+I tried and I can reach 172.31.10.234
+
+---
+
+try again pls
+
+---
+
+i opened you in a new terminal, try again
+
+---
+
+i can run the curl command outside of this claude run just fine
