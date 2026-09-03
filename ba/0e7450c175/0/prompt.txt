@@ -1,0 +1,9 @@
+<task-notification>
+<task-id>baalmj0q7</task-id>
+<summary>Monitor event: "CI result after drain-fix push to #500"</summary>
+<event>PR #500 checks: 21 pass</event>
+</task-notification>
+
+---
+
+#500 got merged now check the state and comments on #501
