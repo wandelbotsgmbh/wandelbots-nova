@@ -3,10 +3,11 @@ grouped under a named, revisioned resource.
 """
 
 from nova.datasets.datasets import (
-    _load_dataset_in_context,
     create,
     delete,
+    fetch,
     list_all,
+    read,
     transform_to_frame,
     transform_to_world,
 )
@@ -29,7 +30,8 @@ __all__ = [
     "delete",
     "transform_to_frame",
     "transform_to_world",
-    "_load_dataset_in_context",
+    "fetch",
+    "read",
     "remote_dataset",
     "local_dataset",
 ]

@@ -36,9 +36,10 @@ from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
 from nova import datasets as ds
-from nova.datasets import LoadDatasetRequest
+from nova.datasets import Dataset, LoadDatasetRequest
 from nova.program import registry
 from nova.program.context import ProgramContext, current_program_context_var
+from nova.program.utils import executing_program_dir
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
         if ctx is None:
             dataset = (
-                await ds._load_dataset_in_context(nova, self.preconditions.dataset)
+                await _load_dataset(nova, self.preconditions.dataset)
                 if self.preconditions and self.preconditions.dataset
                 else None
             )
@@ -307,6 +308,17 @@ class Program(BaseModel, Generic[Parameters, Return]):
         )
 
         return parser
+
+
+async def _load_dataset(nova: Nova, dataset_request: LoadDatasetRequest) -> Dataset:
+    """Load the dataset declared in a program's preconditions, before it starts running.
+
+    A relative local path resolves against the file that declares the program.
+    """
+    if dataset_request.type == "remote":
+        return await ds.fetch(nova, dataset_request)
+    else:
+        return await ds.read(dataset_request, base_path=executing_program_dir())
 
 
 def input_and_output_types(
