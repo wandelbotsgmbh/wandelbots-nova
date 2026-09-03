@@ -75,7 +75,7 @@ async def read(dataset_request: LoadLocalDatasetRequest, base_path: Path | None)
     """
     dataset_path = base_path / dataset_request.path if base_path else dataset_request.path
     try:
-        data = await asyncio.to_thread(dataset_path.read_text)
+        data = await asyncio.to_thread(dataset_path.read_bytes)
         response = api.models.GetDatasetResponse.model_validate_json(data)
     except FileNotFoundError as exc:
         raise DatasetNotFoundError(str(exc)) from exc
