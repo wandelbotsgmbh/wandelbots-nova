@@ -70,6 +70,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from enum import Enum, auto
 
 from statemachine import State, StateMachine
 
@@ -82,6 +83,21 @@ _TERMINAL_STATES = (
     api.models.TrajectoryPausedByUser,
     api.models.TrajectoryPausedOnIO,
 )
+
+
+class PauseReason(Enum):
+    """Why the controller holds an execution in ``pausing``/``paused``.
+
+    ``USER``: a ``PauseMovementRequest`` (or a stopped execution — the wire has no
+    separate kind for it). ``IO``: the ``pause_on_io`` condition attached to the
+    start became true. Both are resumed with a new ``StartMovementRequest``; the
+    controller never resumes an IO pause by itself, even after the condition
+    clears (measured 2026-09-03, see
+    docs/architecture/incoming/pause-on-signal-evaluation.md).
+    """
+
+    USER = auto()
+    IO = auto()
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +146,10 @@ class TrajectoryExecutionMachine(StateMachine):
     ``idle``       No trajectory active — waiting for :meth:`start`.
     ``executing``  Robot is moving (``TrajectoryRunning``).
     ``ending``     ``TrajectoryEnded`` received but robot not yet at standstill.
-    ``pausing``    ``TrajectoryPausedByUser`` received, not yet at standstill.
+    ``pausing``    ``TrajectoryPausedByUser`` or ``TrajectoryPausedOnIO`` received,
+                   not yet at standstill.
     ``paused``     Robot paused and at standstill — may :meth:`start` again.
+                   :attr:`pause_reason` tells a user pause from an IO pause.
     ``ended``      Trajectory finished **and** robot at standstill.
     ``error``      Unrecoverable error — terminal state.
     ============  =============================================================
@@ -183,6 +201,11 @@ class TrajectoryExecutionMachine(StateMachine):
     _pause_after_standstill = pausing.to(paused)
     _keep_pausing = pausing.to(pausing, internal=True)
 
+    # The controller reports RUNNING again although no ``start`` was sent
+    # through this machine: another client (or a future controller behaviour)
+    # resumed the execution. Follow the wire rather than staying ``paused``.
+    _resume_observed = paused.to(executing)
+
     # -- Instance state -------------------------------------------------------
 
     def __init__(self) -> None:
@@ -191,6 +214,7 @@ class TrajectoryExecutionMachine(StateMachine):
         # resume must ignore while the controller still re-publishes it.
         self._last_terminal: tuple[type, float] | None = None
         self._stale_terminal: tuple[type, float] | None = None
+        self.pause_reason: PauseReason | None = None
         super().__init__()
 
     def on_start(self, source: State) -> None:
@@ -204,6 +228,15 @@ class TrajectoryExecutionMachine(StateMachine):
         # one is always preceded by a different frame (WAIT_FOR_IO or RUNNING),
         # which lifts the filter.
         self._stale_terminal = self._last_terminal if source in (self.ended, self.paused) else None
+
+    def accept_repeated_terminal(self) -> None:
+        """Let the terminal state a ``start`` left conclude it again.
+
+        For a command with nowhere to go (a forward at the end, a backward at the
+        start) the controller answers with the same terminal state — that is the
+        genuine outcome, not a stale re-publication.
+        """
+        self._stale_terminal = None
 
     def _active_configuration_id(self) -> str:
         """String id for the active configuration (uses :attr:`StateChart.configuration`)."""
@@ -302,6 +335,10 @@ class TrajectoryExecutionMachine(StateMachine):
                 else:
                     self._keep_pausing()
 
+            elif self.current_state == self.paused:
+                if isinstance(trajectory_state, api.models.TrajectoryRunning):
+                    self._resume_observed()
+
         current_id = self._active_configuration_id()
         return StateUpdate(
             location=location,
@@ -338,6 +375,14 @@ class TrajectoryExecutionMachine(StateMachine):
         return self.current_state == self.ended
 
     @property
+    def is_paused_on_io(self) -> bool:
+        """``True`` while the controller holds an IO pause (``pausing`` or ``paused``)."""
+        return (
+            self.current_state in (self.pausing, self.paused)
+            and self.pause_reason is PauseReason.IO
+        )
+
+    @property
     def is_error(self) -> bool:
         return self.current_state == self.error
 
@@ -354,6 +399,7 @@ class TrajectoryExecutionMachine(StateMachine):
     # -- Logging callbacks (python-statemachine hooks) ------------------------
 
     def on_enter_executing(self) -> None:
+        self.pause_reason = None
         logger.debug("Trajectory state machine → executing")
 
     def on_enter_ending(self) -> None:
@@ -388,13 +434,22 @@ class TrajectoryExecutionMachine(StateMachine):
     ) -> None:
         """Determine the right transition while in ``executing`` state."""
         match trajectory_state:
-            case api.models.TrajectoryEnded() | api.models.TrajectoryPausedOnIO():
+            case api.models.TrajectoryEnded():
                 if standstill:
                     self._end_immediately()
                 else:
                     self._begin_ending()
 
-            case api.models.TrajectoryPausedByUser():
+            case api.models.TrajectoryPausedByUser() | api.models.TrajectoryPausedOnIO():
+                # An IO pause is a suspended execution, not completion: the
+                # controller holds it (level-based, re-published every step) until
+                # a new start arrives. Treating it as ``ended`` made execute()
+                # return mid-trajectory (docs/architecture/adr/002-io-pause-is-resumable.md).
+                self.pause_reason = (
+                    PauseReason.IO
+                    if isinstance(trajectory_state, api.models.TrajectoryPausedOnIO)
+                    else PauseReason.USER
+                )
                 if standstill:
                     self._pause_immediately()
                 else:
