@@ -1,191 +1,164 @@
-import re
-from io import BytesIO
-from typing import Any, cast
+"""Render a robot and its safety volumes in Rerun.
+
+The robot comes from a URDF: :mod:`nova2urdf` derives one from the DH
+parameters, meshes and collision model the API serves, and Rerun renders it
+natively, so a pose costs one transform per joint. The collision geometry rides
+along in that URDF, drawn see-through, which is why none of it is built here any
+more.
+
+Safety volumes are a separate matter and stay. They come from live controller
+configuration rather than from the model, so they cannot be baked into an
+exported URDF; they are drawn from the same link frames the robot uses, which is
+what keeps a zone sitting on the arm it belongs to.
+"""
+
+from dataclasses import dataclass
+import warnings
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import rerun as rr
-import trimesh
-from scipy.spatial.transform import Rotation
 
 from nova import api
-from nova.types import Pose
-from nova_rerun_bridge import colors
-from nova_rerun_bridge.dh_robot import DHRobot
-from nova_rerun_bridge.hull_visualizer import HullVisualizer
+from nova_rerun_bridge import collider_shapes, scene_colors
+from nova_rerun_bridge.urdf_visualizer import UrdfRobotVisualizer
+
+if TYPE_CHECKING:
+    from nova_rerun_bridge.dh_robot import DHRobot
 
 
-def _copy_graph_matrix(matrix: object) -> np.ndarray:
-    """Copy a transform matrix from :meth:`trimesh.scene.transforms.SceneGraph.get`.
+@dataclass
+class _Volumes:
+    """One motion group's safety volume sources: its chain and its colliders."""
 
-    Trimesh/numpy stubs expose the matrix with a covariant dtype variable that does
-    not match :func:`numpy.copy` overloads; building a new array avoids ``call-overload``.
-    """
-    return np.array(matrix, dtype=np.float64, copy=True)
+    robot: "DHRobot"
+    safety_links: dict[int, list[api.models.Collider]]
+    safety_tcp: dict[str, Any]
 
 
 class RobotVisualizer:
-    def __init__(
+    """A robot's links and the controller's safety volumes in one entity tree.
+
+    Build it with :meth:`for_controller`, which covers every motion group of a
+    controller: a robot is one kinematic chain even where the API splits it up,
+    and an arm cannot be placed without the part it rides.
+    """
+
+    def __init__(  # noqa: PLR0913  # a viewer's worth of display options
         self,
-        robot: DHRobot,
-        robot_model_geometries: list[api.models.LinkChain],
-        tcp_geometries: dict[str, api.models.Collider],
+        robot: "DHRobot | None" = None,
+        robot_model_geometries: list[Any] | None = None,
+        tcp_geometries: dict[str, Any] | None = None,
         static_transform: bool = True,
         base_entity_path: str = "robot",
-        albedo_factor: list = [255, 255, 255],
-        collision_link_chain: api.models.LinkChain | None = None,
-        collision_tcp: api.models.Tool | None = None,
-        model_data: bytes | None = None,
-        show_collision_link_chain: bool = False,
-        show_collision_tool: bool = True,
+        albedo_factor: list | None = None,
+        show_collision: bool | None = False,
         show_safety_link_chain: bool = True,
+        collision_link_chain: Any = None,
+        collision_tcp: Any = None,
+        show_collision_link_chain: bool | None = None,
+        show_collision_tool: bool | None = None,
+        model_data: Any = None,
         recording: rr.RecordingStream | None = None,
+        urdf: UrdfRobotVisualizer | None = None,
+        robot_motion_group_id: str | None = None,
     ):
         """
-        :param robot: DHRobot instance
-        :param robot_model_geometries: List of geometries for each link
-        :param tcp_geometries: TCP geometries keyed by collider name.
-        :param static_transform: If True, transforms are logged as static, else temporal.
-        :param base_entity_path: A base path prefix for logging the entities (e.g. motion group name)
-        :param albedo_factor: A list representing the RGB values [R, G, B] to apply as the albedo factor.
-        :param collision_link_chain: Collision link chain geometries for the robot
-        :param collision_tcp: Collision TCP geometries
-        :param model_data: GLB model data as bytes, loaded directly from the NOVA API
-        :param show_collision_link_chain: Whether to render robot collision mesh geometry
-        :param show_collision_tool: Whether to render TCP tool collision geometry
-        :param show_safety_link_chain: Whether to render robot safety geometry (from controller)
-        :param recording: Rerun recording that receives this visualizer's entities
+        :param robot: DH robot for the motion group whose safety volumes are drawn.
+        :param robot_model_geometries: Safety geometry per link, from the controller.
+        :param tcp_geometries: Safety geometry at the TCP, keyed by collider name.
+        :param static_transform: Log poses as static rather than on the timeline.
+        :param base_entity_path: Entity path prefix for the safety volumes.
+        :param albedo_factor: RGB tint for the safety volumes.
+        :param show_collision: Draw the robot's collision geometry, see-through.
+            It comes from the URDF's ``<collision>`` -- the model's own hulls and
+            any tool collider the cell defines -- so it needs nothing passed in.
+            ``None`` draws it only for links with no visual mesh.
+        :param show_safety_link_chain: Draw the controller's safety volumes.
+        :param collision_link_chain: The API's link collision volumes. Stored
+            and readable as ``collision_link_geometries``, but not drawn: the
+            collision geometry on screen comes from the URDF, which is also
+            what a planner reads.
+        :param collision_tcp: The API's tool collision volumes, as above.
+        :param show_collision_link_chain: Deprecated alias of *show_collision*.
+        :param show_collision_tool: Deprecated alias of *show_collision*.
+        :param model_data: Accepted and ignored: a robot is rendered from its
+            URDF, not from a mesh blob.
+        :param recording: Recording stream that receives these entities.
+        :param urdf: The URDF-backed robot. :meth:`for_controller` supplies it;
+            without one only the safety volumes are drawn.
+        :param robot_motion_group_id: Which motion group *robot* describes. A
+            robot the API splits across several needs it: the volumes hang off
+            that chain's base, and without a name there is no telling which
+            base, so they land at the cell origin instead.
         """
         self.robot = robot
-        self.link_geometries: dict[int, list[api.models.Collider]] = {}
-        self.tcp_geometries = tcp_geometries
-        self.logged_meshes: set[str] = set()
+        self.robot_motion_group_id = robot_motion_group_id
+        self.urdf = urdf
+        self._volumes: dict[str, _Volumes] = {}
+        self.recording = recording
         self.static_transform = static_transform
         self.base_entity_path = base_entity_path.rstrip("/")
-        self.albedo_factor = albedo_factor
-        self.mesh_loaded = False
-        self.inverse_mounting_transform = np.linalg.inv(
-            self.robot.pose_to_matrix(self.robot.mounting)
+        self.albedo_factor = albedo_factor or [255, 255, 255]
+        # A caller that names a tint means it (the policy view uses its own);
+        # otherwise the safety volumes take the design system's colour rather
+        # than the mesh default, which is white and reads as no colour at all.
+        self._volume_tint: tuple[int, ...] = (
+            tuple(albedo_factor[:3]) if albedo_factor else scene_colors.SAFETY_VOLUME[:3]
         )
-        self.zero_link_transforms_without_mounting = [
-            self.inverse_mounting_transform @ transform
-            for transform in self.compute_forward_kinematics(
-                joint_positions=[0.0] * len(self.robot.dh_parameters)
+        self.tcp_geometries = tcp_geometries or {}
+        self.show_safety_link_chain = show_safety_link_chain
+        # Deprecated aliases of show_collision, readable as attributes.
+        self.show_collision_link_chain = (
+            show_collision_link_chain
+            if show_collision_link_chain is not None
+            else show_collision is not False
+        )
+        self.show_collision_tool = (
+            show_collision_tool if show_collision_tool is not None else show_collision is not False
+        )
+        if show_collision_link_chain is not None or show_collision_tool is not None:
+            warnings.warn(
+                "show_collision_link_chain and show_collision_tool are deprecated; "
+                "use show_collision, which covers both.",
+                DeprecationWarning,
+                stacklevel=2,
             )
-        ]
-        # Group collision geometries by link
+            if show_collision is False:
+                show_collision = bool(show_collision_link_chain or show_collision_tool)
+        self.show_collision = show_collision
+        if urdf is not None:
+            urdf.show_collision = show_collision
+            urdf.show_safety = show_safety_link_chain
+        # What the API says about collision volumes, for callers that read it.
+        # Drawing comes from the URDF; see the constructor's docstring.
         self.collision_link_geometries: list[Any] = (
-            cast(list[Any], collision_link_chain.root) if collision_link_chain else []
+            collision_link_chain.root if collision_link_chain else []
         )
         self.collision_tcp_geometries: dict[str, api.models.Collider] = (
             collision_tcp.root if collision_tcp else {}
         )
-        self.show_collision_link_chain = show_collision_link_chain
-        self.show_collision_tool = show_collision_tool
-        self.show_safety_link_chain = show_safety_link_chain
-        self.recording = recording
+        self._logged_shapes: set[str] = set()
 
-        # This will hold the names of discovered joints (e.g. ["robot_J00", "robot_J01", ...])
-        self.joint_names: list[str] = []
-        self.layer_nodes_dict: dict[str, list[str]] = {}
-        self.parent_nodes_dict: dict[str, str] = {}
-
-        if model_data:
-            try:
-                self.scene = trimesh.load_scene(BytesIO(model_data), file_type="glb")
-                self.mesh_loaded = True
-                self.edge_data = self.scene.graph.transforms.edge_data
-
-                # After loading, auto-discover any child nodes that match *_J0n
-                self.discover_joints()
-            except Exception as e:
-                print(f"Failed to load mesh: {e}")
-
-        # Group safety geometries by link index for easier lookup later on
-        for link_chain in robot_model_geometries:
+        self.link_geometries: dict[int, list[api.models.Collider]] = {}
+        for link_chain in robot_model_geometries or []:
             for link_index, link in enumerate(link_chain.root or []):
                 self.link_geometries.setdefault(link_index, []).extend(link.root.values())
 
-    def _log(self, *args, **kwargs):
-        rr.log(*args, recording=self.recording, **kwargs)
-
-    def discover_joints(self):
-        """
-        Find all child node names that contain '_J0' followed by digits or '_FLG'.
-        Store joints with their parent nodes and print layer information.
-        """
-        joint_pattern = re.compile(r"_J0(\d+)")
-        flg_pattern = re.compile(r"_FLG")
-        matches = []
-        flg_nodes = []
-        joint_parents = {}  # Store parent for each joint/FLG
-
-        for (parent, child), data in self.edge_data.items():
-            # Check for joints
-            joint_match = joint_pattern.search(child)
-            if joint_match:
-                j_idx = int(joint_match.group(1))
-                matches.append((j_idx, child))
-                joint_parents[child] = parent
-
-            # Check for FLG
-            flg_match = flg_pattern.search(child)
-            if flg_match:
-                flg_nodes.append(child)
-                joint_parents[child] = parent
-
-        matches.sort(key=lambda x: x[0])
-        self.joint_names = [name for _, name in matches] + flg_nodes
-
-        # print("Discovered nodes:", self.joint_names)
-        # Print layer information for each joint
-        for joint in self.joint_names:
-            self.get_nodes_on_same_layer(joint_parents[joint], joint)
-            # print(f"\nNodes on same layer as {joint}:")
-            # print(f"Parent node: {joint_parents[joint]}")
-            # print(f"Layer nodes: {same_layer_nodes}")
-
-    def get_nodes_on_same_layer(self, parent_node, joint):
-        """
-        Find nodes on same layer and only add descendants of link nodes.
-        """
-        same_layer = []
-        # First get immediate layer nodes
-        for (parent, child), data in self.edge_data.items():
-            if parent == parent_node:
-                if child == joint:
-                    continue
-                if "geometry" in data:
-                    same_layer.append(data["geometry"])
-                    self.parent_nodes_dict[data["geometry"]] = child
-
-                # Get all descendants for this link
-                parentChild = child
-                stack = [child]
-                while stack:
-                    current = stack.pop()
-                    for (p, c), data in self.edge_data.items():
-                        if p == current:
-                            if "geometry" in data:
-                                same_layer.append(data["geometry"])
-                                self.parent_nodes_dict[data["geometry"]] = parentChild
-                            stack.append(c)
-
-        self.layer_nodes_dict[joint] = same_layer
-        return same_layer
-
-    def geometry_pose_to_matrix(self, init_pose: Pose | None):
-        if init_pose is None:
-            return np.eye(4)
-        return self.robot.pose_to_matrix(
-            api.models.Pose(
-                position=api.models.Vector3d(list(init_pose.position.to_tuple())),
-                orientation=api.models.RotationVector(list(init_pose.orientation.to_tuple())),
+        if robot is not None:
+            self.add_volumes(
+                robot_motion_group_id,
+                robot,
+                safety_links=self.link_geometries,
+                safety_tcp=self.tcp_geometries,
             )
-        )
 
-    # TODO: this will not work yet
-    def compute_forward_kinematics(self, joint_positions: list[float]):
-        """Compute link transforms using the robot's methods."""
+    # ── kinematics ──────────────────────────────────────────────
+
+    def compute_forward_kinematics(self, joint_positions: list[float]) -> list[np.ndarray]:
+        """Link transforms at this pose, from the motion group's DH parameters."""
+        if self.robot is None:
+            return []
         accumulated = self.robot.pose_to_matrix(self.robot.mounting)
         transforms = [accumulated.copy()]
         for dh_param, joint_position in zip(
@@ -196,677 +169,211 @@ class RobotVisualizer:
             transforms.append(accumulated.copy())
         return transforms
 
-    def rotation_matrix_to_axis_angle(self, Rm):
-        """Derive an axis-angle representation while being resilient to scaling/noise."""
-        try:
-            U, _, Vt = np.linalg.svd(Rm)
-            Rm_orth = U @ Vt
-            if np.linalg.det(Rm_orth) < 0:
-                U[:, -1] *= -1
-                Rm_orth = U @ Vt
-        except (np.linalg.LinAlgError, ValueError, RuntimeError):
-            Rm_orth = np.eye(3)
+    # ── construction ────────────────────────────────────────────
 
-        rot = Rotation.from_matrix(Rm_orth)
-        angle = rot.magnitude()
-        axis = rot.as_rotvec()
-        axis = axis / angle if angle > 1e-8 else np.array([1.0, 0.0, 0.0])
-        return axis, angle
+    @classmethod
+    async def for_controller(
+        cls,
+        controller: Any,
+        *,
+        base_entity_path: str | None = None,
+        recording: rr.RecordingStream | None = None,
+        static_transform: bool = False,
+        albedo_factor: list | None = None,
+        robot: "DHRobot | None" = None,
+        robot_model_geometries: list[Any] | None = None,
+        tcp_geometries: dict[str, Any] | None = None,
+        robot_motion_group_id: str | None = None,
+        show_collision: bool | None = None,
+    ) -> "RobotVisualizer":
+        """Build a visualizer for every motion group of a controller.
 
-    def gamma_lift_single_color(self, color: np.ndarray, gamma: float = 0.8) -> np.ndarray:
+        *robot* and the geometry arguments belong to one motion group and only
+        drive its safety volumes; the robot itself comes from the URDF.
         """
-        Apply gamma correction to a single RGBA color in-place.
-        color: shape (4,) with [R, G, B, A] in 0..255, dtype=uint8
-        gamma: < 1.0 brightens midtones, > 1.0 darkens them.
-        """
-        rgb_float = color[:3].astype(np.float32) / 255.0
-        rgb_float = np.power(rgb_float, gamma)
-        color[:3] = (rgb_float * 255.0).astype(np.uint8)
-
-        return color
-
-    def get_dh_theta_mesh_correction(
-        self, link_index: int, root_transform: np.ndarray, joint_transform: np.ndarray
-    ) -> np.ndarray:
-        """Return the extra theta rotation needed after flattening a GLB link mesh.
-
-        The Rerun visualizer flattens GLB meshes and logs each mesh as its own Rerun
-        entity. Once flattened, meshes no longer inherit the original GLB joint
-        transforms, so the visualizer has to recreate the missing joint-to-mesh offset.
-
-        Some GLB joint frames already contain the DH theta offset. Applying the offset
-        again would rotate those meshes twice.
-
-        Apply the extra DH theta correction only when static zero-pose frame checks show
-        that the flattened GLB mesh needs it:
-        - if the DH zero-pose joint origin and GLB joint origin differ, do not rotate
-          around the DH origin because that would move the mesh incorrectly;
-        - if the origins match, apply the theta correction only when it improves zero-pose
-          frame alignment with Rerun's coordinate system.
-        """
-        identity_transform = np.eye(4)
-        if len(self.robot.dh_parameters) <= link_index:
-            return identity_transform
-
-        if abs(theta := self.robot.dh_parameters[link_index].theta or 0.0) < 1e-12:
-            return identity_transform
-
-        root_rotation = root_transform[:3, :3]
-        zero_link_transform = self.zero_link_transforms_without_mounting[link_index]
-        glb_joint_position = root_rotation @ (joint_transform[:3, 3] * 1000)
-        if np.linalg.norm(zero_link_transform[:3, 3] - glb_joint_position) > 1.0:
-            return identity_transform
-
-        theta_rotation = Rotation.from_euler("z", theta, degrees=False).as_matrix()
-        base_rotation = root_rotation.T @ zero_link_transform[:3, :3]
-        target_rotation = root_rotation @ joint_transform[:3, :3].T
-        current_error = Rotation.from_matrix(base_rotation @ target_rotation).magnitude()
-        corrected_error = Rotation.from_matrix(
-            base_rotation @ theta_rotation @ target_rotation
-        ).magnitude()
-        if corrected_error >= current_error - 1e-9:
-            return identity_transform
-
-        correction_transform = np.eye(4)
-        correction_transform[:3, :3] = theta_rotation
-        return correction_transform
-
-    def get_transform_matrix(self):
-        """
-        Creates a transformation matrix that converts from glTF's right-handed Y-up
-        coordinate system to Rerun's right-handed Z-up coordinate system.
-
-        Returns:
-            np.ndarray: A 4x4 transformation matrix
-        """
-        # Convert from glTF's Y-up to Rerun's Z-up coordinate system
-        return np.array(
-            [
-                [1.0, 0.0, 0.0, 0.0],  # X stays the same
-                [0.0, 0.0, -1.0, 0.0],  # Y becomes -Z
-                [0.0, 1.0, 0.0, 0.0],  # Z becomes Y
-                [0.0, 0.0, 0.0, 1.0],  # Homogeneous coordinate
-            ]
+        urdf = await UrdfRobotVisualizer.for_controller(controller, recording=recording)
+        if urdf is None:
+            msg = (
+                f"No URDF available for {getattr(controller, 'id', controller)}. "
+                "Install nova2urdf or point NOVA_URDF_EXPORT_DIR at an export."
+            )
+            raise RuntimeError(msg)
+        return cls(
+            base_entity_path=base_entity_path or urdf.entity_root,
+            recording=recording,
+            static_transform=static_transform,
+            albedo_factor=albedo_factor,
+            urdf=urdf,
+            show_collision=show_collision,
+            robot=robot,
+            robot_model_geometries=robot_model_geometries,
+            tcp_geometries=tcp_geometries,
+            robot_motion_group_id=robot_motion_group_id,
         )
 
-    def init_mesh(self, entity_path: str, geom, joint_name):
-        """Generic method to log a single geometry, either capsule or box."""
-
-        if entity_path not in self.logged_meshes:
-            if geom.metadata.get("node") not in self.parent_nodes_dict:
-                return
-
-            base_transform = np.eye(4)
-            # if the dh parameters are not at 0,0,0 from the mesh we have to move the first mesh joint
-            if "J00" in joint_name:
-                base_transform_, _ = self.scene.graph.get(frame_to=joint_name)
-                base_transform = _copy_graph_matrix(base_transform_)
-            base_transform[:3, 3] *= 1000
-
-            # if the mesh has the pivot not in the center, we need to adjust the transform
-            cumulative_transform, _ = self.scene.graph.get(
-                frame_to=self.parent_nodes_dict[geom.metadata.get("node")]
-            )
-            ctransform = _copy_graph_matrix(cumulative_transform)
-
-            # scale positions to mm
-            ctransform[:3, 3] *= 1000
-
-            # scale mesh to mm
-            transform = base_transform @ ctransform
-            mesh_scale_matrix = np.eye(4)
-            mesh_scale_matrix[:3, :3] *= 1000
-            transform = transform @ mesh_scale_matrix
-            transformed_mesh = geom.copy()
-
-            transformed_mesh.apply_transform(transform)
-
-            if transformed_mesh.visual is not None:
-                transformed_mesh.visual = transformed_mesh.visual.to_color()
-
-            vertex_colors = None
-            if transformed_mesh.visual and hasattr(transformed_mesh.visual, "vertex_colors"):
-                vertex_colors = transformed_mesh.visual.vertex_colors
-
-            self._log(
-                entity_path,
-                rr.Mesh3D(
-                    vertex_positions=transformed_mesh.vertices,
-                    triangle_indices=transformed_mesh.faces,
-                    vertex_normals=getattr(transformed_mesh, "vertex_normals", None),
-                    albedo_factor=self.gamma_lift_single_color(vertex_colors, gamma=0.5)
-                    if vertex_colors is not None
-                    else None,
-                ),
-            )
-
-            self.logged_meshes.add(entity_path)
-
-    def init_collision_geometry(self, entity_path: str, collider: api.models.Collider, pose: Pose):
-        if entity_path in self.logged_meshes:
-            return
-
-        if isinstance(collider.shape, api.models.Sphere):
-            self._log(
-                f"{entity_path}",
-                rr.Ellipsoids3D(
-                    radii=[collider.shape.radius, collider.shape.radius, collider.shape.radius],
-                    centers=list(pose.position.to_tuple()),
-                    colors=[(221, 193, 193, 255)],
-                ),
-            )
-
-        elif isinstance(collider.shape, api.models.Box):
-            self._log(
-                f"{entity_path}",
-                rr.Boxes3D(
-                    centers=list(pose.position.to_tuple()),
-                    sizes=[collider.shape.size_x, collider.shape.size_y, collider.shape.size_z],
-                    colors=[(221, 193, 193, 255)],
-                ),
-            )
-
-        elif isinstance(collider.shape, api.models.Capsule):
-            height = collider.shape.cylinder_height
-            radius = collider.shape.radius
-
-            # Generate trimesh capsule
-            capsule = trimesh.creation.capsule(height=height, radius=radius, count=[6, 8])
-
-            # Extract vertices and faces for solid visualization
-            vertices = np.array(capsule.vertices)
-
-            # Transform vertices to world position
-            transform = np.eye(4)
-            if pose.position:
-                transform[:3, 3] = list(pose.position.to_tuple()) + [0, 0, -height / 2]
-            else:
-                transform[:3, 3] = [0, 0, -height / 2]
-
-            if collider.pose and collider.pose.orientation:
-                rot_mat = Rotation.from_quat(
-                    [
-                        collider.pose.orientation[0],
-                        collider.pose.orientation[1],
-                        collider.pose.orientation[2],
-                        collider.pose.orientation[3],
-                    ]
-                )
-                transform[:3, :3] = rot_mat.as_matrix()
-
-            vertices = np.array([transform @ np.append(v, 1) for v in vertices])[:, :3]
-
-            polygons = HullVisualizer.compute_hull_outlines_from_points(vertices)
-
-            if polygons:
-                line_segments = [p.tolist() for p in polygons]
-                self._log(
-                    f"{entity_path}",
-                    rr.LineStrips3D(
-                        line_segments,
-                        radii=rr.Radius.ui_points(0.75),
-                        colors=[[221, 193, 193, 255]],
-                    ),
-                    static=True,
-                )
-
-        elif isinstance(collider.shape, api.models.ConvexHull):
-            polygons = HullVisualizer.compute_hull_outlines_from_points(
-                np.array(collider.shape.vertices)
-            )
-
-            if polygons:
-                line_segments = [p.tolist() for p in polygons]
-                self._log(
-                    f"{entity_path}",
-                    rr.LineStrips3D(
-                        line_segments, radii=rr.Radius.ui_points(1.5), colors=[colors.colors[2]]
-                    ),
-                    static=True,
-                )
-
-                vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)  # type: ignore[assignment]
-
-                self._log(
-                    f"{entity_path}",
-                    rr.Mesh3D(
-                        vertex_positions=vertices,
-                        triangle_indices=triangles,
-                        vertex_normals=normals,
-                        albedo_factor=colors.colors[0],
-                    ),
-                    static=True,
-                )
-
-        self.logged_meshes.add(entity_path)
-
-    def init_geometry(self, entity_path: str, geometry: api.models.Collider):
-        """Generic method to log a single geometry, either capsule or box."""
-
-        if entity_path in self.logged_meshes:
-            return
-
-        # Sphere geometry
-        if isinstance(geometry.shape, api.models.Sphere):
-            radius = geometry.shape.radius
-            self._log(
-                entity_path,
-                rr.Ellipsoids3D(
-                    radii=[radius, radius, radius],
-                    centers=[0, 0, 0],
-                    fill_mode=rr.components.FillMode.Solid,
-                    colors=[(221, 193, 193, 255) if self.static_transform else self.albedo_factor],
-                ),
-            )
-
-        elif isinstance(geometry.shape, api.models.Box):
-            self._log(
-                entity_path,
-                rr.Boxes3D(
-                    centers=[0, 0, 0],
-                    fill_mode=rr.components.FillMode.Solid,
-                    sizes=[geometry.shape.size_x, geometry.shape.size_y, geometry.shape.size_z],
-                    colors=[(221, 193, 193, 255) if self.static_transform else self.albedo_factor],
-                ),
-            )
-
-        # Rectangle geometry
-        elif isinstance(geometry.shape, api.models.Rectangle):
-            # Create a flat box with minimal height
-            self._log(
-                entity_path,
-                rr.Boxes3D(
-                    fill_mode=rr.components.FillMode.Solid,
-                    centers=[0, 0, 0],
-                    sizes=[
-                        geometry.shape.size_x,
-                        geometry.shape.size_y,
-                        1.0,  # Minimal height for visibility
-                    ],
-                    colors=[(221, 193, 193, 255) if self.static_transform else self.albedo_factor],
-                ),
-            )
-
-        # Cylinder geometry
-        elif isinstance(geometry.shape, api.models.Cylinder):
-            radius = geometry.shape.radius
-            height = geometry.shape.height
-
-            # Create cylinder mesh
-            cylinder = trimesh.creation.cylinder(radius=radius, height=height, sections=16)
-            vertex_normals = cylinder.vertex_normals.tolist()
-
-            self._log(
-                entity_path,
-                rr.Mesh3D(
-                    vertex_positions=cylinder.vertices.tolist(),
-                    triangle_indices=cylinder.faces.tolist(),
-                    vertex_normals=vertex_normals,
-                    albedo_factor=self.albedo_factor,
-                ),
-            )
-
-        # Convex hull geometry
-        elif isinstance(geometry.shape, api.models.ConvexHull):
-            polygons = HullVisualizer.compute_hull_outlines_from_points(
-                np.array([v.root for v in geometry.shape.vertices])
-            )
-
-            if polygons:
-                # First log wireframe outline
-                line_segments = [p.tolist() for p in polygons]
-                self._log(
-                    f"{entity_path}/wireframe",
-                    rr.LineStrips3D(
-                        line_segments,
-                        radii=rr.Radius.ui_points(1.0),
-                        colors=[colors.colors[2] if self.static_transform else self.albedo_factor],
-                    ),
-                    static=self.static_transform,
-                )
-
-                # Then log solid mesh
-                vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)
-
-                self._log(
-                    entity_path,
-                    rr.Mesh3D(
-                        vertex_positions=vertices,
-                        triangle_indices=triangles,
-                        vertex_normals=normals,
-                        albedo_factor=self.albedo_factor,
-                    ),
-                    static=self.static_transform,
-                )
-
-        # Capsule geometry
-        elif isinstance(geometry.shape, api.models.Capsule):
-            radius = geometry.shape.radius
-            height = geometry.shape.cylinder_height
-
-            # Slightly shrink the capsule if static to reduce z-fighting
-            if self.static_transform:
-                radius *= 0.99
-                height *= 0.99
-
-            # Create capsule and retrieve normals
-            cap_mesh = trimesh.creation.capsule(radius=radius, height=height)
-            vertex_normals = cap_mesh.vertex_normals.tolist()
-
-            self._log(
-                entity_path,
-                rr.Mesh3D(
-                    vertex_positions=cap_mesh.vertices.tolist(),
-                    triangle_indices=cap_mesh.faces.tolist(),
-                    vertex_normals=vertex_normals,
-                    albedo_factor=self.albedo_factor,
-                ),
-            )
-
-        # Rectangular capsule geometry
-        elif isinstance(geometry.shape, api.models.RectangularCapsule):
-            radius = geometry.shape.radius
-            distance_x = geometry.shape.sphere_center_distance_x
-            distance_y = geometry.shape.sphere_center_distance_y
-
-            # Create a rectangular capsule from its definition - a hull around 4 spheres
-            # First, create the four spheres at the corners
-            sphere_centers = [
-                [distance_x, distance_y, 0],
-                [distance_x, -distance_y, 0],
-                [-distance_x, distance_y, 0],
-                [-distance_x, -distance_y, 0],
-            ]
-
-            # Generate points to create a convex hull
-            all_points = []
-            for center in sphere_centers:
-                # Generate points for each sphere (simplified with key points on the sphere)
-                for dx, dy, dz in [
-                    (1, 0, 0),
-                    (-1, 0, 0),
-                    (0, 1, 0),
-                    (0, -1, 0),
-                    (0, 0, 1),
-                    (0, 0, -1),
-                ]:
-                    all_points.append(
-                        [center[0] + radius * dx, center[1] + radius * dy, center[2] + radius * dz]
-                    )
-
-            # Use our hull visualizer to create outlines
-            polygons = HullVisualizer.compute_hull_outlines_from_points(np.array(all_points))
-
-            if polygons:
-                # Log wireframe outline
-                line_segments = [p.tolist() for p in polygons]
-                self._log(
-                    f"{entity_path}/wireframe",
-                    rr.LineStrips3D(
-                        line_segments,
-                        radii=rr.Radius.ui_points(1.0),
-                        colors=[
-                            (221, 193, 193, 255) if self.static_transform else self.albedo_factor
-                        ],
-                    ),
-                    static=self.static_transform,
-                )
-
-                # Log solid mesh
-                vertices, triangles, normals = HullVisualizer.compute_hull_mesh(polygons)
-
-                self._log(
-                    entity_path,
-                    rr.Mesh3D(
-                        vertex_positions=vertices,
-                        triangle_indices=triangles,
-                        vertex_normals=normals,
-                        albedo_factor=self.albedo_factor,
-                    ),
-                    static=self.static_transform,
-                )
-
-        # Plane geometry (simplified as a large, thin rectangle)
-        elif isinstance(geometry.shape, api.models.Plane):
-            # Create a large, thin rectangle to represent an infinite plane
-            size = 5000  # Large enough to seem infinite in the visualization
-            self._log(
-                entity_path,
-                rr.Boxes3D(
-                    centers=[0, 0, 0],
-                    sizes=[size, size, 1.0],  # Very thin in z direction
-                    colors=[(200, 200, 220, 100) if self.static_transform else self.albedo_factor],
-                ),
-            )
-
-        # Default fallback for unsupported geometry types
-        else:
-            # Fallback to a box
-            self._log(  # type: ignore[unreachable]
-                entity_path,
-                rr.Boxes3D(
-                    half_sizes=[[50, 50, 50]],
-                    colors=[(255, 0, 0, 128)],  # Red, semi-transparent to indicate unknown type
-                ),
-            )
-
-        self.logged_meshes.add(entity_path)
-
-    def log_robot_geometry(self, joint_position: list[float]):
-        transforms = self.compute_forward_kinematics(joint_positions=joint_position)
-
-        def log_geometry(entity_path, transform):
-            translation = transform[:3, 3]
-            Rm = transform[:3, :3]
-            axis, angle = self.rotation_matrix_to_axis_angle(Rm)
-            self._log(
-                entity_path,
-                rr.InstancePoses3D(
-                    translations=[translation.tolist()],
-                    rotation_axis_angles=[
-                        rr.RotationAxisAngle(axis=axis.tolist(), angle=float(angle))
-                    ],
-                ),
-                static=self.static_transform,
-            )
-
-        # Log robot joint geometries
-        if self.mesh_loaded:
-            for link_index, joint_name in enumerate(self.joint_names):
-                link_transform = transforms[link_index]
-
-                # Get nodes on same layer using dictionary
-                same_layer_nodes = self.layer_nodes_dict.get(joint_name)
-                if not same_layer_nodes:
-                    continue
-
-                filtered_geoms = []
-                for node_name in same_layer_nodes:
-                    if node_name in self.scene.geometry:
-                        geom = self.scene.geometry[node_name]
-                        # Add metadata that would normally come from dump
-                        geom.metadata = {"node": node_name}
-                        filtered_geoms.append(geom)
-
-                for geom in filtered_geoms:
-                    entity_path = f"{self.base_entity_path}/visual/links/link_{link_index}/mesh/{geom.metadata.get('node')}"
-
-                    # calculate the inverse transform to get the mesh in the correct position
-                    cumulative_transform, _ = self.scene.graph.get(frame_to=joint_name)
-                    ctransform = _copy_graph_matrix(cumulative_transform)
-                    inverse_transform = np.linalg.inv(ctransform)
-
-                    # scale positions to mm
-                    inverse_transform[:3, 3] *= 1000
-
-                    root_transform = self.get_transform_matrix()
-                    theta_correction_transform = self.get_dh_theta_mesh_correction(
-                        link_index, root_transform, ctransform
-                    )
-
-                    transform = root_transform @ inverse_transform
-
-                    final_transform = link_transform @ theta_correction_transform @ transform
-
-                    self.init_mesh(entity_path, geom, joint_name)
-                    log_geometry(entity_path, final_transform)
-
-        # Log link geometries (safety from controller)
-        if self.show_safety_link_chain:
-            for link_index, geometries in self.link_geometries.items():
-                link_transform = transforms[link_index]
-                for i, geom in enumerate(geometries):
-                    entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
-                    final_transform = link_transform @ self.geometry_pose_to_matrix(Pose(geom.pose))
-
-                    self.init_geometry(entity_path, geom)
-                    log_geometry(entity_path, final_transform)
-
-        # Log TCP geometries (safety from controller)
-        if self.show_safety_link_chain and self.tcp_geometries:
-            tcp_transform = transforms[-1]  # the final frame transform
-            for name, geom in self.tcp_geometries.items():
-                escaped_name = rr.escape_entity_path_part(name)
-                entity_path = f"{self.base_entity_path}/safety_from_controller/tcp/{escaped_name}"
-                final_transform = tcp_transform @ self.geometry_pose_to_matrix(Pose(geom.pose))
-
-                self.init_geometry(entity_path, geom)
-                log_geometry(entity_path, final_transform)
+    # ── the robot itself, delegated to the URDF ─────────────────
+
+    @property
+    def entity_root(self) -> str:
+        """Entity path everything this visualizer logs lives under."""
+        return self.urdf.entity_root if self.urdf else self.base_entity_path
+
+    @property
+    def world_frame(self) -> str | None:
+        """The coordinate frame the robot's root link defines."""
+        return self.urdf.world_frame if self.urdf else None
+
+    def motion_group_ids(self) -> list[str]:
+        """The motion groups this visualizer drives."""
+        return self.urdf.motion_group_ids() if self.urdf else []
+
+    def add_motion_group(self, motion_group_id: str, robot: Any = None) -> bool:
+        """Whether this visualizer already covers that motion group."""
+        return bool(self.urdf and self.urdf.add_motion_group(motion_group_id, robot))
+
+    def chain_bases(self, joint_position: dict[str, list[float]]) -> dict[str, np.ndarray]:
+        """Each motion group's base, in the robot's frame."""
+        return self.urdf.chain_bases(joint_position) if self.urdf else {}
+
+    def pose_frames(self, joint_position: dict[str, list[float]]) -> dict[str, np.ndarray]:
+        """What takes a motion group's reported pose into the robot's frame."""
+        return self.urdf.pose_frames(joint_position) if self.urdf else {}
+
+    def log_robot_geometry(self, joint_position: dict[str, list[float]] | list[float]) -> None:
+        """Pose the robot, then its safety volumes."""
+        if self.urdf is not None:
+            self.urdf.log_robot_geometry(joint_position)
+        if isinstance(joint_position, dict):
+            self._log_volumes(joint_position)
+        elif self.robot_motion_group_id is not None:
+            self._log_volumes({self.robot_motion_group_id: joint_position})
+        elif self._volumes:
+            self._log_volumes({"": joint_position})
 
     def log_robot_geometries(
-        self, trajectory: api.models.JointTrajectory, times_column: rr.TimeColumn
-    ):
+        self, trajectory: Any, times_column: Any, motion_group_id: str | None = None
+    ) -> None:
+        """Pose the robot across a whole trajectory in one columnar send."""
+        if self.urdf is not None:
+            self.urdf.log_robot_geometries(trajectory, times_column, motion_group_id)
+        samples = getattr(trajectory, "joint_positions", None) or []
+        if samples:
+            last = list(getattr(samples[-1], "root", samples[-1]))
+            named = motion_group_id or self.robot_motion_group_id or ""
+            self._log_volumes({named: last})
+
+    # ── safety and collision volumes ────────────────────────────
+
+    def add_volumes(
+        self,
+        motion_group_id: str | None,
+        robot: "DHRobot",
+        *,
+        safety_links: dict[int, list[api.models.Collider]] | None = None,
+        safety_tcp: dict[str, Any] | None = None,
+    ) -> None:
+        """Register one motion group's safety volumes, so they can all be drawn.
+
+        A robot the API splits across motion groups has a set per part, each on
+        its own chain. Registering them by motion group keeps them apart -- both
+        the chain their frames come from and the entity path they land on, which
+        otherwise collide and leave only the last part drawn.
         """
-        Log the robot geometries for each link and TCP as separate entities.
+        key = motion_group_id or ""
+        self._volumes[key] = _Volumes(
+            robot=robot, safety_links=safety_links or {}, safety_tcp=safety_tcp or {}
+        )
 
-        Args:
-            trajectory (list[api.models.TrajectoryData]): The list of trajectory sample points.
-            times_column (rr.TimeColumn): The time column associated with the trajectory points.
+    def _link_frames(
+        self, robot: "DHRobot", motion_group_id: str, joint_position: list[float]
+    ) -> list[np.ndarray]:
+        """Link frames to hang a motion group's volumes on, in the robot's frame.
+
+        Taken from that motion group's own DH chain, based where the URDF puts
+        the chain, so a zone lands on the arm rather than at the cell origin.
         """
-        link_positions = {}
-        link_rotations = {}
+        base = np.eye(4)
+        if self.urdf is not None:
+            named = motion_group_id or None
+            ids = self.urdf.motion_group_ids()
+            if named is None and len(ids) == 1:
+                named = ids[0]
+            if named is not None:
+                base = self.urdf.chain_bases({named: joint_position}).get(named, base)
+        frames = [base.copy()]
+        accumulated = base
+        for dh_param, value in zip(robot.dh_parameters, joint_position, strict=False):
+            accumulated = accumulated @ robot.dh_transform(dh_param=dh_param, joint_position=value)
+            frames.append(accumulated.copy())
+        return frames
 
-        def collect_geometry_data(entity_path, transform):
-            """Helper to collect geometry data for a given entity."""
-            translation = transform[:3, 3].tolist()
-            Rm = transform[:3, :3]
-            axis, angle = self.rotation_matrix_to_axis_angle(Rm)
-            if entity_path not in link_positions:
-                link_positions[entity_path] = []
-                link_rotations[entity_path] = []
-            link_positions[entity_path].append(translation)
-            link_rotations[entity_path].append(rr.RotationAxisAngle(axis=axis, angle=angle))
+    @property
+    def _safety_from_urdf(self) -> bool:
+        """Whether the URDF already carries the safety volumes.
 
-        for joint_position in trajectory.joint_positions:
-            transforms = self.compute_forward_kinematics(joint_positions=joint_position.root)
+        nova2urdf exports them as ``<collision>`` named ``safety_*``, and the
+        URDF drives them from the link tree rather than from a pose computed
+        here, so drawing them from the API too would only double them up. An
+        export from an older version has none, and then this path still does.
+        """
+        return self.urdf is not None and self.urdf.has_safety_geometry
 
-            # Log robot joint geometries
-            if self.mesh_loaded:
-                for link_index, joint_name in enumerate(self.joint_names):
-                    if link_index >= len(transforms):
-                        break
-                    link_transform = transforms[link_index]
+    def _log_volumes(self, joint_position: dict[str, list[float]]) -> None:
+        """Draw the registered safety volumes for every motion group named here.
 
-                    # Get nodes on same layer using dictionary
-                    same_layer_nodes = self.layer_nodes_dict.get(joint_name)
-                    if not same_layer_nodes:
-                        continue
+        Only for what the URDF does not already carry: see
+        :attr:`_safety_from_urdf`. Everything the URDF does carry -- the model's
+        collision meshes, the tool's, the safety controller's volumes -- is
+        drawn from there, in :class:`UrdfRobotVisualizer`.
+        """
+        for motion_group_id, values in joint_position.items():
+            volumes = self._volumes.get(motion_group_id) or self._volumes.get("")
+            if volumes is None:
+                continue
+            transforms = self._link_frames(volumes.robot, motion_group_id, values)
+            if not transforms:
+                continue
+            branch = f"{self.base_entity_path}"
+            if len(self._volumes) > 1:
+                branch = f"{branch}/{rr.escape_entity_path_part(motion_group_id)}"
 
-                    filtered_geoms = []
-                    for node_name in same_layer_nodes:
-                        if node_name in self.scene.geometry:
-                            geom = self.scene.geometry[node_name]
-                            # Add metadata that would normally come from dump
-                            geom.metadata = {"node": node_name}
-                            filtered_geoms.append(geom)
-
-                    for geom in filtered_geoms:
-                        entity_path = f"{self.base_entity_path}/visual/links/link_{link_index}/mesh/{geom.metadata.get('node')}"
-
-                        # calculate the inverse transform to get the mesh in the correct position
-                        cumulative_transform, _ = self.scene.graph.get(frame_to=joint_name)
-                        ctransform = _copy_graph_matrix(cumulative_transform)
-                        inverse_transform = np.linalg.inv(ctransform)
-
-                        # scale positions to mm
-                        inverse_transform[:3, 3] *= 1000
-
-                        root_transform = self.get_transform_matrix()
-                        theta_correction_transform = self.get_dh_theta_mesh_correction(
-                            link_index, root_transform, ctransform
-                        )
-
-                        transform = root_transform @ inverse_transform
-
-                        final_transform = link_transform @ theta_correction_transform @ transform
-
-                        self.init_mesh(entity_path, geom, joint_name)
-                        collect_geometry_data(entity_path, final_transform)
-
-            # Collect data for link geometries (safety from controller)
-            if self.show_safety_link_chain:
-                for link_index, geometries in self.link_geometries.items():
-                    link_transform = transforms[link_index]
-                    for i, geom in enumerate(geometries):
-                        entity_path = f"{self.base_entity_path}/safety_from_controller/links/link_{link_index}/geometry_{i}"
-                        final_transform = link_transform @ self.geometry_pose_to_matrix(
-                            Pose(geom.pose)
-                        )
-                        self.init_geometry(entity_path, geom)
-                        collect_geometry_data(entity_path, final_transform)
-
-            # Collect data for TCP geometries (safety from controller)
-            if self.show_safety_link_chain and self.tcp_geometries:
-                tcp_transform = transforms[-1]  # End-effector transform
-                for name, geom in self.tcp_geometries.items():
-                    escaped_name = rr.escape_entity_path_part(name)
-                    entity_path = (
-                        f"{self.base_entity_path}/safety_from_controller/tcp/{escaped_name}"
+            if not self.show_safety_link_chain or self._safety_from_urdf:
+                continue
+            for link_index, geometries in volumes.safety_links.items():
+                if link_index >= len(transforms):
+                    continue
+                for position, collider in enumerate(geometries):
+                    self._log_collider(
+                        f"{branch}/safety_from_controller/links/"
+                        f"link_{link_index}/geometry_{position}",
+                        collider,
+                        transforms[link_index],
                     )
-                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(Pose(geom.pose))
-                    self.init_geometry(entity_path, geom)
-                    collect_geometry_data(entity_path, final_transform)
+            for name, collider in volumes.safety_tcp.items():
+                self._log_collider(
+                    f"{branch}/safety_from_controller/tcp/{rr.escape_entity_path_part(name)}",
+                    collider,
+                    transforms[-1],
+                )
 
-            # Collect data for collision link geometries (only if enabled)
-            if self.show_collision_link_chain and self.collision_link_geometries:
-                for link_index, geometries in enumerate(self.collision_link_geometries):
-                    geom_dict = cast(
-                        dict[str, api.models.Collider],
-                        geometries.root if hasattr(geometries, "root") else geometries,
-                    )
-                    link_transform = transforms[link_index]
-                    for geom_id, collider in geom_dict.items():
-                        escaped_geom_id = rr.escape_entity_path_part(str(geom_id))
-                        entity_path = f"{self.base_entity_path}/collision/links/link_{link_index}/geometry_{escaped_geom_id}"
+    def _log_collider(
+        self, entity_path: str, collider: api.models.Collider, link_frame: np.ndarray
+    ) -> None:
+        """Place one collider on a link and draw its shape, see-through."""
+        collider_shapes.log_collider(
+            entity_path,
+            collider,
+            link_frame,
+            color=self._volume_color(),
+            recording=self.recording,
+            static=self.static_transform,
+            with_shape=entity_path not in self._logged_shapes,
+        )
+        self._logged_shapes.add(entity_path)
 
-                        pose = Pose(collider.pose)
-                        final_transform = link_transform @ self.geometry_pose_to_matrix(pose)
-                        self.init_collision_geometry(entity_path, collider, pose)
-                        collect_geometry_data(entity_path, final_transform)
+    def _volume_color(self) -> tuple[int, ...]:
+        """The colour for a safety volume, drawn as a wireframe over the robot."""
+        return (*self._volume_tint, collider_shapes.VOLUME_ALPHA)
 
-            # Collect data for collision TCP geometries (only if enabled)
-            if self.show_collision_tool and self.collision_tcp_geometries:
-                tcp_transform = transforms[-1]  # End-effector transform
-                for geom_id, collider in self.collision_tcp_geometries.items():
-                    escaped_id = rr.escape_entity_path_part(geom_id)
-                    entity_path = f"{self.base_entity_path}/collision/tcp/{escaped_id}"
-
-                    pose = Pose(collider.pose)
-                    final_transform = tcp_transform @ self.geometry_pose_to_matrix(pose)
-
-                    # tcp collision geometries are defined in flange frame
-                    identity_pose = Pose((0, 0, 0, 0, 0, 0))
-                    self.init_collision_geometry(entity_path, collider, identity_pose)
-                    collect_geometry_data(entity_path, final_transform)
-
-        # Send collected columns for all geometries
-        for entity_path, positions in link_positions.items():
-            rr.send_columns(
-                entity_path,
-                indexes=[times_column],
-                columns=[
-                    *rr.Transform3D.columns(
-                        translation=positions, rotation_axis_angle=link_rotations[entity_path]
-                    )
-                ],
-            )
+    def _log(self, *args, **kwargs):
+        rr.log(*args, recording=self.recording, **kwargs)

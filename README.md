@@ -55,7 +55,7 @@ The SDK will help you to build your own apps and services using Python on top of
 
 1. Install the SDK using `pip` or set up a local `uv` project with extras for visualization. Refer to the [Installation](#installation) section for both options.
 2. Copy `.env.template` to `.env` and fill in the base URL and access token for your NOVA deployment. Details are covered in [Configure environment variables](#configure-environment-variables).
-3. Run an example to validate the setup, e.g. `uv run python examples/start_here.py`. Install the rerun extras and execute `uv run download-models` if you want interactive 3D visualization out of the box.
+3. Run an example to validate the setup, e.g. `uv run python examples/start_here.py`. Install the rerun extras if you want interactive 3D visualization out of the box.
 
 ## Installation
 
@@ -82,12 +82,6 @@ See [extension README.md](nova_rerun_bridge/README.md) for further details.
 
 ```bash
 uv add wandelbots-nova --extra nova-rerun-bridge
-```
-
-Download the robot models to visualize them in the rerun viewer.
-
-```bash
-uv run download-models
 ```
 
 ### Configure Environment Variables

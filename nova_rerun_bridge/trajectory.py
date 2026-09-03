@@ -1,6 +1,5 @@
 import uuid
 from enum import Enum, auto
-from typing import Optional
 
 import numpy as np
 import rerun as rr
@@ -8,28 +7,58 @@ from scipy.spatial.transform import Rotation as R
 
 from nova import MotionGroup, api
 from nova.types import Pose
-from nova_rerun_bridge.collision_scene import extract_link_chain_and_tcp
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
-from nova_rerun_bridge.model_loader import load_model_data
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
+from nova_rerun_bridge.urdf_visualizer import UrdfRobotVisualizer
 
 
 class TimingMode(Enum):
-    """Controls how trajectories are timed relative to each other.
+    """Where a trajectory starts on the timeline, relative to the ones before it.
 
-    .. deprecated::
-        TimingMode is deprecated and will be removed in a future version.
-        The new viewer system handles timing automatically per motion group.
+    Plans are logged one after another, and each motion group keeps its own
+    clock: that is what makes a second plan land after the first instead of on
+    top of it, and what lets two robots start at the same instant.
     """
 
-    RESET = auto()  # Start at time_offset
-    CONTINUE = auto()  # Start after last trajectory
-    SYNC = auto()  # Use exact time_offset, don't update last time
-    OVERRIDE = auto()  # Use exact time_offset and reset last time
+    RESET = auto()
+    """Start at ``time_offset``; the clock carries on from there."""
+    CONTINUE = auto()
+    """Start after this motion group's last trajectory. The default."""
+    SYNC = auto()
+    """Start at ``time_offset`` and leave the clock alone, so several motion
+    groups can be lined up at one instant without moving anyone on."""
+    OVERRIDE = auto()
+    """Start at ``time_offset``; the clock carries on from there. Same rule as
+    :attr:`RESET`; both spellings exist."""
 
 
-# Deprecated global timing variables - kept for backward compatibility
+class MotionGroupTimeline:
+    """Each motion group's own clock on the shared timeline."""
+
+    def __init__(self) -> None:
+        self.times: dict[str, float] = {}
+
+    def start(self, motion_group_id: str, mode: TimingMode, time_offset: float) -> float:
+        """When a trajectory logged now starts."""
+        if mode is TimingMode.CONTINUE:
+            return self.times.get(motion_group_id, 0.0) + time_offset
+        return time_offset
+
+    def advance(
+        self, motion_group_id: str, start: float, duration: float, mode: TimingMode
+    ) -> None:
+        """Move the clock past a trajectory that starts at *start*."""
+        if mode is TimingMode.SYNC:
+            return
+        self.times[motion_group_id] = start + duration
+
+
+_timeline = MotionGroupTimeline()
+"""The clock a caller gets when it does not bring its own."""
+
+# State of the deprecated :func:`continue_after_sync`, which shares one offset
+# across all motion groups rather than a clock each.
 _last_end_time = 0.0
 _last_offset = 0.0
 
@@ -42,11 +71,14 @@ async def log_motion(
     motion_group: MotionGroup,
     collision_setups: dict[str, api.models.CollisionSetup],
     time_offset: float = 0,
-    timing_mode: TimingMode = TimingMode.CONTINUE,  # Deprecated parameter kept for compatibility
+    timing_mode: TimingMode = TimingMode.CONTINUE,
     tool_asset: str | None = None,
-    show_collision_link_chain: bool = False,
-    show_collision_tool: bool = True,
+    tool_assets: dict[str, str] | None = None,
+    timeline: MotionGroupTimeline | None = None,
     show_safety_link_chain: bool = True,
+    show_collision: bool | None = False,
+    show_collision_link_chain: bool | None = None,
+    show_collision_tool: bool | None = None,
 ):
     """
     Fetch and process a single motion for visualization.
@@ -55,26 +87,41 @@ async def log_motion(
         trajectory: Joint trajectory to log
         tcp: TCP to log
         motion_group: Motion group to log
-        collision_setups: Collision setups to log [setup_name: collision_setup]
-        time_offset: Time offset for visualization
-        timing_mode: DEPRECATED - Timing mode control (ignored in new implementation)
-        tool_asset: Optional tool asset file path
-        show_collision_link_chain: Whether to show collision geometry
+        collision_setups: Accepted and unused. The robot's collision geometry
+            comes from the URDF, and a plan's collision objects are logged by
+            the viewer through
+            :func:`~nova_rerun_bridge.collision_scene.log_collision_setups`
+        time_offset: Where this trajectory starts, read as the mode says
+        timing_mode: How to place it against what was logged before
+        timeline: The motion group clocks to read and advance; a caller that
+            logs through :class:`~nova_rerun_bridge.NovaRerunBridge` shares its
+            one, so the bridge's own accessors see the same times
+        tool_asset: Tool mesh for *tcp*, if the caller has one
+        tool_assets: Tool meshes per TCP, for a robot with more than one tool.
+            Every TCP is its own frame in the URDF, so each mesh rides the arm
+            on the TCP it belongs to. Takes precedence over *tool_asset*.
         show_safety_link_chain: Whether to show safety geometry
+        show_collision: Whether to draw the URDF's collision geometry,
+            see-through; None only where a link has no visual mesh
+        show_collision_link_chain: Deprecated, use show_collision
+        show_collision_tool: Deprecated, use show_collision
     """
-    # Issue deprecation warning if timing_mode is explicitly used
-    if timing_mode != TimingMode.CONTINUE:
+    clock = timeline if timeline is not None else _timeline
+    time_offset = clock.start(motion_group.id, timing_mode, time_offset)
+
+    if show_collision_link_chain is not None or show_collision_tool is not None:
         import warnings
 
         warnings.warn(
-            "TimingMode parameter is deprecated and will be removed in a future version. "
-            "Timing is now handled automatically per motion group.",
+            "show_collision_link_chain and show_collision_tool are deprecated; "
+            "use show_collision, which covers both.",
             DeprecationWarning,
             stacklevel=2,
         )
+        if show_collision is False:
+            show_collision = bool(show_collision_link_chain or show_collision_tool)
 
     motion_group_setup = await motion_group.get_setup(tcp)
-    motion_group_model = await motion_group.get_model()
     motion_group_description = await motion_group.get_description()
     motion_group_id = motion_group.id
     motion_id = str(uuid.uuid4())
@@ -114,22 +161,11 @@ async def log_motion(
     )
     robot = DHRobot(dh_parameters=motion_group_description.dh_parameters, mounting=mounting)
 
-    # TODO: merge collision_setups
-    collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
-        collision_setups=collision_setups
-    )
-
     rr.reset_time()
     rr.set_time(TIME_INTERVAL_NAME, duration=time_offset)
 
     # Get or create visualizer from cache
     if motion_group.id not in _visualizer_cache:
-        model_data = await load_model_data(motion_group_model, motion_group._api_client)
-
-        collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
-            collision_setups=collision_setups
-        )
-
         # Build tcp geometries
         tcp_geometries: dict[str, api.models.Collider] = {}
         if motion_group_description.safety_tool_colliders is not None:
@@ -149,21 +185,29 @@ async def log_motion(
                 )
             ]
 
+        # A tool mesh belongs on the robot, not beside it: exported onto this
+        # TCP's frame, it rides the arm through the whole trajectory.
+        tools = tool_assets or ({tcp: tool_asset} if tool_asset else None)
+        urdf = await UrdfRobotVisualizer.for_motion_group(motion_group, tool_assets=tools)
+        if urdf is not None:
+            # Which tool is mounted is not in the URDF; it is in this call.
+            urdf.active_tcp = tcp
         _visualizer_cache[motion_group.id] = RobotVisualizer(
+            urdf=urdf,
             robot=robot,
+            robot_motion_group_id=motion_group.id,
             robot_model_geometries=safety_link_chain,
             tcp_geometries=tcp_geometries,
             static_transform=False,
             base_entity_path=f"motion/{motion_group_id}",
-            model_data=model_data,
-            collision_link_chain=collision_link_chain,
-            collision_tcp=collision_tcp,
-            show_collision_link_chain=show_collision_link_chain,
-            show_collision_tool=show_collision_tool,
             show_safety_link_chain=show_safety_link_chain,
+            show_collision=show_collision,
         )
 
     visualizer = _visualizer_cache[motion_group.id]
+    if visualizer.urdf is not None:
+        # A later motion may run a different tool; the safety volumes follow it.
+        visualizer.urdf.active_tcp = tcp
 
     # Process trajectory points
     await log_trajectory(
@@ -174,8 +218,10 @@ async def log_motion(
         robot=robot,
         visualizer=visualizer,
         timer_offset=time_offset,
-        tool_asset=tool_asset,
     )
+
+    times = getattr(trajectory, "times", None)
+    clock.advance(motion_group.id, time_offset, times[-1] if times else 0.0, timing_mode)
 
     del trajectory
     del robot
@@ -198,10 +244,14 @@ async def log_trajectory(
     robot: DHRobot,
     visualizer: RobotVisualizer,
     timer_offset: float,
-    tool_asset: Optional[str] = None,
+    tool_asset: str | None = None,
 ):
     """
     Process a single trajectory point and log relevant data.
+
+    *tool_asset* is accepted and ignored here: a tool mesh belongs on its TCP's
+    frame in the URDF, which is what makes it ride the robot. Pass it to
+    :func:`log_motion`, which exports it there.
     """
     rr.reset_time()
     rr.set_time(TIME_INTERVAL_NAME, duration=timer_offset)
@@ -212,8 +262,34 @@ async def log_trajectory(
     # TODO: calculate tcp pose from joint positions
     joint_positions = [tuple(p.root) for p in trajectory.joint_positions]
     tcp_poses = await motion_group.forward_kinematics(joints=joint_positions, tcp=tcp)
-    positions = [[p.position.x, p.position.y, p.position.z] for p in tcp_poses]
 
+    # Nova reports a pose relative to whatever the motion group is mounted on,
+    # which for one part of a multi-part robot is that part's own base, not the
+    # cell. And an entity logged outside the robot's frame graph is dropped by
+    # the view altogether. Both are fixed by placing these overlays in the
+    # robot's frame -- without it there is a robot and nothing else.
+    anchor = visualizer.world_frame
+    to_robot = (
+        visualizer.pose_frames({motion_group_id: list(joint_positions[0])}).get(motion_group_id)
+        if joint_positions
+        else None
+    )
+
+    def in_robot_frame(points: list) -> list:
+        """Positions as the robot's own frame sees them."""
+        if to_robot is None:
+            return points
+        placed = np.asarray(points, dtype=float) @ to_robot[:3, :3].T + to_robot[:3, 3]
+        return placed.tolist()
+
+    def anchor_to_robot(entity_path: str) -> None:
+        """Join the robot's frame graph, so the view keeps this entity."""
+        if anchor:
+            rr.log(entity_path, rr.CoordinateFrame(frame=anchor), static=True)
+
+    positions = in_robot_frame([[p.position.x, p.position.y, p.position.z] for p in tcp_poses])
+
+    anchor_to_robot(f"motion/{motion_group_id}/trajectory")
     rr.log(
         f"motion/{motion_group_id}/trajectory",
         rr.LineStrips3D([positions], colors=[[1.0, 1.0, 1.0, 1.0]]),
@@ -225,8 +301,9 @@ async def log_trajectory(
     line_segments_batch = []
     for joint_position in trajectory.joint_positions:
         robot_joint_positions = robot.calculate_joint_positions(joint_positions=joint_position.root)
-        line_segments_batch.append([robot_joint_positions])  # Wrap each as a line strip
+        line_segments_batch.append([in_robot_frame(robot_joint_positions)])
 
+    anchor_to_robot(f"motion/{motion_group_id}/dh_parameters")
     rr.send_columns(
         f"motion/{motion_group_id}/dh_parameters",
         indexes=[times_column],
@@ -237,37 +314,54 @@ async def log_trajectory(
         rr.LineStrips3D.from_fields(clear_unset=True, colors=[0.5, 0.5, 0.5, 1.0]),
     )
 
-    # Log the robot geometries
-    visualizer.log_robot_geometries(trajectory=trajectory, times_column=times_column)
+    # Log the robot geometries. Naming the motion group matters for a robot the
+    # API splits across several: the URDF holds every chain, and without a name
+    # there is no telling which one this trajectory drives.
+    visualizer.log_robot_geometries(
+        trajectory=trajectory, times_column=times_column, motion_group_id=motion_group.id
+    )
 
     # Log TCP pose/orientation
     log_tcp_pose(
         tcp_poses=tcp_poses,
         motion_group_id=motion_group_id,
         times_column=times_column,
-        tool_asset=tool_asset,
+        positions=positions,
+        frame=anchor,
     )
 
 
 def log_tcp_pose(
-    tcp_poses: list[Pose], motion_group_id: str, times_column, tool_asset: str | None = None
+    tcp_poses: list[Pose],
+    motion_group_id: str,
+    times_column,
+    tool_asset: str | None = None,
+    positions: list | None = None,
+    frame: str | None = None,
 ):
     """
     Log TCP pose (position + orientation) data.
+
+    *positions* are the same poses already placed in the robot's frame, and
+    *frame* is that frame; see :func:`log_trajectory` for why both are needed.
+    *tool_asset* is accepted and ignored: a tool's mesh belongs in the URDF, on
+    the TCP's own frame.
     """
     # Handle empty trajectory
     if not tcp_poses:
         return
 
     # Extract positions and orientations from the trajectory
-    positions = [p.position.to_tuple() for p in tcp_poses]
+    if positions is None:
+        positions = [p.position.to_tuple() for p in tcp_poses]
     orientations = R.from_rotvec([p.orientation.to_tuple() for p in tcp_poses]).as_quat()
 
-    # Log TCP and tool asset
+    # Log the TCP frame. The tool's own mesh is not drawn here: it is exported
+    # onto the TCP's frame in the URDF, which puts it on the robot.
     tcp_entity_path = f"/motion/{motion_group_id}/tcp_position"
+    if frame:
+        rr.log(tcp_entity_path, rr.CoordinateFrame(frame=frame), static=True)
     rr.log(tcp_entity_path, rr.TransformAxes3D(axis_length=100))
-    if tool_asset:
-        rr.log(tcp_entity_path, rr.Asset3D(path=tool_asset), static=True)
 
     rr.send_columns(
         tcp_entity_path,
@@ -286,8 +380,8 @@ def continue_after_sync():
     import warnings
 
     warnings.warn(
-        "continue_after_sync() is deprecated and will be removed in a future version. "
-        "Timing is now handled automatically per motion group.",
+        "continue_after_sync() is deprecated and will be removed in a future "
+        "version: each motion group carries its own clock.",
         DeprecationWarning,
         stacklevel=2,
     )

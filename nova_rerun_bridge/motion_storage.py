@@ -1,3 +1,10 @@
+"""Remember which motions have been logged, in a file beside the program.
+
+A standalone helper. The bridge places trajectories with a clock per motion
+group (:class:`~nova_rerun_bridge.trajectory.MotionGroupTimeline`) and does not
+read this file.
+"""
+
 import json
 import os
 

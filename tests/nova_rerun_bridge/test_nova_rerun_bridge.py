@@ -173,7 +173,13 @@ class TestStateStreaming:
             await asyncio.sleep(0)
 
         stream_motion_group.assert_awaited_once_with(
-            bridge, nova=mock_nova, motion_group=motion_group, tcp_name=None, target_frequency=100.0
+            bridge,
+            nova=mock_nova,
+            motion_group=motion_group,
+            tcp_name=None,
+            target_frequency=100.0,
+            show_collision=False,
+            tool_assets=None,
         )
 
 
