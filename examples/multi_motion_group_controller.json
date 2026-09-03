@@ -1,282 +1,394 @@
 [
 {
 "request": {"variable":"ADMIN_GET_SERVER_VERSION"},
-"response": {"variable":"ADMIN_GET_SERVER_VERSION","status":{"code":"CODE_OK","message":""},"version":{"major_version":1,"minor_version":5,"patch_version":0,"build_version":0}}
+"response": {"variable":"ADMIN_GET_SERVER_VERSION","status":{"code":"CODE_OK"},"version":{"major_version":2,"minor_version":5,"patch_version":2,"build_version":0}}
 },
 {
 "request": {"uid":0,"service":{"controller":"CONTROLLER_GET_VERSION"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"controller":"CONTROLLER_GET_VERSION"},"data":{"version":{"major_version":8,"minor_version":7,"patch_version":671,"build_version":0,"version_string":"V8.7.671"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"controller":"CONTROLLER_GET_VERSION"},"data":{"version":{"major_version":8,"minor_version":7,"patch_version":671,"build_version":0,"version_string":"V8.7.671"},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"controller":"CONTROLLER_GET_PROTOCOL_VERSION"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"controller":"CONTROLLER_GET_PROTOCOL_VERSION"},"data":{"version":{"major_version":3,"minor_version":9,"patch_version":0,"build_version":0,"version_string":"3.9.0.0"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"controller":"CONTROLLER_GET_PROTOCOL_VERSION"},"data":{"version":{"major_version":3,"minor_version":13,"patch_version":0,"build_version":0,"version_string":"3.13.0.0"},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"controller":"CONTROLLER_LIST_MOTION_GROUP_UIDS"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"controller":"CONTROLLER_LIST_MOTION_GROUP_UIDS"},"data":{"uint32_list":{"uint32_list":[0,1]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"controller":"CONTROLLER_LIST_MOTION_GROUP_UIDS"},"data":{"uint32_list":{"uint32_list":[0,1]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"DESCRIPTION_GET_SERIAL_NUMBER"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"DESCRIPTION_GET_SERIAL_NUMBER"},"data":{"string32_val":{"value":"1105996"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"DESCRIPTION_GET_SERIAL_NUMBER"},"data":{"string32_val":{"value":"1105996"},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"DESCRIPTION_GET_MODEL_NAME"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"DESCRIPTION_GET_MODEL_NAME"},"data":{"string64_val":{"value":"KR210_R2700_2"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"DESCRIPTION_GET_MODEL_NAME"},"data":{"string64_val":{"value":"KR210_R2700_2"},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"DESCRIPTION_GET_NAME"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"DESCRIPTION_GET_NAME"},"data":{"string64_val":{"value":"0"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"DESCRIPTION_GET_NAME"},"data":{"string64_val":{"value":"SHL01_R1"},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"DESCRIPTION_GET_DOF"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"DESCRIPTION_GET_DOF"},"data":{"uint8_val":6,"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"DESCRIPTION_GET_DOF"},"data":{"uint8_val":6,"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"description":"DESCRIPTION_GET_AXIS_TYPES"}},
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"DESCRIPTION_GET_AXIS_TYPES"},"data":{"axis_types":{"types":["AXIS_ROTATIONAL","AXIS_ROTATIONAL","AXIS_ROTATIONAL","AXIS_ROTATIONAL","AXIS_ROTATIONAL","AXIS_ROTATIONAL","AXIS_FIXED"]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"MECHANICALLIMIT_GET_MIN_JOINT_POSITION_LIMITS"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"MECHANICALLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-3.22885919,-2.44346118,-2.09439516,-6.10865259,-2.18166161,-6.10865259,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"MECHANICALLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-3.22885919,-2.44346118,-2.09439516,-6.10865259,-2.18166161,-6.10865259,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"MECHANICALLIMIT_GET_MAX_JOINT_POSITION_LIMITS"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"MECHANICALLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[3.22885919,-0.0872664675,2.93215322,6.10865259,2.18166161,6.10865259,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"MECHANICALLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[3.22885919,-0.0872664675,2.93215322,6.10865259,2.18166161,6.10865259,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"control":"CONTROL_ENABLE_MONITORING"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"control":"CONTROL_ENABLE_MONITORING"}}
+"response": {"status":{"code":"CODE_OK"},"service":{"control":"CONTROL_ENABLE_MONITORING"}}
 },
 {
 "request": {"uid":0,"service":{"control":"CONTROL_ENABLE_POSITION_CONTROL"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"control":"CONTROL_ENABLE_POSITION_CONTROL"}}
+"response": {"status":{"code":"CODE_OK"},"service":{"control":"CONTROL_ENABLE_POSITION_CONTROL"}}
 },
 {
 "request": {"uid":0,"service":{"control":"CONTROL_DISABLE_POSITION_CONTROL"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"control":"CONTROL_DISABLE_POSITION_CONTROL"}}
+"response": {"status":{"code":"CODE_OK"},"service":{"control":"CONTROL_DISABLE_POSITION_CONTROL"}}
+},
+{
+"request": {"uid":0,"service":{"control":"CONTROL_ACKNOWLEDGE_ERROR"}},
+"response": {"status":{"code":"CODE_UNIMPLEMENTED","message":"The function is unimplemented"},"service":{"control":"CONTROL_ACKNOWLEDGE_ERROR"}}
 },
 {
 "request": {"uid":0,"service":{"tcp":"TCP_LIST_UIDS"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_LIST_UIDS"},"data":{"string32_list":{"string32_list":[{"value":"0"},{"value":"1"},{"value":"16"}]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_LIST_UIDS"},"data":{"string32_list":{"string32_list":[{"value":"0"},{"value":"1"},{"value":"2"},{"value":"3"},{"value":"7"},{"value":"10"},{"value":"16"}]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"tcp":"TCP_GET_CURRENT_TOOL_CENTER_POINT"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_GET_CURRENT_TOOL_CENTER_POINT"},"data":{"tcp":{"uid":{"value":"0"},"name":{"value":"Flange"},"position_offset":{"values":[0,0,0]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_CURRENT_TOOL_CENTER_POINT"},"data":{"tcp":{"uid":{"value":"1"},"name":{"value":"RSA2500"},"position_offset":{"values":[760,207,377]},"rotation_offset":{"values":[-0.52359879016876221,0,-1.5707963705062866,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"flange_payload":"FP_LIST_UIDS"}},
+"response": {"status":{"code":"CODE_OK"},"service":{"flange_payload":"FP_LIST_UIDS"},"data":{"string32_list":{"string32_list":[{"value":"0"},{"value":"1"},{"value":"2"},{"value":"3"},{"value":"7"},{"value":"10"},{"value":"16"}]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"flange_payload":"FP_GET_CURRENT_PAYLOAD"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"flange_payload":"FP_GET_CURRENT_PAYLOAD"},"data":{"flange_payload":{"uid":{"value":"0"},"name":{"value":"Flange"},"mass":0,"center_of_mass":{"values":[0,0,0]},"moment_of_inertia":{"values":[0,0,0]}},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"flange_payload":"FP_GET_CURRENT_PAYLOAD"},"data":{"flange_payload":{"uid":{"value":"1"},"name":{"value":"1"},"mass":89.76104736328125,"center_of_mass":{"values":[140.27105712890625,69.715789794921875,209.48199462890625]},"moment_of_inertia":{"values":[5.25,5.25,8.5151386260986328]}},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"safety":"SAFETY_GET_CHECKSUM"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETY_GET_CHECKSUM"},"data":{"string32_val":{"value":"2DA33C55"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_GET_CHECKSUM"},"data":{"string32_val":{"value":"906353DE"},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"safety":"SAFETY_LIST_ZONE_IDS"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETY_LIST_ZONE_IDS"},"data":{"uint32_list":{"uint32_list":[0,1]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_LIST_ZONE_IDS"},"data":{"uint32_list":{"uint32_list":[0,10,11,12]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"safety":"SAFETY_GET_ROBOT_MODEL_GEOMETRY"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETY_GET_ROBOT_MODEL_GEOMETRY"},"data":{"robot_model_geometry_list":{"robot_model_geometry":[]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_GET_ROBOT_MODEL_GEOMETRY"},"data":{"robot_model_geometry_list":{},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"coordinate_system":"CS_LIST_USER_CS_UIDS"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"coordinate_system":"CS_LIST_USER_CS_UIDS"},"data":{"string32_list":{"string32_list":[{"value":"1"},{"value":"4"}]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"coordinate_system":"CS_LIST_USER_CS_UIDS"},"data":{"string32_list":{"string32_list":[{"value":"1"},{"value":"4"},{"value":"11"},{"value":"12"},{"value":"13"},{"value":"14"},{"value":"15"},{"value":"16"},{"value":"17"}]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"coordinate_system":"CS_GET_MOTION_GROUP_CS"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"coordinate_system":"CS_GET_MOTION_GROUP_CS"},"data":{"coordinate_system":{"uid":{"value":"100"},"name":{"value":"100"},"position_offset":{"values":[0,0,0]},"rotation_offset":{"values":[0,-0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"coordinate_system":"CS_GET_MOTION_GROUP_CS"},"data":{"coordinate_system":{"uid":{"value":"100"},"name":{"value":"100"},"position_offset":{"values":[0,0,0]},"rotation_offset":{"values":[0,-0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"description":"DESCRIPTION_GET_SERIAL_NUMBER"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"DESCRIPTION_GET_SERIAL_NUMBER"},"data":{"string32_val":{"value":"0"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"DESCRIPTION_GET_SERIAL_NUMBER"},"data":{"string32_val":{"value":"0000"},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"description":"DESCRIPTION_GET_MODEL_NAME"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"DESCRIPTION_GET_MODEL_NAME"},"data":{"string64_val":{"value":"DKP500_2"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"DESCRIPTION_GET_MODEL_NAME"},"data":{"string64_val":{"value":"DKP500_2"},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"description":"DESCRIPTION_GET_NAME"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"DESCRIPTION_GET_NAME"},"data":{"string64_val":{"value":"DKP500-2_HW_64"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"DESCRIPTION_GET_NAME"},"data":{"string64_val":{"value":"DKP500-2_HW_64"},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"description":"DESCRIPTION_GET_DOF"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"DESCRIPTION_GET_DOF"},"data":{"uint8_val":2,"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"DESCRIPTION_GET_DOF"},"data":{"uint8_val":2,"part":0,"count":0}}
+},
+{
+"request": {"uid":1,"service":{"description":"DESCRIPTION_GET_AXIS_TYPES"}},
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"DESCRIPTION_GET_AXIS_TYPES"},"data":{"axis_types":{"types":["AXIS_ROTATIONAL","AXIS_ROTATIONAL","AXIS_FIXED","AXIS_FIXED","AXIS_FIXED","AXIS_FIXED","AXIS_FIXED"]},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"description":"MECHANICALLIMIT_GET_MIN_JOINT_POSITION_LIMITS"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"MECHANICALLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-1.57079637,-3.66519165,0,0,0,0,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"MECHANICALLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-0.34906587,-3.66519165,0,0,0,0,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"description":"MECHANICALLIMIT_GET_MAX_JOINT_POSITION_LIMITS"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"MECHANICALLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[1.57079637,3.66519165,0,0,0,0,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"MECHANICALLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[0.34906587,3.66519165,0,0,0,0,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"tcp":"TCP_LIST_UIDS"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_LIST_UIDS"},"data":{"string32_list":{"string32_list":[{"value":"0"},{"value":"2"},{"value":"3"},{"value":"5"}]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_LIST_UIDS"},"data":{"string32_list":{"string32_list":[{"value":"0"},{"value":"2"},{"value":"3"},{"value":"5"}]},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"tcp":"TCP_GET_CURRENT_TOOL_CENTER_POINT"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_GET_CURRENT_TOOL_CENTER_POINT"},"data":{"tcp":{"uid":{"value":"0"},"name":{"value":"Flange"},"position_offset":{"values":[0,0,0]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_CURRENT_TOOL_CENTER_POINT"},"data":{"tcp":{"uid":{"value":"0"},"name":{"value":"Flange"},"position_offset":{"values":[0,0,0]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},"part":0,"count":0}}
+},
+{
+"request": {"uid":1,"service":{"flange_payload":"FP_LIST_UIDS"}},
+"response": {"status":{"code":"CODE_OK"},"service":{"flange_payload":"FP_LIST_UIDS"},"data":{"string32_list":{"string32_list":[{"value":"0"},{"value":"2"},{"value":"3"},{"value":"5"}]},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"flange_payload":"FP_GET_CURRENT_PAYLOAD"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"flange_payload":"FP_GET_CURRENT_PAYLOAD"},"data":{"flange_payload":{"uid":{"value":"0"},"name":{"value":"Flange"},"mass":0,"center_of_mass":{"values":[0,0,0]},"moment_of_inertia":{"values":[0,0,0]}},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"flange_payload":"FP_GET_CURRENT_PAYLOAD"},"data":{"flange_payload":{"uid":{"value":"0"},"name":{"value":"Flange"},"mass":0,"center_of_mass":{"values":[0,0,0]},"moment_of_inertia":{"values":[0,0,0]}},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"safety":"SAFETY_GET_ROBOT_MODEL_GEOMETRY"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETY_GET_ROBOT_MODEL_GEOMETRY"},"data":{"robot_model_geometry_list":{"robot_model_geometry":[]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_GET_ROBOT_MODEL_GEOMETRY"},"data":{"robot_model_geometry_list":{},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"coordinate_system":"CS_GET_MOTION_GROUP_CS"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"coordinate_system":"CS_GET_MOTION_GROUP_CS"},"data":{"coordinate_system":{"uid":{"value":"101"},"name":{"value":"101"},"position_offset":{"values":[1465.9583740234375,62.305061340332031,583.7340087890625]},"rotation_offset":{"values":[1.5647145509719849,0.00854974053800106,-1.5472335815429688,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"coordinate_system":"CS_GET_MOTION_GROUP_CS"},"data":{"coordinate_system":{"uid":{"value":"101"},"name":{"value":"101"},"position_offset":{"values":[2140.082763671875,-12.200883865356445,267.06991577148438]},"rotation_offset":{"values":[1.5750000476837158,0.0071036648005247116,-1.5669659376144409,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"custom":"CUSTOM_SET_VARIABLE"}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"custom":"CUSTOM_SET_VARIABLE"},"data":{"uint32_val":4,"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"custom":"CUSTOM_SET_VARIABLE"},"data":{"uint32_val":4,"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"safety":"SAFETY_GET_ZONE"},"data":{"uint32_val":0,"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETY_GET_ZONE"},"data":{"safety_zone":{"id":0,"name":{"value":"CellArea"},"priority":0,"restricted":true,"geometry":{"prism":{"point":[{"values":[2000,1600]},{"values":[2000,-1300]},{"values":[-3500,-1300]},{"values":[-3500,1600]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]}],"size":4,"top":2500,"bottom":0},"inverted":true},"mg_uid":0},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_GET_ZONE"},"data":{"safety_zone":{"id":0,"name":{"value":"CellArea"},"priority":0,"restricted":true,"geometry":{"prism":{"point":[{"values":[-1000,1850]},{"values":[3500,1850]},{"values":[3500,-1900]},{"values":[-1000,-1900]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]},{"values":[0,0]}],"size":4,"top":3000,"bottom":-300},"inverted":true}},"part":0,"count":0}}
 },
 {
-"request": {"uid":0,"service":{"safety":"SAFETY_GET_ZONE"},"data":{"uint32_val":1,"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETY_GET_ZONE"},"data":{"safety_zone":{"id":1,"name":{"value":"Controller"},"priority":0,"restricted":true,"geometry":{"box":{"center":{"values":[650,1000,0]},"neighbour":[{"values":[650,1600,0]},{"values":[650,1000,1400]},{"values":[-700,1000,0]}]},"inverted":false},"mg_uid":0},"part":0,"count":0}}
+"request": {"uid":0,"service":{"safety":"SAFETY_GET_ZONE"},"data":{"uint32_val":10,"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_GET_ZONE"},"data":{"safety_zone":{"id":10,"name":{"value":"MR Werkzeugrack 1"},"priority":0,"restricted":false,"geometry":{"box":{"center":{"values":[850,-1750,-300]},"neighbour":[{"values":[850,-800,-300]},{"values":[850,-1750,1100]},{"values":[-850,-1750,-300]}]},"inverted":true}},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"safety":"SAFETY_GET_ZONE"},"data":{"uint32_val":11,"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_GET_ZONE"},"data":{"safety_zone":{"id":11,"name":{"value":"MR Werkzeugrack 2"},"priority":0,"restricted":false,"geometry":{"box":{"center":{"values":[850,800,-300]},"neighbour":[{"values":[850,1750,-300]},{"values":[850,800,1100]},{"values":[-850,800,-300]}]},"inverted":true}},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"safety":"SAFETY_GET_ZONE"},"data":{"uint32_val":12,"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_GET_ZONE"},"data":{"safety_zone":{"id":12,"name":{"value":"MR Werkzeugrack 3"},"priority":0,"restricted":false,"geometry":{"box":{"center":{"values":[1750,-2000,650]},"neighbour":[{"values":[1750,-1350,650]},{"values":[1750,-2000,1250]},{"values":[950,-2000,650]}]},"inverted":true}},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"safety":"SAFETY_IS_ZONE_ACTIVE"},"data":{"uint32_val":0,"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETY_IS_ZONE_ACTIVE"},"data":{"bool_val":true,"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_IS_ZONE_ACTIVE"},"data":{"bool_val":true,"part":0,"count":0}}
 },
 {
-"request": {"uid":0,"service":{"safety":"SAFETY_IS_ZONE_ACTIVE"},"data":{"uint32_val":1,"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETY_IS_ZONE_ACTIVE"},"data":{"bool_val":false,"part":0,"count":0}}
+"request": {"uid":0,"service":{"safety":"SAFETY_IS_ZONE_ACTIVE"},"data":{"uint32_val":10,"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_IS_ZONE_ACTIVE"},"data":{"bool_val":true,"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"safety":"SAFETY_IS_ZONE_ACTIVE"},"data":{"uint32_val":11,"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_IS_ZONE_ACTIVE"},"data":{"bool_val":true,"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"safety":"SAFETY_IS_ZONE_ACTIVE"},"data":{"uint32_val":12,"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETY_IS_ZONE_ACTIVE"},"data":{"bool_val":true,"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_MANUAL_T1","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-3.22885919,-2.44346118,-2.09439516,-6.10865259,-2.18166161,-6.10865259,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-3.22885919,-2.44346118,-2.09439516,-6.10865259,-2.18166161,-6.10865259,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_MANUAL_T2","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-3.22885919,-2.44346118,-2.09439516,-6.10865259,-2.18166161,-6.10865259,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-3.22885919,-2.44346118,-2.09439516,-6.10865259,-2.18166161,-6.10865259,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_AUTO","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-3.22885919,-2.44346118,-2.09439516,-6.10865259,-2.18166161,-6.10865259,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-3.22885919,-2.44346118,-2.09439516,-6.10865259,-2.18166161,-6.10865259,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_MANUAL_T1","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[3.22885919,-0.0872664675,2.93215322,6.10865259,2.18166161,6.10865259,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[3.22885919,-0.0872664675,2.93215322,6.10865259,2.18166161,6.10865259,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_MANUAL_T2","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[3.22885919,-0.0872664675,2.93215322,6.10865259,2.18166161,6.10865259,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[3.22885919,-0.0872664675,2.93215322,6.10865259,2.18166161,6.10865259,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_AUTO","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[3.22885919,-0.0872664675,2.93215322,6.10865259,2.18166161,6.10865259,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[3.22885919,-0.0872664675,2.93215322,6.10865259,2.18166161,6.10865259,0]},"part":0,"count":0}}
 },
 {
-"request": {"uid":0,"service":{"control":"CONTROL_SELECT_ACTIVE_MOTION_GROUPS"},"data":{"uint32_list":{"uint32_list":[]},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"control":"CONTROL_SELECT_ACTIVE_MOTION_GROUPS"}}
+"request": {"uid":0,"service":{"control":"CONTROL_SELECT_ACTIVE_MOTION_GROUPS"},"data":{"uint32_list":{},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"control":"CONTROL_SELECT_ACTIVE_MOTION_GROUPS"}}
 },
 {
 "request": {"uid":1,"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_MANUAL_T1","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-1.57079637,-3.66519165,0,0,0,0,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-0.34906587,-3.66519165,0,0,0,0,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_MANUAL_T2","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-1.57079637,-3.66519165,0,0,0,0,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-0.34906587,-3.66519165,0,0,0,0,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_AUTO","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-1.57079637,-3.66519165,0,0,0,0,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-0.34906587,-3.66519165,0,0,0,0,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_MANUAL_T1","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[1.57079637,3.66519165,0,0,0,0,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[0.34906587,3.66519165,0,0,0,0,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_MANUAL_T2","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[1.57079637,3.66519165,0,0,0,0,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[0.34906587,3.66519165,0,0,0,0,0]},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"operation_mode":"OPERATION_MODE_AUTO","part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[1.57079637,3.66519165,0,0,0,0,0]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"description":"OPERATIONLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[0.34906587,3.66519165,0,0,0,0,0]},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"tcp":"TCP_SELECT_TOOL_CENTER_POINT"},"data":{"string32_val":{"value":"1"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_SELECT_TOOL_CENTER_POINT"}}
+},
+{
+"request": {"uid":0,"service":{"tcp":"TCP_SELECT_TOOL_CENTER_POINT"},"data":{"string32_val":{"value":"2"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_SELECT_TOOL_CENTER_POINT"}}
+},
+{
+"request": {"uid":0,"service":{"tcp":"TCP_SELECT_TOOL_CENTER_POINT"},"data":{"string32_val":{"value":"7"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_SELECT_TOOL_CENTER_POINT"}}
 },
 {
 "request": {"uid":0,"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"string32_val":{"value":"0"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[665,115,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[403,157,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[180,188,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-45,198,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-40,40,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-151,-130,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[114,-95,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[415,7,0]},"radius":160},"inverted":false}]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"string32_val":{"value":"1"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[665,115,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[403,157,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[180,188,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-45,198,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-40,40,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-151,-130,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[114,-95,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[415,7,0]},"radius":160},"inverted":false}]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[665,115,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[403,157,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[180,188,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-45,198,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-40,40,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-151,-130,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[114,-95,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[415,7,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-260,60,-70]},"radius":80},"inverted":false},{"sphere":{"center":{"values":[-135,210,-70]},"radius":80},"inverted":false}]},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"string32_val":{"value":"2"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[0,0,100]},"radius":95},"inverted":false},{"sphere":{"center":{"values":[0,0,280]},"radius":150},"inverted":false},{"sphere":{"center":{"values":[200,0,250]},"radius":150},"inverted":false},{"sphere":{"center":{"values":[400,0,250]},"radius":150},"inverted":false},{"sphere":{"center":{"values":[-150,0,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-150,0,375]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-150,0,500]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-260,60,-70]},"radius":80},"inverted":false},{"sphere":{"center":{"values":[-135,210,-70]},"radius":80},"inverted":false}]},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"string32_val":{"value":"3"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[0,0,150]},"radius":100},"inverted":false},{"sphere":{"center":{"values":[0,0,250]},"radius":100},"inverted":false},{"sphere":{"center":{"values":[0,0,350]},"radius":100},"inverted":false},{"sphere":{"center":{"values":[0,0,450]},"radius":100},"inverted":false},{"sphere":{"center":{"values":[0,0,550]},"radius":100},"inverted":false},{"sphere":{"center":{"values":[-260,60,-70]},"radius":80},"inverted":false},{"sphere":{"center":{"values":[-135,210,-70]},"radius":80},"inverted":false}]},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"string32_val":{"value":"7"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[665,115,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[403,157,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[180,188,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-45,198,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-40,40,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-151,-130,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[114,-95,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[415,7,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-260,60,-70]},"radius":80},"inverted":false},{"sphere":{"center":{"values":[-135,210,-70]},"radius":80},"inverted":false}]},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"string32_val":{"value":"0"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[665,115,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[403,157,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[180,188,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-45,198,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-40,40,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-151,-130,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[114,-95,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[415,7,0]},"radius":160},"inverted":false}]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"string32_val":{"value":"2"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[665,115,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[403,157,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[180,188,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-45,198,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-40,40,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-151,-130,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[114,-95,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[415,7,0]},"radius":160},"inverted":false}]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"string32_val":{"value":"3"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[665,115,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[403,157,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[180,188,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-45,198,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-40,40,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-151,-130,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[114,-95,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[415,7,0]},"radius":160},"inverted":false}]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{},"part":0,"count":0}}
 },
 {
 "request": {"uid":1,"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"string32_val":{"value":"5"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[665,115,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[403,157,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[180,188,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-45,198,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-40,40,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-151,-130,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[114,-95,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[415,7,0]},"radius":160},"inverted":false}]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"string32_val":{"value":"10"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[665,115,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[403,157,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[180,188,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-45,198,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-40,40,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-151,-130,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[114,-95,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[415,7,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-260,60,-70]},"radius":80},"inverted":false},{"sphere":{"center":{"values":[-135,210,-70]},"radius":80},"inverted":false}]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"string32_val":{"value":"16"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[665,115,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[403,157,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[180,188,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-45,198,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-40,40,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[-151,-130,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[114,-95,0]},"radius":160},"inverted":false},{"sphere":{"center":{"values":[415,7,0]},"radius":160},"inverted":false}]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_GET_TOOL_CENTER_POINT_GEOMETRY"},"data":{"geometry_list":{"geometry":[{"sphere":{"center":{"values":[665,115,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[403,157,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[180,188,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-45,198,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-40,40,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-151,-130,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[114,-95,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[415,7,250]},"radius":125},"inverted":false},{"sphere":{"center":{"values":[-260,60,-70]},"radius":80},"inverted":false},{"sphere":{"center":{"values":[-135,210,-70]},"radius":80},"inverted":false}]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"control":"CONTROL_SELECT_ACTIVE_MOTION_GROUPS"},"data":{"uint32_list":{"uint32_list":[0,1]},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"control":"CONTROL_SELECT_ACTIVE_MOTION_GROUPS"}}
+"response": {"status":{"code":"CODE_OK"},"service":{"control":"CONTROL_SELECT_ACTIVE_MOTION_GROUPS"}}
 },
 {
-"request": {"uid":0,"service":{"safety":"SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL","operation_mode":"OPERATION_MODE_NO_CONTROLLER"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-3.22885919,-2.44346118,-2.09439516,-6.10865259,-2.18166161,-6.10865259,0]},"part":0,"count":0}}
+"request": {"uid":0,"service":{"safety":"SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-3.22885919,-2.44346118,-2.09439516,-6.10865259,-2.18166161,-6.10865259,0]},"part":0,"count":0}}
 },
 {
-"request": {"uid":0,"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL","operation_mode":"OPERATION_MODE_NO_CONTROLLER"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[3.22885919,-0.0872664675,2.93215322,6.10865259,2.18166161,6.10865259,0]},"part":0,"count":0}}
+"request": {"uid":0,"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[3.22885919,-0.0872664675,2.93215322,6.10865259,2.18166161,6.10865259,0]},"part":0,"count":0}}
 },
 {
-"request": {"uid":0,"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL","operation_mode":"OPERATION_MODE_NO_CONTROLLER"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES"},"data":{"joints":{"values":[17.4532928,17.4532928,17.4532928,17.4532928,17.4532928,17.4532928,0]},"part":0,"count":0}}
+"request": {"uid":0,"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES"},"data":{"joints":{"values":[17.4532928,17.4532928,17.4532928,17.4532928,17.4532928,17.4532928,0]},"part":0,"count":0}}
 },
 {
-"request": {"uid":0,"service":{"safety":"SAFETYLIMIT_GET_MAX_TCP_VELOCITY"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL","operation_mode":"OPERATION_MODE_NO_CONTROLLER"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETYLIMIT_GET_MAX_TCP_VELOCITY"},"data":{"uint16_val":500,"part":0,"count":0}}
+"request": {"uid":0,"service":{"safety":"SAFETYLIMIT_GET_MAX_TCP_VELOCITY"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETYLIMIT_GET_MAX_TCP_VELOCITY"},"data":{"uint16_val":500,"part":0,"count":0}}
 },
 {
-"request": {"uid":1,"service":{"safety":"SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL","operation_mode":"OPERATION_MODE_NO_CONTROLLER"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-1.48352981,-3.14159274,0,0,0,0,0]},"part":0,"count":0}}
+"request": {"uid":1,"service":{"safety":"SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETYLIMIT_GET_MIN_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[-0.34906587,-3.66519165,0,0,0,0,0]},"part":0,"count":0}}
 },
 {
-"request": {"uid":1,"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL","operation_mode":"OPERATION_MODE_NO_CONTROLLER"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[1.57079637,3.31612587,0,0,0,0,0]},"part":0,"count":0}}
+"request": {"uid":1,"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_POSITION_LIMITS"},"data":{"joints":{"values":[0.34906587,3.66519165,0,0,0,0,0]},"part":0,"count":0}}
 },
 {
-"request": {"uid":1,"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL","operation_mode":"OPERATION_MODE_NO_CONTROLLER"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES"},"data":{"joints":{"values":[0.87266463,0.69813174,0,0,0,0,0]},"part":0,"count":0}}
+"request": {"uid":1,"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETYLIMIT_GET_MAX_JOINT_VELOCITIES"},"data":{"joints":{"values":[0.87266463,0.69813174,0,0,0,0,0]},"part":0,"count":0}}
 },
 {
-"request": {"uid":1,"service":{"safety":"SAFETYLIMIT_GET_MAX_TCP_VELOCITY"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL","operation_mode":"OPERATION_MODE_NO_CONTROLLER"},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"safety":"SAFETYLIMIT_GET_MAX_TCP_VELOCITY"},"data":{"uint16_val":500,"part":0,"count":0}}
+"request": {"uid":1,"service":{"safety":"SAFETYLIMIT_GET_MAX_TCP_VELOCITY"},"data":{"safety_setup_identifier":{"safety_zone_uid":0,"safety_state":"SAFETY_STATE_NORMAL"},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"safety":"SAFETYLIMIT_GET_MAX_TCP_VELOCITY"},"data":{"uint16_val":500,"part":0,"count":0}}
 },
 {
-"request": {"uid":0,"service":{"coordinate_system":"CS_LIST_USER_CS"},"data":{"string32_list":{"string32_list":[{"value":"1"},{"value":"4"}]},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"coordinate_system":"CS_LIST_USER_CS"},"data":{"coordinate_system_list":{"coordinateSystems":[{"uid":{"value":"1"},"name":{"value":"Base1"},"position_offset":{"values":[100,200,300]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"4"},"name":{"value":"ExternalToolInWorld"},"position_offset":{"values":[-0.5,-10.25,200]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"}]},"part":0,"count":0}}
+"request": {"uid":0,"service":{"io":"IO_LIST_IO_VALUES"},"data":{"string32_list":{"string32_list":[{"value":"OUT#222"}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"io":"IO_LIST_IO_VALUES"},"data":{"io_id_value_list":{"io_value_list":[{"uid":{"value":"OUT#222"},"value":{"boolean_value":true}}]},"part":0,"count":0}}
 },
 {
 "request": {"uid":0,"service":{"control":"CONTROL_SET_RTI_CLIENT_ADDRESS"},"data":{"address":{"ip":{"ipv4_a":127,"ipv4_b":0,"ipv4_c":0,"ipv4_d":1},"port":6510},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"control":"CONTROL_SET_RTI_CLIENT_ADDRESS"}}
+"response": {"status":{"code":"CODE_OK"},"service":{"control":"CONTROL_SET_RTI_CLIENT_ADDRESS"}}
 },
 {
-"request": {"uid":0,"service":{"tcp":"TCP_LIST_TOOL_CENTER_POINTS"},"data":{"string32_list":{"string32_list":[{"value":"0"},{"value":"1"},{"value":"16"}]},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_LIST_TOOL_CENTER_POINTS"},"data":{"tcp_list":{"tcps":[{"uid":{"value":"0"},"name":{"value":"Flange"},"position_offset":{"values":[0,0,0]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"1"},"name":{"value":"RSA2500"},"position_offset":{"values":[789.66912841796875,131.24066162109375,252.39234924316406]},"rotation_offset":{"values":[0.42778313159942627,-1.5236066579818726,2.0211467742919922,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"16"},"name":{"value":"meas_tip"},"position_offset":{"values":[-30.875820159912109,54.415523529052734,99.295394897460938]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"}]},"part":0,"count":0}}
+"request": {"uid":0,"service":{"io":"IO_SET_OUTPUT_VALUES"},"data":{"io_id_value_list":{"io_value_list":[{"uid":{"value":"OUT#222"},"value":{"boolean_value":true}}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"io":"IO_SET_OUTPUT_VALUES"}}
+},
+{
+"request": {"uid":0,"service":{"io":"IO_SET_OUTPUT_VALUES"},"data":{"io_id_value_list":{"io_value_list":[{"uid":{"value":"OUT#577"},"value":{"boolean_value":false}}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"io":"IO_SET_OUTPUT_VALUES"}}
+},
+{
+"request": {"uid":0,"service":{"io":"IO_SET_OUTPUT_VALUES"},"data":{"io_id_value_list":{"io_value_list":[{"uid":{"value":"OUT#578"},"value":{"boolean_value":false}}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"io":"IO_SET_OUTPUT_VALUES"}}
 },
 {
 "request": {"uid":1,"service":{"tcp":"TCP_LIST_TOOL_CENTER_POINTS"},"data":{"string32_list":{"string32_list":[{"value":"0"},{"value":"2"},{"value":"3"},{"value":"5"}]},"part":0,"count":0}},
-"response": {"status":{"code":"CODE_OK","message":""},"service":{"tcp":"TCP_LIST_TOOL_CENTER_POINTS"},"data":{"tcp_list":{"tcps":[{"uid":{"value":"0"},"name":{"value":"Flange"},"position_offset":{"values":[0,0,0]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"2"},"name":{"value":"BaseInTurnTable"},"position_offset":{"values":[-100,-150,200]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"3"},"name":{"value":"ExternalToolOnTurnTable"},"position_offset":{"values":[0.5,10.25,100]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"5"},"name":{"value":"TurnTableFlange"},"position_offset":{"values":[0,0,0]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"}]},"part":0,"count":0}}
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_LIST_TOOL_CENTER_POINTS"},"data":{"tcp_list":{"tcps":[{"uid":{"value":"0"},"name":{"value":"Flange"},"position_offset":{"values":[0,0,0]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"2"},"name":{"value":"BaseInTurnTable"},"position_offset":{"values":[-100,-150,200]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"3"},"name":{"value":"ExternalToolOnTurnTable"},"position_offset":{"values":[0.5,10.25,100]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"5"},"name":{"value":"TurnTableFlange"},"position_offset":{"values":[0,0,0]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"}]},"part":0,"count":0}}
+},
+{
+"request": {"uid":1,"service":{"flange_payload":"FP_LIST_PAYLOADS"},"data":{"string32_list":{"string32_list":[{"value":"0"},{"value":"2"},{"value":"3"},{"value":"5"}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"flange_payload":"FP_LIST_PAYLOADS"},"data":{"flange_payload_list":{"payloads":[{"uid":{"value":"0"},"name":{"value":"Flange"},"mass":0,"center_of_mass":{"values":[0,0,0]},"moment_of_inertia":{"values":[0,0,0]}},{"uid":{"value":"2"},"name":{"value":"2"},"mass":0,"center_of_mass":{"values":[0,0,0]},"moment_of_inertia":{"values":[0,0,0]}},{"uid":{"value":"3"},"name":{"value":"3"},"mass":0,"center_of_mass":{"values":[0,0,0]},"moment_of_inertia":{"values":[0,0,0]}},{"uid":{"value":"5"},"name":{"value":"5"},"mass":0,"center_of_mass":{"values":[0,0,0]},"moment_of_inertia":{"values":[0,0,0]}}]},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"io":"IO_LIST_IO_VALUES"},"data":{"string32_list":{"string32_list":[{"value":"IN#481"},{"value":"IN#482"},{"value":"IN#483"}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"io":"IO_LIST_IO_VALUES"},"data":{"io_id_value_list":{"io_value_list":[{"uid":{"value":"IN#481"},"value":{"boolean_value":true}},{"uid":{"value":"IN#482"},"value":{"boolean_value":true}},{"uid":{"value":"IN#483"},"value":{"boolean_value":true}}]},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"tcp":"TCP_LIST_TOOL_CENTER_POINTS"},"data":{"string32_list":{"string32_list":[{"value":"0"},{"value":"1"},{"value":"2"},{"value":"3"},{"value":"7"},{"value":"10"},{"value":"16"}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"tcp":"TCP_LIST_TOOL_CENTER_POINTS"},"data":{"tcp_list":{"tcps":[{"uid":{"value":"0"},"name":{"value":"Flange"},"position_offset":{"values":[0,0,0]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"1"},"name":{"value":"RSA2500"},"position_offset":{"values":[760,207,377]},"rotation_offset":{"values":[-0.52359879016876221,0,-1.5707963705062866,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"2"},"name":{"value":"DAG/Winkelwerkzeug"},"position_offset":{"values":[671,0,265]},"rotation_offset":{"values":[0,1.5707963705062866,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"3"},"name":{"value":"Exzenter"},"position_offset":{"values":[0,0,620]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"7"},"name":{"value":"Kamera"},"position_offset":{"values":[100,0,197.5]},"rotation_offset":{"values":[0,1.5707963705062866,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"10"},"name":{"value":"Tool_GRW"},"position_offset":{"values":[0,0,77]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"16"},"name":{"value":"Spitze"},"position_offset":{"values":[-2.3068931102752686,-0.44918900728225708,230.23898315429688]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"}]},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"flange_payload":"FP_LIST_PAYLOADS"},"data":{"string32_list":{"string32_list":[{"value":"0"},{"value":"1"},{"value":"2"},{"value":"3"},{"value":"7"},{"value":"10"},{"value":"16"}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"flange_payload":"FP_LIST_PAYLOADS"},"data":{"flange_payload_list":{"payloads":[{"uid":{"value":"0"},"name":{"value":"Flange"},"mass":0,"center_of_mass":{"values":[0,0,0]},"moment_of_inertia":{"values":[0,0,0]}},{"uid":{"value":"1"},"name":{"value":"1"},"mass":89.76104736328125,"center_of_mass":{"values":[140.27105712890625,69.715789794921875,209.48199462890625]},"moment_of_inertia":{"values":[5.25,5.25,8.5151386260986328]}},{"uid":{"value":"2"},"name":{"value":"2"},"mass":58.259746551513672,"center_of_mass":{"values":[52.890590667724609,7.8633918762207031,197.97200012207031]},"moment_of_inertia":{"values":[5.25,5.25,5.25]}},{"uid":{"value":"3"},"name":{"value":"3"},"mass":33.723960876464844,"center_of_mass":{"values":[-29.90550422668457,14.659425735473633,74.872001647949219]},"moment_of_inertia":{"values":[5.25,5.25,5.25]}},{"uid":{"value":"7"},"name":{"value":"7"},"mass":17.037229537963867,"center_of_mass":{"values":[-43.904178619384766,41.846435546875,38.0099983215332]},"moment_of_inertia":{"values":[5.25,5.25,5.25]}},{"uid":{"value":"10"},"name":{"value":"10"},"mass":13.037229537963867,"center_of_mass":{"values":[-43.904178619384766,41.846435546875,29.010000228881836]},"moment_of_inertia":{"values":[5.25,5.25,5.25]}},{"uid":{"value":"16"},"name":{"value":"16"},"mass":-1,"center_of_mass":{"values":[0,0,0]},"moment_of_inertia":{"values":[0,0,0]}}]},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"io":"IO_LIST_IO_VALUES"},"data":{"string32_list":{"string32_list":[{"value":"IN#116"},{"value":"IN#118"},{"value":"IN#119"},{"value":"IN#577"}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"io":"IO_LIST_IO_VALUES"},"data":{"io_id_value_list":{"io_value_list":[{"uid":{"value":"IN#116"},"value":{"boolean_value":false}},{"uid":{"value":"IN#118"},"value":{"boolean_value":false}},{"uid":{"value":"IN#119"},"value":{"boolean_value":false}},{"uid":{"value":"IN#577"},"value":{"boolean_value":false}}]},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"io":"IO_SET_OUTPUT_VALUES"},"data":{"io_id_value_list":{"io_value_list":[{"uid":{"value":"OUT#481"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#482"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#483"},"value":{"boolean_value":false}}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"io":"IO_SET_OUTPUT_VALUES"}}
+},
+{
+"request": {"uid":0,"service":{"io":"IO_SET_OUTPUT_VALUES"},"data":{"io_id_value_list":{"io_value_list":[{"uid":{"value":"OUT#481"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#482"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#483"},"value":{"boolean_value":true}}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"io":"IO_SET_OUTPUT_VALUES"}}
+},
+{
+"request": {"uid":0,"service":{"coordinate_system":"CS_LIST_USER_CS"},"data":{"string32_list":{"string32_list":[{"value":"1"},{"value":"4"},{"value":"11"},{"value":"12"},{"value":"13"},{"value":"14"},{"value":"15"},{"value":"16"},{"value":"17"}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"coordinate_system":"CS_LIST_USER_CS"},"data":{"coordinate_system_list":{"coordinateSystems":[{"uid":{"value":"1"},"name":{"value":"Base1"},"position_offset":{"values":[100,200,300]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"4"},"name":{"value":"ExternalToolInWorld"},"position_offset":{"values":[-0.5,-10.25,200]},"rotation_offset":{"values":[0,0,0,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"11"},"name":{"value":"Rack1_WZ1"},"position_offset":{"values":[259.7392578125,-1142.14453125,594.08294677734375]},"rotation_offset":{"values":[0.00549221970140934,0.0010029709665104747,1.567734956741333,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"12"},"name":{"value":"Rack1_WZ2"},"position_offset":{"values":[-300.2105712890625,-1146.349609375,594.83837890625]},"rotation_offset":{"values":[0.0092769134789705276,0.0013229771284386516,1.5728967189788818,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"13"},"name":{"value":"Rack1_WZ3"},"position_offset":{"values":[-600.1556396484375,-1148.690673828125,595.97119140625]},"rotation_offset":{"values":[0.0058664879761636257,0.0031536356545984745,1.5649585723876953,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"14"},"name":{"value":"Rack2_WZ4"},"position_offset":{"values":[-221.34892272949219,1148.3262939453125,591.0029296875]},"rotation_offset":{"values":[3.1349444389343262,-0.0029635343234986067,1.578127384185791,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"15"},"name":{"value":"Rack2_WZ5"},"position_offset":{"values":[337.07553100585938,1143.1361083984375,589.48046875]},"rotation_offset":{"values":[3.1322152614593506,-0.0028151462320238352,1.5768986940383911,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"16"},"name":{"value":"Rack2_WZ6"},"position_offset":{"values":[638.54638671875,1141.2774658203125,588.85113525390625]},"rotation_offset":{"values":[3.1363790035247803,-0.0019717507530003786,1.5770957469940186,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"},{"uid":{"value":"17"},"name":{"value":"Rack3_WZ7"},"position_offset":{"values":[1240.739013671875,-1720.205078125,741.68603515625]},"rotation_offset":{"values":[-0.0029590311460196972,0.0031230223830789328,1.5586246252059937,0]},"rotation_type":"ROTATION_EULER_ANGLES_INTRINSIC_ZYX"}]},"part":0,"count":0}}
+},
+{
+"request": {"uid":0,"service":{"io":"IO_SET_OUTPUT_VALUES"},"data":{"io_id_value_list":{"io_value_list":[{"uid":{"value":"OUT#577"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#578"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#657"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#658"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#659"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#660"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#661"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#662"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#663"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#664"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#665"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#666"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#667"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#668"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#669"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#670"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#671"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#672"},"value":{"boolean_value":false}}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"io":"IO_SET_OUTPUT_VALUES"}}
+},
+{
+"request": {"uid":0,"service":{"io":"IO_SET_OUTPUT_VALUES"},"data":{"io_id_value_list":{"io_value_list":[{"uid":{"value":"OUT#578"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#577"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#657"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#658"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#659"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#660"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#661"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#662"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#663"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#664"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#665"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#666"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#667"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#668"},"value":{"boolean_value":true}},{"uid":{"value":"OUT#669"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#670"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#671"},"value":{"boolean_value":false}},{"uid":{"value":"OUT#672"},"value":{"boolean_value":false}}]},"part":0,"count":0}},
+"response": {"status":{"code":"CODE_OK"},"service":{"io":"IO_SET_OUTPUT_VALUES"}}
 }
 ]

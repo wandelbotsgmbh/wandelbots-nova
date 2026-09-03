@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from contextlib import aclosing
 from functools import partial
 from typing import AsyncGenerator
 
@@ -131,9 +130,9 @@ def _with_collision_setup(
     """
     motion_group_setup = motion_group_setup.model_copy(deep=True)
     if motion_group_setup.collision_setups is None:
-        motion_group_setup.collision_setups = api.models.CollisionSetups({})
+        motion_group_setup.collision_setups = {}
     if collision_setup is not None:
-        motion_group_setup.collision_setups.root[key] = collision_setup
+        motion_group_setup.collision_setups[key] = collision_setup
     return motion_group_setup
 
 
@@ -185,13 +184,13 @@ class MotionGroup(AbstractRobot):
 
             if action.origin == api.models.IOOrigin.BUS_IO:
                 await self._api_client.bus_ios_api.set_bus_io_values(
-                    cell=self._cell, io_value=[api.models.IOValue(action.to_api_model())]
+                    cell=self._cell, io_value=[action.to_api_model()]
                 )
             else:
                 await self._api_client.controller_ios_api.set_output_values(
                     cell=self._cell,
                     controller=self._controller_id,
-                    io_value=[action.to_api_model()],  # ty: ignore[invalid-argument-type]
+                    io_value=[action.to_api_model()],
                 )
 
     # TODO: does this needs to be cached?
@@ -215,7 +214,7 @@ class MotionGroup(AbstractRobot):
             api.models.MotionGroupModel: The motion group model.
         """
         motion_group_description = await self._fetch_motion_group_description()
-        return motion_group_description.motion_group_model.root
+        return motion_group_description.motion_group_model
 
     async def get_setup(
         self, tcp_name: str | None = None, payload_override: str | api.models.Payload | None = None
@@ -369,11 +368,11 @@ class MotionGroup(AbstractRobot):
         description = await self._fetch_motion_group_description()
         collision_model = (
             await self._api_client.motion_group_models_api.get_motion_group_collision_model(
-                motion_group_model=description.motion_group_model.root
+                motion_group_model=description.motion_group_model
             )
         )
 
-        return api.models.LinkChain([api.models.Link(link) for link in collision_model])
+        return list(collision_model)
 
     # TODO: check the response type, it is not easy to use
     # API returns list of list of list of float ( 3 inner lists )
@@ -415,7 +414,7 @@ class MotionGroup(AbstractRobot):
         response = await self._api_client.kinematics_api.inverse_kinematics(
             cell=self._cell,
             inverse_kinematics_request=api.models.InverseKinematicsRequest(
-                motion_group_model=api.models.MotionGroupModel(motion_group_model),
+                motion_group_model=motion_group_model,
                 tcp_poses=[pose.to_api_model() for pose in poses],
                 tcp_offset=tcp_offset.to_api_model(),
                 mounting=mounting.to_api_model() if mounting is not None else None,
@@ -441,7 +440,7 @@ class MotionGroup(AbstractRobot):
         if len(joints) == 0:
             raise ValueError("Provide at least one joint configuration")
 
-        joint_positions = [api.models.DoubleArray(list(joint_config)) for joint_config in joints]
+        joint_positions = [list(joint_config) for joint_config in joints]
 
         tcp_offset = (await self.tcp_offset(tcp)).to_api_model() if tcp is not None else None
         motion_group_model = await self.get_model()
@@ -450,7 +449,7 @@ class MotionGroup(AbstractRobot):
         response = await self._api_client.kinematics_api.forward_kinematics(
             cell=self._cell,
             forward_kinematics_request=api.models.ForwardKinematicsRequest(
-                motion_group_model=api.models.MotionGroupModel(motion_group_model),
+                motion_group_model=motion_group_model,
                 joint_positions=joint_positions,
                 tcp_offset=tcp_offset,
                 mounting=mounting.to_api_model() if mounting is not None else None,
@@ -461,6 +460,35 @@ class MotionGroup(AbstractRobot):
             raise ValueError("No TCP poses returned from forward kinematics")
 
         return [Pose(tcp_pose) for tcp_pose in response.tcp_poses]
+
+    async def get_kinematic_configuration(
+        self, joints: list[tuple[float, ...]]
+    ) -> list[api.models.KinematicConfiguration]:
+        """Get the kinematic configuration for each joint configuration.
+
+        Only supported for 6-DOF robots with spherical or offset wrist. Raises an API
+        error (422) for unsupported motion groups.
+
+        Args:
+            joints: The joint configurations to compute kinematic configurations for.
+
+        Returns:
+            list[KinematicConfiguration]: One entry per input joint configuration.
+        """
+        if len(joints) == 0:
+            raise ValueError("Provide at least one joint configuration")
+
+        joint_positions = [list(j) for j in joints]
+        motion_group_model = await self.get_model()
+
+        response = await self._api_client.kinematics_api.get_kinematic_configuration(
+            cell=self._cell,
+            get_kinematic_configuration_request=api.models.GetKinematicConfigurationRequest(
+                motion_group_model=motion_group_model, joint_positions=joint_positions
+            ),
+        )
+
+        return response.kinematic_configurations
 
     async def open(self):
         # TODO if there is no explicit motion group activation, what should we do here?
@@ -518,20 +546,38 @@ class MotionGroup(AbstractRobot):
 
         This method provides a real-time stream of robot state information including
         joint positions and TCP pose data for the motion group.
+
+        All consumers of one motion group share a single underlying websocket per
+        gateway; this call only subscribes to it. The websocket is opened at the
+        rate of its first subscriber: a later subscriber asking for a slower rate
+        is downsampled client-side, one asking for a faster rate receives the
+        socket's (slower) rate and a warning is logged.
+
         Args:
             response_rate_msecs (int | None): The rate at which state updates are streamed
-                                             in milliseconds. Defaults to None for maximum rate.
+                                             in milliseconds. Defaults to None, which streams
+                                             at the controller's own step rate — the fastest
+                                             the server emits.
         """
-        response_stream = self._api_client.motion_group_api.stream_motion_group_state(
-            cell=self._cell,
-            controller=self._controller_id,
-            motion_group=self.id,
-            response_rate=response_rate_msecs,
+        subscription = self._state_stream().subscribe(response_rate_msecs)
+        try:
+            async for state in subscription:
+                yield state
+        finally:
+            await subscription.aclose()
+
+    def _state_stream(self):
+        """The shared state stream of this motion group on its gateway."""
+        return self._api_client.motion_group_state_stream(
+            cell=self._cell, controller_id=self._controller_id, motion_group_id=self.id
         )
 
-        async with aclosing(response_stream) as response_stream:
-            async for response in response_stream:
-                yield response
+    def _resolve_state_stream_rate(self, explicit_rate_msecs: int | None) -> int | None:
+        """Resolution: explicit parameter, then NovaConfig, then None (controller step rate)."""
+        if explicit_rate_msecs is not None:
+            return explicit_rate_msecs
+        config = getattr(self._api_client, "config", None)
+        return config.motion_group_state_rate_msecs if config is not None else None
 
     async def joints(self) -> tuple[float, ...]:
         """Returns the current joint positions of the motion group."""
@@ -572,7 +618,7 @@ class MotionGroup(AbstractRobot):
                 name=tcp_offset.name,
                 position=tcp_offset.pose.position,
                 # TODO: what is the correct rotation type here then?
-                orientation=api.models.Orientation(tcp_offset.pose.orientation.root)
+                orientation=list(tcp_offset.pose.orientation)
                 if tcp_offset.pose.orientation is not None
                 else None,
             )
@@ -728,7 +774,7 @@ class MotionGroup(AbstractRobot):
             cell=self._cell,
             plan_trajectory_request=api.models.PlanTrajectoryRequest(
                 motion_group_setup=motion_group_setup,
-                start_joint_position=api.models.DoubleArray(list(start_joint_position)),
+                start_joint_position=list(start_joint_position),
                 motion_commands=motion_commands,
                 singularity_handling=singularity_handling or api.models.SingularityHandling.NONE,
             ),
@@ -827,8 +873,8 @@ class MotionGroup(AbstractRobot):
                     cell=self._cell,
                     plan_collision_free_request=api.models.PlanCollisionFreeRequest(
                         motion_group_setup=motion_group_setup,
-                        start_joint_position=api.models.DoubleArray(list(start_joint_position)),
-                        target=api.models.DoubleArray(list(best_joint_solution)),
+                        start_joint_position=list(start_joint_position),
+                        target=list(best_joint_solution),
                         algorithm=action.algorithm,
                     ),
                 )
@@ -894,7 +940,7 @@ class MotionGroup(AbstractRobot):
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
 
-                current_joints = tuple(trajectory.joint_positions[-1].root)
+                current_joints = tuple(trajectory.joint_positions[-1])
             elif isinstance(batch[0], WaitAction):
                 trajectory = self._build_wait_trajectory(
                     current_joints, batch[0].wait_for_in_seconds
@@ -955,14 +1001,12 @@ class MotionGroup(AbstractRobot):
         timestep = 0.050  # 50ms timestep
         num_steps = max(2, int(wait_time / timestep) + 1)  # Ensure at least 2 points
 
-        joint_positions = [api.models.Joints(list(current_joints)) for _ in range(num_steps)]
+        joint_positions = [list(current_joints) for _ in range(num_steps)]
         times = [i * timestep for i in range(num_steps)]
         # Ensure the last timestep is exactly the wait duration
         times[-1] = wait_time
         return api.models.JointTrajectory(
-            joint_positions=joint_positions,
-            times=times,
-            locations=[api.models.Location(0.0) for _ in range(num_steps)],
+            joint_positions=joint_positions, times=times, locations=[0.0 for _ in range(num_steps)]
         )
 
     # TODO: refactor and simplify code, tests are already there
@@ -974,13 +1018,16 @@ class MotionGroup(AbstractRobot):
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncGenerator[MotionState, None]:
+        state_stream_rate = self._resolve_state_stream_rate(state_stream_rate_msecs)
         # This is the entrypoint for the trajectory tuning mode
         if ENABLE_TRAJECTORY_TUNING:
             logger.info("Entering trajectory tuning mode...")
             try:
                 async for motion_group_state in self._tune_trajectory(
-                    joint_trajectory, tcp, actions
+                    joint_trajectory, tcp, actions, state_stream_rate_msecs=state_stream_rate
                 ):
                     yield motion_group_state_to_motion_state(motion_group_state)
             except (Exception, BaseException) as e:
@@ -1000,20 +1047,22 @@ class MotionGroup(AbstractRobot):
                 motion_id=trajectory_id,
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
-                motion_group_state_stream_gen=self.stream_state,
+                # The cursor subscribes to the same shared stream this relay
+                # reads from: one state websocket per motion group, however many
+                # consumers an execution has.
+                motion_group_state_stream_gen=lambda: self._state_stream().subscribe(
+                    state_stream_rate
+                ),
+                joint_trajectory=joint_trajectory,
             )
         )
 
-        class MotionGroupStateSentinel:
-            pass
-
-        states = asyncio.Queue[api.models.MotionGroupState | MotionGroupStateSentinel]()
-        SENTINEL = MotionGroupStateSentinel()
-
-        async def monitor_motion_group_state():
-            async for motion_group_state in self.stream_state():
-                if motion_group_state.execute:
-                    states.put_nowait(motion_group_state)
+        # The relay's own subscription. The execution task acloses it when the
+        # protocol ends, which ends the iteration below; the TaskGroup exits
+        # with all children already finished, so nothing is ever cancelled into
+        # a websocket teardown (the socket itself is closed by the shared
+        # stream's pump, in its own context).
+        subscription = self._state_stream().subscribe(state_stream_rate)
 
         async def execution():
             try:
@@ -1023,24 +1072,22 @@ class MotionGroup(AbstractRobot):
                     client_request_generator=controller,  # ty: ignore[invalid-argument-type]
                 )
             finally:
-                states.put_nowait(SENTINEL)
+                await subscription.aclose()
 
         async with asyncio.TaskGroup() as tg:
-            monitor_task = tg.create_task(monitor_motion_group_state())
-
             tg.create_task(execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}")
 
-            while (motion_group_state_ := await states.get()) is not SENTINEL:
-                assert isinstance(motion_group_state_, api.models.MotionGroupState)
-                yield motion_group_state_to_motion_state(motion_group_state_)
-
-            # when the execution task finished
-            # task group will still wait for the monitoring task
-            # so we need to cancel it
-            monitor_task.cancel()
+            async for motion_group_state in subscription:
+                if motion_group_state.execute:
+                    yield motion_group_state_to_motion_state(motion_group_state)
 
     async def _tune_trajectory(
-        self, joint_trajectory: api.models.JointTrajectory, tcp: str | None, actions: list[Action]
+        self,
+        joint_trajectory: api.models.JointTrajectory,
+        tcp: str | None,
+        actions: list[Action],
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncGenerator[api.models.MotionGroupState, None]:
         start_joints = await self.joints()
 
@@ -1058,5 +1105,12 @@ class MotionGroup(AbstractRobot):
             controller=self._controller_id,
         )
         tuner = TrajectoryTuner(plan_fn, execute_fn)
-        async for response in tuner.tune(actions, self.stream_state):
+        # The tuner calls the factory zero-arg; binding the resolved rate here
+        # keeps that seam untouched (same pattern as the TrajectoryExecutor).
+        state_stream_source = (
+            partial(self.stream_state, state_stream_rate_msecs)
+            if state_stream_rate_msecs is not None
+            else self.stream_state
+        )
+        async for response in tuner.tune(actions, state_stream_source):
             yield response

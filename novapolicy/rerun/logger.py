@@ -15,9 +15,16 @@ import time
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+import numpy as np
+from scipy.spatial.transform import Rotation
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from nova_rerun_bridge.dh_robot import DHRobot
+    from nova_rerun_bridge.robot_visualizer import RobotVisualizer
+
+    from nova import api
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.rerun.streaming import StateStreamer
@@ -60,6 +67,22 @@ async def _disconnect_recording(recording: RecordingStream) -> None:
         raise error
 
 
+_WORLD_OVERLAYS = (
+    "tcp",
+    "tcp_trail",
+    "tcp_target_point",
+    "tcp_target_trail",
+    "tcp_error_vector",
+    "action_chunk",
+    "action_chunk_tail",
+    "action_chunk_tcp",
+    "action_chunk_tcp_tail",
+    "bridge_chunk",
+    "bridge_chunk_tcp",
+)
+"""Overlay paths drawn in the robot's own 3D frame, one per motion group."""
+
+
 class PolicyRerunLogger:
     """Logs policy execution data to Rerun.
 
@@ -80,20 +103,29 @@ class PolicyRerunLogger:
         self._motion_groups = motion_groups
         self._camera_names = camera_names or []
         self._use_tcp_offset_for_joint_actions = use_tcp_offset_for_joint_actions
-        if state_sample_interval_ms is None:
-            from nova.viewers import (
-                Rerun,
-                get_viewer_manager,
-            )
+        from nova.viewers import (
+            Rerun,
+            get_viewer_manager,
+        )
 
-            viewer = get_viewer_manager().get_viewer(Rerun)
+        # The program's own viewer owns how the robot is drawn, so a policy run
+        # renders the way the rest of the program does.
+        viewer = get_viewer_manager().get_viewer(Rerun)
+        if state_sample_interval_ms is None:
             state_sample_interval_ms = (
                 viewer.state_sample_interval_ms if viewer is not None else 1000.0 / 30.0
             )
         self._state_sample_interval_ms = state_sample_interval_ms
+        self._show_collision: bool | None = viewer.show_collision if viewer is not None else None
         self._dh_robots: dict[str, Any] = {}
         self._tcp_offsets: dict[str, Any] = {}  # mg_id -> 4x4 flange->TCP matrix
-        self._visualizers: dict[str, Any] = {}  # mg_id -> RobotVisualizer
+        # mg_id -> 4x4 taking a reported pose into the robot's frame. Shared by
+        # reference with the overlay loggers, so updating it here reaches them.
+        self._pose_frames: dict[str, Any] = {}
+        self._visualizers: dict[str, Any] = {}
+        # controller id -> the visualizer built for it, so a cell with several
+        # robots gets one each instead of the first one standing in for all.
+        self._by_controller: dict[str | None, Any] = {}
         self._initialized = False
         self._start_time: float = 0.0
         self._start_wall: datetime | None = None
@@ -107,16 +139,200 @@ class PolicyRerunLogger:
         # the next waypoint chunk, and it cannot afford them.
         self._sink = AsyncLogSink()
 
+    async def _register_visualizer(
+        self,
+        motion_group: MotionGroup,
+        dh_robot: DHRobot,
+        robot_model_geometries: list[Any],
+        tcp_geometries: dict[str, Any],
+    ) -> None:
+        """Give this motion group a visualizer, sharing one per robot.
+
+        One visualizer per *controller*, not per motion group: a robot is one
+        kinematic chain even where the API splits it up, and an arm cannot be
+        placed without the part it rides on. Not one per recording either, since
+        a cell can hold several robots (two UR5e arms on separate controllers is
+        the common case) and each needs its own.
+        """
+        motion_group_id = motion_group.id
+        controller_id = getattr(motion_group, "_controller_id", None)
+        if controller_id not in self._by_controller:
+            self._by_controller[controller_id] = await self._visualizer_for_controller(
+                motion_group,
+                dh_robot,
+                robot_model_geometries,
+                tcp_geometries,
+            )
+        visualizer = self._by_controller.get(controller_id)
+        if visualizer is None:
+            return
+        # Every motion group of a robot has its own volumes on its own chain;
+        # the visualizer covers the whole controller, so tell it about each.
+        visualizer.add_volumes(
+            motion_group_id,
+            dh_robot,
+            safety_links={
+                index: list(link.values())
+                for chain in robot_model_geometries
+                for index, link in enumerate(chain or [])
+            },
+            safety_tcp=tcp_geometries,
+        )
+        for driven in visualizer.motion_group_ids():
+            self._visualizers.setdefault(driven, visualizer)
+        self._visualizers[motion_group_id] = visualizer
+
+    async def _visualizer_for_controller(
+        self,
+        motion_group: MotionGroup,
+        dh_robot: DHRobot,
+        robot_model_geometries: list[Any],
+        tcp_geometries: dict[str, Any],
+    ) -> RobotVisualizer | None:
+        """Build the controller-wide visualizer, or nothing if it cannot be had.
+
+        The robot comes from a URDF, which is the only rendering path. Failing
+        to get one costs the robot in the recording, not the policy run, so it
+        is reported and the overlays carry on without it.
+        """
+        from nova_rerun_bridge.robot_visualizer import RobotVisualizer
+
+        from nova.cell.controller import Controller
+
+        controller = Controller(
+            configuration=Controller.Configuration(
+                cell_id=motion_group._cell,
+                controller_id=motion_group._controller_id,
+                id=motion_group._controller_id,
+                config=motion_group._api_client.config,
+            )
+        )
+        try:
+            return await RobotVisualizer.for_controller(
+                controller,
+                recording=self._recording,
+                static_transform=False,
+                robot=dh_robot,
+                robot_model_geometries=robot_model_geometries,
+                tcp_geometries=tcp_geometries,
+                robot_motion_group_id=motion_group.id,
+                show_collision=self._show_collision,
+            )
+        except (
+            OSError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            np.linalg.LinAlgError,
+        ) as exc:
+            logger.error("No robot visualization for %s: %s", motion_group._controller_id, exc)
+            return None
+
+    def _send_blueprint(self) -> None:
+        """Lay out the viewport and put the overlays in the robot's frame."""
+        from novapolicy.rerun.blueprint import send_blueprint
+
+        send_blueprint(
+            [mg.id for mg in self._motion_groups],
+            self._camera_names,
+            recording=self._recording,
+            extra_3d_contents=self._visualizer_entity_roots(),
+        )
+        self._anchor_overlays_to_robot_frame()
+
+    def _anchor_overlays_to_robot_frame(self) -> None:
+        """Put the policy overlays in the same coordinate frame as the robot.
+
+        A URDF-backed robot lives in Rerun's frame graph and the 3D view targets
+        that graph's root. Anything logged outside that graph gets an implicit
+        frame of its own with no path to the root, so the view drops it -- TCP
+        trails, action chunks, target markers, all of them.
+
+        The frame has to be declared on the entity that carries the geometry:
+        declaring it on the parent path does nothing for the children, which was
+        checked rather than assumed.
+        """
+        import rerun as rr
+
+        # Each motion group takes its own robot's frame: a cell can hold several
+        # robots, and one arm's overlays anchored to another arm's frame land
+        # wherever that other robot happens to be.
+        for mg in self._motion_groups:
+            visualizer = self._visualizers.get(mg.id)
+            frame = getattr(visualizer, "world_frame", None) if visualizer else None
+            if not frame:
+                continue
+            for overlay in _WORLD_OVERLAYS:
+                rr.log(
+                    f"policy/{mg.id}/{overlay}",
+                    rr.CoordinateFrame(frame=frame),
+                    static=True,
+                    recording=self._recording,
+                )
+            logger.debug("Anchored %s overlays to frame %s", mg.id, frame)
+
+    def _visualizer_entity_roots(self) -> list[str]:
+        """Entity roots of visualizers that do not log under a motion group id."""
+        roots: list[str] = []
+        for visualizer in self._visualizers.values():
+            root = getattr(visualizer, "entity_root", None)
+            if root and root not in roots:
+                roots.append(root)
+        return roots
+
+    async def _calibrate_if_needed(self) -> None:
+        """Put every motion group's overlays into the robot's frame.
+
+        A motion group's DH table describes its own segment from its own base,
+        and the controller reports ``mounting = [0, 0, 0]`` for all of them, so
+        everything drawn from a ``DHRobot`` -- TCP trails, action-chunk markers,
+        safety geometry -- otherwise lands in the chain's own base frame rather
+        than the robot's, which is how a TCP marker ends up a metre from the
+        TCP. The visualizer knows where each chain really sits, so ask it.
+        """
+        joint_values: dict[str, list[float]] = {}
+        for mg in self._motion_groups:
+            try:
+                state = await mg.get_state()
+            except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
+                logger.debug("Could not read state for %s: %s", mg.id, exc)
+                continue
+            joint_values[mg.id] = list(state.joints)
+        self._place_overlay_bases(joint_values)
+
+    def _place_overlay_bases(self, joint_values: dict[str, list[float]]) -> None:
+        """Move each overlay ``DHRobot``'s base to where its chain really sits.
+
+        A child chain rides its parent's end link, so its base is only constant
+        while the parent holds still; call this whenever the poses change.
+        """
+        from nova import api
+
+        for visualizer in {id(v): v for v in self._visualizers.values()}.values():
+            bases = getattr(visualizer, "chain_bases", None)
+            if bases is None:
+                continue
+            try:
+                placed = bases(joint_values)
+                self._pose_frames.update(visualizer.pose_frames(joint_values))
+            except (ValueError, np.linalg.LinAlgError) as exc:
+                logger.debug("Could not place overlay bases: %s", exc)
+                continue
+            for mg_id, base in placed.items():
+                dh_robot = self._dh_robots.get(mg_id)
+                if dh_robot is None:
+                    continue
+                dh_robot.mounting = api.models.Pose(
+                    position=tuple(base[:3, 3]),
+                    orientation=tuple(Rotation.from_matrix(base[:3, :3]).as_rotvec()),
+                )
+
     async def initialize(self) -> None:  # ruff: ignore[complex-structure]
         """Fetch DH parameters, create robot visualizers, and send blueprint."""
         try:
             from nova_rerun_bridge.dh_robot import DHRobot
-            from nova_rerun_bridge.model_loader import (
-                load_model_data,
-            )
-            from nova_rerun_bridge.robot_visualizer import (
-                RobotVisualizer,
-            )
 
             import rerun as rr
         except ImportError:
@@ -125,10 +341,6 @@ class PolicyRerunLogger:
 
         try:  # ruff: ignore[too-many-nested-blocks, too-many-statements-in-try-clause]
             from nova import api
-            from novapolicy._sdk import get_api_gateway
-            from novapolicy.rerun.blueprint import (
-                send_blueprint,
-            )
 
             self._start_time = time.monotonic()
             self._recording = rr.RecordingStream(
@@ -139,11 +351,9 @@ class PolicyRerunLogger:
 
             for mg in self._motion_groups:
                 description = await mg.get_description()
-                model = await mg.get_model()
-                model_data = await load_model_data(model, get_api_gateway(mg))
                 mounting = description.mounting or api.models.Pose(
-                    position=api.models.Vector3d([0, 0, 0]),
-                    orientation=api.models.RotationVector([0, 0, 0]),
+                    position=(0, 0, 0),
+                    orientation=(0, 0, 0),
                 )
                 dh_params = description.dh_parameters or []
                 dh_robot = DHRobot(dh_parameters=dh_params, mounting=mounting)
@@ -171,36 +381,23 @@ class PolicyRerunLogger:
                 if description.safety_tool_colliders is not None:
                     for colliders in description.safety_tool_colliders.values():
                         if colliders is not None:
-                            tcp_geometries = dict(colliders.root)
+                            tcp_geometries = dict(colliders)
                             break
 
                 # Safety link chain geometries
                 robot_model_geometries: list[api.models.LinkChain] = []
                 if description.safety_link_colliders is not None:
-                    robot_model_geometries = [
-                        api.models.LinkChain([
-                            api.models.Link(link.root) for link in description.safety_link_colliders
-                        ])
-                    ]
+                    robot_model_geometries = [list(description.safety_link_colliders)]
 
-                self._visualizers[mg.id] = RobotVisualizer(
-                    robot=dh_robot,
-                    robot_model_geometries=robot_model_geometries,
-                    tcp_geometries=tcp_geometries,
-                    static_transform=False,
-                    base_entity_path=mg.id,
-                    albedo_factor=[0, 255, 100],
-                    model_data=model_data,
-                    recording=self._recording,
+                await self._register_visualizer(
+                    mg, dh_robot, robot_model_geometries, tcp_geometries
                 )
                 self._tcp_trail[mg.id] = []
                 self._tcp_target_trail[mg.id] = []
 
-            send_blueprint(
-                [mg.id for mg in self._motion_groups],
-                self._camera_names,
-                recording=self._recording,
-            )
+            await self._calibrate_if_needed()
+
+            self._send_blueprint()
 
             # Set coordinate convention: NOVA uses right-handed Z-up
             rr.log(
@@ -295,6 +492,7 @@ class PolicyRerunLogger:
                 tcp_trail=self._tcp_trail,
                 max_trail_points=self._max_trail_points,
                 recording=self._recording,
+                pose_frames=self._pose_frames,
             )
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_observation error: %s", e)
@@ -405,6 +603,7 @@ class PolicyRerunLogger:
                     recording=recording,
                     target_trail=trail,
                     max_trail_points=self._max_trail_points,
+                    pose_frame=self._pose_frames.get(mg_id),
                 )
 
         self._defer(write, at=at)
@@ -449,6 +648,7 @@ class PolicyRerunLogger:
                 recording=recording,
                 target_trail=trail,
                 max_trail_points=self._max_trail_points,
+                pose_frame=self._pose_frames.get(mg_id),
             )
 
         self._defer(write, at=at)
@@ -507,6 +707,7 @@ class PolicyRerunLogger:
             tcp_trail=self._tcp_trail,
             max_trail_points=self._max_trail_points,
             recording=self._recording,
+            pose_frames=self._pose_frames,
             image_reader=image_reader,
             state_sample_interval_ms=self._state_sample_interval_ms,
         )

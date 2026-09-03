@@ -194,3 +194,7 @@ policy/examples/**/*_clone.py
 novapolicy/examples/execute_lerobot_ur3.py
 novapolicy/examples/replay_lerobot_dataset_ur3.py
 novapolicy/examples/jogging/jogging_single_tcp_teleop_oscillation.py
+
+# Local-only architecture scratch space: working notes and pre-draft analyses
+# that have not yet been distilled into an ADR (docs/architecture/adr/).
+docs/architecture/incoming/

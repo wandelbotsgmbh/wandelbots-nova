@@ -32,8 +32,8 @@ class RobotPosition:
 
 ROBOT_POSITIONS = {
     "FANUC": RobotPosition(
-        mounting=api.models.Vector3d([600, 0, 350]),
-        orientation=api.models.Orientation([0, 0, 0]),
+        mounting=[600, 0, 350],
+        orientation=[0, 0, 0],
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(1000, 0, 100, pi, 0, 0),  # TCP down
         # Halfway between FANUC and KUKA
@@ -42,8 +42,8 @@ ROBOT_POSITIONS = {
         motion_group_id=1,
     ),
     "KUKA": RobotPosition(
-        mounting=api.models.Vector3d([0, 600, 0]),
-        orientation=api.models.Orientation([0, 0, pi / 2]),
+        mounting=[0, 600, 0],
+        orientation=[0, 0, pi / 2],
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(0, 1000, 100, pi, 0, 0),  # TCP down
         # Halfway between KUKA and YASKAWA
@@ -52,8 +52,8 @@ ROBOT_POSITIONS = {
         motion_group_id=0,
     ),
     "YASKAWA": RobotPosition(
-        mounting=api.models.Vector3d([-600, 0, 350]),
-        orientation=api.models.Orientation([0, 0, pi]),
+        mounting=[-600, 0, 350],
+        orientation=[0, 0, pi],
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(-1000, 0, 100, pi, 0, 0),  # TCP down
         # Halfway between YASKAWA and ABB
@@ -62,8 +62,8 @@ ROBOT_POSITIONS = {
         motion_group_id=0,
     ),
     "ABB": RobotPosition(
-        mounting=api.models.Vector3d([0, -600, 0]),
-        orientation=api.models.Orientation([0, 0, -pi / 2]),
+        mounting=[0, -600, 0],
+        orientation=[0, 0, -pi / 2],
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(0, -1000, 100, pi, 0, 0),  # TCP down
         # Halfway between ABB and FANUC

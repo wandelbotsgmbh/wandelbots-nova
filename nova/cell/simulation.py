@@ -110,8 +110,8 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
 
     async def get_motion_group_setup(self, tcp_name: str) -> api.models.MotionGroupSetup:
         tcp_pose = self.configuration.tools[tcp_name]
-        tcp_pos = api.models.Vector3d(tcp_pose.position.to_tuple())
-        tcp_ori = api.models.RotationVector([0, 0, 0])
+        tcp_pos = tcp_pose.position.to_tuple()
+        tcp_ori = (0, 0, 0)
         # quat = Rotation.from_rotvec(self.configuration.tools[tcp_name].orientation)
         # tcp_ori.x, tcp_ori.y, tcp_ori.z, tcp_ori.w = quat[0], quat[1], quat[2], quat[3]
         joint_limits = api.models.JointLimits(
@@ -125,13 +125,10 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         )
         global_limits = api.models.LimitSet(joints=[joint_limits], tcp=tcp_limits)
         tcp = api.models.Pose(position=tcp_pos, orientation=tcp_ori)
-        mounting = api.models.Pose(
-            position=api.models.Vector3d([0, 0, 0]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        )
+        mounting = api.models.Pose(position=(0, 0, 0), orientation=(0, 0, 0))
         payload = api.models.Payload(name="example", payload=0.0)
         return api.models.MotionGroupSetup(
-            motion_group_model=api.models.MotionGroupModel("FANUC_CRX25iA"),
+            motion_group_model="FANUC_CRX25iA",
             mounting=mounting,
             tcp_offset=tcp,
             global_limits=global_limits,
@@ -245,9 +242,9 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             current_joints = final_joints
 
         return api.models.JointTrajectory(
-            joint_positions=[api.models.Joints(list(j)) for j in joint_positions],
+            joint_positions=[list(j) for j in joint_positions],
             times=times,
-            locations=list(api.models.Location(float(location)) for location in locations),
+            locations=[float(location) for location in locations],
         )
 
     async def _execute(
@@ -258,6 +255,8 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """
         Executes the given joint_trajectory by simulating the robot's motion.
@@ -302,7 +301,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             current_pose = naive_joints_to_pose(tuple(joints))
             motion_state = MotionState(
                 motion_group_id=self.id,
-                path_parameter=float(location.root),
+                path_parameter=float(location),
                 state=RobotState(pose=current_pose, tcp=tcp, joints=tuple(joints)),
             )
 

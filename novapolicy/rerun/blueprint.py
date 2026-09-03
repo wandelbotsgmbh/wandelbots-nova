@@ -31,8 +31,14 @@ def send_blueprint(
     camera_names: list[str],
     *,
     recording: RecordingStream | None = None,
+    extra_3d_contents: list[str] | None = None,
 ) -> None:
-    """Send a Rerun blueprint with 3D view, camera panels, joints, and text logs."""
+    """Send a Rerun blueprint with 3D view, camera panels, joints, and text logs.
+
+    *extra_3d_contents* names entity roots to include in the 3D view beyond the
+    per-motion-group ones, for a robot logged somewhere else -- a URDF covering a
+    whole controller lives under the controller, not under a motion group.
+    """
 
     # Motion-group ids can contain characters that Rerun escapes in entity paths
     # (e.g. "@" in "0@ur10e" is stored as "0\@ur10e"). Blueprint content filters
@@ -43,6 +49,10 @@ def send_blueprint(
     contents_3d = ["coordinate_system_world/**", "motion/**", "collision_scenes/**"]
     for mg_id in escaped_ids:
         contents_3d.extend([f"{mg_id}/**", f"policy/{mg_id}/**"])
+    for root in extra_3d_contents or []:
+        entry = f"{rr.escape_entity_path_part(root)}/**"
+        if entry not in contents_3d:
+            contents_3d.append(entry)
 
     views: list[Any] = [
         rrb.Spatial3DView(contents=contents_3d, name="3D View", background=[20, 22, 35]),

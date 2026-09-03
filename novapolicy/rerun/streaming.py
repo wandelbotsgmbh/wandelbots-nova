@@ -10,6 +10,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from novapolicy.rerun.constants import MIN_LINE_STEPS, TCP_TRAIL_COLOR, TRAIL_WIDTH_UI
+from novapolicy.rerun.observation import to_robot_frame
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -37,6 +38,7 @@ class StateStreamer:
         *,
         start_time: float,
         dh_robots: dict[str, Any],
+        pose_frames: dict[str, Any] | None = None,
         visualizers: dict[str, Any],
         tcp_trail: dict[str, list[list[float]]],
         max_trail_points: int,
@@ -46,6 +48,7 @@ class StateStreamer:
     ) -> None:
         self._start_time = start_time
         self._dh_robots = dh_robots
+        self._pose_frames = pose_frames if pose_frames is not None else {}
         self._visualizers = visualizers
         self._tcp_trail = tcp_trail
         self._max_trail_points = max_trail_points
@@ -180,17 +183,19 @@ class StateStreamer:
 
         joints = list(state.joints)
 
-        # Update 3D robot mesh position
+        # Update 3D robot mesh position. Keyed by motion group: one visualizer
+        # can hold several of a robot's chains, and a bare list of joint values
+        # would not say which of them this state belongs to.
         visualizer = self._visualizers.get(mg_id)
         if visualizer is not None:
-            visualizer.log_robot_geometry(joint_position=joints)
+            visualizer.log_robot_geometry(joint_position={mg_id: joints})
 
         # TCP trail: prefer the actual TCP pose reported by the robot (honours
         # the active/jogged TCP offset). Fall back to DH flange FK if no pose.
         tcp_pos: list[float] | None = None
         pose = getattr(state, "pose", None)
         if pose is not None:
-            tcp_pos = list(pose.position)
+            tcp_pos = to_robot_frame(list(pose.position), self._pose_frames.get(mg_id))
         else:
             dh_robot = self._dh_robots.get(mg_id)
             if dh_robot is not None:

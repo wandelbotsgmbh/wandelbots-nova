@@ -30,10 +30,7 @@ def _build_mock_motion_group(
     # State (used by joints(), _fetch_state, active_payload_name)
     mock_state = MagicMock()
     mock_state.joint_position = [0.0, -1.57, -1.57, 0.0, 0.0, 0.0]
-    mock_state.tcp_pose = models.Pose(
-        position=models.Vector3d([0.0, 0.0, 0.0]),
-        orientation=models.RotationVector([0.0, 0.0, 0.0]),
-    )
+    mock_state.tcp_pose = models.Pose(position=[0.0, 0.0, 0.0], orientation=[0.0, 0.0, 0.0])
     mock_state.tcp = None
     mock_state.payload = active_payload
     mock_api_client.motion_group_api = MagicMock()
@@ -43,7 +40,7 @@ def _build_mock_motion_group(
 
     # Description (used by get_setup, payloads(), tcps())
     mock_description = MagicMock()
-    mock_description.motion_group_model = models.MotionGroupModel("test-model")
+    mock_description.motion_group_model = "test-model"
     mock_description.cycle_time = 8
     mock_description.mounting = None
     mock_description.tcps = None
@@ -60,12 +57,9 @@ def _build_mock_motion_group(
     # Trajectory planning (returns a trivial trajectory; we'll capture the request)
     mock_plan_response = MagicMock()
     mock_plan_response.response = models.JointTrajectory(
-        joint_positions=[
-            models.Joints([0.0, -1.57, -1.57, 0.0, 0.0, 0.0]),
-            models.Joints([0.1, -1.47, -1.47, 0.1, 0.1, 0.1]),
-        ],
+        joint_positions=[[0.0, -1.57, -1.57, 0.0, 0.0, 0.0], [0.1, -1.47, -1.47, 0.1, 0.1, 0.1]],
         times=[0.0, 1.0],
-        locations=[models.Location(0.0), models.Location(1.0)],
+        locations=[0.0, 1.0],
     )
     mock_api_client.trajectory_planning_api = MagicMock()
     mock_api_client.trajectory_planning_api.plan_trajectory = AsyncMock(
@@ -245,9 +239,7 @@ class TestPlanForwardsPayload:
         )
         original_payload = _payload("from_setup", 0.1)
         supplied_setup = models.MotionGroupSetup(
-            motion_group_model=models.MotionGroupModel("test-model"),
-            cycle_time=8,
-            payload=original_payload,
+            motion_group_model="test-model", cycle_time=8, payload=original_payload
         )
         override = _payload("override", 4.4)
 
@@ -293,9 +285,7 @@ class TestPayloadOverrideWarning:
     @pytest.mark.asyncio
     async def test_plan_with_setup_and_payload_object_logs_warning(self, caplog):
         mg, _ = _build_mock_motion_group(payloads={"a": _payload("a", 1.0)}, active_payload=None)
-        supplied_setup = models.MotionGroupSetup(
-            motion_group_model=models.MotionGroupModel("test-model"), cycle_time=8
-        )
+        supplied_setup = models.MotionGroupSetup(motion_group_model="test-model", cycle_time=8)
         custom = _payload("custom", 5.0)
         with caplog.at_level("INFO", logger="nova.cell.motion_group"):
             await mg.plan(
@@ -350,9 +340,9 @@ def _trajectory_signature(
     positions = trajectory.joint_positions or []
     duration = trajectory.times[-1] if trajectory.times else 0.0
     n = len(positions)
-    first = tuple(positions[0].root) if n > 0 else ()
-    mid = tuple(positions[n // 2].root) if n > 0 else ()
-    final = tuple(positions[-1].root) if n > 0 else ()
+    first = tuple(positions[0]) if n > 0 else ()
+    mid = tuple(positions[n // 2]) if n > 0 else ()
+    final = tuple(positions[-1]) if n > 0 else ()
     return duration, n, first, mid, final
 
 
@@ -369,9 +359,7 @@ async def test_payload_changes_planned_trajectory(ur_mg):
     target_joints = (pi / 4, -pi / 3, pi / 3, pi / 6, -pi / 6, pi / 4)
 
     light = api.models.Payload(name="light", payload=0.1)
-    heavy = api.models.Payload(
-        name="heavy", payload=10.0, center_of_mass=api.models.Vector3d([0.0, 0.0, 100.0])
-    )
+    heavy = api.models.Payload(name="heavy", payload=10.0, center_of_mass=[0.0, 0.0, 100.0])
 
     try:
         light_traj = await ur_mg.plan(

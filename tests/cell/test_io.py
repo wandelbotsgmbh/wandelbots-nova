@@ -60,7 +60,7 @@ async def setup_virtual_profinet() -> AsyncGenerator[tuple[str, ...], None]:
             bus_io_service_ready.set()
         except Exception:
             await nova.api.bus_ios_api.add_bus_io_service(
-                cell="cell", bus_io_type=api.models.BusIOType(api.models.BusIOProfinetVirtual())
+                cell="cell", bus_io_type=api.models.BusIOProfinetVirtual()
             )
 
         # Wait (event-driven) until the bus IO service reports CONNECTED instead of a

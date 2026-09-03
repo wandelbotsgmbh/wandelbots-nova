@@ -1,5 +1,6 @@
 import uuid
 from enum import Enum, auto
+from typing import Any
 
 import numpy as np
 import rerun as rr
@@ -157,7 +158,7 @@ async def log_motion(
         raise ValueError("DH parameters cannot be None")
 
     mounting = motion_group_setup.mounting or api.models.Pose(
-        position=api.models.Vector3d([0, 0, 0]), orientation=api.models.RotationVector([0, 0, 0])
+        position=(0, 0, 0), orientation=(0, 0, 0)
     )
     robot = DHRobot(dh_parameters=motion_group_description.dh_parameters, mounting=mounting)
 
@@ -171,19 +172,12 @@ async def log_motion(
         if motion_group_description.safety_tool_colliders is not None:
             tool_colliders = motion_group_description.safety_tool_colliders.get(tcp)
             if tool_colliders is not None:
-                tcp_geometries = dict(tool_colliders.root)
+                tcp_geometries = dict(tool_colliders)
 
         # Build safety link chain
-        safety_link_chain: list[api.models.LinkChain] = []
+        safety_link_chain: list[Any] = []
         if motion_group_description.safety_link_colliders is not None:
-            safety_link_chain = [
-                api.models.LinkChain(
-                    [
-                        api.models.Link(link.root)
-                        for link in motion_group_description.safety_link_colliders
-                    ]
-                )
-            ]
+            safety_link_chain = [list(motion_group_description.safety_link_colliders)]
 
         # A tool mesh belongs on the robot, not beside it: exported onto this
         # TCP's frame, it rides the arm through the whole trajectory.
@@ -260,7 +254,7 @@ async def log_trajectory(
     motion_group_id = motion_group.id
 
     # TODO: calculate tcp pose from joint positions
-    joint_positions = [tuple(p.root) for p in trajectory.joint_positions]
+    joint_positions = [tuple(p) for p in trajectory.joint_positions]
     tcp_poses = await motion_group.forward_kinematics(joints=joint_positions, tcp=tcp)
 
     # Nova reports a pose relative to whatever the motion group is mounted on,
@@ -300,7 +294,7 @@ async def log_trajectory(
     # Calculate and log joint positions
     line_segments_batch = []
     for joint_position in trajectory.joint_positions:
-        robot_joint_positions = robot.calculate_joint_positions(joint_positions=joint_position.root)
+        robot_joint_positions = robot.calculate_joint_positions(joint_positions=joint_position)
         line_segments_batch.append([in_robot_frame(robot_joint_positions)])
 
     anchor_to_robot(f"motion/{motion_group_id}/dh_parameters")

@@ -33,7 +33,7 @@ START = (0.0,) * 6
 def _controller_max_description() -> models.MotionGroupDescription:
     """A description whose auto (controller-max) limits are deliberately high."""
     return models.MotionGroupDescription(
-        motion_group_model=models.MotionGroupModel("UniversalRobots_UR5e"),
+        motion_group_model="UniversalRobots_UR5e",
         operation_limits=models.OperationLimits(
             auto_limits=models.LimitSet(
                 joints=[
@@ -58,9 +58,7 @@ def _motion_group() -> MotionGroup:
 
 def _joint_trajectory() -> models.JointTrajectory:
     return models.JointTrajectory(
-        joint_positions=[models.Joints([0.0] * 6), models.Joints([0.1] * 6)],
-        times=[0.0, 1.0],
-        locations=[models.Location(0.0), models.Location(1.0)],
+        joint_positions=[[0.0] * 6, [0.1] * 6], times=[0.0, 1.0], locations=[0.0, 1.0]
     )
 
 
@@ -73,12 +71,9 @@ def _collision_free_response(traj: models.JointTrajectory) -> MagicMock:
 def _collision_setup() -> models.CollisionSetup:
     collider = models.Collider(
         shape=models.Sphere(radius=1.0),
-        pose=models.Pose(
-            position=models.Vector3d([1.0, 0.0, 0.0]),
-            orientation=models.RotationVector([0.0, 0.0, 0.0]),
-        ),
+        pose=models.Pose(position=[1.0, 0.0, 0.0], orientation=[0.0, 0.0, 0.0]),
     )
-    return models.CollisionSetup(colliders=models.ColliderDictionary({"c": collider}))
+    return models.CollisionSetup(colliders={"c": collider})
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +122,7 @@ async def test_collision_check_does_not_mutate_caller_setup():
 
     # The caller's setup must be untouched: limits unchanged and no "collision-check" key added.
     assert setup.global_limits.tcp.velocity == CONTROLLER_MAX_TCP_VELOCITY
-    assert "collision-check" not in setup.collision_setups.root
+    assert "collision-check" not in setup.collision_setups
 
 
 # ---------------------------------------------------------------------------
@@ -248,9 +243,7 @@ async def test_collision_free_clamps_joint_limits_above_controller_max():
 
 
 def _bare_setup() -> models.MotionGroupSetup:
-    return models.MotionGroupSetup(
-        motion_group_model=models.MotionGroupModel("test"), cycle_time=8, collision_setups=None
-    )
+    return models.MotionGroupSetup(motion_group_model="test", cycle_time=8, collision_setups=None)
 
 
 def test_with_collision_setup_registers_under_key():
@@ -259,7 +252,7 @@ def test_with_collision_setup_registers_under_key():
     result = _with_collision_setup(_bare_setup(), "collision-check", collision_setup)
 
     assert result.collision_setups is not None
-    assert result.collision_setups.root["collision-check"] == collision_setup
+    assert result.collision_setups["collision-check"] == collision_setup
 
 
 def test_with_collision_setup_does_not_mutate_caller():
@@ -269,11 +262,11 @@ def test_with_collision_setup_does_not_mutate_caller():
 
     # Input setup is deep-copied: its collision_setups stays None.
     assert setup.collision_setups is None
-    assert "collision-check" in result.collision_setups.root
+    assert "collision-check" in result.collision_setups
 
 
 def test_with_collision_setup_none_collision_is_noop():
     result = _with_collision_setup(_bare_setup(), "collision-check", None)
 
     assert result.collision_setups is not None
-    assert "collision-check" not in result.collision_setups.root
+    assert "collision-check" not in result.collision_setups

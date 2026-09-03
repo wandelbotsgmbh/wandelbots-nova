@@ -12,6 +12,7 @@ from novapolicy.rerun.constants import (
     TRAIL_WIDTH_UI,
 )
 from novapolicy.rerun.logtime import elapsed_since
+from novapolicy.rerun.observation import to_robot_frame
 import rerun as rr
 
 _TCP_POSITION_DIMS = 3
@@ -64,13 +65,21 @@ def log_joint_tcp_tracking(
     recording: RecordingStream | None,
     target_trail: list[list[float]] | None = None,
     max_trail_points: int = 500,
+    pose_frame: object | None = None,
 ) -> None:
-    """Log TCP position/error derived from a commanded joint target."""
+    """Log TCP position/error derived from a commanded joint target.
+
+    The target is derived from a ``DHRobot`` based in the robot's frame, while
+    Nova reports the actual pose relative to whatever the chain is mounted on,
+    so *pose_frame* brings the two together. Without it the error vector runs
+    from the TCP to a point a metre below the robot, and the error scalars read
+    that whole offset.
+    """
     if len(target_position) < _TCP_POSITION_DIMS:
         return
 
     target_position = target_position[:_TCP_POSITION_DIMS]
-    actual_position = list(actual.position)
+    actual_position = to_robot_frame(list(actual.position), pose_frame)
     position_error = [target_position[i] - actual_position[i] for i in range(3)]
 
     _set_time(step, start_time, recording)
@@ -101,14 +110,18 @@ def log_tcp_tracking(
     recording: RecordingStream | None,
     target_trail: list[list[float]] | None = None,
     max_trail_points: int = 500,
+    pose_frame: object | None = None,
 ) -> None:
-    """Log commanded TCP pose, actual TCP pose, and tracking error."""
+    """Log commanded TCP pose, actual TCP pose, and tracking error.
+
+    See :func:`log_joint_tcp_tracking` for what *pose_frame* is for.
+    """
     if len(target) < _TCP_DIMS:
         return
 
     target_position = target[:3]
     target_orientation = target[3:6]
-    actual_position = list(actual.position)
+    actual_position = to_robot_frame(list(actual.position), pose_frame)
     actual_orientation = list(actual.orientation)
     position_error = [target_position[i] - actual_position[i] for i in range(3)]
     orientation_error = [target_orientation[i] - actual_orientation[i] for i in range(3)]

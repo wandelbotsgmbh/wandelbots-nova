@@ -152,9 +152,9 @@ class TestRerunViewer:
         """Create a mock trajectory with the given number of samples."""
         from nova import api
 
-        joint_positions = [api.models.Joints(root=[float(i) * 0.1] * 6) for i in range(n_samples)]
+        joint_positions = [[float(i) * 0.1] * 6 for i in range(n_samples)]
         times = [float(i) * 0.01 for i in range(n_samples)]
-        locations = [api.models.Location(root=float(i)) for i in range(n_samples)]
+        locations = [float(i) for i in range(n_samples)]
 
         return api.models.JointTrajectory(
             joint_positions=joint_positions, times=times, locations=locations
@@ -660,11 +660,11 @@ class TestTrajectoryDownsampling:
         for i in range(n_samples):
             # Add some noise and joint-specific offsets
             joints = [base_positions[i] + j * 0.1 for j in range(n_joints)]
-            joint_positions.append(api.models.Joints(root=joints))
+            joint_positions.append(joints)
 
         # Time in seconds, spread over duration_seconds
         times = [float(i) * duration_seconds / max(1, n_samples - 1) for i in range(n_samples)]
-        locations = [api.models.Location(root=float(i)) for i in range(n_samples)]
+        locations = [float(i) for i in range(n_samples)]
 
         return api.models.JointTrajectory(
             joint_positions=joint_positions, times=times, locations=locations
@@ -688,11 +688,11 @@ class TestTrajectoryDownsampling:
                 # Low curvature section (straight motion)
                 angle = t * np.pi
             joints = [angle + j * 0.1 for j in range(6)]
-            joint_positions.append(api.models.Joints(root=joints))
+            joint_positions.append(joints)
 
         # Time in seconds
         times = [float(i) * duration_seconds / max(1, n_samples - 1) for i in range(n_samples)]
-        locations = [api.models.Location(root=float(i)) for i in range(n_samples)]
+        locations = [float(i) for i in range(n_samples)]
 
         return api.models.JointTrajectory(
             joint_positions=joint_positions, times=times, locations=locations
@@ -742,8 +742,8 @@ class TestTrajectoryDownsampling:
         result = downsample_trajectory(trajectory, sample_interval_ms=100.0)
 
         # First and last should be preserved
-        assert result.joint_positions[0].root == trajectory.joint_positions[0].root
-        assert result.joint_positions[-1].root == trajectory.joint_positions[-1].root
+        assert result.joint_positions[0] == trajectory.joint_positions[0]
+        assert result.joint_positions[-1] == trajectory.joint_positions[-1]
         assert result.times[0] == trajectory.times[0]
         assert result.times[-1] == trajectory.times[-1]
 
@@ -813,9 +813,7 @@ class TestTrajectoryDownsampling:
         from nova.viewers.utils import downsample_trajectory
 
         trajectory = api.models.JointTrajectory(
-            joint_positions=[api.models.Joints(root=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0])],
-            times=[0.0],
-            locations=[api.models.Location(root=0.0)],
+            joint_positions=[[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], times=[0.0], locations=[0.0]
         )
         result = downsample_trajectory(trajectory, sample_interval_ms=50.0)
 

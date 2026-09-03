@@ -14,7 +14,7 @@ what keeps a zone sitting on the arm it belongs to.
 
 from dataclasses import dataclass
 import warnings
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import rerun as rr
@@ -133,17 +133,17 @@ class RobotVisualizer:
         # What the API says about collision volumes, for callers that read it.
         # Drawing comes from the URDF; see the constructor's docstring.
         self.collision_link_geometries: list[Any] = (
-            collision_link_chain.root if collision_link_chain else []
+            cast(list[Any], collision_link_chain) if collision_link_chain else []
         )
         self.collision_tcp_geometries: dict[str, api.models.Collider] = (
-            collision_tcp.root if collision_tcp else {}
+            collision_tcp if collision_tcp else {}
         )
         self._logged_shapes: set[str] = set()
 
         self.link_geometries: dict[int, list[api.models.Collider]] = {}
         for link_chain in robot_model_geometries or []:
-            for link_index, link in enumerate(link_chain.root or []):
-                self.link_geometries.setdefault(link_index, []).extend(link.root.values())
+            for link_index, link in enumerate(link_chain or []):
+                self.link_geometries.setdefault(link_index, []).extend(link.values())
 
         if robot is not None:
             self.add_volumes(

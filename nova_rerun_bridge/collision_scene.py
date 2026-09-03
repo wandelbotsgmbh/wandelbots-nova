@@ -8,7 +8,7 @@ def log_collision_setups(collision_setups: dict[str, api.models.CollisionSetup])
     for setup_id, setup in collision_setups.items():
         entity_path = f"collision_setups/{rr.escape_entity_path_part(setup_id)}"
         if setup.colliders:
-            for collider_id, collider in setup.colliders.root.items():
+            for collider_id, collider in setup.colliders.items():
                 log_colliders_once(entity_path, {collider_id: collider})
 
 

@@ -44,7 +44,7 @@ async def test_pause_on_io_in_context_initialization():
     )
 
     assert context.pause_on_io is not None
-    assert context.pause_on_io.io.root.io == "OUT#900"
+    assert context.pause_on_io.io.io == "OUT#900"
     assert context.pause_on_io.comparator == api.models.Comparator.COMPARATOR_EQUALS
 
 
@@ -80,10 +80,8 @@ async def test_move_forward_controller_includes_pause_on_io_in_start_request():
     controller_fn = move_forward(context)
 
     async def mock_response_stream():
-        yield api.models.ExecuteTrajectoryResponse(
-            root=api.models.InitializeMovementResponse(message=None, add_trajectory_error=None)
-        )
-        yield api.models.ExecuteTrajectoryResponse(root=api.models.StartMovementResponse())
+        yield api.models.InitializeMovementResponse(message=None, add_trajectory_error=None)
+        yield api.models.StartMovementResponse()
 
     start_request = None
     async for request in controller_fn(mock_response_stream()):
@@ -93,7 +91,7 @@ async def test_move_forward_controller_includes_pause_on_io_in_start_request():
 
     assert start_request is not None
     assert start_request.pause_on_io is not None
-    assert start_request.pause_on_io.io.root.io == "OUT#900"
+    assert start_request.pause_on_io.io.io == "OUT#900"
 
 
 @pytest.mark.asyncio

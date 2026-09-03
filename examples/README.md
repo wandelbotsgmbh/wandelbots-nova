@@ -10,10 +10,9 @@ Examples on how to use the wandelbots-nova library.
 4. [Coordinate multiple motion groups](multi_motion_group.py)
 5. [Multi-step collision free movement](multi_step_movement_with_collision_free.py)
 6. [Cycle events](cycle_events.py)
-7. [Run Wandelscript files](run_wandelscript_file.py)
-8. [Serialize program](serialize_program.py)
-9. [Merge trajectories with blending](merge_trajectories.py)
-10. [Kinematic configuration](kinematic_configuration.py)
+7. [Serialize program](serialize_program.py)
+8. [Merge trajectories with blending](merge_trajectories.py)
+9. [Kinematic configuration](kinematic_configuration.py)
 
 ## Usage
 
