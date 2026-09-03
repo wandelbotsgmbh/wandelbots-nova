@@ -6,12 +6,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from pydantic import ValidationError
 
 from nova import api
 from nova import datasets as ds
 from nova.core.nova import Nova
-from nova.datasets import Dataset, LoadLocalDatasetRequest
+from nova.datasets import Dataset, DatasetError, DatasetNotFoundError, LoadLocalDatasetRequest
 
 _TIMESTAMP = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
 
@@ -45,6 +44,9 @@ def _dataset_response(dataset_id: str = "source-set") -> api.models.GetDatasetRe
 def _nova_mock(**api_returns) -> Nova:
     """A Nova whose `datasets_api` methods return the given values.
 
+    A value that is an `Exception` instance is raised instead of returned, so
+    callers can simulate a failing API call.
+
     Deliberately leaves `is_connected` unstubbed: dataset operations go over plain HTTP
     through `ApiGateway`, so none of them may depend on the NATS connection state.
     """
@@ -52,7 +54,10 @@ def _nova_mock(**api_returns) -> Nova:
     nova.cell.return_value = Mock(id="cell")
     datasets_api = Mock()
     for name, value in api_returns.items():
-        setattr(datasets_api, name, AsyncMock(return_value=value))
+        if isinstance(value, Exception):
+            setattr(datasets_api, name, AsyncMock(side_effect=value))
+        else:
+            setattr(datasets_api, name, AsyncMock(return_value=value))
     nova.api = Mock(datasets_api=datasets_api)
     return nova
 
@@ -71,6 +76,11 @@ class TestAllDatasets:
         nova.api.datasets_api.get_datasets.assert_awaited_once_with(
             cell="cell", dataset="default", latest_only=True
         )
+
+    async def test_server_error_raises_dataset_error(self):
+        nova = _nova_mock(get_datasets=api.ApiException(status=500, reason="boom"))
+        with pytest.raises(DatasetError):
+            await ds.list_all(nova)
 
 
 class TestCreateAndDeleteDataset:
@@ -101,6 +111,18 @@ class TestCreateAndDeleteDataset:
             cell="cell", dataset="new-set", revision=3
         )
 
+    async def test_create_conflict_raises_dataset_error(self):
+        nova = _nova_mock(create_dataset=api.exceptions.ConflictException(status=409, reason="dup"))
+        with pytest.raises(DatasetError):
+            await ds.create(nova, api.models.CreateDatasetRequest(dataset="new-set"))
+
+    async def test_delete_missing_dataset_raises_not_found(self):
+        nova = _nova_mock(
+            delete_dataset=api.exceptions.NotFoundException(status=404, reason="not found")
+        )
+        with pytest.raises(DatasetNotFoundError):
+            await ds.delete(nova, "missing-set")
+
 
 class TestFetchDataset:
     async def test_fetches_from_the_instance(self):
@@ -112,6 +134,20 @@ class TestFetchDataset:
         nova_mock.api.datasets_api.get_dataset.assert_awaited_once_with(
             cell="cell", dataset="default", revision=2
         )
+
+    async def test_missing_dataset_raises_not_found(self):
+        nova_mock = _nova_mock(
+            get_dataset=api.exceptions.NotFoundException(status=404, reason="not found")
+        )
+
+        with pytest.raises(DatasetNotFoundError):
+            await ds.fetch(nova_mock, ds.remote_dataset("missing"))
+
+    async def test_server_error_raises_dataset_error(self):
+        nova_mock = _nova_mock(get_dataset=api.ApiException(status=500, reason="boom"))
+
+        with pytest.raises(DatasetError):
+            await ds.fetch(nova_mock, ds.remote_dataset("default"))
 
 
 class TestReadDataset:
@@ -135,12 +171,12 @@ class TestReadDataset:
         assert result.dataset == "source-set"
 
     async def test_missing_file_raises(self, tmp_path: Path):
-        with pytest.raises(OSError):
+        with pytest.raises(DatasetNotFoundError):
             await ds.read(LoadLocalDatasetRequest(path=tmp_path / "nope.json"), base_path=None)
 
     async def test_malformed_json_raises(self, tmp_path: Path):
         path = tmp_path / "dataset.json"
         path.write_text(json.dumps({"dataset": "source-set"}))
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(DatasetError):
             await ds.read(LoadLocalDatasetRequest(path=path), base_path=None)
