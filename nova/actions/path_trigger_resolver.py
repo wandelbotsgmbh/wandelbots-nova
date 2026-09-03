@@ -174,9 +174,22 @@ def _resolve_relative(
     ``locations``. ``PREVIOUS`` measures forward from the segment start, ``NEXT``
     backward from its end. Offsets that leave the segment are clamped to its boundary
     and a warning is logged.
+
+    The lookup is restricted to the samples of the anchor segment: ``domain`` is only
+    non-decreasing (arc length does not grow during a pure reorientation, time does
+    not grow between identical samples), so a flat run spanning a segment boundary
+    would otherwise let the reverse lookup land in a neighbouring segment.
     """
-    domain_lower = _interp(lower, locations, domain)
-    domain_upper = _interp(upper, locations, domain)
+    in_segment = (locations >= lower) & (locations <= upper)
+    segment_domain = domain[in_segment]
+    segment_locations = locations[in_segment]
+    if len(segment_domain) < 2:
+        # Too coarsely sampled to interpolate inside the segment; the best we can do
+        # is the boundary the trigger is measured from.
+        return lower if reference is AtReference.PREVIOUS else upper
+
+    domain_lower = float(segment_domain[0])
+    domain_upper = float(segment_domain[-1])
     if reference is AtReference.PREVIOUS:
         target = domain_lower + offset
     else:
@@ -190,4 +203,9 @@ def _resolve_relative(
             lower,
             upper,
         )
-    return _interp(clamped, domain, locations)
+    if np.isclose(domain_lower, domain_upper):
+        # Zero-extent segment (e.g. a pure reorientation for a distance trigger):
+        # every offset collapses onto the boundary it is measured from.
+        return lower if reference is AtReference.PREVIOUS else upper
+    resolved = _interp(clamped, segment_domain, segment_locations)
+    return float(np.clip(resolved, lower, upper))

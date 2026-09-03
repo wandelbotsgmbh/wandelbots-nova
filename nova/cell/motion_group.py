@@ -187,6 +187,16 @@ class MotionGroup(AbstractRobot):
             if not isinstance(action, WriteAction):
                 raise ValueError(f"Unsupported non-motion action type: {type(action).__name__}")
 
+            if action.at is not None:
+                # Without a motion there is no path to anchor the trigger to; the
+                # write fires immediately in list order (the "no motion" collapse).
+                logger.warning(
+                    "Path trigger %r on io_write(%r) is ignored: the action list contains no "
+                    "motion, so the write fires immediately.",
+                    action.at,
+                    action.key,
+                )
+
             if action.origin == api.models.IOOrigin.BUS_IO:
                 await self._api_client.bus_ios_api.set_bus_io_values(
                     cell=self._cell, io_value=[action.to_api_model()]

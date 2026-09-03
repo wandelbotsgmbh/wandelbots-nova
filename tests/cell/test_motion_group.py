@@ -705,3 +705,16 @@ async def test_resolve_set_outputs_distance_trigger_without_tcp_falls_back(
     assert [entry.location for entry in set_outputs] == [1.0]
     assert "require a TCP" in caplog.text
     mock_motion_group.forward_kinematics.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_direct_non_motion_path_warns_when_a_trigger_has_no_motion(mock_motion_group, caplog):
+    """Without a motion there is no segment to anchor to: the write still happens,
+    immediately and in list order, but the dropped trigger must not pass silently."""
+    actions = [io_write("OUT#1", True, at=after_time(2.0)), io_write("OUT#2", False)]
+
+    with caplog.at_level("WARNING"):
+        await mock_motion_group.plan_and_execute(actions, "Flange")
+
+    assert mock_motion_group._api_client.controller_ios_api.set_output_values.await_count == 2
+    assert "Path trigger" in caplog.text and "no motion" in caplog.text

@@ -243,3 +243,92 @@ class TestResolveSetOutputs:
         assert entry.io_origin is api.models.IOOrigin.BUS_IO
         assert entry.io.value == "3"
         assert entry.location == 1.5
+
+
+class TestFlatDomainRuns:
+    """``domain`` is only non-decreasing: a pure reorientation adds no arc length and
+    a dwell adds no location. The reverse lookup must stay inside the anchor segment."""
+
+    # Motion 1 and 2 are pure reorientations (no TCP travel), motion 3 moves 100 mm.
+    LOCATIONS = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+    TIMES = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    POSITIONS = [(0.0, 0.0, 0.0)] * 5 + [(50.0, 0.0, 0.0), (100.0, 0.0, 0.0)]
+
+    def test_distance_trigger_in_zero_extent_segment_stays_in_segment(self, caplog):
+        # Anchored to segment [1, 2] (a reorientation). The flat arc-length run spans
+        # segments [0, 2]; a global lookup would land on 2.0 or beyond.
+        actions = _combined(
+            linear((1, 2, 3)),
+            io_write("a", True, at=after_distance(10)),
+            linear((4, 5, 6)),
+            linear((7, 8, 9)),
+        )
+        with caplog.at_level("WARNING"):
+            (location,) = _locations(
+                resolve_set_outputs(actions, self.TIMES, self.LOCATIONS, self.POSITIONS)
+            )
+        assert location == 1.0
+        assert "outside its motion segment" in caplog.text
+
+    def test_next_reference_in_zero_extent_segment_collapses_to_upper(self):
+        actions = _combined(
+            linear((1, 2, 3)),
+            io_write("a", True, at=before_distance(10)),
+            linear((4, 5, 6)),
+            linear((7, 8, 9)),
+        )
+        (location,) = _locations(
+            resolve_set_outputs(actions, self.TIMES, self.LOCATIONS, self.POSITIONS)
+        )
+        assert location == 2.0
+
+    def test_first_segment_flat_run_does_not_leak_into_next_segment(self):
+        # Segment [0, 1] is flat and so is [1, 2]; np.interp over the whole trajectory
+        # would return 2.0 for arc length 0. Must stay within [0, 1].
+        actions = _combined(
+            io_write("a", True, at=after_distance(0)),
+            linear((1, 2, 3)),
+            linear((4, 5, 6)),
+            linear((7, 8, 9)),
+        )
+        (location,) = _locations(
+            resolve_set_outputs(actions, self.TIMES, self.LOCATIONS, self.POSITIONS)
+        )
+        assert 0.0 <= location <= 1.0
+
+    def test_distance_trigger_in_moving_segment_after_flat_run(self):
+        # Segment [2, 3] moves 0 -> 100 mm; +25 mm -> location 2.25.
+        actions = _combined(
+            linear((1, 2, 3)),
+            linear((4, 5, 6)),
+            io_write("a", True, at=after_distance(25)),
+            linear((7, 8, 9)),
+        )
+        (location,) = _locations(
+            resolve_set_outputs(actions, self.TIMES, self.LOCATIONS, self.POSITIONS)
+        )
+        assert math.isclose(location, 2.25)
+
+    def test_time_trigger_uses_segment_local_profile(self):
+        # Segment [1, 2] spans t=2..4; +1 s -> t=3 -> location 1.5, unaffected by the
+        # flat arc length.
+        actions = _combined(
+            linear((1, 2, 3)),
+            io_write("a", True, at=after_time(1.0)),
+            linear((4, 5, 6)),
+            linear((7, 8, 9)),
+        )
+        (location,) = _locations(
+            resolve_set_outputs(actions, self.TIMES, self.LOCATIONS, self.POSITIONS)
+        )
+        assert math.isclose(location, 1.5)
+
+    def test_too_coarse_segment_falls_back_to_reference_boundary(self):
+        # Only one sample inside [1, 2]: nothing to interpolate.
+        actions = _combined(
+            linear((1, 2, 3)), io_write("a", True, at=after_time(0.1)), linear((4, 5, 6))
+        )
+        (location,) = _locations(
+            resolve_set_outputs(actions, [0.0, 2.0, 4.0], [0.0, 1.0, 2.5], None)
+        )
+        assert location == 1.0
