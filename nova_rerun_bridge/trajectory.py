@@ -256,18 +256,28 @@ async def log_trajectory(
     # motion group is mounted on, and an entity outside the robot's frame graph
     # is not drawn at all.
     anchor = visualizer.world_frame
-    to_robot = (
-        visualizer.pose_frames({motion_group_id: list(joint_positions[0])}).get(motion_group_id)
-        if joint_positions
+    pose = {motion_group_id: list(joint_positions[0])} if joint_positions else {}
+    # A reported pose and a DH position start in different places: the first is
+    # relative to what the motion group is mounted on, the second at the chain's
+    # own base with the mounting the DH robot was given already applied.
+    to_robot = visualizer.pose_frames(pose).get(motion_group_id)
+    chain_base = visualizer.chain_bases(pose).get(motion_group_id)
+    to_robot_dh = (
+        chain_base @ np.linalg.inv(robot.pose_to_matrix(robot.mounting))
+        if chain_base is not None
         else None
     )
 
-    def in_robot_frame(points: list) -> list:
+    def place(points: list, transform) -> list:
         """Positions as the robot's own frame sees them."""
-        if to_robot is None:
+        if transform is None:
             return points
-        placed = np.asarray(points, dtype=float) @ to_robot[:3, :3].T + to_robot[:3, 3]
+        placed = np.asarray(points, dtype=float) @ transform[:3, :3].T + transform[:3, 3]
         return placed.tolist()
+
+    def in_robot_frame(points: list) -> list:
+        """A reported pose, in the robot's frame."""
+        return place(points, to_robot)
 
     def anchor_to_robot(entity_path: str) -> None:
         """Join the robot's frame graph, so the view keeps this entity."""
@@ -288,7 +298,7 @@ async def log_trajectory(
     line_segments_batch = []
     for joint_position in trajectory.joint_positions:
         robot_joint_positions = robot.calculate_joint_positions(joint_positions=joint_position)
-        line_segments_batch.append([in_robot_frame(robot_joint_positions)])
+        line_segments_batch.append([place(robot_joint_positions, to_robot_dh)])
 
     anchor_to_robot(f"motion/{motion_group_id}/dh_parameters")
     rr.send_columns(
