@@ -555,8 +555,9 @@ class MotionGroup(AbstractRobot):
 
         Args:
             response_rate_msecs (int | None): The rate at which state updates are streamed
-                                             in milliseconds. Defaults to None, which is the
-                                             server default of 200 ms.
+                                             in milliseconds. Defaults to None, which streams
+                                             at the controller's own step rate — the fastest
+                                             the server emits.
         """
         subscription = self._state_stream().subscribe(response_rate_msecs)
         try:
@@ -572,7 +573,7 @@ class MotionGroup(AbstractRobot):
         )
 
     def _resolve_state_stream_rate(self, explicit_rate_msecs: int | None) -> int | None:
-        """Resolution: explicit parameter, then NovaConfig, then the server default (None)."""
+        """Resolution: explicit parameter, then NovaConfig, then None (controller step rate)."""
         if explicit_rate_msecs is not None:
             return explicit_rate_msecs
         config = getattr(self._api_client, "config", None)

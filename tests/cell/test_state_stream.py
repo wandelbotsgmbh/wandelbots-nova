@@ -191,8 +191,25 @@ async def test_later_faster_subscriber_warns_and_keeps_the_socket(shared, upstre
     await second.aclose()
 
 
+async def test_none_subscriber_is_never_downsampled(shared, upstream, caplog):
+    """``None`` means the controller step rate — the fastest — so a ``None``
+    subscriber joining an explicit-rate socket wants MORE than the socket
+    delivers: it gets the warning and the socket's full feed, never a
+    downsample to some assumed 200 ms default."""
+    explicit = shared.subscribe(100)
+    with caplog.at_level(logging.WARNING, logger="nova.cell.state_stream"):
+        unrated = shared.subscribe()
+    assert any("cannot make it faster" in message for message in caplog.messages)
+
+    for index in range(3):
+        upstream.feed(f"s{index}")
+    assert [await next_state(unrated) for _ in range(3)] == ["s0", "s1", "s2"]
+    await explicit.aclose()
+    await unrated.aclose()
+
+
 async def test_later_slower_subscriber_is_downsampled(shared, upstream):
-    fast = shared.subscribe()  # opens the socket at the server default (200 ms)
+    fast = shared.subscribe()  # opens the socket at the controller step rate (full rate)
     slow = shared.subscribe(60_000)  # one state a minute: a burst passes only its first state
 
     for index in range(3):

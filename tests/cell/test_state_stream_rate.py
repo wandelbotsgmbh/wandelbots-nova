@@ -2,9 +2,9 @@
 
 Resolution order for one execution: explicit ``state_stream_rate_msecs``
 parameter, then ``NovaConfig.motion_group_state_rate_msecs`` (env:
-``NOVA_MOTION_GROUP_STATE_RATE_MSECS``), then the server default (``None``,
-200 ms). The TrajectoryExecutor surfaces the same knob per group through
-``GroupArgs``.
+``NOVA_MOTION_GROUP_STATE_RATE_MSECS``), then ``None`` — the controller's own
+step rate, the server's behavior when no rate is requested. The
+TrajectoryExecutor surfaces the same knob per group through ``GroupArgs``.
 """
 
 import asyncio
@@ -72,7 +72,7 @@ async def test_explicit_rate_wins_over_nova_config():
     assert upstream.open_rates == [50]
 
 
-async def test_without_rate_the_server_default_is_requested():
+async def test_without_rate_the_controller_step_rate_is_requested():
     upstream = FakeUpstream()
     motion_group = _motion_group(upstream)
 
