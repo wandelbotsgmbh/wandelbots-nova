@@ -26,11 +26,8 @@ def _resolve_show_collision(
 ) -> bool | None:
     """Settle the collision setting, honouring its two deprecated aliases.
 
-    ``show_collision_link_chain`` and ``show_collision_tool`` split one choice
-    in two: link volumes and tool volumes both come out of the URDF's
-    ``<collision>``, so ``show_collision`` covers them together. Passing either
-    alias draws collision unless both are off, and warns; passing
-    ``show_collision`` outright wins over them.
+    Passing either alias draws collision unless both are off, and warns;
+    ``show_collision`` wins over them.
     """
     if link_chain is None and tool is None:
         return show_collision

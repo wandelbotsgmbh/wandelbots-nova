@@ -22,10 +22,10 @@ except ImportError:  # pragma: no cover
 def log_safety_zones(
     motion_group_id: str, motion_group_description: api.models.MotionGroupDescription
 ) -> None:
-    """
-    Log the safety zones defined in the optimizer configuration.
+    """Log the safety zones the controller reports.
 
-    Each zone is drawn twice: its outline, and its body see-through.
+    A zone the robot may not enter is drawn as a see-through body, one it may
+    not leave as an outline.
     """
     if motion_group_description.safety_zones is None:
         return
@@ -72,9 +72,8 @@ def log_safety_zones(
 def encloses_space(polygons: list, flatness: float = 1e-3) -> bool:
     """Whether a zone is a body, or one flat face of a boundary.
 
-    The API states a keep-out zone as a body and a keep-in zone as the faces of
-    its boundary, one flat hull each. Which is which follows from the geometry:
-    a face has no thickness, so its points are coplanar.
+    The API states a keep-out zone as a body and a keep-in zone as the faces
+    of its boundary, one flat hull each.
     """
     points = np.vstack(polygons)
     if len(points) < 4:

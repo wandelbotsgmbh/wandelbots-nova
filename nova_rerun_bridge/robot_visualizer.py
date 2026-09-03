@@ -40,8 +40,7 @@ class RobotVisualizer:
     """A robot's links and the controller's safety volumes in one entity tree.
 
     Build it with :meth:`for_controller`, which covers every motion group of a
-    controller: a robot is one kinematic chain even where the API splits it up,
-    and an arm cannot be placed without the part it rides.
+    controller: an arm cannot be placed without the part it rides.
     """
 
     def __init__(  # noqa: PLR0913  # a viewer's worth of display options
@@ -272,13 +271,7 @@ class RobotVisualizer:
         safety_links: dict[int, list[api.models.Collider]] | None = None,
         safety_tcp: dict[str, Any] | None = None,
     ) -> None:
-        """Register one motion group's safety volumes, so they can all be drawn.
-
-        A robot the API splits across motion groups has a set per part, each on
-        its own chain. Registering them by motion group keeps them apart -- both
-        the chain their frames come from and the entity path they land on, which
-        otherwise collide and leave only the last part drawn.
-        """
+        """Register one motion group's safety volumes, so they can all be drawn."""
         key = motion_group_id or ""
         self._volumes[key] = _Volumes(
             robot=robot, safety_links=safety_links or {}, safety_tcp=safety_tcp or {}
@@ -309,23 +302,13 @@ class RobotVisualizer:
 
     @property
     def _safety_from_urdf(self) -> bool:
-        """Whether the URDF already carries the safety volumes.
-
-        nova2urdf exports them as ``<collision>`` named ``safety_*``, and the
-        URDF drives them from the link tree rather than from a pose computed
-        here, so drawing them from the API too would only double them up. An
-        export from an older version has none, and then this path still does.
+        """Whether the URDF carries the safety volumes, in which case they are
+        drawn from there and not from the API.
         """
         return self.urdf is not None and self.urdf.has_safety_geometry
 
     def _log_volumes(self, joint_position: dict[str, list[float]]) -> None:
-        """Draw the registered safety volumes for every motion group named here.
-
-        Only for what the URDF does not already carry: see
-        :attr:`_safety_from_urdf`. Everything the URDF does carry -- the model's
-        collision meshes, the tool's, the safety controller's volumes -- is
-        drawn from there, in :class:`UrdfRobotVisualizer`.
-        """
+        """Draw the registered safety volumes, for what the URDF does not carry."""
         for motion_group_id, values in joint_position.items():
             volumes = self._volumes.get(motion_group_id) or self._volumes.get("")
             if volumes is None:

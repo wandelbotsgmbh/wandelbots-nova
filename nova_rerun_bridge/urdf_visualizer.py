@@ -1,19 +1,12 @@
 """Render a robot in Rerun from a URDF, driven by motion group joint values.
 
-Rerun understands URDF natively: the geometry and the link tree are logged once,
-and after that a pose costs one ``Transform3D`` per joint. That is around twenty
-writes per step for a whole humanoid, against one per mesh for the GLB-driven
-:class:`~nova_rerun_bridge.robot_visualizer.RobotVisualizer`, and the URDF also
-carries the joint limits and the link names, so the viewer shows a robot rather
-than a pile of meshes.
+Rerun reads URDF natively: geometry and the link tree are logged once, and a
+pose after that costs one ``Transform3D`` per joint. The URDF comes from
+``nova2urdf``, which exports a controller's motion groups as one tree with each
+part mounted where it sits; ``NOVA_URDF_EXPORT_DIR`` points at an export to
+reuse instead of exporting on demand.
 
-The URDF comes from ``nova2urdf``, which exports a controller's motion groups as
-one tree with each part mounted where it really sits. Point
-``NOVA_URDF_EXPORT_DIR`` at an export to reuse it, or let this export on demand
-and cache it.
-
-Lengths are logged in millimetres, matching everything else the bridge logs, so
-a robot rendered here lines up with trajectories and TCP trails.
+Lengths are millimetres, like everything else the bridge logs.
 """
 
 from __future__ import annotations
@@ -52,13 +45,8 @@ _SCENE_ROOT_FRAME = "tf#/"
 
 @dataclass(frozen=True)
 class _Collider:
-    """One ``<collision>`` mesh of a link: where it sits and what it is.
-
-    The model's own hulls, the tool's collision geometry and the safety
-    controller's volumes all live in ``<collision>``; a consumer wants to tell
-    them apart, and nova2urdf names them so it can. Each is drawn in its own
-    colour. A safety volume that belongs to one TCP says which, because the
-    URDF carries every TCP's and only one tool is mounted.
+    """One ``<collision>`` mesh of a link: its file, its placement, and
+    which kind of geometry it is, which decides its colour.
     """
 
     mesh: Path
@@ -73,13 +61,7 @@ class _Collider:
 
 
 class _UrdfKinematics:
-    """Forward kinematics over a URDF's own joint tree.
-
-    Rerun poses the robot from joint transforms but does not hand back a link's
-    world transform, and the overlays need one: where a chain's base sits, and
-    which frame a reported pose is stated in. Both are a walk up the fixed and
-    revolute joints this reads out of the file.
-    """
+    """Forward kinematics over a URDF's own joint tree."""
 
     def __init__(self, joints: dict[str, dict[str, Any]] | None = None) -> None:
         self._joints = joints or {}
@@ -148,11 +130,8 @@ _TOOL_NAME = re.compile(r"tool_collision_")
 
 
 def _collision_geometry(urdf: Path) -> tuple[dict[str, list[_Collider]], set[str], set[str]]:
-    """A URDF's collision meshes by link, which links show a mesh, which collide.
-
-    All three come from one read. The last is every link with any ``<collision>``
-    at all: Rerun's own URDF loader draws those opaque, over the model, so they
-    are cleared and drawn here instead -- see :meth:`_hide_loader_collision`.
+    """A URDF's collision meshes by link, which links carry a visual mesh, and
+    which carry any ``<collision>`` at all.
     """
     from xml.etree import ElementTree
 
@@ -233,11 +212,7 @@ def _transform(xyz: list[float] | None, rpy: list[float] | None) -> np.ndarray:
 class UrdfRobotVisualizer:
     """A Rerun-native URDF robot, posed from motion group joint values.
 
-    Duck-types the part of :class:`RobotVisualizer` that callers use:
-    :meth:`motion_group_ids`, :meth:`add_motion_group` and
-    :meth:`log_robot_geometry`. ``render_from_kinematics`` is true because the
-    URDF already places every chain, so no calibration against live state is
-    needed.
+    Duck-types the part of :class:`RobotVisualizer` that callers use.
     """
 
     render_from_kinematics = True
@@ -282,8 +257,8 @@ class UrdfRobotVisualizer:
         self._joint_cache: dict[str, UrdfJoint | None] = {}
         self._entries: dict[str, dict[str, Any]] = {}
         self._kinematics = _UrdfKinematics()
-        # Last value seen per URDF joint, so a frame can be resolved even when
-        # the caller names only the motion groups it commands.
+        # Last value seen per joint, so a frame resolves even when the caller
+        # names only the motion groups it commands.
         self._values: dict[str, float] = {}
         # Last value actually logged per joint, to skip writing a pose twice.
         self._logged_values: dict[str, float] = {}
@@ -301,8 +276,7 @@ class UrdfRobotVisualizer:
     ) -> UrdfRobotVisualizer | None:
         """Build a visualizer for every motion group of a controller.
 
-        Returns ``None`` when no URDF can be had -- no export to reuse and
-        ``nova2urdf`` not installed -- so callers can fall back.
+        ``None`` when no URDF can be had, so callers can fall back.
         """
         package = await _urdf_package(controller, export_dir, tool_assets)
         if package is None:
@@ -315,11 +289,7 @@ class UrdfRobotVisualizer:
     def for_package(
         cls, package: Path, *, recording: RecordingStream | None = None
     ) -> UrdfRobotVisualizer:
-        """Build a visualizer from an exported URDF package on disk.
-
-        No controller and no instance: an export carries its own motion group
-        index, so a robot can be rendered from one long after it was made.
-        """
+        """Build a visualizer from an exported URDF package on disk."""
         from rerun.urdf import UrdfTree
 
         index = json.loads((package / _SIDECAR).read_text())
@@ -369,13 +339,7 @@ class UrdfRobotVisualizer:
         export_dir: str | Path | None = None,
         tool_assets: dict[str, str] | None = None,
     ) -> UrdfRobotVisualizer | None:
-        """Build a visualizer from a motion group, covering its whole controller.
-
-        A motion group knows which controller it belongs to but does not hand
-        one over, so this assembles the controller it needs. Every motion group
-        of that controller comes along: an arm cannot be placed without the part
-        it rides.
-        """
+        """Build a visualizer for the whole controller a motion group belongs to."""
         from nova.cell.controller import Controller
 
         try:
@@ -395,11 +359,8 @@ class UrdfRobotVisualizer:
         )
 
     async def _seed_joint_values(self, controller: Controller) -> None:
-        """Record every motion group's current joints, once.
-
-        A later caller knows only its own -- a policy drives the arms, not the
-        lift unit they ride -- and a joint left unseen would be treated as zero,
-        which puts the arms where the lift is not.
+        """Record every motion group's current joints, so a caller that names only
+        its own leaves the rest where they are rather than at zero.
         """
         try:
             motion_groups = await controller.motion_groups()
@@ -420,17 +381,8 @@ class UrdfRobotVisualizer:
     # ── the RobotVisualizer interface callers use ───────────────
 
     def _link_root_to_scene(self) -> None:
-        """Connect this robot's frame graph to the scene root.
-
-        A 3D view showing one URDF targets that robot's own root frame, so a
-        single robot needs nothing. Show two and the view targets the scene root
-        instead, which neither robot's graph reaches -- "No transform path from
-        ... to the view's target frame" -- and both vanish. Declaring the root's
-        parent closes that, and costs a single robot nothing.
-
-        The documented ``entity_path_prefix`` + ``frame_prefix`` recipe for a
-        multi-robot setup does not mention this, but without it the second robot
-        is invisible.
+        """Connect this robot's frame graph to the scene root, so a robot whose
+        URDF root is not the scene root still renders.
         """
         frame = self.world_frame
         if frame is None:
@@ -444,15 +396,7 @@ class UrdfRobotVisualizer:
 
     @property
     def world_frame(self) -> str | None:
-        """The coordinate frame the robot's root link defines, if any.
-
-        A URDF puts its links in Rerun's *frame* graph, and a 3D view showing it
-        adopts that graph's root as the view's target frame. An entity logged
-        outside the graph gets an implicit frame of its own with no path to that
-        root, so Rerun cannot relate the two and leaves it out of the view --
-        which is what happens to the policy overlays. Anchoring them to this
-        frame is what puts them back.
-        """
+        """The coordinate frame the robot's root link defines, if any."""
         try:
             root = self._tree.root_link().name
         except (AttributeError, RuntimeError) as exc:
@@ -462,12 +406,7 @@ class UrdfRobotVisualizer:
 
     @property
     def entity_root(self) -> str:
-        """Entity path everything this visualizer logs lives under.
-
-        The URDF covers a whole controller, so it is logged under the controller
-        rather than under any one motion group. A viewport filtering on motion
-        group ids has to be told about it or the robot is left out of the view.
-        """
+        """Entity path everything this visualizer logs lives under."""
         return self._entity_prefix
 
     def motion_group_ids(self) -> list[str]:
@@ -475,20 +414,11 @@ class UrdfRobotVisualizer:
         return list(self._joints)
 
     def add_motion_group(self, motion_group_id: str, robot: Any = None) -> bool:  # noqa: ARG002
-        """Whether this visualizer already covers that motion group.
-
-        The URDF is exported for a whole controller, so there is nothing to add:
-        a motion group is either in it or belongs to a different robot.
-        """
+        """Whether this visualizer already covers that motion group."""
         return motion_group_id in self._joints
 
     def log_robot_geometry(self, joint_position: dict[str, list[float]] | list[float]) -> None:
-        """Pose the named motion groups. Geometry is logged once, on first call.
-
-        Takes a mapping of motion group id to joint values. A bare list is
-        accepted for parity with :class:`RobotVisualizer`, but only means
-        something when this visualizer holds a single motion group.
-        """
+        """Pose the named motion groups. Geometry is logged once, on first call."""
         self._log_structure_once()
         poses = self._as_poses(joint_position)
         driven: set[str] = set()
@@ -529,12 +459,7 @@ class UrdfRobotVisualizer:
     def log_robot_geometries(
         self, trajectory: Any, times_column: Any, motion_group_id: str | None = None
     ) -> None:
-        """Pose the robot across a whole trajectory in one columnar send.
-
-        A planned trajectory is known up front, so every sample goes as one
-        column per joint rather than a write per sample. ``motion_group_id``
-        picks the chain when the URDF holds more than one.
-        """
+        """Pose the robot across a whole trajectory in one columnar send."""
         names = self._joints_for(motion_group_id)
         if names is None:
             return
@@ -568,12 +493,8 @@ class UrdfRobotVisualizer:
             self._values.update(poses[-1])
 
     def _log_undriven_joints(self, driven: set[str]) -> None:
-        """Pose the joints this call does not drive, from what was read off the robot.
-
-        A caller knows its own motion group: a policy drives the arms, not the
-        lift unit they ride, and a trajectory drives one arm of two. The rest
-        would render at zero while everything computed from a link's frame --
-        the collision geometry, the overlays -- sits at the seeded pose.
+        """Pose the joints this call does not drive, from what was seeded, so the
+        rest of the robot does not render at zero.
         """
         for name, value in self._values.items():
             if name in driven or self._logged_values.get(name) == value:
@@ -603,20 +524,15 @@ class UrdfRobotVisualizer:
     def _collision_meshes(self) -> list[tuple[str, str, np.ndarray]]:
         """Log every collision mesh once; say which link each one rides on.
 
-        The geometry stays in the URDF's ``<collision>``, which is where a
-        planner looks for it, and is drawn here rather than by Rerun's loader:
-        that logs a collision mesh in its link's frame, and Rerun will not
-        render a mesh archetype through a frame -- an ellipsoid on the same
-        frame shows, a mesh or an asset does not. Placing it by an explicit
-        transform does render, so it is loaded once and moved with the robot.
+        Drawn here rather than by Rerun's loader: a mesh archetype does not
+        render through a frame, and the loader draws collision opaque.
         """
         if not self._collision:
             return []
         wanted = (self.show_collision, self.show_safety, self.active_tcp)
         if self._collision_entities is not None and self._entities_for == wanted:
             return self._collision_entities
-        # What was drawn for another tool, or before a switch, has to go: an
-        # entity nobody poses again would otherwise stay where it last was.
+        # What was drawn for another tool has to go, or it lingers.
         previous = {entity for entity, _, _ in self._collision_entities or []}
 
         import trimesh
@@ -666,11 +582,7 @@ class UrdfRobotVisualizer:
         return self.show_collision is True or link not in self._links_with_visual
 
     def _log_hull_edges(self, entity_path: str, mesh: Any, color: tuple[int, ...]) -> None:
-        """Draw a collider's edges, so its shape shows without coating the robot.
-
-        A child of the collider's own entity, so the pose logged there moves the
-        edges with it.
-        """
+        """Draw a collider's edges, so its shape shows without coating the robot."""
         edges = collider_shapes.hull_edges(mesh.vertices, mesh.faces)
         if edges is None:
             return
@@ -687,11 +599,7 @@ class UrdfRobotVisualizer:
 
     @property
     def has_safety_geometry(self) -> bool:
-        """Whether the export carries the safety controller's volumes.
-
-        An export from an older ``nova2urdf`` does not, and then a caller still
-        has to draw them from the API.
-        """
+        """Whether the export carries the safety controller's volumes."""
         return any(
             collider.safety for colliders in self._collision.values() for collider in colliders
         )
@@ -736,33 +644,19 @@ class UrdfRobotVisualizer:
             self._logged_structure = True
 
     def _hide_loader_collision(self) -> None:
-        """Drop the collision geometry Rerun's URDF loader draws by itself.
-
-        The loader logs it opaque and in the model's own material, so it covers
-        the visual mesh it encloses -- the robot comes out looking like its
-        collision hulls. Collision belongs to this class: see-through, in its
-        own colour, and only when asked for.
+        """Drop the collision geometry Rerun's URDF loader draws by itself, opaque
+        and over the visual mesh; this class draws it instead.
         """
         for link in self._links_with_collision:
             for path in self._tree.get_collision_geometry_paths(link):
                 rr.log(path, rr.Clear(recursive=True), static=True, recording=self._recording)
 
     def chain_bases(self, joint_position: dict[str, list[float]]) -> dict[str, np.ndarray]:
-        """Each motion group's base, in the robot's frame.
-
-        A motion group's own ``DHRobot`` starts at its own base and the API
-        reports its mounting as zero, so anything drawn from that robot -- TCP
-        trails, action-chunk markers, safety geometry -- lands in the arm's own
-        frame rather than the robot's. This is the transform that fixes them.
-        """
+        """Each motion group's base, in the robot's frame."""
         return self._world_frames(joint_position, lambda entry: entry["base_link"])
 
     def pose_frames(self, joint_position: dict[str, list[float]]) -> dict[str, np.ndarray]:
-        """What takes a motion group's *reported* pose into the robot's frame.
-
-        Nova reports a pose relative to whatever the chain is mounted on, which
-        is exactly the frame of the link the chain's mount joint hangs from.
-        """
+        """What takes a motion group's *reported* pose into the robot's frame."""
         return self._world_frames(joint_position, lambda entry: entry["parent_link"])
 
     def _world_frames(
@@ -792,12 +686,7 @@ class UrdfRobotVisualizer:
 
 
 def _existing_package(root: Path, controller_id: str) -> Path | None:
-    """An export in *root* usable for this controller, if there is one.
-
-    nova2urdf names its output directory after the controller with separators
-    folded to underscores, so a controller called ``ur5e-left`` is exported to
-    ``ur5e_left``. Look for both, and for an export handed to us directly.
-    """
+    """An export in *root* usable for this controller, if there is one."""
     sanitised = controller_id.replace("-", "_").lower()
     for candidate in (root / controller_id, root / sanitised, root):
         if (candidate / _SIDECAR).is_file():
@@ -806,13 +695,8 @@ def _existing_package(root: Path, controller_id: str) -> Path | None:
 
 
 async def _fingerprint(controller: Controller, tool_assets: dict[str, str] | None = None) -> str:
-    """A short digest of everything an export depends on.
-
-    The export bakes in DH parameters, joint limits, mountings, every TCP, the
-    cell's stored tool colliders and any tool mesh handed to it, so a cached one
-    is only good while those hold. Add a tool and the digest moves, which is
-    what stops a stale robot being rendered. The exporter's own version counts
-    too: a newer one writes more into the URDF from the same robot.
+    """A short digest of everything an export depends on, so a cached one is
+    only used while it still describes the robot.
     """
     parts: list[str] = [
         f"exporter={_exporter_version()}",
@@ -840,12 +724,7 @@ def _exporter_version() -> str:
 
 
 async def _collision_store_digest(controller: Controller) -> str:
-    """What the cell's collision store holds, as far as an export copies it.
-
-    A stored tool collider ends up in the URDF's ``<collision>``, so storing one
-    has to move the export's digest; otherwise the cache keeps serving a robot
-    without its tool.
-    """
+    """What the cell's collision store holds, as far as an export copies it."""
     gateway = getattr(controller, "_nova_api", None)
     if gateway is None:
         return "store=?"
@@ -887,12 +766,7 @@ async def _urdf_package(
 async def _export(
     controller: Controller, cache: Path, tool_assets: dict[str, str] | None = None
 ) -> Path | None:
-    """Export the controller with nova2urdf, in millimetres, into *cache*.
-
-    *tool_assets* are meshes per TCP id that the caller wants shown: the API
-    serves no tool mesh, so a viewer's tool asset only reaches the robot by
-    being exported onto that TCP's frame.
-    """
+    """Export the controller with nova2urdf, in millimetres, into *cache*."""
     try:
         import httpx
         from nova2urdf.api_client import get_headers

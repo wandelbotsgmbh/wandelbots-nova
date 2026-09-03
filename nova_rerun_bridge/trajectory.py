@@ -15,11 +15,8 @@ from nova_rerun_bridge.urdf_visualizer import UrdfRobotVisualizer
 
 
 class TimingMode(Enum):
-    """Where a trajectory starts on the timeline, relative to the ones before it.
-
-    Plans are logged one after another, and each motion group keeps its own
-    clock: that is what makes a second plan land after the first instead of on
-    top of it, and what lets two robots start at the same instant.
+    """Where a trajectory starts on the timeline, relative to the ones before
+    it. Each motion group keeps its own clock.
     """
 
     RESET = auto()
@@ -58,8 +55,7 @@ class MotionGroupTimeline:
 _timeline = MotionGroupTimeline()
 """The clock a caller gets when it does not bring its own."""
 
-# State of the deprecated :func:`continue_after_sync`, which shares one offset
-# across all motion groups rather than a clock each.
+# State of the deprecated :func:`continue_after_sync`.
 _last_end_time = 0.0
 _last_offset = 0.0
 
@@ -179,8 +175,7 @@ async def log_motion(
         if motion_group_description.safety_link_colliders is not None:
             safety_link_chain = [list(motion_group_description.safety_link_colliders)]
 
-        # A tool mesh belongs on the robot, not beside it: exported onto this
-        # TCP's frame, it rides the arm through the whole trajectory.
+        # Exported onto the TCP's frame, so the tool rides the arm.
         tools = tool_assets or ({tcp: tool_asset} if tool_asset else None)
         urdf = await UrdfRobotVisualizer.for_motion_group(motion_group, tool_assets=tools)
         if urdf is not None:
@@ -257,11 +252,9 @@ async def log_trajectory(
     joint_positions = [tuple(p) for p in trajectory.joint_positions]
     tcp_poses = await motion_group.forward_kinematics(joints=joint_positions, tcp=tcp)
 
-    # Nova reports a pose relative to whatever the motion group is mounted on,
-    # which for one part of a multi-part robot is that part's own base, not the
-    # cell. And an entity logged outside the robot's frame graph is dropped by
-    # the view altogether. Both are fixed by placing these overlays in the
-    # robot's frame -- without it there is a robot and nothing else.
+    # Overlays go in the robot's frame: a reported pose is relative to what the
+    # motion group is mounted on, and an entity outside the robot's frame graph
+    # is not drawn at all.
     anchor = visualizer.world_frame
     to_robot = (
         visualizer.pose_frames({motion_group_id: list(joint_positions[0])}).get(motion_group_id)
@@ -309,8 +302,7 @@ async def log_trajectory(
     )
 
     # Log the robot geometries. Naming the motion group matters for a robot the
-    # API splits across several: the URDF holds every chain, and without a name
-    # there is no telling which one this trajectory drives.
+    # API splits across several: the URDF holds every chain.
     visualizer.log_robot_geometries(
         trajectory=trajectory, times_column=times_column, motion_group_id=motion_group.id
     )

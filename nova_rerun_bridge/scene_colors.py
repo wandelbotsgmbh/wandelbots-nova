@@ -33,23 +33,15 @@ BODY_ALPHA = 45
 OUTLINE_ALPHA = 255
 
 ROBOT_COLLISION = (*INFO, BODY_ALPHA)
-"""The model's own collision hulls, from the URDF.
-
-Faint on purpose. A collision hull encloses the visual mesh it belongs to, so
-whatever is painted over it is painted over the robot: a strong fill turns the
-model into a blue robot. The hull is read from its edges instead, and the fill
-only says which side of them is inside.
-"""
+"""The model's own collision hulls. Faint: a hull encloses the mesh it belongs
+to, so a strong fill would recolour the robot. Its edges carry the shape."""
 TOOL_COLLISION = (*SUCCESS, BODY_ALPHA)
-"""The tool's collision geometry, from the URDF: what the cell defines as
-mounted on the flange, which is a different thing from the model's own hulls
-and from what the safety controller enforces."""
+"""The tool's collision geometry: what the cell defines as mounted on the
+flange."""
 SAFETY_VOLUME = (*PRIMARY, OUTLINE_ALPHA)
-"""The controller's safety volumes for links and tool. Full colour, because
-they are drawn as wireframes over the robot rather than as a fill."""
+"""The safety controller's volumes, drawn as wireframes over the robot."""
 SAFETY_VOLUME_BODY = (*PRIMARY, BODY_ALPHA)
-"""The same volumes when they come out of the URDF as meshes: a faint body,
-read from its edges, so the robot underneath stays its own colour."""
+"""The same volumes as URDF meshes: a faint body, read from its edges."""
 
 COLLISION_BODY = {"model": ROBOT_COLLISION, "tool": TOOL_COLLISION, "safety": SAFETY_VOLUME_BODY}
 """What each kind of collision geometry in a URDF is drawn in."""
@@ -59,5 +51,5 @@ ZONE_KEEP_OUT = (*ERROR, BODY_ALPHA)
 """A zone the robot may not enter, drawn as a see-through body."""
 ZONE_KEEP_OUT_OUTLINE = (*ERROR, OUTLINE_ALPHA)
 ZONE_KEEP_IN_OUTLINE = (*WARNING, OUTLINE_ALPHA)
-"""A zone the robot may not leave, drawn as an outline only: filling it would
-put a wall between the camera and the robot inside it."""
+"""A zone the robot may not leave: an outline, since a fill would wall off
+everything inside it."""

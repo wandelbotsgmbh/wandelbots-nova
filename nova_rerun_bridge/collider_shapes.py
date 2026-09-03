@@ -73,10 +73,8 @@ def log_collider(
 ) -> None:
     """Place one collider at *frame* and draw its shape there.
 
-    *frame* is what the collider's own pose is relative to: a link's frame for a
-    robot's volumes, the identity for a collider already given in cell
-    coordinates. Pass ``with_shape=False`` to move a collider that has already
-    been drawn.
+    *frame* is what the collider's pose is relative to: a link's frame for a
+    robot's volumes, the identity for one given in cell coordinates.
     """
     placement = (np.eye(4) if frame is None else frame) @ pose_matrix(collider.pose)
     quaternion = Rotation.from_matrix(placement[:3, :3]).as_quat()
@@ -108,11 +106,8 @@ def log_collider(
 def archetype_for(
     collider: api.models.Collider, color: tuple[int, ...], fill_mode: Any = OVER_ROBOT
 ) -> tuple[Any, np.ndarray | None]:
-    """A collider's shape as the archetype that draws it, at the origin.
-
-    Returns the archetype and, for the shapes that come out as a mesh, the
-    edges to draw alongside it: a mesh takes no fill mode, so a see-through one
-    needs its folds drawn to be legible.
+    """A collider's shape as the archetype that draws it, at the origin, plus
+    the edges to draw with it when it comes out as a mesh.
     """
     shape = collider.shape
     fill = fill_mode
@@ -206,11 +201,7 @@ def hull_mesh(
 
 
 def hull_edges(vertices: Any, triangles: Any) -> np.ndarray | None:
-    """A mesh's sharp folds as line strips, or nothing if it has none.
-
-    What makes a see-through volume legible: the surface is barely there, the
-    folds say what shape it is.
-    """
+    """A mesh's sharp folds as line strips, or nothing if it has none."""
     mesh = trimesh.Trimesh(
         vertices=np.asarray(vertices), faces=np.asarray(triangles), process=False
     )
