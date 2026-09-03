@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from pydantic import ValidationError
 
-import nova
 from nova import api
 from nova import datasets as ds
 from nova.core.nova import Nova
@@ -103,70 +102,45 @@ class TestCreateAndDeleteDataset:
         )
 
 
-class TestLoadDataset:
-    """`load_dataset` may only run while a @nova.program is executing - it finds
-    that program by walking the call stack, so these tests go through the decorator
-    rather than calling it standalone."""
-
-    async def test_local_request_requires_an_active_program(self):
-        """Only a local path needs to be resolved against a program's file - a remote
-        request has no such need, so it's the local path that enforces this."""
-        nova_mock = _nova_mock()
-
-        with pytest.raises(RuntimeError, match="@nova.program"):
-            await ds._load_dataset_in_context(
-                nova_mock, LoadLocalDatasetRequest(path=Path("dataset.json"))
-            )
-
-    async def test_remote_request_is_fetched_from_the_instance(self):
+class TestFetchDataset:
+    async def test_fetches_from_the_instance(self):
         nova_mock = _nova_mock(get_dataset=_dataset_response("default"))
 
-        @nova.program(id="test-load-dataset-remote")
-        async def load(ctx: nova.ProgramContext) -> str:
-            result = await ds._load_dataset_in_context(
-                ctx.nova, ds.remote_dataset("default", revision=2)
-            )
-            return result.dataset
+        result = await ds.fetch(nova_mock, ds.remote_dataset("default", revision=2))
 
-        assert await load(nova=nova_mock) == "default"
+        assert result.dataset == "default"
         nova_mock.api.datasets_api.get_dataset.assert_awaited_once_with(
             cell="cell", dataset="default", revision=2
         )
 
-    async def test_local_request_is_read_from_disk(self, tmp_path: Path):
+
+class TestReadDataset:
+    async def test_reads_from_disk(self, tmp_path: Path):
         path = tmp_path / "dataset.json"
         path.write_text(_dataset_response("source-set").model_dump_json())
-        nova_mock = _nova_mock()
 
-        @nova.program(id="test-load-dataset-local")
-        async def load(ctx: nova.ProgramContext) -> Dataset:
-            return await ds._load_dataset_in_context(ctx.nova, LoadLocalDatasetRequest(path=path))
-
-        result = await load(nova=nova_mock)
+        result = await ds.read(LoadLocalDatasetRequest(path=path), base_path=None)
 
         assert result.dataset == "source-set"
         assert [pose.dataset for pose in result.poses.values()] == ["source-set"]
 
-    async def test_missing_local_file_raises(self, tmp_path: Path):
-        nova_mock = _nova_mock()
+    async def test_resolves_a_relative_path_against_base_path(self, tmp_path: Path):
+        path = tmp_path / "dataset.json"
+        path.write_text(_dataset_response("source-set").model_dump_json())
 
-        @nova.program(id="test-load-dataset-missing-file")
-        async def load(ctx: nova.ProgramContext) -> Dataset:
-            return await ds._load_dataset_in_context(
-                ctx.nova, LoadLocalDatasetRequest(path=tmp_path / "nope.json")
-            )
+        result = await ds.read(
+            LoadLocalDatasetRequest(path=Path("dataset.json")), base_path=tmp_path
+        )
 
+        assert result.dataset == "source-set"
+
+    async def test_missing_file_raises(self, tmp_path: Path):
         with pytest.raises(OSError):
-            await load(nova=nova_mock)
+            await ds.read(LoadLocalDatasetRequest(path=tmp_path / "nope.json"), base_path=None)
 
-    async def test_malformed_local_json_raises(self, tmp_path: Path):
+    async def test_malformed_json_raises(self, tmp_path: Path):
         path = tmp_path / "dataset.json"
         path.write_text(json.dumps({"dataset": "source-set"}))
-        nova_mock = _nova_mock()
-
-        @nova.program(id="test-load-dataset-malformed-json")
-        async def load(ctx: nova.ProgramContext) -> Dataset:
-            return await ds._load_dataset_in_context(ctx.nova, LoadLocalDatasetRequest(path=path))
 
         with pytest.raises(ValidationError):
-            await load(nova=nova_mock)
+            await ds.read(LoadLocalDatasetRequest(path=path), base_path=None)

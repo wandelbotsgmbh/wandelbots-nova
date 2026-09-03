@@ -3,10 +3,9 @@ from __future__ import annotations
 import contextvars
 from typing import TYPE_CHECKING, Any
 
-from nova.datasets import Dataset, LoadDatasetRequest
-
 if TYPE_CHECKING:
     from nova import Nova
+    from nova.datasets import Dataset
 
 current_program_context_var: contextvars.ContextVar["ProgramContext | None"] = (
     contextvars.ContextVar("current_program_context_var", default=None)
@@ -45,20 +44,6 @@ class ProgramContext:
         accessing this property does not require awaiting anything.
         """
         return self._dataset
-
-    async def load_dataset(self, dataset_request: LoadDatasetRequest) -> Dataset:
-        """Load an additional dataset while the program is running.
-
-        A relative local path resolves against the file that declares the program,
-        exactly as a dataset declared in the program's preconditions does.
-
-        Args:
-            dataset_request: The dataset to load, built with `nova.datasets.local_dataset()`
-                or `nova.datasets.remote_dataset()`.
-        """
-        from nova import datasets as ds
-
-        return await ds._load_dataset_in_context(self._nova, dataset_request)
 
     def cycle(self, extra: dict[str, Any] | None = None):
         """Create a Cycle with program pre-populated in the extra data."""
