@@ -59,6 +59,37 @@
         "label": "Skill: mattpocock-skills:grilling",
         "default_collapsed": true
       }
+    },
+    {
+      "id": "claude-skill-toolu_01QGLiv6FPzAN8TV2MMaXgR1",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "pr"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "a9afff6bb30b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 583,
+        "end": 584,
+        "entry_ids": [
+          "b27b5f0b-f8c0-43db-95f9-6bc28d96ed83"
+        ],
+        "tool_use_id": "toolu_01QGLiv6FPzAN8TV2MMaXgR1"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01QGLiv6FPzAN8TV2MMaXgR1"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: pr",
+        "default_collapsed": true
+      }
     }
   ],
   "session_metrics": {
