@@ -1026,7 +1026,7 @@ class MotionGroup(AbstractRobot):
             logger.info("Entering trajectory tuning mode...")
             try:
                 async for motion_group_state in self._tune_trajectory(
-                    joint_trajectory, tcp, actions
+                    joint_trajectory, tcp, actions, state_stream_rate_msecs=state_stream_rate
                 ):
                     yield motion_group_state_to_motion_state(motion_group_state)
             except (Exception, BaseException) as e:
@@ -1081,7 +1081,12 @@ class MotionGroup(AbstractRobot):
                     yield motion_group_state_to_motion_state(motion_group_state)
 
     async def _tune_trajectory(
-        self, joint_trajectory: api.models.JointTrajectory, tcp: str | None, actions: list[Action]
+        self,
+        joint_trajectory: api.models.JointTrajectory,
+        tcp: str | None,
+        actions: list[Action],
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncGenerator[api.models.MotionGroupState, None]:
         start_joints = await self.joints()
 
@@ -1099,5 +1104,12 @@ class MotionGroup(AbstractRobot):
             controller=self._controller_id,
         )
         tuner = TrajectoryTuner(plan_fn, execute_fn)
-        async for response in tuner.tune(actions, self.stream_state):
+        # The tuner calls the factory zero-arg; binding the resolved rate here
+        # keeps that seam untouched (same pattern as the TrajectoryExecutor).
+        state_stream_source = (
+            partial(self.stream_state, state_stream_rate_msecs)
+            if state_stream_rate_msecs is not None
+            else self.stream_state
+        )
+        async for response in tuner.tune(actions, state_stream_source):
             yield response
