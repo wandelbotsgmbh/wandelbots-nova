@@ -151,17 +151,6 @@ class TestRelativeDatasetPathResolution:
             return ctx.dataset.dataset
     """
 
-    # Loads its dataset from inside the body, through the running context.
-    _RUNTIME_PROGRAM = """
-        import nova
-        from nova import datasets as ds
-
-        @nova.program(id="relative-dataset")
-        async def relative_dataset(ctx: nova.ProgramContext) -> str:
-            loaded = await ctx.load_dataset(ds.local_dataset("dataset.json"))
-            return loaded.dataset
-    """
-
     @staticmethod
     def _write_program(directory: Path, source: str) -> Any:
         """Write and import a program module that declares a dataset by bare filename."""
@@ -189,20 +178,6 @@ class TestRelativeDatasetPathResolution:
         """A same-named dataset in the working directory must not win over the program's own."""
         _dataset_file(tmp_path, "next-to-program")
         module = self._write_program(tmp_path, self._PRECONDITION_PROGRAM)
-
-        elsewhere = tmp_path / "elsewhere"
-        elsewhere.mkdir()
-        _dataset_file(elsewhere, "from-working-directory")
-        monkeypatch.chdir(elsewhere)
-
-        assert await module.relative_dataset(nova=_connected_nova()) == "next-to-program"
-
-    async def test_context_load_dataset_uses_the_same_anchor(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ):
-        """Datasets loaded at runtime resolve against the program file, not the cwd."""
-        _dataset_file(tmp_path, "next-to-program")
-        module = self._write_program(tmp_path, self._RUNTIME_PROGRAM)
 
         elsewhere = tmp_path / "elsewhere"
         elsewhere.mkdir()

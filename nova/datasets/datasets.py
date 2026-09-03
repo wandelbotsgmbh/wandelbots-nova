@@ -2,19 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from nova import api
-from nova.datasets.types import Dataset, LoadDatasetRequest
-from nova.datasets.utils import executing_program_dir
+from nova.datasets.types import Dataset
 
 if TYPE_CHECKING:
     from nova.core.nova import Nova
+    from nova.datasets import LoadLocalDatasetRequest, LoadRemoteDatasetRequest
+
 
 logger = logging.getLogger(__name__)
 
 
-def _dataset_from_api(api_dataset: api.models.GetDatasetResponse) -> Dataset:
+def from_api_model(api_dataset: api.models.GetDatasetResponse) -> Dataset:
     """Convert the api datasets response into the convinience class Dataset"""
     return Dataset(
         **api_dataset.model_dump(exclude={"poses", "command_routines", "frames"}),
@@ -28,37 +30,43 @@ def _dataset_from_api(api_dataset: api.models.GetDatasetResponse) -> Dataset:
     )
 
 
-async def _load_dataset_in_context(nova: Nova, dataset_request: LoadDatasetRequest) -> Dataset:
-    """Load a dataset from the NOVA instance or from a local file.
+async def fetch(nova: Nova, dataset_request: LoadRemoteDatasetRequest) -> Dataset:
+    """Fetch a dataset from the NOVA instance.
 
     Args:
         nova: A NOVA instance.
-        dataset_request: The dataset and source to load.
+        dataset_request: The dataset and revision to fetch.
     """
+    try:
+        response = await nova.api.datasets_api.get_dataset(
+            cell=nova.cell().id,
+            dataset=str(dataset_request.dataset),
+            revision=dataset_request.revision,
+        )
+    except Exception:
+        logger.exception(f"Failed to fetch dataset '{dataset_request.dataset}'")
+        raise
 
-    if dataset_request.type == "remote":
-        try:
-            response = await nova.api.datasets_api.get_dataset(
-                cell=nova.cell().id,
-                dataset=str(dataset_request.dataset),
-                revision=dataset_request.revision,
-            )
-        except Exception:
-            logger.exception(f"Failed to fetch dataset '{dataset_request.dataset}'")
-            raise
-    else:
-        program_dir = executing_program_dir()
-        if program_dir is None:
-            raise RuntimeError("load_dataset() must be called while a @nova.program is executing.")
-        path = program_dir / dataset_request.path
-        try:
-            data = await asyncio.to_thread(path.read_text)
-            response = api.models.GetDatasetResponse.model_validate_json(data)
-        except Exception:
-            logger.exception(f"Failed to read local dataset from '{path}'")
-            raise
+    return from_api_model(response)
 
-    return _dataset_from_api(response)
+
+async def read(dataset_request: LoadLocalDatasetRequest, base_path: Path | None) -> Dataset:
+    """Read a dataset from a local JSON file.
+
+    Args:
+        dataset_request: The local dataset file to read.
+        base_path: Directory a relative `dataset_request.path` is resolved against.
+            An absolute path ignores this. `None` resolves a relative path against
+            the current working directory.
+    """
+    dataset_path = base_path / dataset_request.path if base_path else dataset_request.path
+    try:
+        data = await asyncio.to_thread(dataset_path.read_text)
+        response = api.models.GetDatasetResponse.model_validate_json(data)
+    except Exception:
+        logger.exception(f"Failed to read local dataset from '{dataset_path}'")
+        raise
+    return from_api_model(response)
 
 
 async def list_all(
@@ -84,6 +92,7 @@ async def list_all(
         raise
 
 
+# TODO: remove maybe or dont put in the api Model rather construct it here
 async def create(nova: Nova, create_request: api.models.CreateDatasetRequest) -> Dataset:
     """Create a dataset together with its poses, frames and command routines.
 
@@ -96,7 +105,7 @@ async def create(nova: Nova, create_request: api.models.CreateDatasetRequest) ->
         response = await nova.api.datasets_api.create_dataset(
             cell=nova.cell().id, create_dataset_request=create_request
         )
-        return _dataset_from_api(response)
+        return from_api_model(response)
     except Exception:
         logger.exception(f"Failed to create dataset '{create_request.dataset}'")
         raise

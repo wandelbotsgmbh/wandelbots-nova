@@ -1,5 +1,7 @@
+import inspect
 import io
 from collections.abc import Awaitable
+from pathlib import Path
 from typing import TextIO
 
 import anyio
@@ -47,3 +49,22 @@ def ensure_trailing_newline(s: str):
     if not s:
         return s
     return s if s[-1] == "\n" else s + "\n"
+
+
+def executing_program_dir() -> Path | None:
+    """Directory of the first @nova.program file executing on the call stack."""
+
+    from nova.program.function import Program
+
+    frame = inspect.currentframe()
+    try:
+        frame = frame.f_back if frame is not None else None  # skip this helper's own frame
+        while frame is not None:
+            if frame.f_code is Program.__call__.__code__:
+                program = frame.f_locals.get("self")
+                if isinstance(program, Program):
+                    code = getattr(inspect.unwrap(program._wrapped), "__code__", None)
+                    return Path(code.co_filename).resolve().parent if code is not None else None
+            frame = frame.f_back
+    finally:
+        del frame
