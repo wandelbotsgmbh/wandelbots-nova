@@ -1,6 +1,46 @@
 # CHANGELOG
 
 
+## [6.0.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.11.0...v6.0.0) (2026-09-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* update nova_api_client and fix breaking changes ([#491](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/491))
+* **NDX-810:** integrate DatasetPose into SDK ([#455](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/455))
+
+### Features
+
+* add dev-wheel script to build dev wheels from CLI ([#463](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/463)) ([3e9e513](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3e9e513a0ef70a70691df019fc5b8b1dff235521))
+* **cell:** one shared motion-group state stream per motion group ([#499](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/499)) ([b52f58f](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b52f58f83cba2a666f488920c36565910032a509))
+* **cell:** surface the state stream rate on execution APIs ([#501](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/501)) ([eab7785](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/eab7785ff5098d06c194eef781e1f5a784fad63c))
+* **cell:** synchronized multi-motion-group execution (TrajectoryExecutor) ([#489](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/489)) ([7a1ea10](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7a1ea104d06c96ea510fd47e4f724e4ef42df218))
+* **cursor:** carry IO overlay on every start, fix false-success completion ([#472](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/472)) ([b574d28](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b574d2855a2fc6cd2613ca3744c5d36268faf05d))
+* **cursor:** make move_forward a TrajectoryCursor adapter ([#475](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/475)) ([50bcdc5](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/50bcdc58963b075b5048f62ccb5e58ce3f5f7d00))
+* **motion-group:** add get_kinematic_configuration endpoint integration ([#450](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/450)) ([f8307c7](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f8307c73592c86271b9dbd3072885b331392e265))
+* **NDX-810:** integrate DatasetPose into SDK ([#455](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/455)) ([f1ff153](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f1ff15339dd331396a25f1121af8c1a6e5d8ccc3))
+* **NDX-844:** Add CommandRoutine execution to the Python SDK ([#488](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/488)) ([bdc9977](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bdc997781d65c852fea2590128556f6007d6770b))
+* wire singularity_handling feature flag through planning API ([#466](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/466)) ([47c7d80](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/47c7d806c0df4ab170ca7ccf840ad2d073b0679b))
+
+
+### Bug Fixes
+
+* **cell:** share the api gateway of a cell with its controllers ([#495](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/495)) ([ee3e99d](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ee3e99d1712e298c9bf167431f0640c7ea10f6db))
+* **cell:** tear down execute state streaming without cancel-into-close ([#500](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/500)) ([7201a67](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7201a6781e82e3714150f9e003a803bab11dd48d))
+* **cell:** treat an unset state stream rate as the controller step rate ([#508](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/508)) ([e4ae3d8](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e4ae3d8fc7feafc1f7b80fb21d3848d07c42d2ab))
+* **cursor:** level-correct completion detection; guards for persistent execute state (wbr!2262) ([#487](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/487)) ([880720b](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/880720bc21873d80e436ea621aa772c8bf14dbdb))
+* **examples:** drop stale RootModel access in multi_motion_group ([#503](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/503)) ([684de3f](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/684de3f49e3ec87e465b951381c50e41e0843233))
+* **nova-rerun-bridge:** Derive hull outlines from trimesh face adjacency ([#484](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/484)) ([1f66fa9](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1f66fa9c4642ac8df18adb65ef59bd2ba91aa074))
+* Prevent infinite loop when tracing hull outlines ([#483](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/483)) ([7378ca5](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7378ca5b077a1bfbc30107604217adb102007b1a))
+* update nova_api_client and fix breaking changes ([#491](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/491)) ([a16cc3d](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a16cc3dc4b1896bfdf31acaa83a35c2c26f2104d))
+
+
+### Chores
+
+* add ADR 001 for the movement-controller merge, drop incoming/ ([#486](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/486)) ([a5e22c5](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a5e22c56eb8a8839cecc0d74a47356fc8070ca25))
+* refresh dependencies and fix ruff 0.16.1 / ty 0.0.69 fallout ([#473](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/473)) ([ae895ef](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ae895eff3846190b86cd297cd0069bfbe4845df6))
+* **ws:** Removed Wandelscript references ...  ([#481](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/481)) ([8baf5d5](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8baf5d5fe903c76fc6a011378d6e5a83ef82a660))
+
 ## [5.11.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.10.0...v5.11.0) (2026-07-30)
 
 
