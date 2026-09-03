@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "b29528176e35",
+  "strategy": "manual-commit",
+  "branch": "feat/path-triggers",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/actions/__init__.py",
+    "nova/actions/container.py",
+    "nova/actions/io.py",
+    "nova/actions/path_trigger.py",
+    "nova/actions/path_trigger_resolver.py",
+    "nova/cell/motion_group.py",
+    "nova/cell/movement_controller/move_forward.py",
+    "tests/actions/test_path_triggers.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b2/9528176e35/0/metadata.json",
+      "transcript": "/b2/9528176e35/0/full.jsonl",
+      "compact_transcript": "/b2/9528176e35/0/transcript.jsonl",
+      "content_hash": "/b2/9528176e35/0/content_hash.txt",
+      "prompt": "/b2/9528176e35/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 11179,
+    "cache_creation_tokens": 183406,
+    "cache_read_tokens": 6715103,
+    "output_tokens": 72424,
+    "api_call_count": 44
+  }
+}

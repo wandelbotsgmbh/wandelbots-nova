@@ -1,0 +1,18 @@
+look at the branch feat/NDX-155-simple-custom-actions it is a mixture of new features we needed for a customer.
+we are specifically interested in the path triggers introduced there. Then there is a branch on top of that feat/path-triggers-distance-offset which aimed to replace our on trigger location calculation with the - then to be introduced - API feature for distance offsets. 
+You can use the virtual k8s instance at 172.31.10.234 - also configured in @.env - to test and verify current API behaviour.
+If you want to run tests in parallel you can use another virtual instance at http://172.31.11.96/ but only if it makes sense and then be careful to seperate the testing well.
+There is now also the new API part for datasets (you can find the specs in the local service manager repo  @/Users/q/0code/service-manager/api/v2/teaching/ or one level up in the path) which contains the new command routines data format.
+The design documentation for that can be found at https://github.com/wandelbotsgmbh/trajectory-format and locally @/Users/q/0code/trajectory-format.
+It contains also the PathTrigger definition, which was actually influenced by the afformentioned code in the NDX-155 branch.
+/goal is to port the trigger mechanism from NDX-155 branch (and maybe from the distance-offset one) to a new branch (with corresponding PR) from current main. 
+- We only need the path trigger feature
+- the naming there was good but still compare it to what the command routines provide and we might consider naming and design changes then
+- there is currently existing code based on NDX-155 which relys on the naming and design but this could be adapted if necessary, being consistent with the command routine design is slightly more important then being compatible with existing users code because it was only a dev branch to iterate fast for the customer
+- verify whether the the assumptions of feat/path-triggers-distance-offset have landed in the current API using the actual instances I provided
+- if they have landed verify whether they are usable and working and only then replace our local calculations wiht the API features
+/mattpocock-skills:grill-me if there are open questions
+
+---
+
+Where is the plan?
