@@ -1,4 +1,4 @@
-"""Unit tests for the `nova.types.Dataset` convenience wrapper and load requests."""
+"""Unit tests for the `nova.datasets.Dataset` convenience wrapper and load requests."""
 
 import datetime
 from pathlib import Path
@@ -9,8 +9,7 @@ from pydantic import ValidationError
 import nova
 from nova import api
 from nova import datasets as ds
-from nova.types import Dataset
-from nova.types.dataset import LoadLocalDatasetRequest
+from nova.datasets import Dataset, LoadLocalDatasetRequest
 
 _TIMESTAMP = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
 
@@ -79,12 +78,12 @@ class TestLoadRequests:
         assert request.type == "local"
         assert request.path == Path("example_dataset.json")
 
-    def test_local_request_keeps_an_absolute_path_untouched(self, tmp_path: Path):
+    def test_local_request_rejects_an_absolute_path(self, tmp_path: Path):
+        """An absolute path defeats portability across machines, so it's rejected outright."""
         path = tmp_path / "dataset.json"
 
-        request = ds.local_dataset(str(path))
-
-        assert request.path == path
+        with pytest.raises(ValueError, match="must be relative"):
+            ds.local_dataset(str(path))
 
     def test_relative_local_request_survives_a_serialization_round_trip(self):
         """novax publishes preconditions as JSON - a relative path must stay relative."""

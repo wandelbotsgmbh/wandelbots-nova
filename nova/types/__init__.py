@@ -1,7 +1,6 @@
 from typing import AsyncIterator, Callable, TypeAlias, Union
 
 import nova.api as api
-from nova.types.dataset import Dataset
 from nova.types.motion_settings import MotionSettings
 from nova.types.pose import Pose
 from nova.types.state import MotionState, RobotState
@@ -24,7 +23,6 @@ __all__ = [
     "Vector3d",
     "Pose",
     "CollisionScene",
-    "Dataset",
     "MotionState",
     "RobotState",
     "MotionSettings",
