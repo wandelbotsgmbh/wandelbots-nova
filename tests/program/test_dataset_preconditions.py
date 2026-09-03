@@ -14,8 +14,8 @@ import nova
 from nova import api
 from nova import datasets as ds
 from nova.core.nova import Nova
+from nova.datasets import Dataset, LoadLocalDatasetRequest
 from nova.program import ProgramContext
-from nova.types import Dataset
 
 _TIMESTAMP = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
 
@@ -106,7 +106,7 @@ class TestDatasetIsLoadedIntoContext:
 
         @nova.program(
             id="uses-dataset",
-            preconditions=nova.ProgramPreconditions(dataset=ds.local_dataset(str(path))),
+            preconditions=nova.ProgramPreconditions(dataset=LoadLocalDatasetRequest(path=path)),
         )
         async def uses_dataset(ctx: nova.ProgramContext) -> str:
             assert ctx.dataset is not None
@@ -119,7 +119,7 @@ class TestDatasetIsLoadedIntoContext:
 
         @nova.program(
             id="checks-type",
-            preconditions=nova.ProgramPreconditions(dataset=ds.local_dataset(str(path))),
+            preconditions=nova.ProgramPreconditions(dataset=LoadLocalDatasetRequest(path=path)),
         )
         async def checks_type(ctx: nova.ProgramContext) -> bool:
             return isinstance(ctx.dataset, Dataset)

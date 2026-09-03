@@ -11,7 +11,7 @@ Note: This example only uses dataset poses that are defined in the world
 frame (frame=None), e.g. "home", "pick" and "place".
 Poses that are defined relative to a dataset frame (e.g.
 "table-corner" or "fixture-slot-a") first need to be resolved to world
-coordinates via `nova.datasets.resolve_to_world` - that is outside the scope
+coordinates via `nova.datasets.transform_to_world` - that is outside the scope
 of this minimal example.
 """
 
@@ -41,17 +41,16 @@ async def _move_through_dataset_poses(ctx: nova.ProgramContext, count: int):
     home_joints = await motion_group.joints()
     tcp_names = await motion_group.tcp_names()
     tcp = tcp_names[0]
-
     pick_pose = ctx.dataset.poses["pick"]
 
     # Translating a pose between world and local frame
     pick_pose_fixture = (
-        await ds.localize_pose_from_world(
+        await ds.transform_to_frame(
             ctx.nova, [pick_pose.pose], frame="fixture", dataset=ctx.dataset.dataset
         )
     )[0]
     pick_pose_world = (
-        await ds.resolve_to_world(
+        await ds.transform_to_world(
             ctx.nova, [pick_pose_fixture], frame="fixture", dataset=ctx.dataset.dataset
         )
     )[0]
