@@ -155,7 +155,7 @@ class TestReadDataset:
         path = tmp_path / "dataset.json"
         path.write_text(_dataset_response("source-set").model_dump_json())
 
-        result = await ds.read(LoadLocalDatasetRequest(path=path), base_path=None)
+        result = await ds.read(path, base_dir=None)
 
         assert result.dataset == "source-set"
         assert [pose.dataset for pose in result.poses.values()] == ["source-set"]
@@ -164,19 +164,17 @@ class TestReadDataset:
         path = tmp_path / "dataset.json"
         path.write_text(_dataset_response("source-set").model_dump_json())
 
-        result = await ds.read(
-            LoadLocalDatasetRequest(path=Path("dataset.json")), base_path=tmp_path
-        )
+        result = await ds.read(path=Path("dataset.json"), base_dir=tmp_path)
 
         assert result.dataset == "source-set"
 
     async def test_missing_file_raises(self, tmp_path: Path):
         with pytest.raises(DatasetNotFoundError):
-            await ds.read(LoadLocalDatasetRequest(path=tmp_path / "nope.json"), base_path=None)
+            await ds.read(path=tmp_path / "nope.json", base_dir=None)
 
     async def test_malformed_json_raises(self, tmp_path: Path):
         path = tmp_path / "dataset.json"
         path.write_text(json.dumps({"dataset": "source-set"}))
 
         with pytest.raises(DatasetError):
-            await ds.read(LoadLocalDatasetRequest(path=path), base_path=None)
+            await ds.read(LoadLocalDatasetRequest(path=path).path, base_dir=None)
