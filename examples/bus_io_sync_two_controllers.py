@@ -15,7 +15,7 @@ from datetime import datetime
 
 import nova
 from nova import api, run_program
-from nova.cell import GroupArgs, TrajectoryExecutor, virtual_controller
+from nova.cell import GroupArgs, MultiMotionGroup, virtual_controller
 
 CONTROLLERS = ("kuka-a", "kuka-b")
 SYNC_IO = "sync-bus"
@@ -133,8 +133,8 @@ async def bus_io_sync_two_controllers(ctx: nova.ProgramContext):
     await declare_bus_trigger(ctx, gateway, cell.cell_id)
 
     trajectory = await ramp_from_here(groups)
-    executor = (
-        TrajectoryExecutor.builder(groups)
+    ensemble = (
+        MultiMotionGroup.builder(groups)
         .sync_on_io(SYNC_IO, origin=api.models.IOOrigin.BUS_IO)
         .build()
     )
@@ -145,7 +145,7 @@ async def bus_io_sync_two_controllers(ctx: nova.ProgramContext):
     ]
     try:
         tcps = {name: (await group.tcp_names())[0] for name, group in groups.items()}
-        await executor.execute(
+        await ensemble.execute(
             trajectory, groups={name: GroupArgs(tcp=tcp) for name, tcp in tcps.items()}
         )
     finally:
