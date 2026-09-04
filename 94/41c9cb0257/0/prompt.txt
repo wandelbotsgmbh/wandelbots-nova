@@ -1116,3 +1116,22 @@ I checked on another terminal I can ping the host. But if I do it from here I ca
 ---
 
 continue
+
+---
+
+<task-notification>
+<task-id>bwrcolqyq</task-id>
+<tool-use-id>toolu_01RwjCoDoQ5ssDG8aquzw4SR</tool-use-id>
+<status>stopped</status>
+<summary>No completion record was found for this background shell command from the previous session. It may have been stopped (via the UI, Monitor timeout, or agent teardown — these leave no transcript marker), or it may have been running when the previous Claude Code process exited. Check the output file for partial results before assuming it completed.</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bt1j17ioi</task-id>
+<tool-use-id>toolu_01PyBotjxnNNy73Z5hBpbeuY</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/5c37e167-9c8a-491f-a11d-382f474e7820/tasks/bt1j17ioi.output</output-file>
+<status>failed</status>
+<summary>Background command "Run the enable-semantics bus-IO integration test live" failed with exit code 144</summary>
+</task-notification>
