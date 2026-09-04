@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,7 +14,7 @@ from nova.datasets.types import Dataset
 
 if TYPE_CHECKING:
     from nova.core.nova import Nova
-    from nova.datasets import LoadLocalDatasetRequest, LoadRemoteDatasetRequest
+    from nova.datasets import LoadRemoteDatasetRequest
 
 
 logger = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ async def fetch(nova: Nova, dataset_request: LoadRemoteDatasetRequest) -> Datase
     return from_api_model(response)
 
 
-async def read(dataset_request: LoadLocalDatasetRequest, base_path: Path | None) -> Dataset:
+async def read(path: PathLike, base_dir: Path | None) -> Dataset:
     """Read a dataset from a local JSON file.
 
     Args:
@@ -73,9 +74,9 @@ async def read(dataset_request: LoadLocalDatasetRequest, base_path: Path | None)
             An absolute path ignores this. `None` resolves a relative path against
             the current working directory.
     """
-    dataset_path = base_path / dataset_request.path if base_path else dataset_request.path
+    dataset_path = base_dir / path if base_dir else path
     try:
-        data = await asyncio.to_thread(dataset_path.read_bytes)
+        data = await asyncio.to_thread(Path(dataset_path).read_bytes)
         response = api.models.GetDatasetResponse.model_validate_json(data)
     except FileNotFoundError as exc:
         raise DatasetNotFoundError(str(exc)) from exc
