@@ -318,7 +318,7 @@ async def _load_dataset(nova: Nova, dataset_request: LoadDatasetRequest) -> Data
     if dataset_request.type == "remote":
         return await ds.fetch(nova, dataset_request)
     else:
-        return await ds.read(dataset_request, base_path=executing_program_dir())
+        return await ds.read(dataset_request.path, base_dir=executing_program_dir())
 
 
 def input_and_output_types(
