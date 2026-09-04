@@ -4,6 +4,7 @@ import inspect
 import json
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import (
     Annotated,
     Any,
@@ -35,9 +36,10 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
-
-from . import registry
-from .context import ProgramContext, current_program_context_var
+from nova import datasets as ds
+from nova.datasets import Dataset, LoadDatasetRequest
+from nova.program import registry
+from nova.program.context import ProgramContext, current_program_context_var
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,14 @@ Return = TypeVar("Return")
 class ProgramPreconditions(BaseModel):
     controllers: list[api.models.RobotController] | None = None
     cleanup_controllers: bool = False
+    dataset: LoadDatasetRequest | None = Field(
+        default=None,
+        description=(
+            "Dataset to load before the program runs, e.g. via `nova.datasets.local_dataset()` "
+            "or `nova.datasets.remote_dataset()`. A local dataset's path is resolved relative to "
+            "the file of the @nova.program that declares it, not the current working directory."
+        ),
+    )
 
 
 class Program(BaseModel, Generic[Parameters, Return]):
@@ -96,7 +106,6 @@ class Program(BaseModel, Generic[Parameters, Return]):
             input_model=input_model_,
             output_model=output_type,
         )
-
         # mypy does not recognise that `value` is an async function returning a coroutine,
         # so we help it with a cast here.
         program._wrapped = cast(Callable[..., Coroutine[Any, Any, Return]], value)
@@ -138,7 +147,8 @@ class Program(BaseModel, Generic[Parameters, Return]):
             )
 
         if ctx is None:
-            ctx = ProgramContext(nova=nova, program_id=self.program_id)
+            dataset = await self._load_dataset(nova)
+            ctx = ProgramContext(nova=nova, program_id=self.program_id, dataset=dataset)
 
         current_program_context_var.set(ctx)
 
@@ -176,6 +186,27 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 from nova.viewers import _cleanup_active_viewers
 
                 _cleanup_active_viewers()
+
+    async def _load_dataset(self, nova: Nova) -> Dataset | None:
+        """Load the dataset declared in this program's preconditions, before it starts running.
+
+        A relative local path resolves against the file that declares this program.
+        """
+        if not (self.preconditions and self.preconditions.dataset):
+            return None
+
+        dataset_request = self.preconditions.dataset
+        if dataset_request.type == "remote":
+            return await ds.fetch(nova, dataset_request)
+        elif dataset_request.type == "local":
+            code = getattr(inspect.unwrap(self._wrapped), "__code__", None)
+            if code is None:
+                raise RuntimeError(
+                    f"Could not determine the file that declares program '{self.program_id}', "
+                    f"which is required to resolve its relative local dataset path '{dataset_request.path}'."
+                )
+            program_dir = Path(code.co_filename).resolve().parent
+            return await ds.read(dataset_request.path, base_dir=program_dir)
 
     def _log(self, level: str, message: str) -> None:
         """Log a message with program prefix."""
@@ -421,9 +452,12 @@ def program(
         id: ID of the program (needs to be unique across all programs)
         name: Readable name of the program
         description: Description of the program
-        preconditions: ProgramPreconditions containing controller configurations and cleanup settings
+        preconditions: ProgramPreconditions containing controller configurations, cleanup settings,
+            and an optional dataset to load before the program runs.
             Based on the program preconditions, a robot cell is created when running the program in a runner
             Only devices that are part of the preconditions are opened and listened for e.g. estop handling
+            A local dataset's path (see `nova.datasets.local_dataset()`) is resolved relative to the
+            file of this @nova.program, not the current working directory.
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
 
     Decorator / decorator-factory for creating Nova programs.
