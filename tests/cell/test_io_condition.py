@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock
 import pytest
 
 from nova import api
-from nova.cell.io_condition import IOConditionWatcher, condition_holds, io_name, io_scalar
+from nova.cell.io_condition import (
+    IOConditionWatcher,
+    condition_holds,
+    io_name,
+    io_scalar,
+    motion_enable_signal,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -144,3 +150,14 @@ async def test_polling_gives_up_after_a_long_run_of_errors():
 
     with pytest.raises(RuntimeError, match="down"):
         await watcher.wait_until_released(_pause_on("hold", api.models.IOOrigin.BUS_IO))
+
+
+async def test_motion_enable_signal_pauses_while_the_signal_is_low():
+    """True = allowed to move; False (or a lost signal, which reads False) = pause."""
+    condition = motion_enable_signal("enable", api.models.IOOrigin.BUS_IO)
+    gateway = _gateway(bus_values=[_value("enable", False), _value("enable", True)])
+    watcher = IOConditionWatcher(gateway, "cell", "ctrl", poll_interval_secs=0)
+
+    assert condition.io_origin == api.models.IOOrigin.BUS_IO
+    assert await watcher.holds(condition) is True, "signal low -> pause condition holds"
+    assert await watcher.holds(condition) is False, "signal high -> free to move"

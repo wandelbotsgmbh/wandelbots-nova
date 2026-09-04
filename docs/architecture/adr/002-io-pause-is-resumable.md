@@ -52,9 +52,16 @@ Profinet bus-IO service (full method and numbers in the local research note
    which polls the IO (both origins, tolerant of the controller-IO endpoint's transient 429)
    and returns once the condition no longer holds. A context without a waiter keeps the old
    early-return behaviour, with a warning.
-4. Resume is automatic when the signal clears (the PLC "hold" contract). Pausing is per
-   motion group: the same condition may be attached to several groups to pause them all.
-   `GroupArgs.pause_on_io` exposes it for synchronized multi-group execution.
+4. Resume is automatic when the condition clears. Pausing is per motion group: the same
+   condition may be attached to several groups to pause them all. `GroupArgs.pause_on_io`
+   exposes it for synchronized multi-group execution.
+5. The intended wiring is a **motion-enable signal**: the IO reads `True` while the robot is
+   allowed to move and the robot pauses as soon as it reads `False`. This is fail-safe with
+   respect to the signal path — a broken wire or a lost fieldbus connection reads `False`,
+   never `True` — whereas a "pause while high" signal would silently stop working when the
+   bus drops. `nova.cell.io_condition.motion_enable_signal(io, origin)` builds that condition
+   (`PauseOnIO(io == False)`); a signal that is already low at the start keeps the robot at
+   the start of its trajectory until it is raised (measured: `PAUSED_ON_IO` without motion).
 
 ## Consequences
 
