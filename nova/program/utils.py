@@ -57,6 +57,7 @@ def executing_program_dir() -> Path | None:
     from nova.program.function import Program
 
     frame = inspect.currentframe()
+    program_dir = None
     try:
         frame = frame.f_back if frame is not None else None  # skip this helper's own frame
         while frame is not None:
@@ -64,7 +65,11 @@ def executing_program_dir() -> Path | None:
                 program = frame.f_locals.get("self")
                 if isinstance(program, Program):
                     code = getattr(inspect.unwrap(program._wrapped), "__code__", None)
-                    return Path(code.co_filename).resolve().parent if code is not None else None
+                    program_dir = (
+                        Path(code.co_filename).resolve().parent if code is not None else None
+                    )
             frame = frame.f_back
+        # TODO should I rather throw an error instead return None
+        return program_dir
     finally:
         del frame
