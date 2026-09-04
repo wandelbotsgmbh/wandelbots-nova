@@ -16,6 +16,42 @@ from .manager import register_viewer
 from .protocol import NovaRerunBridgeProtocol
 from .utils import downsample_trajectory, extract_collision_setups_from_actions
 
+
+def _merge_collision_setups(
+    collision_setups: dict[str, api.models.CollisionSetup],
+) -> api.models.CollisionSetup | None:
+    """Merge multiple collision setups into a single setup.
+
+    The legacy API produced one setup per action. For visualization we want one combined scene.
+    """
+    if not collision_setups:
+        return None
+    if len(collision_setups) == 1:
+        return next(iter(collision_setups.values()))
+
+    merged_colliders: dict[str, api.models.Collider] = {}
+    merged_link_chain: list[api.models.Link] = []
+    merged_tool: dict[str, api.models.Collider] = {}
+
+    for setup_id, setup in collision_setups.items():
+        if setup.colliders is not None:
+            for collider_id, collider in setup.colliders.root.items():
+                merged_colliders[f"{setup_id}/{collider_id}"] = collider
+        if setup.link_chain is not None:
+            for link in setup.link_chain.root:
+                renamed = {f"{setup_id}/{k}": v for k, v in link.root.items()}
+                merged_link_chain.append(api.models.Link(renamed))
+        if setup.tool is not None:
+            for tool_id, collider in setup.tool.root.items():
+                merged_tool[f"{setup_id}/{tool_id}"] = collider
+
+    return api.models.CollisionSetup(
+        colliders=api.models.ColliderDictionary(merged_colliders) if merged_colliders else None,
+        link_chain=api.models.LinkChain(merged_link_chain) if merged_link_chain else None,
+        tool=api.models.Tool(merged_tool) if merged_tool else None,
+    )
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -233,20 +269,15 @@ class Rerun(Viewer):
             # Log trajectory with tool asset if configured for this TCP
             if tcp is not None:
                 tool_asset = self._resolve_tool_asset(tcp)
-                await self._bridge.log_trajectory(
+                collision_setups = extract_collision_setups_from_actions(actions)
+                collision_setup = _merge_collision_setups(collision_setups)
+                await self._bridge.visualize_plan(
                     trajectory=downsampled_trajectory,
-                    tcp=tcp,
                     motion_group=motion_group,
-                    collision_setups=extract_collision_setups_from_actions(actions),
+                    tcp=tcp,
+                    collision_setup=collision_setup,
                     tool_asset=tool_asset,
                 )
-
-            # Log collision scenes from actions if configured
-            if self.show_collision_scenes:
-                collision_setups = extract_collision_setups_from_actions(actions)
-                if collision_setups:
-                    # Log collision scenes using the sync method
-                    self._bridge.log_collision_setups(collision_setups=collision_setups)
 
         except Exception as e:
             logger.error("Failed to log planning results in Rerun viewer: %s", e)
@@ -318,11 +349,13 @@ class Rerun(Viewer):
                         sample_interval_ms=self.trajectory_sample_interval_ms,
                     )
                     if tcp is not None:
-                        await self._bridge.log_trajectory(
+                        collision_setups = extract_collision_setups_from_actions(actions)
+                        collision_setup = _merge_collision_setups(collision_setups)
+                        await self._bridge.visualize_plan(
                             trajectory=downsampled_trajectory,
-                            tcp=tcp,
                             motion_group=motion_group,
-                            collision_setups=extract_collision_setups_from_actions(actions),
+                            tcp=tcp,
+                            collision_setup=collision_setup,
                         )
 
                 # Log error feedback if available
@@ -343,8 +376,14 @@ class Rerun(Viewer):
             if self.show_collision_scenes:
                 collision_setups = extract_collision_setups_from_actions(actions)
                 if collision_setups:
-                    # Log collision scenes using the sync method
-                    self._bridge.log_collision_setups(collision_setups=collision_setups)
+                    collision_setup = _merge_collision_setups(collision_setups)
+                    motion_group_description = await motion_group.get_description()
+                    await self._bridge.visualize_collision_scene(
+                        motion_group_description=motion_group_description,
+                        collision_setup=collision_setup,
+                        base_entity_path="collision_scenes/failure",
+                        highlight_collisions=True,
+                    )
 
         except Exception as e:
             logger.warning("Failed to log planning failure in Rerun viewer: %s", e)

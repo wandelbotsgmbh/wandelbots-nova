@@ -173,12 +173,11 @@ class TestRerunViewer:
             mock_actions, mock_trajectory, mock_tcp, mock_motion_group
         )
 
-        # Should call log_trajectory on the bridge (trajectory may be unchanged since it's small)
-        mock_bridge.log_trajectory.assert_called_once()
-        call_kwargs = mock_bridge.log_trajectory.call_args[1]
+        # Should delegate to visualize_plan on the bridge (trajectory may be unchanged since it's small)
+        mock_bridge.visualize_plan.assert_called_once()
+        call_kwargs = mock_bridge.visualize_plan.call_args[1]
         assert call_kwargs["tcp"] == mock_tcp
         assert call_kwargs["motion_group"] == mock_motion_group
-        assert call_kwargs["collision_setups"] == {}
         assert call_kwargs["tool_asset"] is None
         # Trajectory should be passed (possibly unchanged since small)
         assert call_kwargs["trajectory"] is not None

@@ -18,6 +18,7 @@ from nova_rerun_bridge.collision_scene import log_collision_setups
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.helper_scripts.code_server_helpers import get_rerun_address
 from nova_rerun_bridge.safety_zones import log_safety_zones
+from nova_rerun_bridge.scene import RobotStateScene, log_scene
 from nova_rerun_bridge.stream_state import stream_motion_group
 from nova_rerun_bridge.trajectory import TimingMode, log_motion
 
@@ -179,6 +180,91 @@ class NovaRerunBridge:
         motion_group_description = await motion_group.get_description()
         log_safety_zones(
             motion_group_id=motion_group.id, motion_group_description=motion_group_description
+        )
+
+    async def visualize_collision_scene(
+        self,
+        motion_group_description: api.models.MotionGroupDescription,
+        collision_setup: api.models.CollisionSetup | None = None,
+        joint_positions: list[float] | tuple[float, ...] | None = None,
+        tcp_name: str = "Flange",
+        base_entity_path: str = "collision_scenes/static",
+        show_safety_geometry: bool = True,
+        show_collision_geometry: bool = True,
+        show_environment: bool = True,
+    ) -> None:
+        """Visualize a static collision scene: robot + environment.
+
+        This method does not require a live motion group; all data comes from the provided
+        ``motion_group_description`` and ``collision_setup``.
+
+        Args:
+            motion_group_description: Robot description with DH parameters and geometry.
+            collision_setup: Optional environment and robot collision geometry.
+            joint_positions: Joint configuration for the robot. Defaults to all zeros.
+            tcp_name: TCP name whose geometry should be drawn.
+            base_entity_path: Rerun entity path prefix for the scene.
+            show_safety_geometry: Whether to draw controller-reported safety geometry.
+            show_collision_geometry: Whether to draw collision-setup robot geometry.
+            show_environment: Whether to draw environment colliders.
+        """
+        scene = RobotStateScene(
+            motion_group_description=motion_group_description,
+            collision_setup=collision_setup,
+            base_entity_path=base_entity_path,
+        )
+        entities = scene.build_entities(
+            joint_positions=joint_positions,
+            tcp_name=tcp_name,
+            show_safety_geometry=show_safety_geometry,
+            show_collision_geometry=show_collision_geometry,
+            show_environment=show_environment,
+        )
+        log_scene(entities, static=True, clear_existing=True)
+
+    async def visualize_plan(
+        self,
+        trajectory: api.models.JointTrajectory,
+        motion_group: MotionGroup,
+        tcp: str,
+        collision_setup: api.models.CollisionSetup | None = None,
+        tool_asset: str | None = None,
+    ) -> None:
+        """Visualize a planned trajectory without executing it.
+
+        This is a thin convenience wrapper that combines a static start/end pose scene with
+        the time-series trajectory log.
+
+        Args:
+            trajectory: Joint trajectory returned by ``motion_group.plan()``.
+            motion_group: Motion group the trajectory was planned for.
+            tcp: TCP used during planning.
+            collision_setup: Optional collision setup to draw with the trajectory.
+            tool_asset: Optional path to a tool asset (STL/GLB) to attach to the TCP.
+        """
+        motion_group_description = await motion_group.get_description()
+        await self.visualize_collision_scene(
+            motion_group_description=motion_group_description,
+            collision_setup=collision_setup,
+            joint_positions=trajectory.joint_positions[0].root
+            if trajectory.joint_positions
+            else None,
+            tcp_name=tcp,
+            base_entity_path=f"motion/{motion_group.id}/start_scene",
+            show_safety_geometry=self.show_safety_link_chain,
+            show_collision_geometry=self.show_collision_link_chain,
+            show_environment=True,
+        )
+
+        collision_setups = {}
+        if collision_setup is not None:
+            collision_setups = {"plan": collision_setup}
+        await self.log_trajectory(
+            trajectory=trajectory,
+            tcp=tcp,
+            motion_group=motion_group,
+            collision_setups=collision_setups,
+            tool_asset=tool_asset,
         )
 
     async def log_motion(

@@ -94,21 +94,30 @@ class DHRobot:
         )
         return transformation
 
+    def compute_forward_kinematics(self, joint_positions: list[float]) -> list[np.ndarray]:
+        """Compute link transforms using the robot's DH parameters.
+
+        Args:
+            joint_positions: Joint values in radians, one per DH parameter.
+
+        Returns:
+            List of 4x4 homogeneous transforms from base to each link frame.
+        """
+        accumulated = self.pose_to_matrix(self.mounting)
+        transforms = [accumulated.copy()]
+        for dh_param, joint_position in zip(self.dh_parameters, joint_positions, strict=False):
+            transform = self.dh_transform(dh_param=dh_param, joint_position=joint_position)
+            accumulated = accumulated @ transform
+            transforms.append(accumulated.copy())
+        return transforms
+
     def calculate_joint_positions(self, joint_positions: list[float]) -> list[list[float]]:
         """
         Compute joint positions based on joint values.
         :param joint_values: Object containing joint rotation values as a list in joint_values.joints.
         :return: A list of joint positions as [x, y, z].
         """
-        # Incorporate the mounting pose at the start
-        accumulated_matrix = self.pose_to_matrix(self.mounting)
-
-        positions = [accumulated_matrix[:3, 3].tolist()]  # Base position after mounting is applied
-
-        for dh_param, joint_position in zip(self.dh_parameters, joint_positions, strict=False):
-            transform = self.dh_transform(dh_param=dh_param, joint_position=joint_position)
-            accumulated_matrix = accumulated_matrix @ transform
-            position = accumulated_matrix[:3, 3]  # Extract translation (x, y, z)
-            positions.append(position.tolist())
-
-        return positions
+        return [
+            transform[:3, 3].tolist()
+            for transform in self.compute_forward_kinematics(joint_positions)
+        ]
