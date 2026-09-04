@@ -761,6 +761,25 @@ async def test_validate_schema_passes_when_state_key_is_io_observation() -> None
 
 
 @pytest.mark.asyncio
+async def test_validate_schema_rejects_malformed_modality_metadata() -> None:
+    """Remote modality entries must expose LeRobot's serialized as_json payload."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server._modality_config = {"state": {"modality_keys": ["arm"]}}
+    server.start()
+    try:
+        mg = _mg()
+        schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect([mg.id])
+        with pytest.raises(TypeError, match="as_json"):
+            await client.validate_schema(schema)
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
 async def test_validate_schema_fails_on_missing_state_key() -> None:
     """validate_schema raises ValueError when a state key is missing."""
     port = _find_free_port()

@@ -38,6 +38,9 @@ dependencies = [
 [project.optional-dependencies]
 nova-rerun-bridge = [
     "rerun-sdk==0.34.0",
+    # Robots render from URDF, which nova2urdf derives from the DH parameters
+    # and meshes the API serves. Used as a library, so no export step is needed.
+    "nova2urdf>=0.1.12",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
@@ -53,9 +56,31 @@ wandelscript = [
 novax = ["fastapi>=0.115.6", "uvicorn>=0.34.0", "python-decouple>=3.8"]
 novapolicy = [
     "aiortc>=1.14.0",
+    "Pillow>=10.0.0",
+    "requests>=2.33.1",
+]
+novapolicy-gr00t = [
+    "aiortc>=1.14.0",
     "msgpack>=1.1.0,<2",
     "Pillow>=10.0.0",
     "pyzmq>=26.0.0,<27",
+    "requests>=2.33.1",
+]
+novapolicy-lerobot = [
+    "aiortc>=1.14.0",
+    # LeRobot 0.6 declares Requires-Python >=3.12; the core SDK remains compatible with 3.11.
+    "lerobot[async]>=0.6,<0.7; python_version >= '3.12'",
+    "Pillow>=10.0.0",
+    "requests>=2.33.1",
+]
+novapolicy-nats = [
+    "aiortc>=1.14.0",
+    # aiohttp is nats-py's WebSocket transport: required for ws:// brokers
+    # (a LAN Nova instance at ws://<host>/api/nats), unused for nats://.
+    "aiohttp>=3.9",
+    "msgpack>=1.1.0,<2",
+    "nats-py>=2.9",
+    "Pillow>=10.0.0",
     "requests>=2.33.1",
 ]
 benchmark = [
@@ -67,7 +92,6 @@ benchmark = [
 ]
 
 [project.scripts]
-download-models = "nova_rerun_bridge.helper_scripts.download_models:update_robot_models"
 create-motion-group-models = "nova.helper_scripts.create_motion_group_models:update_motion_group_models"
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
@@ -115,9 +139,12 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.sdist]
 include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "novapolicy"]
+# 20 MB of meshes and scenes that only the bridge's own examples read.
+exclude = ["nova_rerun_bridge/example_data"]
 
 [tool.hatch.build.targets.wheel]
 include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "novapolicy"]
+exclude = ["nova_rerun_bridge/example_data"]
 
 
 [tool.pytest.ini_options]
@@ -136,6 +163,7 @@ junit_family = "xunit2"
 norecursedirs = "develop .ipynb_checkpoints .venv .tox *.egg"
 testpaths = """
     nova
+    novapolicy/tests
     wandelscript
     tests
 """
@@ -149,7 +177,7 @@ markers = """
 python-version = "3.11"
 
 [tool.ty.src]
-include = ["nova", "examples", "tests", "wandelscript", "novax", "nova_rerun_bridge"]
+include = ["nova", "examples", "tests", "wandelscript", "novax", "nova_rerun_bridge", "novapolicy"]
 exclude = [
     "wandelscript/grammar",
     "wandelscript/motions.py",
@@ -174,6 +202,7 @@ not-subscriptable = "ignore"
 unknown-argument = "ignore"
 missing-argument = "ignore"
 unsupported-operator = "ignore"
+no-matching-overload = "ignore"
 unused-type-ignore-comment = "ignore"
 
 # Wandelscript is a dynamically typed DSL interpreter built on ANTLR. Its parse
@@ -191,18 +220,32 @@ invalid-return-type = "ignore"
 call-non-callable = "ignore"
 unused-type-ignore-comment = "ignore"
 
+# novapolicy/nats/protocol.py is a verbatim copy of an out-of-repo source of
+# truth (see the module warning). Its msgpack hook is annotated with `str` keys
+# while the packed keys are `bytes` at runtime -- deliberate, because
+# `use_bin_type=True` packs them as msgpack `bin`, which openpi-client's wire
+# format requires and `raw=False` leaves alone. Ignored rather than edited, so
+# `diff` against that source stays clean; novapolicy/pyproject.toml does the
+# same for ruff. Fix the annotation upstream, not here.
+[[tool.ty.overrides]]
+include = ["novapolicy/nats/protocol.py"]
+
+[tool.ty.overrides.rules]
+invalid-argument-type = "ignore"
+
 # Example scripts are illustrative samples rather than shipped library code, so
 # the same runtime-dynamic relaxations as for tests apply.
 [[tool.ty.overrides]]
-include = ["examples/**", "nova_rerun_bridge/examples/**"]
+include = ["examples/**", "nova_rerun_bridge/examples/**", "novapolicy/examples/**"]
 
 [tool.ty.overrides.rules]
 invalid-argument-type = "ignore"
 unresolved-attribute = "ignore"
+not-subscriptable = "ignore"
 missing-argument = "ignore"
 
 [tool.ruff.lint.isort]
-known-first-party = ["nova", "nova_rerun_bridge", "novax"]
+known-first-party = ["nova", "nova_rerun_bridge", "novapolicy", "novax"]
 
 
 
@@ -227,3 +270,11 @@ known-first-party = ["nova", "nova_rerun_bridge", "novax"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# nova2urdf is not on PyPI yet, so its wheel is bundled in vendor/ and resolved
+# from there. uv honours this for this project only: pip and anyone installing
+# the published wandelbots-nova wheel ignore [tool.uv.sources], so the extra
+# cannot resolve nova2urdf until it is on an index. See vendor/README.md.
+[tool.uv.sources]
+nova2urdf = { path = "vendor/nova2urdf-0.1.12-py3-none-any.whl" }
+

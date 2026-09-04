@@ -8,7 +8,7 @@ Visualizes in real-time:
 - Joint position timeseries
 - Inspectable action chunk text logs
 
-Usage: Pass ``viewer=nova.viewers.Rerun()`` to the ``@nova.program`` decorator.
+Usage: Pass ``viewer=nova.viewers.Rerun`` to the ``@nova.program`` decorator.
 Fully decoupled — zero overhead when no viewer is active.
 
 Module structure:
@@ -27,9 +27,10 @@ from novapolicy.rerun.logger import PolicyRerunLogger
 def _is_rerun_active() -> bool:
     """Check if a Rerun viewer is active."""
     try:
-        from nova.viewers import get_viewer_manager  # noqa: PLC0415
+        from nova.viewers import Rerun, get_viewer_manager  # ruff: ignore[import-outside-top-level]
 
-        return get_viewer_manager().has_active_viewers
+        viewer = get_viewer_manager().get_viewer(Rerun)
+        return viewer is not None and viewer.is_configured
     except (ImportError, AttributeError):
         return False
 

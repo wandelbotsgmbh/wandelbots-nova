@@ -11,8 +11,8 @@ from nova.utils.downsample import downsample_stream
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.consts import TIME_REALTIME_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
-from nova_rerun_bridge.model_loader import load_model_data
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
+from nova_rerun_bridge.urdf_visualizer import UrdfRobotVisualizer
 
 
 def log_joint_positions_once(motion_group_id: str, robot: DHRobot, joint_position: list[float]):
@@ -71,11 +71,13 @@ async def stream_motion_group(
     motion_group: MotionGroup,
     tcp_name: str | None,
     target_frequency: float | None = 1.0 / 0.033,
+    show_collision: bool | None = False,
+    tool_assets: dict[str, str] | None = None,
 ) -> None:
     """Stream individual motion group state to Rerun.
 
     Args:
-        self: Nova instance (unused but kept for compatibility)
+        self: Unused; the signature takes it so the bridge can pass itself
         nova: Nova instance
         motion_group: Motion group to stream
         tcp_name: Optional TCP name
@@ -84,7 +86,6 @@ async def stream_motion_group(
     processor = MotionGroupProcessor()
 
     motion_group_description = await motion_group.get_description()
-    motion_group_model = await motion_group.get_model()
 
     tcp_geometries: dict[str, api.models.Collider] = {}
     if motion_group_description.safety_tool_colliders is not None and tcp_name is not None:
@@ -97,8 +98,6 @@ async def stream_motion_group(
         robot_model_geometries = [list(motion_group_description.safety_link_colliders)]
 
     try:
-        model_data = await load_model_data(motion_group_model, motion_group._api_client)
-
         mounting = motion_group_description.mounting or api.models.Pose(
             position=(0, 0, 0), orientation=(0, 0, 0)
         )
@@ -107,14 +106,17 @@ async def stream_motion_group(
         )
         rr.reset_time()
         rr.set_time(TIME_REALTIME_NAME, timestamp=time.time())
+        urdf = await UrdfRobotVisualizer.for_motion_group(motion_group, tool_assets=tool_assets)
         visualizer = RobotVisualizer(
+            urdf=urdf,
             robot=robot,
+            robot_motion_group_id=motion_group.id,
             robot_model_geometries=robot_model_geometries,
             tcp_geometries=tcp_geometries,
             static_transform=False,
             base_entity_path=motion_group.id,
             albedo_factor=[0, 255, 100],
-            model_data=model_data,
+            show_collision=show_collision,
         )
 
         logger.info(f"Started streaming motion group {motion_group.id}")
@@ -130,7 +132,9 @@ async def stream_motion_group(
                     robot=robot,
                     joint_position=current_joint_position,
                 )
-                visualizer.log_robot_geometry(joint_position=current_joint_position)
+                visualizer.log_robot_geometry(
+                    joint_position={motion_group.id: current_joint_position}
+                )
                 processor.log_tcp_orientation(motion_group_id=motion_group.id, tcp_pose=tcp_pose)
 
         await asyncio.sleep(0.01)  # Prevents CPU overuse
