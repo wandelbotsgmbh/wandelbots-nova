@@ -1103,3 +1103,8 @@ pleas create a new branch for that work don't mess up the feat/path-triggers bra
 ---
 
 src branch changed (feat/path-triggers) pls rebase
+
+---
+
+Okay the spcification was a bit lax an my part. The actual requiement is, that the signal/IO should be true if the robot is allowed to move and as soon as it swithces to false the robot should stop. The intention is that if profinet or other signal flow ist somehow interupted the physical signal on the wire will also not be present anymore and hance be false. 
+Plas adjust accordingly
