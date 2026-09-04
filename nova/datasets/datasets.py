@@ -21,16 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 def from_api_model(api_dataset: api.models.GetDatasetResponse) -> Dataset:
-    """Convert the api datasets response into the convinience class Dataset"""
+    """Convert the api datasets response into the convenience class Dataset"""
     return Dataset(
         **api_dataset.model_dump(exclude={"poses", "command_routines", "frames"}),
-        poses={pose.dataset_pose: pose for pose in api_dataset.poses} if api_dataset.poses else {},
+        poses={pose.dataset_pose: pose for pose in api_dataset.poses},
         command_routines={
             routine.command_routine: routine for routine in api_dataset.command_routines
-        }
-        if api_dataset.command_routines
-        else {},
-        frames={frame.frame: frame for frame in api_dataset.frames} if api_dataset.frames else {},
+        },
+        frames={frame.frame: frame for frame in api_dataset.frames},
     )
 
 
@@ -69,10 +67,10 @@ async def read(path: PathLike, base_dir: Path | None) -> Dataset:
     """Read a dataset from a local JSON file.
 
     Args:
-        dataset_request: The local dataset file to read.
-        base_path: Directory a relative `dataset_request.path` is resolved against.
-            An absolute path ignores this. `None` resolves a relative path against
-            the current working directory.
+        path: The local dataset file to read.
+        base_dir: Directory a relative `path` is resolved against. An absolute
+            path ignores this. `None` resolves a relative path against the
+            current working directory.
     """
     dataset_path = base_dir / path if base_dir else path
     try:
