@@ -52,7 +52,7 @@ CONTROLLER_NAME = "kuka"
 # exists on your controller (KUKA controllers expose e.g. "OUT#1").
 TRIGGER_IO = "OUT#1"
 
-controller = virtual_controller(
+virtual_kuka = virtual_controller(
     name=CONTROLLER_NAME, manufacturer=api.models.Manufacturer.KUKA, type="kuka-kr240_r2900"
 )
 
@@ -61,7 +61,7 @@ controller = virtual_controller(
     id="path_triggers",
     name="Path Triggers",
     # viewer=nova.viewers.Rerun(),  # uncomment for a 3D visualization
-    preconditions=nova.ProgramPreconditions(controllers=[controller], cleanup_controllers=False),
+    preconditions=nova.ProgramPreconditions(controllers=[virtual_kuka], cleanup_controllers=False),
 )
 async def main(ctx: nova.ProgramContext) -> None:
     cell = ctx.cell
