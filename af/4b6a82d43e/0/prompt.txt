@@ -1135,3 +1135,7 @@ continue
 <status>failed</status>
 <summary>Background command "Run the enable-semantics bus-IO integration test live" failed with exit code 144</summary>
 </task-notification>
+
+---
+
+For the time being I don't want any polling from python to the API, either we use push by NATS or don't implement that case. What is your suggestion
