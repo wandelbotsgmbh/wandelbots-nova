@@ -1,9 +1,9 @@
-"""Per-motion-group pause on a Profinet bus IO across two controllers (ADR 002).
+"""Per-motion-group motion-enable signal on a Profinet bus IO across two controllers (ADR 002).
 
 Requires a running NOVA instance; creates two virtual controllers and the virtual
-Profinet bus-IO service with one bool output per motion group. Pausing one group's
-signal must pause only that group while the other keeps running; clearing it lets
-``execute()`` finish. Starts are staggered because the controller answers a second
+Profinet bus-IO service with one bool output per motion group. Each group moves only
+while its signal reads True: dropping one group's signal must pause only that group
+while the other keeps running; raising it again lets ``execute()`` finish. Starts are staggered because the controller answers a second
 ``StartMovementRequest`` with a ``BUS_IO`` pause condition issued within ~200 ms of the
 first with "I/O not found on bus-io" (server-side race, measured 2026-09-03).
 """
@@ -15,12 +15,12 @@ import pytest
 
 from nova import Nova, api
 from nova.actions import jnt
-from nova.cell import virtual_controller
+from nova.cell import motion_enable_signal, virtual_controller
 from nova.types.motion_settings import MotionSettings
 
 KUKA_HOME = [0.0, -pi / 2, -pi / 2, 0.0, 0.0, 0.0, 0.0]
 UR_HOME = [pi / 2, -pi / 2, pi / 2, 0.0, pi / 2, 0.0, 0.0]
-PAUSE_IOS = {"pause-kuka": (820, 0), "pause-ur": (821, 0)}
+ENABLE_IOS = {"enable-kuka": (820, 0), "enable-ur": (821, 0)}
 
 
 async def _ensure_bus_ios(nova: Nova, cell_name: str) -> None:
@@ -40,7 +40,7 @@ async def _ensure_bus_ios(nova: Nova, cell_name: str) -> None:
     else:
         raise RuntimeError("bus IO service did not connect")
     existing = {io.io for io in await bus.list_profinet_ios(cell_name)}
-    for name, (byte, bit) in PAUSE_IOS.items():
+    for name, (byte, bit) in ENABLE_IOS.items():
         if name not in existing:
             await bus.add_profinet_io(
                 cell=cell_name,
@@ -60,14 +60,6 @@ async def _set(nova: Nova, cell_name: str, **values: bool) -> None:
     await nova.api.bus_ios_api.set_bus_io_values(
         cell=cell_name,
         io_value=[api.models.IOBooleanValue(io=k, value=v) for k, v in values.items()],
-    )
-
-
-def _pause_on(io: str) -> api.models.PauseOnIO:
-    return api.models.PauseOnIO(
-        io=api.models.IOBooleanValue(io=io, value=True),
-        comparator=api.models.Comparator.COMPARATOR_EQUALS,
-        io_origin=api.models.IOOrigin.BUS_IO,
     )
 
 
@@ -96,7 +88,7 @@ async def _observe(mg, kind: type, *, standstill: bool, timeout: float, task: as
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_bus_io_pause_signal_pauses_only_its_motion_group():
+async def test_bus_io_enable_signal_stops_only_its_motion_group():
     async with Nova() as nova:
         cell = nova.cell()
         cell_name = "cell"
@@ -117,7 +109,8 @@ async def test_bus_io_pause_signal_pauses_only_its_motion_group():
             )
         )
         await _ensure_bus_ios(nova, cell_name)
-        await _set(nova, cell_name, **{name: False for name in PAUSE_IOS})
+        # Both robots are allowed to move.
+        await _set(nova, cell_name, **{name: True for name in ENABLE_IOS})
 
         async with kuka[0] as kuka_mg, ur[0] as ur_mg:
             # Both runs traverse the full 1.5 rad; start from home so repeated runs on
@@ -134,7 +127,7 @@ async def test_bus_io_pause_signal_pauses_only_its_motion_group():
                 kuka_mg.plan_and_execute(
                     [jnt(kuka_target, settings=settings)],
                     tcp="Flange",
-                    pause_on_io=_pause_on("pause-kuka"),
+                    pause_on_io=motion_enable_signal("enable-kuka"),
                 )
             )
             await _observe(
@@ -144,7 +137,7 @@ async def test_bus_io_pause_signal_pauses_only_its_motion_group():
                 ur_mg.plan_and_execute(
                     [jnt(ur_target, settings=settings)],
                     tcp="Flange",
-                    pause_on_io=_pause_on("pause-ur"),
+                    pause_on_io=motion_enable_signal("enable-ur"),
                 )
             )
             try:
@@ -152,7 +145,8 @@ async def test_bus_io_pause_signal_pauses_only_its_motion_group():
                     ur_mg, api.models.TrajectoryRunning, standstill=False, timeout=20, task=ur_task
                 )
 
-                await _set(nova, cell_name, **{"pause-kuka": True})
+                # Drop the KUKA's enable signal.
+                await _set(nova, cell_name, **{"enable-kuka": False})
                 await _observe(
                     kuka_mg,
                     api.models.TrajectoryPausedOnIO,
@@ -169,13 +163,13 @@ async def test_bus_io_pause_signal_pauses_only_its_motion_group():
                 paused_joints = await kuka_mg.joints()
                 assert abs(paused_joints[0] - kuka_target[0]) > 0.5, "KUKA was not paused early"
 
-                await _set(nova, cell_name, **{"pause-kuka": False})
+                await _set(nova, cell_name, **{"enable-kuka": True})
                 await asyncio.wait_for(asyncio.gather(kuka_task, ur_task), timeout=90)
 
                 assert abs((await kuka_mg.joints())[0] - kuka_target[0]) < 0.01
                 assert abs((await ur_mg.joints())[0] - ur_target[0]) < 0.01
             finally:
-                await _set(nova, cell_name, **{name: False for name in PAUSE_IOS})
+                await _set(nova, cell_name, **{name: True for name in ENABLE_IOS})
                 for task in (kuka_task, ur_task):
                     if not task.done():
                         task.cancel()

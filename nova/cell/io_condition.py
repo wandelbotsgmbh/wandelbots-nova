@@ -96,6 +96,25 @@ def condition_holds(
     raise ValueError(f"Unknown comparator: {comparator!r}")
 
 
+def motion_enable_signal(
+    io: str, origin: api.models.IOOrigin = api.models.IOOrigin.BUS_IO
+) -> api.models.PauseOnIO:
+    """A ``pause_on_io`` condition that lets the robot move only while ``io`` reads ``True``.
+
+    This is the fail-safe wiring for a PLC / fieldbus permission signal: the robot pauses
+    on path as soon as the signal reads ``False`` — because the PLC dropped it, or because
+    the signal path itself is gone (a lost Profinet connection or a broken wire reads
+    ``False``, never ``True``). It resumes once the signal reads ``True`` again. Pass it to
+    ``execute()`` / ``plan_and_execute()`` as ``pause_on_io``; one signal per motion group,
+    or the same signal for every group that must stop together.
+    """
+    return api.models.PauseOnIO(
+        io=api.models.IOBooleanValue(io=io, value=False),
+        comparator=api.models.Comparator.COMPARATOR_EQUALS,
+        io_origin=origin,
+    )
+
+
 class IOConditionWatcher:
     """Reads IOs of one controller's cell and waits for conditions on them.
 
