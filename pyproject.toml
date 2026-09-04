@@ -114,17 +114,6 @@ dev = [
 [tool.hatch.metadata]
 allow-direct-references = true
 
-[tool.uv.sources]
-wandelbots_api_client = { index = "wandelbots-internal" }
-
-[[tool.uv.index]]
-# Internal GitLab PyPI registry that serves per-MR api-client dev builds.
-# Auth via env: UV_INDEX_WANDELBOTS_INTERNAL_USERNAME=__token__
-#               UV_INDEX_WANDELBOTS_INTERNAL_PASSWORD=<gitlab-token>
-name = "wandelbots-internal"
-url = "https://code.wabo.run/api/v4/projects/889/packages/pypi/simple"
-explicit = true
-
 [tool.hatch.build.targets.sdist]
 include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "novapolicy"]
 
