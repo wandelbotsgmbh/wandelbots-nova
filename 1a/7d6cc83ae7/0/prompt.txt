@@ -1,0 +1,6 @@
+look at the pr comments and adjust if necessary
+
+---
+
+- pls also reply to the comments you did the fixes for
+- remove the controller selection and the physical robot code from the @examples/path_triggers.py
