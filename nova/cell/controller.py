@@ -19,9 +19,17 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         cell_id: str
         controller_id: str
 
-    def __init__(self, configuration: Configuration, *, api_gateway: ApiGateway | None = None):
+    def __init__(
+        self,
+        configuration: Configuration,
+        *,
+        api_gateway: ApiGateway | None = None,
+        nats_client=None,
+    ):
         super().__init__(configuration, api_gateway=api_gateway)
         self._motion_group_ids = None
+        # Handed on to motion groups: bus-IO conditions are observed over NATS.
+        self._nats_client = nats_client
         self._io_access = IOAccess(
             api_client=self._nova_api,
             cell=self.configuration.cell_id,
@@ -66,6 +74,7 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
             cell=self.configuration.cell_id,
             controller_id=self.id,
             motion_group_id=motion_group_id,
+            nats_client=self._nats_client,
         )
 
     def __getitem__(self, motion_group_id: int) -> MotionGroup:

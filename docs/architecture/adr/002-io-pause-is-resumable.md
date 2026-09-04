@@ -65,13 +65,21 @@ Profinet bus-IO service (full method and numbers in the local research note
 
 ## Consequences
 
-- **Known gap (measured 2026-09-04):** if the bus-IO *service* disappears while a motion is
+- **Bus loss (measured 2026-09-04):** if the bus-IO *service* disappears while a motion is
   armed with a `BUS_IO` condition, the controller stops evaluating the condition and the robot
-  keeps running; the pause is reported only once the bus is back. The enable wiring therefore
-  covers a dropped PLC signal and a broken controller-input wire, not a vanished bus service.
-  Follow-up: an SDK-side bus-health guard (pause via `PauseMovementRequest` while the bus-IO
-  state is not `CONNECTED`), and a report to the RAE/bus-IO team to evaluate an unreadable IO
-  as "pause".
+  keeps running; it reports the pause only once the bus is back. The SDK closes that gap for
+  one-shot execution: `move_forward` watches the bus-IO state on the NATS subject
+  `nova.v2.cells.{cell}.bus-ios.status` (the service publishes an empty state when it goes away
+  and `CONNECTED` when it returns) and sends a `PauseMovementRequest` itself when the bus is not
+  connected — the same on-path ramp as the controller pause — then resumes through the normal
+  release path once the bus is back and the signal allows motion (`E10`: stopped ~1 s into the
+  service removal, resumed ~60 ms after the enable signal returned). This holds only while the
+  SDK process and its NATS connection are alive; the controller-side fix (evaluate an
+  unreadable IO as "pause") is reported to the RAE/bus-IO team.
+- **No polling of the API.** Controller IOs are observed on the `stream_io_values` websocket
+  (the controller-IO REST endpoint returns 429 to a write while a read is in flight), bus IOs
+  and the bus state over NATS with a single initial read after subscribing. When a source cannot
+  be observed, `execute()` fails with `IOConditionUnavailable` instead of degrading to polling.
 
 - `execute()` blocks through IO pauses and returns at the target; programs need no code to
   handle the pause itself.

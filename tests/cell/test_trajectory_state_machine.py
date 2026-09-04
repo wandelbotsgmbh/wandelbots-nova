@@ -781,3 +781,26 @@ class TestPausedOnIO:
             )
         )
         assert machine.is_ended
+
+    def test_pause_reason_follows_the_wire_while_paused(self):
+        """A user pause that turns into an IO pause while standing (the bus-IO
+        service came back and the condition holds) is an IO pause from then on."""
+        from nova.cell.movement_controller.trajectory_state_machine import PauseReason
+
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedByUser())
+            )
+        )
+        assert machine.pause_reason is PauseReason.USER
+
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedOnIO())
+            )
+        )
+        assert machine.is_paused
+        assert machine.pause_reason is PauseReason.IO
+        assert machine.is_paused_on_io

@@ -281,6 +281,15 @@ class TrajectoryExecutionMachine(StateMachine):
             elif self.current_state == self.paused:
                 if isinstance(trajectory_state, api.models.TrajectoryRunning):
                     self._resume_observed()
+                elif isinstance(trajectory_state, api.models.TrajectoryPausedOnIO):
+                    # A user pause turns into an IO pause when the condition
+                    # (re)starts being evaluated while the robot stands, e.g.
+                    # after the bus-IO service came back (measured). Keep the
+                    # reason current so a resume out of it knows which frames
+                    # are stale.
+                    self.pause_reason = PauseReason.IO
+                elif isinstance(trajectory_state, api.models.TrajectoryPausedByUser):
+                    self.pause_reason = PauseReason.USER
 
         current_id = self._active_configuration_id()
         return StateUpdate(

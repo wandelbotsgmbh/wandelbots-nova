@@ -145,7 +145,14 @@ def _with_collision_setup(
 class MotionGroup(AbstractRobot):
     """Manages motion planning and execution within a specified motion group."""
 
-    def __init__(self, api_client: ApiGateway, cell: str, controller_id: str, motion_group_id: str):
+    def __init__(
+        self,
+        api_client: ApiGateway,
+        cell: str,
+        controller_id: str,
+        motion_group_id: str,
+        nats_client=None,
+    ):
         """
         Initializes a new MotionGroup instance.
 
@@ -153,11 +160,14 @@ class MotionGroup(AbstractRobot):
             api_client (ApiGateway): The API gateway through which motion commands are sent.
             cell (str): The name or identifier of the robotic cell.
             motion_group_id (str): The identifier of the motion group.
+            nats_client: Connected NATS client, used to observe bus-IO pause conditions
+                (falls back to the current program context's client when omitted).
         """
         self._api_client = api_client
         self._cell = cell
         self._controller_id = controller_id
         self._motion_group_id = motion_group_id
+        self._nats_client = nats_client
         self._current_motion: str | None = None
         super().__init__(id=motion_group_id)
 
@@ -1101,11 +1111,19 @@ class MotionGroup(AbstractRobot):
 
         # A controller-side IO pause is only resumed by a new start, and only
         # once the condition has cleared; the movement controller needs a way
-        # to wait for that, which requires the API client this class holds.
+        # to wait for that, which requires the API/NATS clients this class holds.
+        # A bus-IO condition additionally gets a way to notice the bus itself
+        # going away: the controller stops evaluating the condition then and
+        # would keep moving (measured), so the SDK pauses in its place.
         wait_for_pause_on_io_release = None
+        wait_for_pause_signal_loss = None
         if pause_on_io is not None:
-            watcher = IOConditionWatcher(self._api_client, self._cell, self._controller_id)
+            watcher = IOConditionWatcher(
+                self._api_client, self._cell, self._controller_id, nats_client=self._nats_client
+            )
             wait_for_pause_on_io_release = partial(watcher.wait_until_released, pause_on_io)
+            if pause_on_io.io_origin == api.models.IOOrigin.BUS_IO:
+                wait_for_pause_signal_loss = watcher.wait_until_bus_io_lost
 
         controller = movement_controller(
             MovementControllerContext(
@@ -1115,6 +1133,7 @@ class MotionGroup(AbstractRobot):
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
                 wait_for_pause_on_io_release=wait_for_pause_on_io_release,
+                wait_for_pause_signal_loss=wait_for_pause_signal_loss,
                 # The cursor subscribes to the same shared stream this relay
                 # reads from: one state websocket per motion group, however many
                 # consumers an execution has.

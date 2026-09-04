@@ -24,8 +24,13 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     adapter waits for that through ``context.wait_for_pause_on_io_release`` and
     starts again, as often as the signal comes and goes, until the trajectory is
     traversed — so ``execute()`` blocks through every pause and returns at the
-    target. Without a release waiter (a context built by hand) the pause ends
-    the execution early, as it did before IO pauses became resumable.
+    target. If the signal's source itself goes away
+    (``context.wait_for_pause_signal_loss`` returns), the controller stops
+    evaluating the condition, so the adapter pauses the robot in its place and
+    resumes the same way once the signal is back. Without a release waiter (a
+    context built by hand) the pause ends the execution early, as it did before
+    IO pauses became resumable. A waiter that fails ends the execution with its
+    error.
 
     Must be called with a running event loop: the cursor schedules its
     background initialization at construction time.
@@ -52,12 +57,11 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         emit_motion_events=False,
     )
     # Starting immediately is move_forward policy, not a cursor capability.
-    operation = cursor.forward()
+    driver = _OneShotDriver(cursor, cursor.forward(), context)
 
     async def controller(response_stream):
         supervisor = asyncio.create_task(
-            _run_to_the_end(cursor, operation, context.wait_for_pause_on_io_release),
-            name=f"move_forward-supervisor-{context.motion_id}",
+            driver.run(), name=f"move_forward-supervisor-{context.motion_id}"
         )
         try:
             async for request in cursor.cntrl(response_stream):
@@ -66,47 +70,115 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
             supervisor.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await supervisor
+        if driver.error is not None:
+            raise driver.error
 
     return controller
 
 
-async def _run_to_the_end(
-    cursor: TrajectoryCursor, operation: asyncio.Future[OperationResult], wait_for_release
-) -> None:
-    """Drive the one-shot execution through IO pauses until the trajectory ends.
+class _OneShotDriver:
+    """Drives a one-shot execution to the end of the trajectory through IO pauses.
 
     Nobody else awaits the operation futures in one-shot execution: movement
     errors reach the protocol caller through ``cntrl`` itself, and a state
     stream that ends before the trajectory completes only resolves the future,
-    matching the previous ``move_forward`` behaviour of returning once the
-    state monitor is gone. Retrieving the results here also keeps asyncio from
-    warning about them.
+    matching the previous ``move_forward`` behaviour of returning once the state
+    monitor is gone. Retrieving the results here also keeps asyncio from warning
+    about them.
     """
-    while True:
-        try:
-            result = await operation
-        except asyncio.CancelledError:
-            # Detach (or our own cancellation) — nothing left to drive.
-            return
-        except Exception as error:  # noqa: BLE001 — surfaced through cntrl
-            logger.debug(f"move_forward operation ended with an error: {error!r}")
-            return
-        if not result.paused_on_io:
-            return
-        if wait_for_release is None:
-            logger.warning(
-                "Movement paused on IO at location %s but no release waiter is available; "
-                "ending the execution early.",
-                result.final_location,
-            )
-            cursor.detach()
-            return
-        logger.info(
-            "Movement paused on IO at location %s — waiting for the signal to clear",
-            result.final_location,
+
+    def __init__(
+        self,
+        cursor: TrajectoryCursor,
+        operation: asyncio.Future[OperationResult],
+        context: MovementControllerContext,
+    ):
+        self._cursor = cursor
+        self._operation = operation
+        self._wait_for_release = context.wait_for_pause_on_io_release
+        self._wait_for_signal_loss = context.wait_for_pause_signal_loss
+        # Set by the guard when it paused the robot because the signal source
+        # went away; the drive loop then resumes through the release wait.
+        self._guard_pause: asyncio.Future[OperationResult] | None = None
+        self._signal_lost = False
+        self._resumed = asyncio.Event()
+        self.error: BaseException | None = None
+
+    async def run(self) -> None:
+        guard = (
+            asyncio.create_task(self._guard(), name="move_forward-signal-guard")
+            if self._wait_for_signal_loss is not None and self._wait_for_release is not None
+            else None
         )
-        await wait_for_release()
-        logger.info("Pause signal cleared — resuming movement")
-        # The start re-carries pause_on_io and the IO overlay, so the pause is
-        # re-armed and remaining path outputs stay attached.
-        operation = cursor.forward()
+        try:
+            await self._drive()
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 — surfaced to the protocol caller
+            logger.error(f"move_forward cannot continue the execution: {error!r}")
+            self.error = error
+            self._cursor.detach()
+        finally:
+            if guard is not None:
+                guard.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await guard
+
+    async def _drive(self) -> None:
+        operation = self._operation
+        while True:
+            try:
+                result = await operation
+            except asyncio.CancelledError:
+                task = asyncio.current_task()
+                if task is not None and task.cancelling():
+                    raise  # our own cancellation (detach / teardown)
+                if self._guard_pause is None:
+                    return  # the operation was cancelled from outside — nothing to drive
+                # The guard superseded the movement with a pause: let it settle,
+                # then resume once the signal is back.
+                pause, self._guard_pause = self._guard_pause, None
+                with contextlib.suppress(Exception):
+                    await pause
+                result = None
+            except Exception as error:  # noqa: BLE001 — surfaced through cntrl
+                logger.debug(f"move_forward operation ended with an error: {error!r}")
+                return
+
+            if result is not None and not result.paused_on_io and not self._signal_lost:
+                return
+            if self._wait_for_release is None:
+                logger.warning(
+                    "Movement paused on IO at location %s but no release waiter is available; "
+                    "ending the execution early.",
+                    result.final_location if result is not None else self._cursor.current_location,
+                )
+                self._cursor.detach()
+                return
+            logger.info(
+                "Movement paused (%s) at location %s — waiting for the signal to allow motion",
+                "signal source lost" if self._signal_lost else "IO condition",
+                self._cursor.current_location,
+            )
+            await self._wait_for_release()
+            logger.info("Pause signal cleared — resuming movement")
+            self._signal_lost = False
+            # The start re-carries pause_on_io and the IO overlay, so the pause is
+            # re-armed and remaining path outputs stay attached.
+            operation = self._cursor.forward()
+            self._resumed.set()
+
+    async def _guard(self) -> None:
+        """Pause the robot ourselves whenever the signal's source disappears."""
+        assert self._wait_for_signal_loss is not None
+        while True:
+            await self._wait_for_signal_loss()
+            logger.warning("Pause signal source lost — pausing the movement from the SDK")
+            self._signal_lost = True
+            self._resumed.clear()
+            pause = self._cursor.pause()  # None when nothing is moving (already paused)
+            if pause is not None:
+                self._guard_pause = pause
+            # Re-arm only after the drive loop resumed the movement; the loss
+            # waiter would otherwise return immediately while the bus is down.
+            await self._resumed.wait()
