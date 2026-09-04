@@ -65,6 +65,14 @@ Profinet bus-IO service (full method and numbers in the local research note
 
 ## Consequences
 
+- **Known gap (measured 2026-09-04):** if the bus-IO *service* disappears while a motion is
+  armed with a `BUS_IO` condition, the controller stops evaluating the condition and the robot
+  keeps running; the pause is reported only once the bus is back. The enable wiring therefore
+  covers a dropped PLC signal and a broken controller-input wire, not a vanished bus service.
+  Follow-up: an SDK-side bus-health guard (pause via `PauseMovementRequest` while the bus-IO
+  state is not `CONNECTED`), and a report to the RAE/bus-IO team to evaluate an unreadable IO
+  as "pause".
+
 - `execute()` blocks through IO pauses and returns at the target; programs need no code to
   handle the pause itself.
 - Cursor callers must check `OperationResult.paused_on_io`: `final_location` no longer implies
