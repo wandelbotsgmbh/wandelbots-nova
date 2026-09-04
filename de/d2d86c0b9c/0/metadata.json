@@ -1,0 +1,90 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "ded2d86c0b9c",
+  "session_id": "f6a4ba94-8834-47bf-bd3e-3ee375a34834",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-04T09:35:34.305917Z",
+  "branch": "feat/path-triggers",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5",
+  "turn_id": "8f151b0bf12f",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 12493,
+    "cache_creation_tokens": 643861,
+    "cache_read_tokens": 10475805,
+    "output_tokens": 94421,
+    "api_call_count": 62
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01FHT8rtWHEN74iykhKTRwB7",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "mattpocock-skills:grilling"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "8f151b0bf12f",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 209,
+        "end": 210,
+        "entry_ids": [
+          "eeb8fc4e-c4d0-4c16-b27c-aa69b5465ed4"
+        ],
+        "tool_use_id": "toolu_01FHT8rtWHEN74iykhKTRwB7"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01FHT8rtWHEN74iykhKTRwB7"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: mattpocock-skills:grilling",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01QGLiv6FPzAN8TV2MMaXgR1",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "pr"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "8f151b0bf12f",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 583,
+        "end": 584,
+        "entry_ids": [
+          "b27b5f0b-f8c0-43db-95f9-6bc28d96ed83"
+        ],
+        "tool_use_id": "toolu_01QGLiv6FPzAN8TV2MMaXgR1"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01QGLiv6FPzAN8TV2MMaXgR1"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: pr",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 3
+  }
+}
