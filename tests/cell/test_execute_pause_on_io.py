@@ -2,12 +2,13 @@
 
 End to end over the test doubles: the fake controller acks the start, reports RUNNING,
 then holds a ``PAUSED_ON_IO`` (level-based, never END_OF_TRAJECTORY) until a second start
-arrives; the fake bus IO reports the signal set, then cleared. ``execute()`` must block
-through the pause and return only after the trajectory ended, having sent exactly two
-starts that both carry the pause condition.
+arrives; the bus IO reads "hold" once, then NATS pushes the release. ``execute()`` must
+block through the pause and return only after the trajectory ended, having sent exactly
+two starts that both carry the pause condition — without polling the API.
 """
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
@@ -17,6 +18,7 @@ from nova import api
 from nova.cell.motion_group import MotionGroup
 from nova.cell.state_stream import MotionGroupStateStreamRegistry
 from nova.core.gateway import ApiGateway
+from tests.cell.fake_nats import FakeNats
 from tests.cell.multi_group_doubles import ended_state, execute_detail, running_state, state
 from tests.cell.test_execute_shared_stream import _joint_trajectory, _with_tcp
 from tests.cell.test_state_stream import FakeUpstream
@@ -77,26 +79,44 @@ async def test_execute_blocks_through_an_io_pause_and_completes_after_the_signal
     gateway.motion_group_state_stream = registry.stream
     gateway.trajectory_execution_api = MagicMock()
     gateway.trajectory_execution_api.execute_trajectory = fake
-    # The pause signal reads as set twice, then cleared.
+    # The one initial read says "hold"; the release arrives as a NATS push.
     gateway.bus_ios_api = MagicMock()
     gateway.bus_ios_api.get_bus_io_values = AsyncMock(
-        side_effect=[
-            [api.models.IOBooleanValue(io="hold", value=True)],
-            [api.models.IOBooleanValue(io="hold", value=True)],
-            [api.models.IOBooleanValue(io="hold", value=False)],
-        ]
+        return_value=[api.models.IOBooleanValue(io="hold", value=True)]
     )
+    gateway.bus_ios_api.get_bus_io_state = AsyncMock(
+        return_value=api.models.BusIOsState(
+            state=api.models.BusIOsStateEnum.BUS_IOS_STATE_CONNECTED
+        )
+    )
+    nats = FakeNats()
     motion_group = MotionGroup(
-        api_client=gateway, cell="cell", controller_id="ctrl", motion_group_id="0@ctrl"
+        api_client=gateway,
+        cell="cell",
+        controller_id="ctrl",
+        motion_group_id="0@ctrl",
+        nats_client=nats,
     )
     motion_group._load_planned_motion = AsyncMock(return_value="traj-1")
 
-    async with asyncio.timeout(10):
-        await motion_group.execute(
-            _joint_trajectory(), tcp=None, actions=[], pause_on_io=_pause_condition()
+    async def release_when_waited_for():
+        # Wait until the release watcher subscribed to the values subject.
+        while "nova.v2.cells.cell.bus-ios.ios" not in nats.subjects():
+            await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        await nats.publish(
+            "nova.v2.cells.cell.bus-ios.ios",
+            json.dumps([{"io": "hold", "value": False, "value_type": "boolean"}]).encode(),
         )
+
+    async with asyncio.timeout(10):
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(release_when_waited_for())
+            await motion_group.execute(
+                _joint_trajectory(), tcp=None, actions=[], pause_on_io=_pause_condition()
+            )
 
     assert len(fake.starts) == 2, "one start, then one resume after the signal cleared"
     assert all(s.pause_on_io == _pause_condition() for s in fake.starts)
-    assert gateway.bus_ios_api.get_bus_io_values.await_count == 3
+    assert gateway.bus_ios_api.get_bus_io_values.await_count == 1, "one initial read, no polling"
     await asyncio.wait_for(upstream.closed.wait(), 1.0)
