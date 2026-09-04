@@ -37,8 +37,7 @@ async def run(ctx):
     await executor.run()  # data streams to Rerun viewer automatically
 ```
 
-Requires `wandelbots-nova[nova-rerun-bridge]`. Run `uv run download-models` once
-to fetch robot meshes.
+Requires `wandelbots-nova[nova-rerun-bridge]`.
 
 ## What it logs
 

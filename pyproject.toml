@@ -40,7 +40,7 @@ nova-rerun-bridge = [
     "rerun-sdk==0.34.0",
     # Robots render from URDF, which nova2urdf derives from the DH parameters
     # and meshes the API serves. Used as a library, so no export step is needed.
-    "nova2urdf>=0.1.11",
+    "nova2urdf>=0.1.12",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
@@ -276,5 +276,5 @@ build-backend = "hatchling.build"
 # the published wandelbots-nova wheel ignore [tool.uv.sources], so the extra
 # cannot resolve nova2urdf until it is on an index. See vendor/README.md.
 [tool.uv.sources]
-nova2urdf = { path = "vendor/nova2urdf-0.1.11-py3-none-any.whl" }
+nova2urdf = { path = "vendor/nova2urdf-0.1.12-py3-none-any.whl" }
 

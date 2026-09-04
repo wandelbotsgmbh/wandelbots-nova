@@ -74,6 +74,9 @@ max-nested-blocks = 3
 "__init__.py" = ["unused-import"]
 "gr00t/__init__.py" = ["non-empty-init-module"]
 "rerun/__init__.py" = ["non-empty-init-module"]
+# Verbatim copy of an out-of-repo source of truth (see the module warning):
+# ignored rather than edited, so `diff` against that source stays clean.
+"nats/protocol.py" = ["typing-only-third-party-import"]
 "rerun/action_chunk.py" = ["import-outside-top-level"]
 "rerun/logger.py" = ["import-outside-top-level"]
 "**/tests/**" = [

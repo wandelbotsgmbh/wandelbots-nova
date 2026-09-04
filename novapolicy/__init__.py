@@ -55,6 +55,7 @@ from novapolicy.types import (
 
 if TYPE_CHECKING:
     from novapolicy.lerobot import LeRobotPolicyClient
+    from novapolicy.nats import NatsPolicyClient
 
 
 def __getattr__(name: str) -> object:
@@ -66,6 +67,15 @@ def __getattr__(name: str) -> object:
             msg = (
                 "LeRobotPolicyClient requires the LeRobot policy extra. "
                 "Install with `python -m pip install 'wandelbots-nova[novapolicy-lerobot]'`."
+            )
+            raise ModuleNotFoundError(msg) from exc
+    if name == "NatsPolicyClient":
+        try:
+            return importlib.import_module("novapolicy.nats").NatsPolicyClient
+        except ModuleNotFoundError as exc:
+            msg = (
+                "NatsPolicyClient requires the NATS policy extra. "
+                "Install with `python -m pip install 'wandelbots-nova[novapolicy-nats]'`."
             )
             raise ModuleNotFoundError(msg) from exc
     raise AttributeError(name)
@@ -93,6 +103,7 @@ __all__ = [
     "LeRobotPolicyClient",
     "Mapping",
     "MotionError",
+    "NatsPolicyClient",
     "Observation",
     "OnStale",
     "OpDirection",

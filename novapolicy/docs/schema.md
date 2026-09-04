@@ -58,7 +58,7 @@ Observation.tcp(
     "eef",
     source=mg,
     action=True,
-    position_ops=[Scale(0.001)],   # mm -> m
+    position_ops=[Scale(0.001)],  # mm -> m
     orientation_ops=[Rad2Deg()],
 )
 ```

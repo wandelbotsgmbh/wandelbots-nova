@@ -202,10 +202,10 @@ schema = PolicySchema(
 executor = PolicyExecutor(
     schema,
     policy,
-    camera_max_age_s=1.0,      # default bound for channels declaring none
+    camera_max_age_s=1.0,  # default bound for channels declaring none
     inference_timeout_s=30.0,  # liveness guard on one get_actions call; 0 disables
     on_stale=OnStale.CONTROLLED_STOP,
-    hold_budget_s=2.0,         # how long HOLD may retry before escalating
+    hold_budget_s=2.0,  # how long HOLD may retry before escalating
 )
 ```
 
