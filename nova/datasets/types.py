@@ -9,7 +9,9 @@ from nova import api
 
 class Dataset(api.models.Dataset):
     """A Dataset with its persisted poses, frames and command routines.
-    Convenience class that equals the according GetDatasetResponse from the API, but with the poses, command routines and frames as dictionaries instead of lists.
+
+    Mirrors the API's `GetDatasetResponse`, but with poses, command routines
+    and frames keyed by id instead of listed.
     """
 
     poses: dict[api.models.DatasetPoseId, api.models.DatasetPose] = Field(default_factory=dict)
@@ -36,9 +38,7 @@ class LoadLocalDatasetRequest:
     Request to load a dataset from a local JSON file.
 
     `path` is kept exactly as written. A relative one is resolved only when the
-    dataset is loaded, against the file of the ``@nova.program`` that declares it -
-    so this request stays portable across machines when it is serialized and
-    published to a program store.
+    dataset is loaded, against the file of the ``@nova.program`` that declares it
     """
 
     path: Path
