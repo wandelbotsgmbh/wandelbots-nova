@@ -168,6 +168,11 @@ class MovementControllerContext(pydantic.BaseModel):
     # The planned trajectory being executed. Optional: only location-bounded
     # cursor operations need it, one-shot execution does not.
     joint_trajectory: api.models.JointTrajectory | None = None
+    # The resolved server-side IO overlay (``StartMovementRequest.set_outputs``).
+    # Set when write actions carry path triggers, which are resolved against the
+    # planned trajectory (see nova.actions.path_trigger_resolver). When ``None``
+    # controllers fall back to ``combined_actions.to_set_io()``.
+    set_outputs: list[api.models.SetIO] | None = None
 
 
 MovementController = Callable[[MovementControllerContext], MovementControllerFunction]

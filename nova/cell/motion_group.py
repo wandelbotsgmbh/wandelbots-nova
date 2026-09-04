@@ -10,6 +10,11 @@ from nova.actions import Action, CombinedActions, MovementController, MovementCo
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CartesianPTP, Circular, CollisionFreeMotion, Linear
+from nova.actions.path_trigger_resolver import (
+    has_distance_triggers,
+    has_path_triggers,
+    resolve_set_outputs,
+)
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, PlanTrajectoryFailed
@@ -181,6 +186,16 @@ class MotionGroup(AbstractRobot):
 
             if not isinstance(action, WriteAction):
                 raise ValueError(f"Unsupported non-motion action type: {type(action).__name__}")
+
+            if action.at is not None:
+                # Without a motion there is no path to anchor the trigger to; the
+                # write fires immediately in list order (the "no motion" collapse).
+                logger.warning(
+                    "Path trigger %r on io_write(%r) is ignored: the action list contains no "
+                    "motion, so the write fires immediately.",
+                    action.at,
+                    action.key,
+                )
 
             if action.origin == api.models.IOOrigin.BUS_IO:
                 await self._api_client.bus_ios_api.set_bus_io_values(
@@ -1009,6 +1024,45 @@ class MotionGroup(AbstractRobot):
             joint_positions=joint_positions, times=times, locations=[0.0 for _ in range(num_steps)]
         )
 
+    async def _resolve_set_outputs(
+        self,
+        combined_actions: CombinedActions,
+        joint_trajectory: api.models.JointTrajectory,
+        tcp: str | None,
+    ) -> list[api.models.SetIO] | None:
+        """Resolve path-triggered write actions into the ``set_outputs`` IO overlay.
+
+        Time and distance triggers only become concrete once the trajectory is
+        planned. Distance triggers additionally need the per-sample TCP positions,
+        computed here via forward kinematics (only when such triggers are present).
+
+        Returns ``None`` when no write action carries a trigger, so the default
+        ``CombinedActions.to_set_io()`` overlay applies unchanged.
+        """
+        if not has_path_triggers(combined_actions):
+            return None
+
+        tcp_positions: list[tuple[float, ...]] | None = None
+        if has_distance_triggers(combined_actions):
+            if tcp is None:
+                logger.warning(
+                    "Distance-based path triggers require a TCP but none was provided; "
+                    "these triggers fall back to their motion boundary."
+                )
+            else:
+                joints = [tuple(sample) for sample in joint_trajectory.joint_positions]
+                poses = await self.forward_kinematics(joints, tcp)
+                tcp_positions = [pose.position.to_tuple() for pose in poses]
+
+        set_outputs = resolve_set_outputs(
+            combined_actions, joint_trajectory.times, joint_trajectory.locations, tcp_positions
+        )
+        logger.debug(
+            "Resolved path triggers to set_outputs locations: %s",
+            [entry.location for entry in set_outputs],
+        )
+        return set_outputs
+
     # TODO: refactor and simplify code, tests are already there
     async def _execute(
         self,
@@ -1041,10 +1095,14 @@ class MotionGroup(AbstractRobot):
         # Load planned trajectory
         trajectory_id = await self._load_planned_motion(joint_trajectory, tcp)
 
+        combined_actions = CombinedActions(items=tuple(actions))  # ty: ignore[invalid-argument-type]
+        set_outputs = await self._resolve_set_outputs(combined_actions, joint_trajectory, tcp)
+
         controller = movement_controller(
             MovementControllerContext(
-                combined_actions=CombinedActions(items=tuple(actions)),  # ty: ignore[invalid-argument-type]
+                combined_actions=combined_actions,
                 motion_id=trajectory_id,
+                set_outputs=set_outputs,
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
                 # The cursor subscribes to the same shared stream this relay
