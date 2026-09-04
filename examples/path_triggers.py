@@ -20,14 +20,10 @@ Time- and distance-based triggers are resolved against the planned trajectory
 during ``execute`` (distance uses the planned Cartesian TCP path length). Values
 that overshoot the anchor segment are clamped to its boundary with a warning.
 
-This example pulses a single controller digital output at several points along a
-square-ish path so you can observe the output toggling as the robot moves.
-
-Switching virtual <-> physical:
-- Set ``USE_PHYSICAL_ROBOT`` below. When ``False`` a virtual KUKA is provisioned
-  and you can run this against any NOVA instance. When ``True`` the physical
-  ``kuka_controller`` connection settings are used instead.
-- Adjust ``TRIGGER_IO`` to a digital output that exists on your controller.
+This example provisions a virtual KUKA and pulses a single controller digital
+output at several points along a square-ish path so you can observe the output
+toggling as the robot moves. Adjust ``TRIGGER_IO`` to a digital output that exists
+on your controller.
 
 Prerequisites:
 - A NOVA instance (see .env / NOVA_API, NOVA_ACCESS_TOKEN)
@@ -47,13 +43,8 @@ from nova.actions import (
     io_write,
     joint_ptp,
 )
-from nova.cell import kuka_controller, virtual_controller
-from nova.config import CELL_NAME
+from nova.cell import virtual_controller
 from nova.types import MotionSettings, Pose
-
-# --- Controller switch -------------------------------------------------------
-# Flip this to run against a real robot. The rest of the program is identical.
-USE_PHYSICAL_ROBOT = False
 
 CONTROLLER_NAME = "kuka"
 
@@ -61,41 +52,21 @@ CONTROLLER_NAME = "kuka"
 # exists on your controller (KUKA controllers expose e.g. "OUT#1").
 TRIGGER_IO = "OUT#1"
 
-virt_controller = virtual_controller(
+controller = virtual_controller(
     name=CONTROLLER_NAME, manufacturer=api.models.Manufacturer.KUKA, type="kuka-kr240_r2900"
 )
-
-phys_controller = kuka_controller(
-    name=CONTROLLER_NAME,
-    controller_ip="192.168.101.131",
-    controller_port=54600,
-    rsi_server_ip="192.168.102.130",
-    rsi_server_port=30152,
-)
-
-selected_controller = phys_controller if USE_PHYSICAL_ROBOT else virt_controller
 
 
 @nova.program(
     id="path_triggers",
     name="Path Triggers",
     # viewer=nova.viewers.Rerun(),  # uncomment for a 3D visualization
-    preconditions=nova.ProgramPreconditions(
-        controllers=[selected_controller], cleanup_controllers=False
-    ),
+    preconditions=nova.ProgramPreconditions(controllers=[controller], cleanup_controllers=False),
 )
 async def main(ctx: nova.ProgramContext) -> None:
     cell = ctx.cell
     controller = await cell.controller(CONTROLLER_NAME)
     motion_group = controller[0]
-
-    # A physical KUKA needs to be in control mode before it will move.
-    if USE_PHYSICAL_ROBOT:
-        await ctx.nova.api.controller_api.set_default_mode(
-            cell=CELL_NAME,
-            controller=CONTROLLER_NAME,
-            mode=api.models.SettableRobotSystemMode.MODE_CONTROL,
-        )
 
     normal = MotionSettings(tcp_velocity_limit=100)
     fast = MotionSettings(tcp_velocity_limit=250)
