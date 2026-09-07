@@ -1,0 +1,41 @@
+---
+name: Get fresh NOVA access token
+description: >-
+  Exchanges the Portal refresh token for a short-lived access token, minted
+  fresh at the point of use rather than reused across a whole workflow run.
+inputs:
+  refresh_url:
+    description: Portal OAuth token endpoint.
+    required: true
+  refresh_client_id:
+    description: OAuth client id for the refresh-token grant.
+    required: true
+  refresh_token:
+    description: Long-lived Portal refresh token.
+    required: true
+outputs:
+  access_token:
+    description: Freshly minted, short-lived access token.
+    value: ${{ steps.token.outputs.access_token }}
+
+runs:
+  using: composite
+  steps:
+    - id: token
+      shell: bash
+      env:
+        PORTAL_PROD_REFRESH_URL: ${{ inputs.refresh_url }}
+        PORTAL_PROD_REFRESH_CLIENT_ID: ${{ inputs.refresh_client_id }}
+        PORTAL_PROD_REFRESH_TOKEN: ${{ inputs.refresh_token }}
+      run: |
+        access_token=$(curl -sf -X POST "$PORTAL_PROD_REFRESH_URL" \
+          -H "content-type: application/x-www-form-urlencoded" \
+          -d "grant_type=refresh_token" \
+          -d "client_id=$PORTAL_PROD_REFRESH_CLIENT_ID" \
+          -d "refresh_token=$PORTAL_PROD_REFRESH_TOKEN" | jq -r '.access_token')
+        if [[ -z "$access_token" || "$access_token" == "null" ]]; then
+          echo "❌ Failed to obtain a fresh NOVA access token." >&2
+          exit 1
+        fi
+        echo "::add-mask::$access_token"
+        echo "access_token=$access_token" >> "$GITHUB_OUTPUT"
