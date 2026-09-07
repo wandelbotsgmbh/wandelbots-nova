@@ -227,27 +227,31 @@ class RobotVisualizer:
     def get_dh_theta_mesh_correction(
         self, link_index: int, root_transform: np.ndarray, joint_transform: np.ndarray
     ) -> np.ndarray:
-        """Return the extra theta rotation needed after flattening a GLB link mesh.
+        """Return the extra rotation needed after flattening a GLB link mesh.
 
         The Rerun visualizer flattens GLB meshes and logs each mesh as its own Rerun
         entity. Once flattened, meshes no longer inherit the original GLB joint
         transforms, so the visualizer has to recreate the missing joint-to-mesh offset.
 
-        Some GLB joint frames already contain the DH theta offset. Applying the offset
-        again would rotate those meshes twice.
+        Some GLB joint frames already contain a DH theta offset (or some other
+        rest-pose rotation relative to their mesh geometry). Applying the offset again
+        would rotate those meshes twice.
 
-        Apply the extra DH theta correction only when static zero-pose frame checks show
-        that the flattened GLB mesh needs it:
+        Apply the extra correction only when static zero-pose frame checks show that
+        the flattened GLB mesh needs it:
         - if the DH zero-pose joint origin and GLB joint origin differ, do not rotate
           around the DH origin because that would move the mesh incorrectly;
-        - if the origins match, apply the theta correction only when it improves zero-pose
-          frame alignment with Rerun's coordinate system.
+        - if the origins match but the orientations differ, solve directly for the
+          rotation that reconciles the GLB rest-pose frame with the DH zero-pose frame,
+          rather than only ever testing a Z-axis rotation by the DH theta value. A
+          plain Z-axis test previously missed nodes whose rest-pose mismatch is exactly
+          180 degrees: rotating an already-180-degrees-off frame by another 180 degrees
+          around world Z does not generally cancel the mismatch unless the frames
+          happen to commute, so some wrist/flange nodes stayed uncorrected even though
+          a (non-Z-axis) rotation was needed and computable from the same data.
         """
         identity_transform = np.eye(4)
-        if len(self.robot.dh_parameters) <= link_index:
-            return identity_transform
-
-        if abs(theta := self.robot.dh_parameters[link_index].theta or 0.0) < 1e-12:
+        if link_index >= len(self.zero_link_transforms_without_mounting):
             return identity_transform
 
         root_rotation = root_transform[:3, :3]
@@ -256,18 +260,18 @@ class RobotVisualizer:
         if np.linalg.norm(zero_link_transform[:3, 3] - glb_joint_position) > 1.0:
             return identity_transform
 
-        theta_rotation = Rotation.from_euler("z", theta, degrees=False).as_matrix()
         base_rotation = root_rotation.T @ zero_link_transform[:3, :3]
         target_rotation = root_rotation @ joint_transform[:3, :3].T
-        current_error = Rotation.from_matrix(base_rotation @ target_rotation).magnitude()
-        corrected_error = Rotation.from_matrix(
-            base_rotation @ theta_rotation @ target_rotation
-        ).magnitude()
-        if corrected_error >= current_error - 1e-9:
+
+        # Exact rotation such that base_rotation @ correction @ target_rotation == I,
+        # i.e. the rotation that makes the flattened mesh's zero-pose orientation match
+        # the DH-predicted zero-pose orientation exactly, whatever that rotation is.
+        correction_rotation = base_rotation.T @ target_rotation.T
+        if Rotation.from_matrix(correction_rotation).magnitude() < 1e-6:
             return identity_transform
 
         correction_transform = np.eye(4)
-        correction_transform[:3, :3] = theta_rotation
+        correction_transform[:3, :3] = correction_rotation
         return correction_transform
 
     def get_transform_matrix(self):
