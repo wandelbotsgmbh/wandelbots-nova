@@ -1147,3 +1147,7 @@ is this in the remote repo?
 ---
 
 pls push
+
+---
+
+add the example and updated @pyproject.toml and @uv.lock to the stage and commit and push
