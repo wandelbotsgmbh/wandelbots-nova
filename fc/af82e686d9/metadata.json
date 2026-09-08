@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "fcaf82e686d9",
+  "strategy": "manual-commit",
+  "branch": "feat/pause-on-io-resume",
+  "checkpoints_count": 3,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/fc/af82e686d9/0/metadata.json",
+      "transcript": "/fc/af82e686d9/0/full.jsonl",
+      "compact_transcript": "/fc/af82e686d9/0/transcript.jsonl",
+      "content_hash": "/fc/af82e686d9/0/content_hash.txt",
+      "prompt": "/fc/af82e686d9/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 27564,
+    "cache_creation_tokens": 3341882,
+    "cache_read_tokens": 56964667,
+    "output_tokens": 298200,
+    "api_call_count": 173
+  }
+}
