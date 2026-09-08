@@ -75,7 +75,7 @@ async def operator(kuka, ur) -> None:
                 position=[pi / 2, -pi / 2, pi / 2, 0.0, pi / 2, 0.0, 0.0],
             ),
         ],
-        cleanup_controllers=True,
+        cleanup_controllers=False,
     ),
 )
 async def main(ctx: nova.ProgramContext):
