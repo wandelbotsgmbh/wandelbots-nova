@@ -103,7 +103,9 @@ async def stream_motion_group(
             position=(0, 0, 0), orientation=(0, 0, 0)
         )
         robot = DHRobot(
-            dh_parameters=motion_group_description.dh_parameters or [], mounting=mounting
+            dh_parameters=motion_group_description.dh_parameters or [],
+            mounting=mounting,
+            kinematic_chain_offset=motion_group_description.kinematic_chain_offset,
         )
         rr.reset_time()
         rr.set_time(TIME_REALTIME_NAME, timestamp=time.time())

@@ -184,9 +184,15 @@ class RobotVisualizer:
 
     # TODO: this will not work yet
     def compute_forward_kinematics(self, joint_positions: list[float]):
-        """Compute link transforms using the robot's methods."""
+        """Compute link transforms using the robot's methods.
+
+        ``transforms[0]`` is the base frame (mounting only, no ``kinematic_chain_offset``
+        applied yet), matching the base-link mesh's own rest position -- the offset only
+        applies from the start of the DH chain onward, i.e. to ``transforms[1:]``.
+        """
         accumulated = self.robot.pose_to_matrix(self.robot.mounting)
         transforms = [accumulated.copy()]
+        accumulated = accumulated @ self.robot.pose_to_matrix(self.robot.kinematic_chain_offset)
         for dh_param, joint_position in zip(
             self.robot.dh_parameters, joint_positions, strict=False
         ):
