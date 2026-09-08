@@ -22,7 +22,8 @@ BUCKET_TEMPLATE = "nova_cells_{cell}_interlocks"
 
 
 def _clean(value: str) -> str:
-    """NATS KV keys allow ``[-/_=.a-zA-Z0-9]``; ``/`` is reserved here as a separator."""
+    """NATS KV keys allow ``[-/_=.a-zA-Z0-9]``; we additionally exclude ``/`` and
+    map anything unsafe to ``-``.  ``__`` separates the key components."""
     return _SAFE.sub("-", value)
 
 
@@ -33,8 +34,9 @@ class LockId(pydantic.BaseModel):
     number is symmetric in the source system — if ``ir340r01`` uses slot 9 for
     ``ir340r02`` then ``ir340r02`` uses slot 9 for ``ir340r01`` — which is what
     lets both processes derive the same key independently.  ``FB207`` enforces
-    exactly this reciprocity (``xFehlerNr3``/``PAFE``); :meth:`validate_pair`
-    is the client-side equivalent.
+    exactly this reciprocity (``xFehlerNr3``/``PAFE``); here the model validator
+    normalises the pair to a canonical order and rejects self-interlocks, so a
+    mismatched pair simply produces a key nobody else contends for.
     """
 
     model_config = pydantic.ConfigDict(frozen=True)
@@ -131,5 +133,41 @@ class InterlockTimeout(InterlockError):
         super().__init__(f"{holder} waited {timeout:.1f}s for: {detail or '<no detail>'}")
 
 
+class AlreadyHeldError(InterlockError):
+    """``acquire()`` was called while this client already holds locks.
+
+    The deadlock argument of this prototype is *no hold-and-wait*: a robot never
+    waits for locks while holding others, because each step takes its **complete**
+    slot set in a single all-or-nothing :meth:`InterlockClient.acquire` — exactly
+    like one ``SPSMAKRO20`` call.  Acquiring while holding would reintroduce
+    hold-and-wait (and with it, representable deadlock), so it is refused.
+
+    Release everything first, or widen the original acquire to the full set.
+    """
+
+    def __init__(self, robot: str, held: list[str], requested: list[str]):
+        self.robot = robot
+        self.held = held
+        self.requested = requested
+        super().__init__(
+            f"{robot} tried to acquire {requested} while already holding {held}; "
+            "all-or-nothing interlocking forbids hold-and-wait — release first, "
+            "or take the complete set in one acquire()"
+        )
+
+
 class ForeignRelease(InterlockError):
-    """Attempted to release a lock held by someone else (or a newer run)."""
+    """A lock from this grant is now held by someone else (or a newer run).
+
+    Raised by :meth:`InterlockClient.release` **after** releasing every lock in
+    the grant that was still legitimately ours; the foreign locks listed here
+    were left untouched.  This means the caller's view of what it holds has
+    diverged from the cell (e.g. an operator ``force_release`` while this robot
+    believed it held the zone) — treat it as a program abort and investigate.
+    """
+
+    def __init__(self, holder: str, records: dict[str, LockRecord]):
+        self.holder = holder
+        self.records = records
+        detail = ", ".join(f"{k} held by {v.holder}/{v.run_id}" for k, v in records.items())
+        super().__init__(f"{holder} attempted to release locks it no longer holds: {detail}")

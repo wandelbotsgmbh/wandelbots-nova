@@ -19,12 +19,15 @@ Typical use from a robot program::
         label="GEO40 entnehmen",
     ):
         await plan_and_execute_with_cursor(motion_group, actions, tcp=tcp)
-    # exiting the block is the "Freigabe Verriegelung" (A49/A51 = EIN)
+    # a *clean* exit of the block is the "Freigabe Verriegelung" (A49/A51 = EIN);
+    # on an exception or cancellation the locks stay held — the robot may have
+    # stopped inside the zone.  Recover with release_all() once confirmed clear.
 """
 
-from nova.interlock.client import InterlockClient
+from nova.interlock.client import CORRUPT_HOLDER, InterlockClient
 from nova.interlock.models import (
     BUCKET_TEMPLATE,
+    AlreadyHeldError,
     ForeignRelease,
     Grant,
     InterlockError,
@@ -35,6 +38,8 @@ from nova.interlock.models import (
 
 __all__ = [
     "BUCKET_TEMPLATE",
+    "CORRUPT_HOLDER",
+    "AlreadyHeldError",
     "ForeignRelease",
     "Grant",
     "InterlockClient",
