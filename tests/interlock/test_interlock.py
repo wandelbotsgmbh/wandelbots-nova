@@ -2,8 +2,10 @@
 
 The unit tests run against an in-memory fake KV that reproduces the JetStream
 semantics we rely on: ``create`` fails if the key exists, ``get`` raises
-``KeyNotFoundError`` if it does not.  Tests marked ``nats`` need a live broker
-with JetStream enabled (``nats-server -js``).
+``KeyNotFoundError`` if it does not, ``delete(last=...)`` is revision-guarded,
+and ``watch`` delivers DEL notifications.  ``test_interlock_live.py`` runs the
+same protocol against a real broker (marked ``nats``; needs a local
+``nats-server`` binary).
 """
 
 import asyncio
@@ -11,7 +13,16 @@ import asyncio
 import pytest
 from nats.js.errors import KeyNotFoundError, KeyWrongLastSequenceError
 
-from nova.interlock import Grant, InterlockClient, InterlockTimeout, LockId, LockRecord
+from nova.interlock import (
+    CORRUPT_HOLDER,
+    AlreadyHeldError,
+    ForeignRelease,
+    Grant,
+    InterlockClient,
+    InterlockTimeout,
+    LockId,
+    LockRecord,
+)
 
 GEO40 = {
     "r01_r02": LockId.of("ir340r01", "ir340r02", 9),
@@ -24,9 +35,27 @@ GEO40 = {
 
 
 class _Entry:
-    def __init__(self, value: bytes, revision: int):
+    def __init__(self, value: bytes | None, revision: int, operation: str | None = None):
         self.value = value
         self.revision = revision
+        self.operation = operation
+
+
+class _FakeWatcher:
+    def __init__(self, initial: list[_Entry]):
+        self._q: asyncio.Queue[_Entry | None] = asyncio.Queue()
+        for entry in initial:
+            self._q.put_nowait(entry)
+        self._q.put_nowait(None)  # end-of-initial-replay marker, as nats-py sends
+
+    def push(self, entry: _Entry) -> None:
+        self._q.put_nowait(entry)
+
+    async def updates(self, timeout: float = 5.0) -> _Entry | None:
+        return await asyncio.wait_for(self._q.get(), timeout)
+
+    async def stop(self) -> None:
+        pass
 
 
 class FakeKV:
@@ -36,6 +65,11 @@ class FakeKV:
         self._data: dict[str, _Entry] = {}
         self._rev = 0
         self.create_calls = 0
+        self._watchers: dict[str, list[_FakeWatcher]] = {}
+
+    def _notify(self, key: str, entry: _Entry) -> None:
+        for watcher in self._watchers.get(key, []):
+            watcher.push(entry)
 
     async def get(self, key: str) -> _Entry:
         if key not in self._data:
@@ -48,15 +82,30 @@ class FakeKV:
             raise KeyWrongLastSequenceError()
         self._rev += 1
         self._data[key] = _Entry(value, self._rev)
+        self._notify(key, self._data[key])
         return self._rev
 
     async def delete(self, key: str, last: int | None = None, **_) -> bool:
-        return self._data.pop(key, None) is not None
+        entry = self._data.get(key)
+        if last is not None and (entry is None or entry.revision != last):
+            raise KeyWrongLastSequenceError()
+        if entry is None:
+            return False
+        del self._data[key]
+        self._rev += 1
+        self._notify(key, _Entry(None, self._rev, operation="DEL"))
+        return True
 
     async def keys(self) -> list[str]:
         if not self._data:
             raise Exception("no keys")
         return list(self._data)
+
+    async def watch(self, key: str, **_) -> _FakeWatcher:
+        initial = [self._data[key]] if key in self._data else []
+        watcher = _FakeWatcher(initial)
+        self._watchers.setdefault(key, []).append(watcher)
+        return watcher
 
 
 def make_client(kv: FakeKV, robot: str) -> InterlockClient:
@@ -187,9 +236,7 @@ async def test_geo40_triangle_does_not_deadlock():
                 occupancy.pop(key, None)
             await client.release(grant)
 
-    await asyncio.wait_for(
-        asyncio.gather(*(cycle(r) for r in plans)), timeout=60
-    )
+    await asyncio.wait_for(asyncio.gather(*(cycle(r) for r in plans)), timeout=60)
     assert violations == []
 
 
@@ -229,14 +276,16 @@ async def test_timeout_leaves_nothing_held():
 
 
 async def test_foreign_release_is_refused():
-    """A stale grant must not clobber a lock someone else now holds."""
+    """A stale grant must not clobber a lock someone else now holds — and the
+    divergence must be loud, not a silent no-op."""
     kv = FakeKV()
     r01, r02 = make_client(kv, "ir340r01"), make_client(kv, "ir340r02")
     grant_r01 = await r01.acquire([GEO40["r01_r02"]])
     await r01.release(grant_r01)
     grant_r02 = await r02.acquire([GEO40["r01_r02"]])
 
-    await r01.release(grant_r01)  # stale — must be a no-op
+    with pytest.raises(ForeignRelease):
+        await r01.release(grant_r01)  # stale — must not touch r02's lock
     still = await kv.get(GEO40["r01_r02"].key)
     assert LockRecord.model_validate_json(still.value).holder == "ir340r02"
     await r02.release(grant_r02)
@@ -278,15 +327,125 @@ async def test_inspect_reports_holders():
     assert record.label == "GEO40 entnehmen"
 
 
-async def test_hold_context_manager_releases_on_exception():
+async def test_hold_keeps_locks_on_exception():
+    """A failed Folge may have stopped the robot *inside* the zone — the lock
+    must survive the error (fail-to-wait), never be released by control flow."""
     kv = FakeKV()
     r01 = make_client(kv, "ir340r01")
     with pytest.raises(RuntimeError):
         async with r01.hold([GEO40["r01_r02"]]):
             raise RuntimeError("folge failed")
+
+    assert r01.held == [GEO40["r01_r02"].key], "abnormal exit must keep the lock"
+    r02 = make_client(kv, "ir340r02")
+    with pytest.raises(InterlockTimeout):
+        await r02.acquire([GEO40["r01_r02"]], timeout=0.3, poll_interval=0.01)
+
+    # recovery: once the robot is confirmed clear, release_all frees the partner
+    released = await r01.release_all()
+    assert released == [GEO40["r01_r02"].key]
+    grant = await asyncio.wait_for(r02.acquire([GEO40["r01_r02"]], timeout=2), timeout=3)
+    assert grant.holder == "ir340r02"
+
+
+async def test_hold_keeps_locks_on_cancellation():
+    """Cancellation decelerates the robot past the cancellation point — it may
+    rest inside the zone, so a cancelled hold must keep the lock."""
+    kv = FakeKV()
+    r01 = make_client(kv, "ir340r01")
+    entered = asyncio.Event()
+
+    async def folge():
+        async with r01.hold([GEO40["r01_r02"]]):
+            entered.set()
+            await asyncio.sleep(60)  # "motion" that gets cancelled
+
+    task = asyncio.create_task(folge())
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert r01.held == [GEO40["r01_r02"].key]
+    assert GEO40["r01_r02"].key in kv._data, "the KV entry must survive cancellation"
+
+
+async def test_hold_releases_on_clean_exit():
+    kv = FakeKV()
+    r01 = make_client(kv, "ir340r01")
+    async with r01.hold([GEO40["r01_r02"]]):
+        assert r01.held == [GEO40["r01_r02"].key]
     assert r01.held == []
+    assert kv._data == {}
+
+
+async def test_acquire_while_holding_is_refused():
+    """Hold-and-wait is the deadlock ingredient; the single-acquire rule is
+    enforced, not documented."""
+    kv = FakeKV()
+    r01 = make_client(kv, "ir340r01")
+    grant = await r01.acquire([GEO40["r01_r02"], GEO40["r01_r03"]])
+
+    with pytest.raises(AlreadyHeldError):
+        await r01.acquire([GEO40["r02_r03"]])
+    # also for an overlapping set — re-acquiring a held key must not alias grants
+    with pytest.raises(AlreadyHeldError):
+        await r01.acquire([GEO40["r01_r02"]])
+
+    # a partial release still leaves the client "holding"
+    await r01.release(grant, slots=[9])
+    with pytest.raises(AlreadyHeldError):
+        await r01.acquire([GEO40["r01_r02"]])
+
+    await r01.release(grant)
+    assert r01.held == []
+    await r01.acquire([GEO40["r01_r02"]])  # free to acquire again
+
+
+async def test_release_all_recovers_locks_from_a_previous_run():
+    """A restarted process gets a fresh run_id; once the program asserts the
+    robot is physically clear it can reclaim its predecessor's locks."""
+    kv = FakeKV()
+    crashed = make_client(kv, "ir340r01")
+    crashed._run_id = "run-before-crash"
+    await crashed.acquire([GEO40["r01_r02"], GEO40["r01_r03"]])
+    del crashed
+
+    restarted = make_client(kv, "ir340r01")  # fresh run_id, empty _held
+    assert await restarted.release_all() == [], "default must not touch a foreign run"
+    assert len(kv._data) == 2
+
+    released = await restarted.release_all(include_previous_runs=True)
+    assert sorted(released) == sorted([GEO40["r01_r02"].key, GEO40["r01_r03"].key])
+    assert kv._data == {}
+
+
+async def test_release_all_previous_runs_spares_other_robots():
+    kv = FakeKV()
+    r02 = make_client(kv, "ir340r02")
+    await r02.acquire([GEO40["r02_r03"]])
+
+    r01 = make_client(kv, "ir340r01")
+    await r01.release_all(include_previous_runs=True)
+    assert GEO40["r02_r03"].key in kv._data, "another robot's lock must be untouched"
+
+
+async def test_corrupt_record_blocks_and_is_visible():
+    """An unparseable KV entry must behave like a held lock and show up in
+    inspect() so an operator can find and force_release it."""
+    kv = FakeKV()
+    key = GEO40["r01_r02"].key
+    kv._rev += 1
+    kv._data[key] = _Entry(b"not json", kv._rev)
 
     r02 = make_client(kv, "ir340r02")
+    with pytest.raises(InterlockTimeout):
+        await r02.acquire([GEO40["r01_r02"]], timeout=0.3, poll_interval=0.01)
+
+    state = await r02.inspect()
+    assert state[key].holder == CORRUPT_HOLDER
+
+    assert await r02.force_release(key, reason="confirmed clear")
     grant = await asyncio.wait_for(r02.acquire([GEO40["r01_r02"]], timeout=2), timeout=3)
     assert grant.holder == "ir340r02"
 
