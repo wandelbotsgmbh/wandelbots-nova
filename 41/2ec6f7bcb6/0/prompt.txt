@@ -1,0 +1,18 @@
+how many branches are there for interlock
+I see that there are two worktrees but cannot see why there are two
+
+---
+
+clean it up please
+
+---
+
+okay i did it, what is the current branch and worktree state now
+
+---
+
+nw I want the feat/zone-interlock-nats to based on /feat/pause-on-io-resume is that a bad idea? or should we maybe have a new branch with feat/zone-interlock-nats state based on feat/pause-on-io-resume ?
+
+---
+
+the integration branch is what I need to test both together

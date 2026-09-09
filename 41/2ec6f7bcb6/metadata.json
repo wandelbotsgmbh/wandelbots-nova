@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "412ec6f7bcb6",
+  "strategy": "manual-commit",
+  "branch": "lab/interlock-with-pause",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "examples/README.md",
+    "examples/interlock_two_robots.py",
+    "nova/interlock/__init__.py",
+    "nova/interlock/client.py",
+    "nova/interlock/models.py",
+    "nova/viewers/rerun.py",
+    "nova_rerun_bridge/nova_rerun_bridge.py",
+    "pyproject.toml",
+    "tests/interlock/__init__.py",
+    "tests/interlock/test_interlock.py",
+    "tests/interlock/test_interlock_live.py",
+    "tests/nova_rerun_bridge/test_nova_rerun_bridge.py",
+    "tests/test_viewers.py",
+    "uv.lock"
+  ],
+  "sessions": [
+    {
+      "metadata": "/41/2ec6f7bcb6/0/metadata.json",
+      "transcript": "/41/2ec6f7bcb6/0/full.jsonl",
+      "compact_transcript": "/41/2ec6f7bcb6/0/transcript.jsonl",
+      "content_hash": "/41/2ec6f7bcb6/0/content_hash.txt",
+      "prompt": "/41/2ec6f7bcb6/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 394,
+    "cache_creation_tokens": 25926,
+    "cache_read_tokens": 822140,
+    "output_tokens": 8398,
+    "api_call_count": 18
+  }
+}
