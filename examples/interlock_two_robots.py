@@ -52,6 +52,7 @@ import math
 import nova
 from nova import Controller, api, run_program
 from nova.actions import joint_ptp
+from nova.types import MotionSettings
 from nova.cell import virtual_controller
 from nova.interlock import InterlockClient, LockId
 
@@ -81,6 +82,9 @@ FACING_PARTNER_ANGLE = math.radians(90)
 SHARED_ZONE = LockId.of(ROBOT_A, ROBOT_B, 1)
 
 CYCLES = 10
+
+# TCP velocity limit for every motion, in mm/s.
+SPEED = MotionSettings(tcp_velocity_limit=1000)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
 log = logging.getLogger("interlock_example")
@@ -175,14 +179,14 @@ async def robot_cycle(controller: Controller, locks: InterlockClient) -> None:
     # be outside the zone, so any lock a previous run of this robot left behind
     # (it crashed, was killed …) is safe to drop now.  Anywhere else this would
     # be wrong.
-    await motion_group.plan_and_execute([joint_ptp(rest)], tcp=tcp)
+    await motion_group.plan_and_execute([joint_ptp(rest, settings=SPEED)], tcp=tcp)
     stale = await locks.release_all(include_previous_runs=True)
     if stale:
         log.warning("[%s] recovered stale locks from a previous run: %s", locks.robot, stale)
 
     for cycle in range(1, CYCLES + 1):
         # The first 45° do not touch the shared zone and need no lock.
-        await motion_group.plan_and_execute([joint_ptp(approach)], tcp=tcp)
+        await motion_group.plan_and_execute([joint_ptp(approach, settings=SPEED)], tcp=tcp)
         if cycle == 1:
             await _check_turn_direction(motion_group, tcp, locks.robot)
 
@@ -192,14 +196,16 @@ async def robot_cycle(controller: Controller, locks: InterlockClient) -> None:
         log.info("[%s] cycle %d: at 45°, requesting %s", locks.robot, cycle, SHARED_ZONE.key)
         async with locks.hold([SHARED_ZONE], label=f"cycle {cycle}") as grant:
             log.info("[%s] cycle %d: turning into the shared zone", locks.robot, cycle)
-            await motion_group.plan_and_execute([joint_ptp(facing_partner)], tcp=tcp)
+            await motion_group.plan_and_execute(
+                [joint_ptp(facing_partner, settings=SPEED)], tcp=tcp
+            )
             # … the actual work facing the partner happens here …
-            await motion_group.plan_and_execute([joint_ptp(approach)], tcp=tcp)
+            await motion_group.plan_and_execute([joint_ptp(approach, settings=SPEED)], tcp=tcp)
             log.info("[%s] cycle %d: back at 45°, releasing %s", locks.robot, cycle, grant.keys)
         # Rule 2 — the clean exit above is the release.  Had anything raised
         # inside the block, the lock would still be held now.
 
-        await motion_group.plan_and_execute([joint_ptp(rest)], tcp=tcp)
+        await motion_group.plan_and_execute([joint_ptp(rest, settings=SPEED)], tcp=tcp)
 
     log.info("[%s] done, holding %s", locks.robot, locks.held or "nothing")
 
