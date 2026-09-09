@@ -1,9 +1,18 @@
+"""Run a pre-recorded synchronized trajectory with MultiMotionGroup.
+
+``MultiMotionGroup`` is the single primitive for several motion groups — like
+``MotionGroup`` for one. Here it only executes: a trajectory recorded for a robot
+and a positioner is run through the IO barrier with ``MultiMotionGroup.execute``,
+no planning involved. See ``multi_motion_group_planning.py`` for the
+``plan_and_execute`` counterpart.
+"""
+
 from pathlib import Path
 
 import nova
 from nova import api, run_program
 from nova.actions import jnt
-from nova.cell import GroupArgs, TrajectoryExecutor, virtual_controller
+from nova.cell import GroupArgs, MultiMotionGroup, virtual_controller
 
 CONTROLLER = "kuka"
 ROBOT, POSITIONER = f"0@{CONTROLLER}", f"1@{CONTROLLER}"
@@ -53,10 +62,10 @@ async def multi_motion_group_trajectory(ctx: nova.ProgramContext):
         # A trajectory can only be executed from its own first sample.
         await group.plan_and_execute([jnt(samples[name][0])], tcp=TCPS[name])
 
-    executor = (
-        TrajectoryExecutor.builder(groups).sync_on_io(SYNC_IO_ID, controller=CONTROLLER).build()
+    ensemble = (
+        MultiMotionGroup.builder(groups).sync_on_io(SYNC_IO_ID, controller=CONTROLLER).build()
     )
-    await executor.execute(
+    await ensemble.execute(
         trajectory, groups={name: GroupArgs(tcp=tcp) for name, tcp in TCPS.items()}
     )
 

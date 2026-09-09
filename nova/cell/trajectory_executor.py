@@ -20,13 +20,10 @@ image rather than on N network round-trips:
    start can never satisfy the barrier),
 4. the sync IO is set.
 
-Example:
-    ```python
-    executor = (
-        TrajectoryExecutor.builder({"0@robot": robot_mg, "0@positioner": positioner_mg})
-        .sync_on_io("sync_out", controller="robot")
-        .build()
-    )
+This is the execution machinery behind :class:`~nova.cell.multi_motion_group.MultiMotionGroup`;
+assemble it through :meth:`MultiMotionGroup.builder` (the user-facing entry) or construct it
+directly with an :class:`IOSyncDriver`. Then::
+
     await executor.execute(multi_joint_trajectory)
 
     # Or interactively:
@@ -34,32 +31,29 @@ Example:
         operation = cursor.forward()
         cursor.pause()
         await cursor.forward()  # resumes through the barrier again
-    ```
 """
 
 import asyncio
 import functools
-from collections.abc import AsyncGenerator, Iterable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Self
 
 from nova import api
-from nova.actions.io import WriteAction, io_write
+from nova.actions.base import Action
+from nova.actions.container import located_writes, write_to_set_io
+from nova.actions.io import WriteAction
+from nova.actions.mock import WaitAction
 from nova.cell.motion_group import MotionGroup
 from nova.cell.movement_controller.trajectory_cursor import TrajectoryCursor
-from nova.cell.multi_trajectory_cursor import IOSyncDriver, MultiTrajectoryCursor, SyncDriver
-from nova.cell.session_monitor import SessionMonitor, SyncDriftMonitor
+from nova.cell.multi_trajectory_cursor import MultiTrajectoryCursor, SyncDriver
+from nova.cell.robot_cell import ActionsLike, _normalize_actions
+from nova.cell.session_monitor import SessionMonitor
 
 
 @dataclass(frozen=True)
 class GroupArgs:
     """Per-group arguments for one execution.
-
-    Actions are not part of this: an action list belongs to one motion group's
-    trajectory, whose integer locations are *its* action boundaries, and the
-    ensemble has one shared parameterization instead. Synchronized execution
-    therefore carries no action metadata and no IO overlay derived from it.
 
     Attributes:
         tcp: TCP the trajectory was planned for; passed to trajectory loading.
@@ -97,9 +91,9 @@ class TrajectoryExecutor:
 
     Every execution goes through the barrier, so a single group with a
     hardware-gated start is a valid topology; plain single-group execution is
-    :meth:`MotionGroup.execute`'s job. Groups need not share a cell or gateway
-    — each is executed through its own — but a :class:`SyncDriver` may require
-    it (:class:`IOSyncDriver` writes within one cell).
+    :meth:`MotionGroup.execute`'s job. All groups must live in one cell — the
+    sync barrier gates them on that cell's IO (:class:`IOSyncDriver` writes
+    within one cell) — though each is still executed through its own gateway.
 
     ``monitors`` observe every session's state streams; one that raises aborts
     the session.
@@ -113,24 +107,50 @@ class TrajectoryExecutor:
     ):
         if not motion_groups:
             raise ValueError("At least one motion group is required")
-        groups_without_condition = set(motion_groups) - set(sync.start_conditions())
-        if groups_without_condition:
+
+        cells = {motion_group._cell for motion_group in motion_groups.values()}
+        if len(cells) > 1:
+            raise ValueError(
+                f"Synchronized execution is cell-scoped but the motion groups span "
+                f"{sorted(cells)}. The sync barrier gates them on one cell's IO."
+            )
+
+        motion_groups_without_condition = set(motion_groups) - set(sync.start_conditions())
+        if motion_groups_without_condition:
             raise ValueError(
                 f"The sync driver has no start condition for groups: "
-                f"{sorted(groups_without_condition)}"
+                f"{sorted(motion_groups_without_condition)}"
             )
 
         self._motion_groups = dict(motion_groups)
         self._monitors = tuple(monitors)
         self._sync = sync
+        # Controller id -> the groups on it, name-ordered so the first is the
+        # deterministic pick; fixed for the executor's lifetime.
+        self._motion_groups_by_controller: dict[str, list[str]] = {}
+        for name in sorted(self._motion_groups):
+            self._motion_groups_by_controller.setdefault(
+                self._motion_groups[name]._controller_id, []
+            ).append(name)
+
+    @property
+    def motion_groups(self) -> dict[str, MotionGroup]:
+        """The motion groups this executor drives, keyed by name."""
+        return dict(self._motion_groups)
 
     async def execute(
         self,
         trajectory: api.models.MultiJointTrajectory,
         groups: Mapping[str, GroupArgs] | None = None,
+        actions: ActionsLike | None = None,
     ) -> None:
-        """Execute the trajectory front to end, synchronized through the barrier."""
-        async with self.attach(trajectory, groups) as cursor:
+        """Execute the trajectory front to end, synchronized through the barrier.
+
+        ``actions`` is the same ensemble action list passed to
+        :meth:`MultiMotionGroupPlanner.plan`; its :class:`WriteAction` entries
+        become the location-anchored IO overlay fired during execution (see
+        :meth:`attach`)."""
+        async with self.attach(trajectory, actions=actions, groups=groups) as cursor:
             await cursor.forward()
 
     @asynccontextmanager
@@ -138,15 +158,29 @@ class TrajectoryExecutor:
         self,
         trajectory: api.models.MultiJointTrajectory,
         groups: Mapping[str, GroupArgs] | None = None,
+        actions: ActionsLike | None = None,
     ) -> AsyncGenerator[MultiTrajectoryCursor, None]:
         """Open a session for interactive control: load the trajectory, open the
         sockets, initialize — but do not move. Starting is the caller's call
         (:meth:`MultiTrajectoryCursor.forward`); exiting the context detaches
-        every cursor and closes every socket."""
+        every cursor and closes every socket.
+
+        ``actions`` mirrors the list given to
+        :meth:`MultiMotionGroupPlanner.plan`. It is not baked into the loaded
+        trajectory: each :class:`WriteAction` is turned into a
+        :class:`api.models.SetIO` anchored at its motion index (the count of
+        motions before it, waits skipped — the same convention as single-group
+        execution) and attached to the owning group's cursor, which re-emits the
+        overlay on every start. Every write is fired once, by the single group
+        it routes to; since all groups share one ``locations`` array that instant
+        is synchronized across the ensemble."""
         per_group = self._split_for_groups(trajectory)
         unknown_group_args = set(groups or {}) - set(self._motion_groups)
         if unknown_group_args:
             raise ValueError(f"Group args given for unknown groups: {sorted(unknown_group_args)}")
+
+        action_list = _normalize_actions(actions or [])
+        overlay = self._build_io_overlay(action_list)
 
         cursors: dict[str, TrajectoryCursor] = {}
         for name, joint_trajectory in per_group.items():
@@ -155,9 +189,8 @@ class TrajectoryExecutor:
             trajectory_id = await motion_group._load_planned_motion(
                 joint_trajectory, group_args.tcp
             )
-            # Binding the rate keeps the cursor's zero-arg stream factory seam
-            # untouched; with no rate the bare bound method is passed, exactly
-            # as before.
+            # Bind the rate so the cursor still receives a zero-arg stream
+            # factory; with no rate the bare bound method already is one.
             state_stream_source = (
                 functools.partial(motion_group.stream_state, group_args.state_stream_rate_msecs)
                 if group_args.state_stream_rate_msecs is not None
@@ -170,9 +203,10 @@ class TrajectoryExecutor:
                 detach_on_standstill=False,
                 emit_motion_events=False,
                 ignore_controller_limits=group_args.ignore_controller_limits,
+                set_outputs=overlay[name] or None,
             )
 
-        cursor = MultiTrajectoryCursor(cursors, self._sync)
+        cursor = MultiTrajectoryCursor(cursors, self._sync, actions=action_list)
         try:
             async with asyncio.TaskGroup() as task_group:
                 # control() owns the barrier and the state fan-out in its own
@@ -224,176 +258,64 @@ class TrajectoryExecutor:
             for key, joint_samples in joint_positions_by_group.items()
         }
 
+    def _build_io_overlay(self, actions: Sequence[Action]) -> dict[str, list[api.models.SetIO]]:
+        """Turn the action list's writes into a per-group ``SetIO`` overlay.
+
+        Each write is routed to exactly one group and anchored at its motion
+        index; all other groups get an empty list. A controller output goes to
+        the group on that controller; a cell-wide bus variable goes to one
+        deterministic group (all groups share the ``locations`` array, so which
+        one carries it does not change the instant).
+        """
+        overlay: dict[str, list[api.models.SetIO]] = {name: [] for name in self._motion_groups}
+        for location, write in located_writes(actions):
+            overlay[self._motion_group_for_write(write)].append(write_to_set_io(write, location))
+        return overlay
+
+    async def apply_non_motion_actions(self, actions: Sequence[Action]) -> None:
+        """Run an all-non-motion action list directly, without a trajectory.
+
+        The multi-group counterpart of ``MotionGroup``'s direct non-motion path:
+        a wait sleeps, a write is routed to its owning motion group and set on that
+        group's controller. Used by :meth:`MultiMotionGroup.plan_and_execute` when
+        there is nothing to plan.
+        """
+        for action in actions:
+            if isinstance(action, WaitAction):
+                await asyncio.sleep(action.wait_for_in_seconds)
+            elif isinstance(action, WriteAction):
+                motion_group = self._motion_group_for_write(action)
+                await self._motion_groups[motion_group]._execute_direct_non_motion_actions([action])
+            else:
+                raise ValueError(f"Not a non-motion action: {type(action).__name__}")
+
+    def _motion_group_for_write(self, write: WriteAction) -> str:
+        """The single motion group whose stream fires this write, from the controller
+        index built in ``__init__``: the group on the write's controller, or the
+        first motion group for a cell-wide bus IO (all groups share the ``locations``
+        array, so which one carries it does not change the instant)."""
+        if write.origin is api.models.IOOrigin.BUS_IO:
+            return min(self._motion_groups)
+        if write.device_id is None:
+            if len(self._motion_groups_by_controller) > 1:
+                raise ValueError(
+                    f"The controller for IO '{write.key}' is ambiguous: the motion groups span "
+                    f"controllers {sorted(self._motion_groups_by_controller)}. Set the write's "
+                    "device_id explicitly."
+                )
+            return min(self._motion_groups)
+        on_controller = self._motion_groups_by_controller.get(write.device_id)
+        if not on_controller:
+            raise ValueError(
+                f"No motion group is on controller '{write.device_id}' for IO '{write.key}'; "
+                f"known controllers are {sorted(self._motion_groups_by_controller)}."
+            )
+        return on_controller[0]
+
     async def _run_execute_trajectory(self, name: str, cursor: TrajectoryCursor) -> None:
-        # Addressed through the group's own cell and gateway: executing does not
-        # assume the groups share either, only the IO barrier does.
         motion_group = self._motion_groups[name]
         await motion_group._api_client.trajectory_execution_api.execute_trajectory(
             cell=motion_group._cell,
             controller=motion_group._controller_id,
             client_request_generator=cursor.cntrl,  # ty: ignore[invalid-argument-type]
         )
-
-    @classmethod
-    def builder(
-        cls, motion_groups: Mapping[str, MotionGroup] | Iterable[MotionGroup]
-    ) -> "TrajectoryExecutorBuilder":
-        """Start fluent assembly: ``TrajectoryExecutor.builder(...)...build()``.
-
-        ``motion_groups`` is either a mapping of names to motion groups, or
-        just the motion groups — then their ids are the names.
-        """
-        return TrajectoryExecutorBuilder(motion_groups)
-
-
-class TrajectoryExecutorBuilder:
-    """Fluent assembly of a :class:`TrajectoryExecutor`.
-
-    The basic scenario is two calls — the motion groups and the sync IO:
-
-    ```python
-    executor = (
-        TrajectoryExecutor.builder([robot_mg, positioner_mg])
-        .sync_on_io("sync_out", controller="robot")
-        .build()
-    )
-    ```
-
-    :meth:`sync_on_io` states all three pieces of the barrier — the release
-    write, the clear write and every group's start condition — so nothing is
-    inferred later. :meth:`release_io`, :meth:`clear_io` and :meth:`watch`
-    state the same pieces one at a time, for topologies where they are not one
-    boolean IO; called after :meth:`sync_on_io` they replace what it set. A
-    drift monitor runs by default — :meth:`monitors` replaces it. A custom
-    :class:`SyncDriver` goes through the plain constructor instead.
-    """
-
-    def __init__(self, motion_groups: Mapping[str, MotionGroup] | Iterable[MotionGroup]):
-        self._motion_groups = (
-            dict(motion_groups)
-            if isinstance(motion_groups, Mapping)
-            else {motion_group.id: motion_group for motion_group in motion_groups}
-        )
-        if not self._motion_groups:
-            raise ValueError("At least one motion group is required")
-        self._release: WriteAction | None = None
-        self._clear: WriteAction | None = None
-        self._watch: dict[str, api.models.StartOnIO] = {}
-        self._monitors: tuple[SessionMonitor, ...] | None = None
-
-    def sync_on_io(
-        self,
-        io: str,
-        controller: str | None = None,
-        *,
-        origin: api.models.IOOrigin = api.models.IOOrigin.CONTROLLER,
-        release_value: bool = True,
-    ) -> Self:
-        """Synchronize on one boolean IO: releasing the barrier writes
-        ``release_value`` to it, clearing writes the other value, and every
-        group watches it for ``release_value``.
-
-        ``controller`` may be omitted when all motion groups share one; pass
-        ``origin=IOOrigin.BUS_IO`` for a cell-wide bus variable.
-        """
-        self._release = self._write(io, release_value, controller, origin)
-        self._clear = self._write(io, not release_value, controller, origin)
-        condition = api.models.StartOnIO(
-            io=api.models.IOBooleanValue(io=io, value=release_value),
-            comparator=api.models.Comparator.COMPARATOR_EQUALS,
-            io_origin=origin,
-        )
-        self._watch = {group: condition for group in self._motion_groups}
-        return self
-
-    def release_io(
-        self,
-        io: str,
-        value: bool,
-        controller: str | None = None,
-        *,
-        origin: api.models.IOOrigin = api.models.IOOrigin.CONTROLLER,
-    ) -> Self:
-        """Release the barrier with this write — the counterpart of
-        :meth:`clear_io` when the two are not one IO's two values."""
-        self._release = self._write(io, value, controller, origin)
-        return self
-
-    def clear_io(
-        self,
-        io: str,
-        value: bool,
-        controller: str | None = None,
-        *,
-        origin: api.models.IOOrigin = api.models.IOOrigin.CONTROLLER,
-    ) -> Self:
-        """Clear the barrier with this write — the counterpart of
-        :meth:`release_io`."""
-        self._clear = self._write(io, value, controller, origin)
-        return self
-
-    def watch(self, group: str, condition: api.models.StartOnIO) -> Self:
-        """Gate one group's start on this condition instead of on the release
-        write itself (e.g. the wired input the sync IO physically lands on)."""
-        if group not in self._motion_groups:
-            raise ValueError(
-                f"Unknown motion group '{group}'; known groups are {sorted(self._motion_groups)}"
-            )
-        self._watch[group] = condition
-        return self
-
-    def monitors(self, *monitors: SessionMonitor) -> Self:
-        """Replace the default session monitors (a :class:`SyncDriftMonitor`);
-        call with no arguments to run without any."""
-        self._monitors = monitors
-        return self
-
-    def build(self) -> TrajectoryExecutor:
-        if self._release is None:
-            raise ValueError("The barrier has no release write: call sync_on_io() or release_io()")
-        if self._clear is None:
-            raise ValueError("The barrier has no clear write: call sync_on_io() or clear_io()")
-        barrier_group = self._barrier_group()
-        return TrajectoryExecutor(
-            self._motion_groups,
-            IOSyncDriver(
-                clear=self._clear,
-                release=self._release,
-                watch=self._watch,
-                api_client=barrier_group._api_client,
-                cell=barrier_group._cell,
-            ),
-            self._monitors if self._monitors is not None else (SyncDriftMonitor(),),
-        )
-
-    def _barrier_group(self) -> MotionGroup:
-        """The motion group whose cell and gateway carry the IO barrier.
-
-        The IO barrier writes into a single cell — bus IO is cell-scoped, and a
-        controller output is addressed as (cell, controller) — so groups spanning
-        cells need a driver built for the cell that carries the sync IO.
-        """
-        cells = {motion_group._cell for motion_group in self._motion_groups.values()}
-        if len(cells) > 1:
-            raise ValueError(
-                f"The IO barrier writes into one cell but the motion groups span {sorted(cells)}. "
-                "Build an IOSyncDriver for the cell carrying the sync IO and pass it to "
-                "TrajectoryExecutor directly."
-            )
-        return next(iter(self._motion_groups.values()))
-
-    def _write(
-        self, io: str, value: bool, controller: str | None, origin: api.models.IOOrigin
-    ) -> WriteAction:
-        """Build a sync write, resolving its controller when it is unambiguous."""
-        if origin is not api.models.IOOrigin.BUS_IO and controller is None:
-            controllers = {
-                motion_group._controller_id for motion_group in self._motion_groups.values()
-            }
-            if len(controllers) > 1:
-                raise ValueError(
-                    f"The controller for sync IO '{io}' is ambiguous: the motion groups span "
-                    f"controllers {sorted(controllers)}. Pass the controller explicitly."
-                )
-            controller = next(iter(controllers))
-        return io_write(io, value, device_id=controller, origin=origin)

@@ -18,7 +18,7 @@ import pytest_asyncio
 
 from nova import Nova, api
 from nova.actions import jnt
-from nova.cell import GroupArgs, MotionGroup, TrajectoryExecutor
+from nova.cell import GroupArgs, MotionGroup, MultiMotionGroup
 
 CONTROLLER = "kuka-executor-integration"
 ROBOT, POSITIONER = f"0@{CONTROLLER}", f"1@{CONTROLLER}"
@@ -116,8 +116,8 @@ async def _ramp_from_here(groups: dict[str, MotionGroup]) -> api.models.MultiJoi
     )
 
 
-def _executor(groups: dict[str, MotionGroup]) -> TrajectoryExecutor:
-    return TrajectoryExecutor.builder(groups).sync_on_io(SYNC_IO, controller=CONTROLLER).build()
+def _ensemble(groups: dict[str, MotionGroup]) -> MultiMotionGroup:
+    return MultiMotionGroup.builder(groups).sync_on_io(SYNC_IO, controller=CONTROLLER).build()
 
 
 _GROUP_ARGS = {name: GroupArgs(tcp=tcp) for name, tcp in TCPS.items()}
@@ -138,7 +138,7 @@ async def test_execute_recorded_trajectory_starts_both_groups_in_one_tick(synchr
     ]
     try:
         await asyncio.wait_for(
-            _executor(groups).execute(trajectory, groups=_GROUP_ARGS), timeout=120
+            _ensemble(groups).execute(trajectory, groups=_GROUP_ARGS), timeout=120
         )
     finally:
         for watcher in watchers:
@@ -167,7 +167,7 @@ async def test_forward_to_intermediate_target_keeps_the_session_open(synchronize
     _, groups = synchronized_groups
     trajectory = await _ramp_from_here(groups)
 
-    async with _executor(groups).attach(trajectory, _GROUP_ARGS) as cursor:
+    async with _ensemble(groups).attach(trajectory, groups=_GROUP_ARGS) as cursor:
         await asyncio.wait_for(cursor.forward_to(1.0), timeout=60)
         assert 1.0 - 0.01 <= cursor.current_location < 2.0
 
@@ -187,7 +187,7 @@ async def test_pause_then_forward_rearms_the_barrier(synchronized_groups):
         for name, joints in trajectory.joint_positions_by_motion_group_key.items()
     }
 
-    async with _executor(groups).attach(trajectory, _GROUP_ARGS) as cursor:
+    async with _ensemble(groups).attach(trajectory, groups=_GROUP_ARGS) as cursor:
         forward = cursor.forward()
         while cursor.current_location <= 0.0:
             await asyncio.sleep(0.05)

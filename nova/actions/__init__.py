@@ -11,6 +11,7 @@ from nova.actions.motions import (
     joint_ptp,
     lin,
     linear,
+    multi_collision_free,
     ptp,
 )
 from nova.actions.trajectory_builder import TrajectoryBuilder
@@ -29,6 +30,7 @@ __all__ = [
     "lin",
     "wait",
     "collision_free",
+    "multi_collision_free",
     "MovementController",
     "MovementControllerContext",
     "TrajectoryBuilder",
