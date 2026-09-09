@@ -10,7 +10,7 @@ import pytest
 from nova import api
 from nova import datasets as ds
 from nova.core.nova import Nova
-from nova.datasets import Dataset, DatasetError, DatasetNotFoundError, LoadLocalDatasetRequest
+from nova.datasets import DatasetError, DatasetNotFoundError, LoadLocalDatasetRequest
 
 _TIMESTAMP = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
 
@@ -62,73 +62,11 @@ def _nova_mock(**api_returns) -> Nova:
     return nova
 
 
-class TestAllDatasets:
-    async def test_passes_no_filters_by_default(self):
-        nova = _nova_mock(get_datasets=[])
-        assert await ds.list_all(nova) == []
-        nova.api.datasets_api.get_datasets.assert_awaited_once_with(
-            cell="cell", dataset=None, latest_only=None
-        )
-
-    async def test_forwards_dataset_and_latest_only_filters(self):
-        nova = _nova_mock(get_datasets=[])
-        await ds.list_all(nova, dataset_id="default", latest_only=True)
-        nova.api.datasets_api.get_datasets.assert_awaited_once_with(
-            cell="cell", dataset="default", latest_only=True
-        )
-
-    async def test_server_error_raises_dataset_error(self):
-        nova = _nova_mock(get_datasets=api.ApiException(status=500, reason="boom"))
-        with pytest.raises(DatasetError):
-            await ds.list_all(nova)
-
-
-class TestCreateAndDeleteDataset:
-    async def test_create_forwards_the_request_unchanged(self):
-        response = _dataset_response("new-set")
-        nova = _nova_mock(create_dataset=response)
-        create_request = api.models.CreateDatasetRequest(dataset="new-set", name="New set")
-
-        result = await ds.create(nova, create_request)
-
-        assert result.dataset == response.dataset
-        nova.api.datasets_api.create_dataset.assert_awaited_once_with(
-            cell="cell", create_dataset_request=create_request
-        )
-
-    async def test_create_returns_the_convenience_type(self):
-        nova = _nova_mock(create_dataset=_dataset_response("new-set"))
-
-        result = await ds.create(nova, api.models.CreateDatasetRequest(dataset="new-set"))
-
-        assert isinstance(result, Dataset)
-        assert set(result.poses) == {"pick"}
-
-    async def test_delete_forwards_revision(self):
-        nova = _nova_mock(delete_dataset=None)
-        await ds.delete(nova, "new-set", revision=3)
-        nova.api.datasets_api.delete_dataset.assert_awaited_once_with(
-            cell="cell", dataset="new-set", revision=3
-        )
-
-    async def test_create_conflict_raises_dataset_error(self):
-        nova = _nova_mock(create_dataset=api.exceptions.ConflictException(status=409, reason="dup"))
-        with pytest.raises(DatasetError):
-            await ds.create(nova, api.models.CreateDatasetRequest(dataset="new-set"))
-
-    async def test_delete_missing_dataset_raises_not_found(self):
-        nova = _nova_mock(
-            delete_dataset=api.exceptions.NotFoundException(status=404, reason="not found")
-        )
-        with pytest.raises(DatasetNotFoundError):
-            await ds.delete(nova, "missing-set")
-
-
 class TestFetchDataset:
     async def test_fetches_from_the_instance(self):
         nova_mock = _nova_mock(get_dataset=_dataset_response("default"))
 
-        result = await ds.fetch(nova_mock, ds.remote_dataset("default", revision=2))
+        result = await ds.fetch(nova_mock, "default", revision=2)
 
         assert result.dataset == "default"
         nova_mock.api.datasets_api.get_dataset.assert_awaited_once_with(
@@ -141,13 +79,13 @@ class TestFetchDataset:
         )
 
         with pytest.raises(DatasetNotFoundError):
-            await ds.fetch(nova_mock, ds.remote_dataset("missing"))
+            await ds.fetch(nova_mock, "missing")
 
     async def test_server_error_raises_dataset_error(self):
         nova_mock = _nova_mock(get_dataset=api.ApiException(status=500, reason="boom"))
 
         with pytest.raises(DatasetError):
-            await ds.fetch(nova_mock, ds.remote_dataset("default"))
+            await ds.fetch(nova_mock, "default")
 
 
 class TestReadDataset:

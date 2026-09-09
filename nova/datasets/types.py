@@ -20,6 +20,23 @@ class Dataset(api.models.Dataset):
     )
     frames: dict[api.models.FrameId, api.models.DatasetFrame] = Field(default_factory=dict)
 
+    @classmethod
+    def from_api_model(cls, api_dataset: api.models.GetDatasetResponse) -> "Dataset":
+        """Convert the api datasets response into the convenience class Dataset"""
+        return Dataset(
+            **api_dataset.model_dump(exclude={"poses", "command_routines", "frames"}),
+            poses={pose.dataset_pose: pose for pose in api_dataset.poses},
+            command_routines={
+                routine.command_routine: routine for routine in api_dataset.command_routines
+            },
+            frames={frame.frame: frame for frame in api_dataset.frames},
+        )
+
+    @property
+    def id(self) -> str:
+        """Return the dataset ID, aliasing the underlying `dataset` field."""
+        return self.dataset
+
 
 @dataclass(frozen=True)
 class LoadRemoteDatasetRequest:
