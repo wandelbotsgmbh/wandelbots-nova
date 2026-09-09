@@ -242,7 +242,11 @@ async def _check_turn_direction(motion_group, tcp: str, robot: str) -> None:
 @nova.program(
     id="interlock_two_robots",
     name="Interlock: two robots, one shared zone",
-    viewer=nova.viewers.Rerun(),
+    # Wall-clock timeline: by default the viewer packs each robot's trajectories
+    # back to back and drops the time spent waiting for the lock, so the replay
+    # would show both robots at the meeting point at once although they took
+    # turns.  With wall_clock=True the replay follows what actually happened.
+    viewer=nova.viewers.Rerun(wall_clock=True),
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(

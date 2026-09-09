@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -34,6 +35,13 @@ class NovaRerunBridge:
     Args:
         nova (Nova): Instance of Nova client
         spawn (bool, optional): Whether to spawn Rerun viewer. Defaults to True.
+        wall_clock (bool, optional): Place each trajectory on the timeline at the
+            real elapsed time since this bridge was created instead of directly
+            after the motion group's previous trajectory. The default packs every
+            motion group's trajectories back to back, which drops any time a robot
+            spent waiting, so two robots that took turns in reality replay as
+            moving simultaneously. Use wall-clock timing for programs whose point
+            is the coordination between robots. Defaults to False.
     """
 
     def __init__(
@@ -44,12 +52,16 @@ class NovaRerunBridge:
         show_collision_link_chain: bool = False,
         show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
+        wall_clock: bool = False,
     ) -> None:
         # Store the Nova instance for API calls
         self.nova = nova
         self._streaming_tasks: dict[MotionGroup, asyncio.Task] = {}
         # Track timing per motion group - each motion group has its own timeline
         self._motion_group_timers: dict[str, float] = {}
+        # Wall-clock mode: trajectories start at the real elapsed time instead
+        self.wall_clock = wall_clock
+        self._wall_clock_origin = time.monotonic()
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
@@ -209,9 +221,14 @@ class NovaRerunBridge:
                 stacklevel=2,
             )
         try:
-            # Get or initialize the timer for this motion group
+            # Where on the timeline this trajectory starts: the real elapsed
+            # time (wall-clock mode) or right after the motion group's previous
+            # trajectory (default, no gaps).
             motion_group_id = motion_group.id
-            current_time = self._motion_group_timers.get(motion_group_id, 0.0)
+            if self.wall_clock:
+                current_time = self.elapsed_seconds()
+            else:
+                current_time = self._motion_group_timers.get(motion_group_id, 0.0)
 
             logger.debug(
                 f"Calling log_motion function with trajectory points: {len(trajectory.joint_positions or [])}"
@@ -290,6 +307,10 @@ class NovaRerunBridge:
             time_offset=time_offset,
             tool_asset=tool_asset,
         )
+
+    def elapsed_seconds(self) -> float:
+        """Seconds since this bridge was created — the wall-clock timeline origin."""
+        return time.monotonic() - self._wall_clock_origin
 
     def continue_after_sync(self) -> None:
         """No longer needed with per-motion-group timing.
