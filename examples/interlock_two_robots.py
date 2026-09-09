@@ -1,22 +1,24 @@
 """Two robots sharing one workspace zone, arbitrated by ``nova.interlock``.
 
 Two virtual KUKA robots stand 2 m apart on the X axis, both facing +Y, so at
-rest their envelopes do not overlap.  Each cycle a robot turns its base joint
-by 90° to face its partner: the space between the two bases is where the arms
-would meet, so that is the shared zone.  The turn is done in two stages — the
-first 45° are still clear of the zone and need no lock; before the second 45°
-the robot, now stationary, takes the zone lock, and it gives it back only after
-it has turned back out to 45°.  Whoever comes second waits at 45° until the
-zone is free again — the software equivalent of the PLC ``Roboterverriegelung``
-(``MAKRO 20``) handshake between two KUKA robots.
+rest their envelopes do not overlap.  Each cycle a robot brings its flange to
+the meeting point midway between the two bases, (0, 0, 1500) mm, flange down —
+a point both robots can reach, so that is the shared zone.  It gets there in
+two stages: first it turns its base joint 45° toward the partner, to the
+*approach* point, which is still clear of the zone and needs no lock; there,
+stationary, it takes the zone lock, moves to the meeting point, comes back to
+the approach point and only then gives the lock back.  Whoever comes second
+waits at its approach point until the zone is free again — the software
+equivalent of the PLC ``Roboterverriegelung`` (``MAKRO 20``) handshake between
+two KUKA robots.
 
 What to watch (in the log, and in rerun where the two robots are drawn at their
 mountings):
 
 - ``waiting for … (held by …)`` lines: the second robot blocks on the lock and
   continues as soon as the first one has retreated.
-- The two arms swing into the middle alternately, never together, although
-  both cycles run concurrently and nothing else synchronizes them.
+- The two flanges visit the meeting point alternately, never together,
+  although both cycles run concurrently and nothing else synchronizes them.
 
 The rules the example demonstrates (see ``nova.interlock`` for the reasoning):
 
@@ -51,10 +53,10 @@ import math
 
 import nova
 from nova import Controller, api, run_program
-from nova.actions import joint_ptp
-from nova.types import MotionSettings
+from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
 from nova.interlock import InterlockClient, LockId
+from nova.types import MotionSettings, Pose
 
 ROBOT_A = "interlock-a"
 ROBOT_B = "interlock-b"
@@ -65,15 +67,18 @@ ROBOT_B = "interlock-b"
 FACING = math.pi / 2
 PLACEMENT = {ROBOT_A: (-1000.0, FACING), ROBOT_B: (1000.0, FACING)}
 
-# Turning the base joint (A1) toward the partner.  A must turn from +Y to +X,
-# B from +Y to -X.  KUKA's A1 counts *clockwise* seen from above (a positive
-# value is a negative rotation about the base Z axis), so A turns positive and
-# B negative — checked at runtime by _check_turn_direction, because this is the
-# one robot-model convention the example relies on.  The first stage stops
-# short of the zone, the second reaches into it.
+# The approach point: base joint (A1) turned 45° toward the partner.  A must
+# turn from +Y toward +X, B from +Y toward -X.  KUKA's A1 counts *clockwise*
+# seen from above (a positive value is a negative rotation about the base Z
+# axis), so A turns positive and B negative — checked at runtime by
+# _check_turn_direction, because this is the one robot-model convention the
+# example relies on.
 TOWARD_PARTNER = {ROBOT_A: 1.0, ROBOT_B: -1.0}
 APPROACH_ANGLE = math.radians(45)
-FACING_PARTNER_ANGLE = math.radians(90)
+
+# The meeting point, world frame, mm: midway between the bases, 1.5 m up.  Its
+# orientation is taken from the rest pose at runtime (flange pointing down).
+MEETING_POINT = (0.0, 0.0, 1500.0)
 
 # The zone shared by the two robots.  A lock is a *pair* relationship — "the
 # space A and B both use" — identified by the two robot names and a slot number
@@ -157,7 +162,7 @@ async def place_robot(ctx: nova.ProgramContext, cell_id: str, name: str) -> None
 
 
 async def robot_cycle(controller: Controller, locks: InterlockClient) -> None:
-    """One robot's program: turn toward the partner and back, repeated."""
+    """One robot's program: approach, visit the meeting point, retreat, repeated."""
     motion_group = controller[0]
     tcp = (await motion_group.tcp_names())[0]
     # Rest = base joint at 0, arm along the base X axis, i.e. along world +Y,
@@ -172,36 +177,42 @@ async def robot_cycle(controller: Controller, locks: InterlockClient) -> None:
         joints[0] = rest[0] + direction * angle
         return joints
 
-    approach = turned_by(APPROACH_ANGLE)  # 45°: still clear of the zone
-    facing_partner = turned_by(FACING_PARTNER_ANGLE)  # 90°: arm reaches into the zone
+    approach = turned_by(APPROACH_ANGLE)  # 45° toward the partner, still clear of the zone
+
+    await motion_group.plan_and_execute([joint_ptp(rest, settings=SPEED)], tcp=tcp)
+
+    # The meeting point keeps the rest pose's orientation — flange pointing down.
+    orientation = (await motion_group.tcp_pose(tcp)).to_tuple()[3:]
+    meeting_point = Pose((*MEETING_POINT, *orientation))
 
     # Rule 3 — at rest the arm points away from the partner, i.e. is known to
     # be outside the zone, so any lock a previous run of this robot left behind
     # (it crashed, was killed …) is safe to drop now.  Anywhere else this would
     # be wrong.
-    await motion_group.plan_and_execute([joint_ptp(rest, settings=SPEED)], tcp=tcp)
     stale = await locks.release_all(include_previous_runs=True)
     if stale:
         log.warning("[%s] recovered stale locks from a previous run: %s", locks.robot, stale)
 
     for cycle in range(1, CYCLES + 1):
-        # The first 45° do not touch the shared zone and need no lock.
+        # The approach point does not touch the shared zone and needs no lock.
         await motion_group.plan_and_execute([joint_ptp(approach, settings=SPEED)], tcp=tcp)
         if cycle == 1:
             await _check_turn_direction(motion_group, tcp, locks.robot)
 
         # Rule 1 — everything this step needs, in one call, robot stationary at
-        # 45°.  `acquire` blocks until the zone is free; only then is the rest
-        # of the turn planned.
-        log.info("[%s] cycle %d: at 45°, requesting %s", locks.robot, cycle, SHARED_ZONE.key)
+        # the approach point.  `acquire` blocks until the zone is free; only
+        # then is the motion to the meeting point planned.
+        log.info("[%s] cycle %d: at approach, requesting %s", locks.robot, cycle, SHARED_ZONE.key)
         async with locks.hold([SHARED_ZONE], label=f"cycle {cycle}") as grant:
-            log.info("[%s] cycle %d: turning into the shared zone", locks.robot, cycle)
+            log.info("[%s] cycle %d: moving to the meeting point", locks.robot, cycle)
             await motion_group.plan_and_execute(
-                [joint_ptp(facing_partner, settings=SPEED)], tcp=tcp
+                [cartesian_ptp(meeting_point, settings=SPEED)], tcp=tcp
             )
-            # … the actual work facing the partner happens here …
+            # … the actual work at the meeting point happens here …
             await motion_group.plan_and_execute([joint_ptp(approach, settings=SPEED)], tcp=tcp)
-            log.info("[%s] cycle %d: back at 45°, releasing %s", locks.robot, cycle, grant.keys)
+            log.info(
+                "[%s] cycle %d: back at approach, releasing %s", locks.robot, cycle, grant.keys
+            )
         # Rule 2 — the clean exit above is the release.  Had anything raised
         # inside the block, the lock would still be held now.
 
