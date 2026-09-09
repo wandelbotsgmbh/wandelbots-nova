@@ -1,18 +1,21 @@
 """Two robots sharing one workspace zone, arbitrated by ``nova.interlock``.
 
-Two virtual robots each run a cycle of "work in my own area, then enter the
-shared zone, then retreat".  Entering the zone is guarded by an interlock: the
-robot takes the zone lock before it plans the motion in, and gives it back only
-after it has retreated.  Whoever comes second waits, robot stationary, until the
-zone is free again — the software equivalent of the PLC ``Roboterverriegelung``
-(``MAKRO 20``) handshake between two KUKA robots.
+Two virtual KUKA robots stand 2 m apart on the X axis, facing each other, so
+their reach envelopes overlap in the middle.  Each runs a cycle of "work in my
+own area, then reach into the shared middle, then retreat".  Reaching into the
+middle is guarded by an interlock: the robot takes the zone lock before it
+plans the motion in, and gives it back only after it has retreated.  Whoever
+comes second waits, robot stationary, until the zone is free again — the
+software equivalent of the PLC ``Roboterverriegelung`` (``MAKRO 20``) handshake
+between two KUKA robots.
 
-What to watch in the output:
+What to watch (in the log, and in rerun where the two robots are drawn at their
+mountings):
 
 - ``waiting for … (held by …)`` lines: the second robot blocks on the lock and
   continues as soon as the first one has retreated.
-- No zone is ever entered while the other robot holds it, although both cycles
-  run concurrently and nothing else synchronizes them.
+- The two TCPs cross the middle of the cell alternately, never together,
+  although both cycles run concurrently and nothing else synchronizes them.
 
 The rules the example demonstrates (see ``nova.interlock`` for the reasoning):
 
@@ -22,7 +25,7 @@ The rules the example demonstrates (see ``nova.interlock`` for the reasoning):
 2. ``hold`` releases only on a **clean** exit of the block.  A program that
    fails inside the zone keeps the lock — the robot may have stopped in there —
    so the partner waits instead of colliding.  There is deliberately no TTL.
-3. Recovery is explicit: at program start, with the robot at home and therefore
+3. Recovery is explicit: once the robot is back in its own area and therefore
    known to be clear, ``release_all(include_previous_runs=True)`` drops locks a
    previous crashed run of *this robot* left behind.
 
@@ -42,16 +45,28 @@ Prerequisites:
 
 import asyncio
 import logging
+import math
 
 import nova
 from nova import Controller, api, run_program
-from nova.actions import cartesian_ptp, joint_ptp
+from nova.actions import cartesian_ptp
 from nova.cell import virtual_controller
 from nova.interlock import InterlockClient, LockId
 from nova.types import Pose
 
 ROBOT_A = "interlock-a"
 ROBOT_B = "interlock-b"
+
+# Where each robot stands (world frame, mm) and which way it faces.  A at
+# x = -1000 looks along +X, B at x = +1000 is turned by 180° so it looks along -X:
+# both face the middle of the cell, which is the space they share.
+PLACEMENT = {ROBOT_A: (-1000.0, 0.0), ROBOT_B: (1000.0, math.pi)}
+
+# Horizontal distance from a robot's own base to its two working points.  The
+# own area is short of the middle; the shared point lies past it, inside the
+# partner's envelope too.
+OWN_AREA_REACH = 700.0
+SHARED_REACH = 1300.0
 
 # The zone shared by the two robots.  A lock is a *pair* relationship — "the
 # space A and B both use" — identified by the two robot names and a slot number
@@ -61,39 +76,102 @@ SHARED_ZONE = LockId.of(ROBOT_A, ROBOT_B, 1)
 
 CYCLES = 3
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
 log = logging.getLogger("interlock_example")
+
+
+def _values(vector) -> list[float]:
+    """Read an API vector back as floats (tuple alias or RootModel, either shape)."""
+    root = getattr(vector, "root", None)
+    return [float(v) for v in (root if root is not None else vector)]
+
+
+async def place_robot(ctx: nova.ProgramContext, cell_id: str, name: str) -> None:
+    """Mount a virtual robot at its PLACEMENT, only if it is not already there.
+
+    Writing a mounting makes the virtual robot re-initialize (~20 s), and while
+    that runs the description can report an empty TCP map and planning fails —
+    so skip the write when the controller already carries the placement, and
+    otherwise wait until it reports the new mounting *and* its TCPs again.
+    """
+    x, yaw = PLACEMENT[name]
+    target = [x, 0.0, 0.0, 0.0, 0.0, yaw]  # position + rotation vector (yaw about Z)
+    motion_group = f"0@{name}"
+    description_api = ctx.nova.api.motion_group_api
+
+    def is_placed(description) -> bool:
+        mounting = getattr(description, "mounting", None)
+        if mounting is None:
+            return False
+        current = _values(mounting.position) + _values(mounting.orientation)
+        return all(abs(c - t) < 1e-3 for c, t in zip(current, target)) and bool(description.tcps)
+
+    description = await description_api.get_motion_group_description(
+        cell=cell_id, controller=name, motion_group=motion_group
+    )
+    if is_placed(description):
+        log.info("[%s] already mounted at x=%+.0f mm", name, x)
+        return
+
+    log.info(
+        "[%s] mounting at x=%+.0f mm, yaw %.0f° — the robot re-initializes",
+        name,
+        x,
+        math.degrees(yaw),
+    )
+    await ctx.nova.api.virtual_robot_setup_api.set_virtual_controller_mounting(
+        cell=cell_id,
+        controller=name,
+        motion_group=motion_group,
+        coordinate_system=api.models.CoordinateSystem(
+            coordinate_system="world",
+            name="mounting",
+            position=(x, 0.0, 0.0),
+            orientation=[0.0, 0.0, yaw],
+            orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
+        ),
+    )
+    deadline = asyncio.get_running_loop().time() + 120
+    while asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(2)
+        try:
+            description = await description_api.get_motion_group_description(
+                cell=cell_id, controller=name, motion_group=motion_group
+            )
+        except Exception:
+            continue  # not reachable yet — that is the re-initialization
+        if is_placed(description):
+            log.info("[%s] back with the new mounting", name)
+            return
+    raise TimeoutError(f"{name} did not come back after the mounting change")
 
 
 async def robot_cycle(controller: Controller, locks: InterlockClient) -> None:
     """One robot's program: own work, then the shared zone, repeated."""
     motion_group = controller[0]
     tcp = (await motion_group.tcp_names())[0]
-    home = await motion_group.joints()
-    start_pose = await motion_group.tcp_pose(tcp)
+    start = await motion_group.tcp_pose(tcp)  # world frame, mounting included
 
-    # Two small excursions from the start pose.  Where they point is irrelevant
-    # here; the point is which one is guarded by the interlock.
-    own_area = start_pose @ Pose((0, 0, -80, 0, 0, 0))
-    shared_zone = start_pose @ Pose((120, 0, 0, 0, 0, 0))
+    # Two working points straight ahead of the robot's own base, at the start
+    # height and orientation: one short of the middle, one past it.
+    base_x, yaw = PLACEMENT[locks.robot]
+    ahead = math.cos(yaw)  # +1 for A (looks along +X), -1 for B
+    _, y, z, rx, ry, rz = start.to_tuple()
+    own_area = Pose((base_x + ahead * OWN_AREA_REACH, y, z, rx, ry, rz))
+    shared_zone = Pose((base_x + ahead * SHARED_REACH, y, z, rx, ry, rz))
 
-    # Rule 3 — the robot is at home, i.e. known to be outside every zone, so any
-    # lock a previous run of this robot left behind (it crashed, was killed …)
-    # is safe to drop now.  Anywhere else this would be the wrong call.
+    # Retreating into the own area needs no lock — it moves *away* from the zone,
+    # which is what a robot whose previous run died inside must do as well.
+    await motion_group.plan_and_execute([cartesian_ptp(own_area)], tcp=tcp)
+
+    # Rule 3 — the robot is in its own area, i.e. known to be outside every
+    # zone, so any lock a previous run of this robot left behind (it crashed,
+    # was killed …) is safe to drop now.  Anywhere else this would be wrong.
     stale = await locks.release_all(include_previous_runs=True)
     if stale:
-        log.warning(
-            "[%s] recovered stale locks from a previous run: %s", locks.robot, stale
-        )
+        log.warning("[%s] recovered stale locks from a previous run: %s", locks.robot, stale)
 
     for cycle in range(1, CYCLES + 1):
-        # Work that does not touch the shared zone needs no lock.
-        await motion_group.plan_and_execute(
-            [joint_ptp(home), cartesian_ptp(own_area)], tcp=tcp
-        )
-
         # Rule 1 — everything this step needs, in one call, robot stationary.
         # `acquire` blocks until the zone is free; only then is motion planned.
         log.info("[%s] cycle %d: requesting %s", locks.robot, cycle, SHARED_ZONE.key)
@@ -101,12 +179,15 @@ async def robot_cycle(controller: Controller, locks: InterlockClient) -> None:
             log.info("[%s] cycle %d: entering the shared zone", locks.robot, cycle)
             await motion_group.plan_and_execute([cartesian_ptp(shared_zone)], tcp=tcp)
             # … the actual work in the zone happens here …
-            await motion_group.plan_and_execute([joint_ptp(home)], tcp=tcp)
-            log.info(
-                "[%s] cycle %d: retreated, releasing %s", locks.robot, cycle, grant.keys
-            )
+            await motion_group.plan_and_execute([cartesian_ptp(own_area)], tcp=tcp)
+            log.info("[%s] cycle %d: retreated, releasing %s", locks.robot, cycle, grant.keys)
         # Rule 2 — the clean exit above is the release.  Had anything raised
         # inside the block, the lock would still be held now.
+
+        # Work that does not touch the shared zone needs no lock.
+        await motion_group.plan_and_execute(
+            [cartesian_ptp(start), cartesian_ptp(own_area)], tcp=tcp
+        )
 
     log.info("[%s] done, holding %s", locks.robot, locks.held or "nothing")
 
@@ -118,14 +199,10 @@ async def robot_cycle(controller: Controller, locks: InterlockClient) -> None:
     preconditions=nova.ProgramPreconditions(
         controllers=[
             virtual_controller(
-                name=ROBOT_A,
-                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur10e",
+                name=ROBOT_A, manufacturer=api.models.Manufacturer.KUKA, type="kuka-kr240_r2900"
             ),
             virtual_controller(
-                name=ROBOT_B,
-                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type="universalrobots-ur5e",
+                name=ROBOT_B, manufacturer=api.models.Manufacturer.KUKA, type="kuka-kr270_r2700"
             ),
         ],
         cleanup_controllers=False,
@@ -136,6 +213,11 @@ async def interlock_two_robots(ctx: nova.ProgramContext):
     controller_a = await cell.controller(ROBOT_A)
     controller_b = await cell.controller(ROBOT_B)
 
+    # Put the robots where they stand in the cell (idempotent, see place_robot).
+    await asyncio.gather(
+        place_robot(ctx, cell.cell_id, ROBOT_A), place_robot(ctx, cell.cell_id, ROBOT_B)
+    )
+
     # One client per robot identity, all on the cell's NATS connection.  The
     # bucket `nova_cells_<cell>_interlocks` is created on first use.
     locks_a = InterlockClient(ctx.nova.nats, cell=cell.cell_id, robot=ROBOT_A)
@@ -143,9 +225,7 @@ async def interlock_two_robots(ctx: nova.ProgramContext):
 
     # Both cycles start at the same moment and race for the zone; the interlock
     # is the only thing serializing them.
-    await asyncio.gather(
-        robot_cycle(controller_a, locks_a), robot_cycle(controller_b, locks_b)
-    )
+    await asyncio.gather(robot_cycle(controller_a, locks_a), robot_cycle(controller_b, locks_b))
 
     # Operator's view of the bucket — empty after two clean runs.
     remaining = await locks_a.inspect()
