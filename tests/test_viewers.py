@@ -106,6 +106,7 @@ class TestRerunViewer:
             show_collision_link_chain=False,
             show_collision_tool=True,
             show_safety_link_chain=False,
+            wall_clock=False,
         )
         assert viewer._bridge is mock_bridge
 
