@@ -1,21 +1,22 @@
 """Two robots sharing one workspace zone, arbitrated by ``nova.interlock``.
 
-Two virtual KUKA robots stand 2 m apart on the X axis, facing each other, so
-their reach envelopes overlap in the middle.  Each runs a cycle of "work in my
-own area, then reach into the shared middle, then retreat".  Reaching into the
-middle is guarded by an interlock: the robot takes the zone lock before it
-plans the motion in, and gives it back only after it has retreated.  Whoever
-comes second waits, robot stationary, until the zone is free again — the
-software equivalent of the PLC ``Roboterverriegelung`` (``MAKRO 20``) handshake
-between two KUKA robots.
+Two virtual KUKA robots stand 2 m apart on the X axis, both facing +Y, so at
+rest their envelopes do not overlap.  Each cycle a robot turns its base joint
+by 90° to face its partner: the space between the two bases is where the arms
+would meet, so that is the shared zone.  The turn is done in two stages — the
+first 45° are still clear of the zone and need no lock; before the second 45°
+the robot, now stationary, takes the zone lock, and it gives it back only after
+it has turned back out to 45°.  Whoever comes second waits at 45° until the
+zone is free again — the software equivalent of the PLC ``Roboterverriegelung``
+(``MAKRO 20``) handshake between two KUKA robots.
 
 What to watch (in the log, and in rerun where the two robots are drawn at their
 mountings):
 
 - ``waiting for … (held by …)`` lines: the second robot blocks on the lock and
   continues as soon as the first one has retreated.
-- The two TCPs cross the middle of the cell alternately, never together,
-  although both cycles run concurrently and nothing else synchronizes them.
+- The two arms swing into the middle alternately, never together, although
+  both cycles run concurrently and nothing else synchronizes them.
 
 The rules the example demonstrates (see ``nova.interlock`` for the reasoning):
 
@@ -25,9 +26,10 @@ The rules the example demonstrates (see ``nova.interlock`` for the reasoning):
 2. ``hold`` releases only on a **clean** exit of the block.  A program that
    fails inside the zone keeps the lock — the robot may have stopped in there —
    so the partner waits instead of colliding.  There is deliberately no TTL.
-3. Recovery is explicit: once the robot is back in its own area and therefore
-   known to be clear, ``release_all(include_previous_runs=True)`` drops locks a
-   previous crashed run of *this robot* left behind.
+3. Recovery is explicit: at the start, with the arm turned away from the
+   partner and therefore known to be clear,
+   ``release_all(include_previous_runs=True)`` drops locks a previous crashed
+   run of *this robot* left behind.
 
 Both robots run in one process here for convenience.  In production each robot
 is its own process (or pod); nothing changes, because the lock state lives in
@@ -49,24 +51,28 @@ import math
 
 import nova
 from nova import Controller, api, run_program
-from nova.actions import cartesian_ptp
+from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.interlock import InterlockClient, LockId
-from nova.types import Pose
 
 ROBOT_A = "interlock-a"
 ROBOT_B = "interlock-b"
 
-# Where each robot stands (world frame, mm) and which way it faces.  A at
-# x = -1000 looks along +X, B at x = +1000 is turned by 180° so it looks along -X:
-# both face the middle of the cell, which is the space they share.
-PLACEMENT = {ROBOT_A: (-1000.0, 0.0), ROBOT_B: (1000.0, math.pi)}
+# Where each robot stands (world frame, mm) and which way it faces: A at
+# x = -1000, B at x = +1000, both turned by +90° so their arms point along +Y —
+# away from each other.
+FACING = math.pi / 2
+PLACEMENT = {ROBOT_A: (-1000.0, FACING), ROBOT_B: (1000.0, FACING)}
 
-# Horizontal distance from a robot's own base to its two working points.  The
-# own area is short of the middle; the shared point lies past it, inside the
-# partner's envelope too.
-OWN_AREA_REACH = 700.0
-SHARED_REACH = 1300.0
+# Turning the base joint (A1) toward the partner.  A must turn from +Y to +X,
+# B from +Y to -X.  KUKA's A1 counts *clockwise* seen from above (a positive
+# value is a negative rotation about the base Z axis), so A turns positive and
+# B negative — checked at runtime by _check_turn_direction, because this is the
+# one robot-model convention the example relies on.  The first stage stops
+# short of the zone, the second reaches into it.
+TOWARD_PARTNER = {ROBOT_A: 1.0, ROBOT_B: -1.0}
+APPROACH_ANGLE = math.radians(45)
+FACING_PARTNER_ANGLE = math.radians(90)
 
 # The zone shared by the two robots.  A lock is a *pair* relationship — "the
 # space A and B both use" — identified by the two robot names and a slot number
@@ -147,49 +153,73 @@ async def place_robot(ctx: nova.ProgramContext, cell_id: str, name: str) -> None
 
 
 async def robot_cycle(controller: Controller, locks: InterlockClient) -> None:
-    """One robot's program: own work, then the shared zone, repeated."""
+    """One robot's program: turn toward the partner and back, repeated."""
     motion_group = controller[0]
     tcp = (await motion_group.tcp_names())[0]
-    start = await motion_group.tcp_pose(tcp)  # world frame, mounting included
+    # Rest = base joint at 0, arm along the base X axis, i.e. along world +Y,
+    # away from the partner.  Defined, not measured: the robot may still be
+    # turned from an earlier run, and "wherever I am now" is not a rest pose.
+    rest = list(await motion_group.joints())
+    rest[0] = 0.0
+    direction = TOWARD_PARTNER[locks.robot]
 
-    # Two working points straight ahead of the robot's own base, at the start
-    # height and orientation: one short of the middle, one past it.
-    base_x, yaw = PLACEMENT[locks.robot]
-    ahead = math.cos(yaw)  # +1 for A (looks along +X), -1 for B
-    _, y, z, rx, ry, rz = start.to_tuple()
-    own_area = Pose((base_x + ahead * OWN_AREA_REACH, y, z, rx, ry, rz))
-    shared_zone = Pose((base_x + ahead * SHARED_REACH, y, z, rx, ry, rz))
+    def turned_by(angle: float) -> list[float]:
+        joints = list(rest)
+        joints[0] = rest[0] + direction * angle
+        return joints
 
-    # Retreating into the own area needs no lock — it moves *away* from the zone,
-    # which is what a robot whose previous run died inside must do as well.
-    await motion_group.plan_and_execute([cartesian_ptp(own_area)], tcp=tcp)
+    approach = turned_by(APPROACH_ANGLE)  # 45°: still clear of the zone
+    facing_partner = turned_by(FACING_PARTNER_ANGLE)  # 90°: arm reaches into the zone
 
-    # Rule 3 — the robot is in its own area, i.e. known to be outside every
-    # zone, so any lock a previous run of this robot left behind (it crashed,
-    # was killed …) is safe to drop now.  Anywhere else this would be wrong.
+    # Rule 3 — at rest the arm points away from the partner, i.e. is known to
+    # be outside the zone, so any lock a previous run of this robot left behind
+    # (it crashed, was killed …) is safe to drop now.  Anywhere else this would
+    # be wrong.
+    await motion_group.plan_and_execute([joint_ptp(rest)], tcp=tcp)
     stale = await locks.release_all(include_previous_runs=True)
     if stale:
         log.warning("[%s] recovered stale locks from a previous run: %s", locks.robot, stale)
 
     for cycle in range(1, CYCLES + 1):
-        # Rule 1 — everything this step needs, in one call, robot stationary.
-        # `acquire` blocks until the zone is free; only then is motion planned.
-        log.info("[%s] cycle %d: requesting %s", locks.robot, cycle, SHARED_ZONE.key)
+        # The first 45° do not touch the shared zone and need no lock.
+        await motion_group.plan_and_execute([joint_ptp(approach)], tcp=tcp)
+        if cycle == 1:
+            await _check_turn_direction(motion_group, tcp, locks.robot)
+
+        # Rule 1 — everything this step needs, in one call, robot stationary at
+        # 45°.  `acquire` blocks until the zone is free; only then is the rest
+        # of the turn planned.
+        log.info("[%s] cycle %d: at 45°, requesting %s", locks.robot, cycle, SHARED_ZONE.key)
         async with locks.hold([SHARED_ZONE], label=f"cycle {cycle}") as grant:
-            log.info("[%s] cycle %d: entering the shared zone", locks.robot, cycle)
-            await motion_group.plan_and_execute([cartesian_ptp(shared_zone)], tcp=tcp)
-            # … the actual work in the zone happens here …
-            await motion_group.plan_and_execute([cartesian_ptp(own_area)], tcp=tcp)
-            log.info("[%s] cycle %d: retreated, releasing %s", locks.robot, cycle, grant.keys)
+            log.info("[%s] cycle %d: turning into the shared zone", locks.robot, cycle)
+            await motion_group.plan_and_execute([joint_ptp(facing_partner)], tcp=tcp)
+            # … the actual work facing the partner happens here …
+            await motion_group.plan_and_execute([joint_ptp(approach)], tcp=tcp)
+            log.info("[%s] cycle %d: back at 45°, releasing %s", locks.robot, cycle, grant.keys)
         # Rule 2 — the clean exit above is the release.  Had anything raised
         # inside the block, the lock would still be held now.
 
-        # Work that does not touch the shared zone needs no lock.
-        await motion_group.plan_and_execute(
-            [cartesian_ptp(start), cartesian_ptp(own_area)], tcp=tcp
-        )
+        await motion_group.plan_and_execute([joint_ptp(rest)], tcp=tcp)
 
     log.info("[%s] done, holding %s", locks.robot, locks.held or "nothing")
+
+
+async def _check_turn_direction(motion_group, tcp: str, robot: str) -> None:
+    """Fail loudly if the base joint turned the arm away from the partner.
+
+    The sign convention of joint 1 is the one thing this example assumes about
+    the robot model; a wrong sign would make both arms swing outward and the
+    interlock would guard empty space.  At 45° the TCP must be closer to the
+    cell middle (x = 0) than the robot's own base.
+    """
+    base_x, _ = PLACEMENT[robot]
+    x = (await motion_group.tcp_pose(tcp)).to_tuple()[0]
+    if abs(x) >= abs(base_x):
+        raise RuntimeError(
+            f"{robot}: after turning 45° the TCP is at x={x:.0f} mm, not between the "
+            f"bases (base at x={base_x:.0f}) — the base joint turned the wrong way "
+            f"or not at all; check TOWARD_PARTNER for this robot model"
+        )
 
 
 @nova.program(
