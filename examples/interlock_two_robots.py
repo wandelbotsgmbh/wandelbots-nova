@@ -80,7 +80,7 @@ FACING_PARTNER_ANGLE = math.radians(90)
 # attached; which motions need the zone is the programmer's knowledge.
 SHARED_ZONE = LockId.of(ROBOT_A, ROBOT_B, 1)
 
-CYCLES = 3
+CYCLES = 10
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
 log = logging.getLogger("interlock_example")
