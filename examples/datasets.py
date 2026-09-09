@@ -31,8 +31,7 @@ async def _move_through_dataset_poses(ctx: nova.ProgramContext, count: int):
         "This program requires a dataset with poses to be loaded."
     )
 
-    cell = ctx.cell
-    controller = await cell.controller("kuka-kr16-r2010")
+    controller = await ctx.cell.controller("kuka-kr16-r2010")
     cycle = ctx.cycle(extra={"app": "visual-studio-code"})
 
     normal = MotionSettings(tcp_velocity_limit=100)
@@ -45,14 +44,10 @@ async def _move_through_dataset_poses(ctx: nova.ProgramContext, count: int):
 
     # Translating a pose between world and local frame
     pick_pose_fixture = (
-        await ds.transform_to_frame(
-            ctx.nova, [pick_pose.pose], frame="fixture", dataset=ctx.dataset.dataset
-        )
+        await ds.transform_to_frame(ctx.nova, ctx.dataset.id, [pick_pose.pose], frame="fixture")
     )[0]
     pick_pose_world = (
-        await ds.transform_to_world(
-            ctx.nova, [pick_pose_fixture], frame="fixture", dataset=ctx.dataset.dataset
-        )
+        await ds.transform_to_world(ctx.nova, ctx.dataset.id, [pick_pose_fixture], frame="fixture")
     )[0]
 
     place_pose = ctx.dataset.poses["place"]

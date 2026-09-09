@@ -197,7 +197,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
         dataset_request = self.preconditions.dataset
         if dataset_request.type == "remote":
-            return await ds.fetch(nova, dataset_request)
+            return await ds.fetch(nova, dataset_request.dataset, revision=dataset_request.revision)
         elif dataset_request.type == "local":
             code = getattr(inspect.unwrap(self._wrapped), "__code__", None)
             if code is None:
