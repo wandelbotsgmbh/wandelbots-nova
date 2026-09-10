@@ -9,7 +9,9 @@ from nova.types import Pose, Vector3d
 def kinematic_config():
     return api.models.KinematicConfiguration(
         kinematic_branch=api.models.KinematicBranch(
-            shoulder_branch="FRONT", elbow_branch="UP", wrist_branch="NO_FLIP"
+            shoulder_branch=api.models.KinematicBranchShoulder.FRONT,
+            elbow_branch=api.models.KinematicBranchElbow.UP,
+            wrist_branch=api.models.KinematicBranchWrist.NO_FLIP,
         )
     )
 
@@ -60,7 +62,7 @@ class TestPoseInitAllowed:
         assert p.to_tuple() == (1, 2, 3, 0, 0, 0)
 
     def test_from_api_model(self):
-        api_pose = api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6])
+        api_pose = api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0))
         p = Pose(api_pose)
         assert p.to_tuple() == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
 
@@ -69,11 +71,11 @@ class TestPoseInitAllowed:
         assert p.to_tuple() == (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
     def test_from_api_model_with_none_position_gives_zero_position(self):
-        p = Pose(api.models.Pose(position=None, orientation=[1, 2, 3]))
+        p = Pose(api.models.Pose(position=None, orientation=(1.0, 2.0, 3.0)))
         assert p.to_tuple() == (0.0, 0.0, 0.0, 1.0, 2.0, 3.0)
 
     def test_from_api_model_with_none_orientation_gives_zero_orientation(self):
-        p = Pose(api.models.Pose(position=[1, 2, 3], orientation=None))
+        p = Pose(api.models.Pose(position=(1.0, 2.0, 3.0), orientation=None))
         assert p.to_tuple() == (1.0, 2.0, 3.0, 0.0, 0.0, 0.0)
 
     def test_kinematic_configuration_kwarg_preserved(self, kinematic_config):
@@ -85,7 +87,7 @@ class TestPoseInitAllowed:
         dataset_pose = api.models.DatasetPose(
             dataset_pose="p1",
             dataset="d1",
-            pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]),
+            pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
             kinematic_configuration=kinematic_config,
         )
         p = Pose(dataset_pose)
@@ -96,7 +98,7 @@ class TestPoseInitAllowed:
         dataset_pose = api.models.DatasetPose(
             dataset_pose="p1",
             dataset="d1",
-            pose=api.models.Pose(position=None, orientation=[4, 5, 6]),
+            pose=api.models.Pose(position=None, orientation=(4.0, 5.0, 6.0)),
             kinematic_configuration=kinematic_config,
         )
         p = Pose(dataset_pose)
@@ -107,7 +109,7 @@ class TestPoseInitAllowed:
         dataset_pose = api.models.DatasetPose(
             dataset_pose="p1",
             dataset="d1",
-            pose=api.models.Pose(position=[1, 2, 3], orientation=None),
+            pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=None),
             kinematic_configuration=kinematic_config,
         )
         p = Pose(dataset_pose)
@@ -129,7 +131,7 @@ class TestPoseInitAllowed:
         dataset_pose = api.models.DatasetPose(
             dataset_pose="p2",
             dataset="d1",
-            pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]),
+            pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
         )
         p = Pose(dataset_pose)
         assert p.to_tuple() == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
@@ -137,7 +139,7 @@ class TestPoseInitAllowed:
 
     def test_from_configured_pose(self, kinematic_config):
         configured_pose = api.models.ConfiguredPose(
-            pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]),
+            pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
             kinematic_configuration=kinematic_config,
         )
         p = Pose(configured_pose)
@@ -146,7 +148,7 @@ class TestPoseInitAllowed:
 
     def test_from_configured_pose_without_kinematic_configuration(self):
         configured_pose = api.models.ConfiguredPose(
-            pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]),
+            pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
             kinematic_configuration=None,
         )
         p = Pose(configured_pose)
@@ -223,7 +225,7 @@ class TestPoseInitForbidden:
         dataset_pose = api.models.DatasetPose(
             dataset_pose="p1",
             dataset="d1",
-            pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]),
+            pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
             kinematic_configuration=kinematic_config,
         )
         with pytest.raises(ValueError):
@@ -231,7 +233,7 @@ class TestPoseInitForbidden:
 
     def test_configured_pose_with_double_kinematic_configuration_raises(self, kinematic_config):
         configured_pose = api.models.ConfiguredPose(
-            pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]),
+            pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
             kinematic_configuration=kinematic_config,
         )
         with pytest.raises(ValueError):
