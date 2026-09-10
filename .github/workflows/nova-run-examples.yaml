@@ -39,25 +39,26 @@ jobs:
             exit 1
           fi
           source ./instance_config.env
-          echo "::add-mask::$PORTAL_PROD_ACCESS_TOKEN"
 
-          # log the deployed platform version for every run, to correlate future
-          # failures against the backend version running on the instance
-          nova_version=$(curl -sf \
-            -H "Authorization: Bearer $PORTAL_PROD_ACCESS_TOKEN" \
-            "https://$PORTAL_PROD_HOST/api/v2/system/version" || echo "unknown")
-          echo "NOVA platform version: $nova_version"
-
-          # expose as job outputs (the access token minted here is short-lived and only
-          # used for this script's own readiness checks; downstream jobs mint their own
-          # fresh token from the refresh-token secrets instead of reusing this one, since
-          # a single sequential test-integration matrix can now run long enough for it to expire)
+          # expose as job outputs
           echo "PORTAL_PROD_HOST=$PORTAL_PROD_HOST" >> "$GITHUB_OUTPUT"
           echo "PORTAL_PROD_INSTANCE_ID=$PORTAL_PROD_INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "PORTAL_PROD_ACCESS_TOKEN=$PORTAL_PROD_ACCESS_TOKEN" >> $GITHUB_OUTPUT
+          cat $GITHUB_OUTPUT
+
+      - name: Store secret ouput
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
+        with:
+          ## PASSWORD is a gpg passphrase stored in Github Secrets.
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: encode
+          in: ${{ steps.create.outputs.PORTAL_PROD_ACCESS_TOKEN }}
 
     outputs:
       PORTAL_PROD_HOST: ${{ steps.create.outputs.PORTAL_PROD_HOST }}
       PORTAL_PROD_INSTANCE_ID: ${{ steps.create.outputs.PORTAL_PROD_INSTANCE_ID }}
+      PORTAL_PROD_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
 
   create_motion_group_models:
     needs: [setup-instance]
@@ -80,18 +81,18 @@ jobs:
           pip install uv
           uv sync
 
-      - name: Get fresh NOVA access token
-        id: token
-        uses: ./.github/actions/get-nova-access-token
+      - name: Decode output secrets
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
         with:
-          refresh_url: ${{ secrets.PORTAL_PROD_REFRESH_URL }}
-          refresh_client_id: ${{ secrets.PORTAL_PROD_REFRESH_CLIENT_ID }}
-          refresh_token: ${{ secrets.PORTAL_PROD_REFRESH_TOKEN }}
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: decode
+          in: ${{ needs.setup-instance.outputs.PORTAL_PROD_ACCESS_TOKEN }}
 
       - name: Generate motion group models
         env:
           NOVA_API: https://${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
-          NOVA_ACCESS_TOKEN: ${{ steps.token.outputs.access_token }}
+          NOVA_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
         run: |
           uv run python ./nova/helper_scripts/create_motion_group_models.py
 
@@ -155,18 +156,18 @@ jobs:
           pip install uv
           uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
 
-      - name: Get fresh NOVA access token
-        id: token
-        uses: ./.github/actions/get-nova-access-token
+      - name: Decode output secrets
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
         with:
-          refresh_url: ${{ secrets.PORTAL_PROD_REFRESH_URL }}
-          refresh_client_id: ${{ secrets.PORTAL_PROD_REFRESH_CLIENT_ID }}
-          refresh_token: ${{ secrets.PORTAL_PROD_REFRESH_TOKEN }}
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: decode
+          in: ${{ needs.setup-instance.outputs.PORTAL_PROD_ACCESS_TOKEN }}
 
       - name: "Run ${{ matrix.id }} suite"
         env:
           NOVA_API: https://${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
-          NOVA_ACCESS_TOKEN: ${{ steps.token.outputs.access_token }}
+          NOVA_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
           # used for publishing nats data
           CELL_NAME: cell
           BASE_PATH: "/cell/novax"
@@ -193,13 +194,10 @@ jobs:
 
       - name: Download diagnose package
         if: failure()
-        env:
-          PORTAL_PROD_HOST: ${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
-          PORTAL_PROD_ACCESS_TOKEN: ${{ steps.token.outputs.access_token }}
         run: |
           echo "Attempting to fetch the diagnosis package…"
           curl --fail -s -X GET \
-            "https://${PORTAL_PROD_HOST}/api/v2/system/diagnosis-package/zip" \
+            "https://${PORTAL_PROD_HOST}/api/v1/internal/system/diagnosis-package/zip" \
             -H 'Accept: application/zip' \
             -H "Authorization: Bearer ${PORTAL_PROD_ACCESS_TOKEN}" \
             -o "diagnose-${{ github.run_id }}.zip"
@@ -208,7 +206,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: diagnose-package-${{ matrix.id }}
+          name: diagnose-package
           path: diagnose-${{ github.run_id }}.zip
 
   integration-summary:
@@ -233,16 +231,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Get fresh NOVA access token
-        id: token
-        uses: ./.github/actions/get-nova-access-token
+      - name: Decode output secrets
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
         with:
-          refresh_url: ${{ secrets.PORTAL_PROD_REFRESH_URL }}
-          refresh_client_id: ${{ secrets.PORTAL_PROD_REFRESH_CLIENT_ID }}
-          refresh_token: ${{ secrets.PORTAL_PROD_REFRESH_TOKEN }}
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: decode
+          in: ${{ needs.setup-instance.outputs.PORTAL_PROD_ACCESS_TOKEN }}
 
       - name: Cleanup - Delete instance
         run: ./scripts/delete_nova_instance.sh
         env:
           PORTAL_PROD_INSTANCE_ID: ${{ needs.setup-instance.outputs.PORTAL_PROD_INSTANCE_ID }}
-          PORTAL_PROD_ACCESS_TOKEN: ${{ steps.token.outputs.access_token }}
+          PORTAL_PROD_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
