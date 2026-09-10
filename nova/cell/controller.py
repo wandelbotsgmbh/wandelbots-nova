@@ -164,3 +164,46 @@ class Controller(Sized, AbstractController, NovaDevice, IODevice):
         await self._nova_api.virtual_controller_api.set_emergency_stop(
             cell=self.configuration.cell_id, controller=self.id, active=active
         )
+
+    async def list_cached_trajectories(self) -> list[str]:
+        """List the ids of all trajectories currently held in this controller's trajectory cache.
+
+        Cached trajectories are removed automatically when the motion group or the
+        controller disconnects.
+
+        Returns:
+            list[str]: The ids of the cached trajectories.
+        """
+        response = await self._nova_api.trajectory_caching_api.list_trajectories(
+            cell=self.configuration.cell_id, controller=self.id
+        )
+        return response.trajectories or []
+
+    async def get_cached_trajectory(self, trajectory_id: str) -> api.models.GetTrajectoryResponse:
+        """Retrieve a cached trajectory together with its motion group and TCP.
+
+        Args:
+            trajectory_id (str): The id of the cached trajectory.
+
+        Returns:
+            api.models.GetTrajectoryResponse: The joint trajectory, its motion group and TCP.
+        """
+        return await self._nova_api.trajectory_caching_api.get_trajectory(
+            cell=self.configuration.cell_id, controller=self.id, trajectory=trajectory_id
+        )
+
+    async def delete_cached_trajectory(self, trajectory_id: str) -> None:
+        """Remove a single trajectory from this controller's trajectory cache.
+
+        Args:
+            trajectory_id (str): The id of the cached trajectory to remove.
+        """
+        await self._nova_api.trajectory_caching_api.delete_trajectory(
+            cell=self.configuration.cell_id, controller=self.id, trajectory=trajectory_id
+        )
+
+    async def clear_trajectory_cache(self) -> None:
+        """Remove all trajectories from this controller's trajectory cache."""
+        await self._nova_api.trajectory_caching_api.clear_trajectories(
+            cell=self.configuration.cell_id, controller=self.id
+        )
