@@ -3,8 +3,17 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nova import api
-from nova.actions import cartesian_ptp, collision_free, io_write, linear, wait
+from nova.actions import (
+    after_distance,
+    after_time,
+    cartesian_ptp,
+    collision_free,
+    io_write,
+    linear,
+    wait,
+)
 from nova.actions.base import Action
+from nova.actions.container import CombinedActions
 from nova.actions.io import ReadAction
 from nova.cell.motion_group import MotionGroup, split_actions_into_batches
 from nova.core.gateway import ApiGateway
@@ -626,3 +635,86 @@ async def test_get_kinematic_configuration_request_construction(mock_motion_grou
     ]
     assert req.motion_group_model == "test-model"
     assert req.joint_positions == [[1, 2, 3, 4, 5, 6]]
+
+
+# --- path trigger resolution --------------------------------------------------
+
+
+def _planned_line() -> api.models.JointTrajectory:
+    """Two motions, five samples; joint 0 doubles as a 100 mm/s x-axis stand-in."""
+    return api.models.JointTrajectory(
+        joint_positions=[[float(i)] + [0.0] * 5 for i in range(5)],
+        times=[0.0, 1.0, 2.0, 3.0, 4.0],
+        locations=[0.0, 0.5, 1.0, 1.5, 2.0],
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_set_outputs_without_triggers_returns_none(mock_motion_group):
+    mock_motion_group.forward_kinematics = AsyncMock()
+    actions = CombinedActions(items=(linear((1, 2, 3)), io_write("a", True), linear((4, 5, 6))))
+
+    assert await mock_motion_group._resolve_set_outputs(actions, _planned_line(), "Flange") is None
+    mock_motion_group.forward_kinematics.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resolve_set_outputs_time_trigger_needs_no_kinematics(mock_motion_group):
+    mock_motion_group.forward_kinematics = AsyncMock()
+    actions = CombinedActions(
+        items=(linear((1, 2, 3)), io_write("a", True, at=after_time(1.0)), linear((4, 5, 6)))
+    )
+
+    set_outputs = await mock_motion_group._resolve_set_outputs(actions, _planned_line(), None)
+
+    assert [entry.location for entry in set_outputs] == [1.5]
+    mock_motion_group.forward_kinematics.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resolve_set_outputs_distance_trigger_uses_forward_kinematics(mock_motion_group):
+    trajectory = _planned_line()
+    mock_motion_group.forward_kinematics = AsyncMock(
+        return_value=[Pose((50.0 * i, 0, 0, 0, 0, 0)) for i in range(5)]
+    )
+    actions = CombinedActions(
+        items=(linear((1, 2, 3)), io_write("a", True, at=after_distance(25)), linear((4, 5, 6)))
+    )
+
+    set_outputs = await mock_motion_group._resolve_set_outputs(actions, trajectory, "Flange")
+
+    # anchor arc length 100 mm + 25 mm -> 125 mm -> location 1.25
+    assert [entry.location for entry in set_outputs] == [1.25]
+    mock_motion_group.forward_kinematics.assert_awaited_once_with(
+        [tuple(sample) for sample in trajectory.joint_positions], "Flange"
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_set_outputs_distance_trigger_without_tcp_falls_back(
+    mock_motion_group, caplog
+):
+    mock_motion_group.forward_kinematics = AsyncMock()
+    actions = CombinedActions(
+        items=(linear((1, 2, 3)), io_write("a", True, at=after_distance(25)), linear((4, 5, 6)))
+    )
+
+    with caplog.at_level("WARNING"):
+        set_outputs = await mock_motion_group._resolve_set_outputs(actions, _planned_line(), None)
+
+    assert [entry.location for entry in set_outputs] == [1.0]
+    assert "require a TCP" in caplog.text
+    mock_motion_group.forward_kinematics.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_direct_non_motion_path_warns_when_a_trigger_has_no_motion(mock_motion_group, caplog):
+    """Without a motion there is no segment to anchor to: the write still happens,
+    immediately and in list order, but the dropped trigger must not pass silently."""
+    actions = [io_write("OUT#1", True, at=after_time(2.0)), io_write("OUT#2", False)]
+
+    with caplog.at_level("WARNING"):
+        await mock_motion_group.plan_and_execute(actions, "Flange")
+
+    assert mock_motion_group._api_client.controller_ios_api.set_output_values.await_count == 2
+    assert "Path trigger" in caplog.text and "no motion" in caplog.text

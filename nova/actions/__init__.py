@@ -13,9 +13,35 @@ from nova.actions.motions import (
     linear,
     ptp,
 )
+from nova.actions.path_trigger import (
+    AtReference,
+    AtTrigger,
+    DistanceTrigger,
+    PathFractionTrigger,
+    TimeTrigger,
+    after_distance,
+    after_time,
+    at_distance,
+    at_path_fraction,
+    at_time,
+    before_distance,
+    before_time,
+)
 from nova.actions.trajectory_builder import TrajectoryBuilder
 
 __all__ = [
+    "AtReference",
+    "AtTrigger",
+    "DistanceTrigger",
+    "PathFractionTrigger",
+    "TimeTrigger",
+    "at_path_fraction",
+    "at_distance",
+    "at_time",
+    "after_time",
+    "before_time",
+    "after_distance",
+    "before_distance",
     "Action",
     "cartesian_ptp",
     "ptp",
