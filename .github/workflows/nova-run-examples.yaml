@@ -137,6 +137,8 @@ jobs:
           #   run_cmd: "python examples/multi_step_movement_with_collision_free.py"
           - id: welding
             run_cmd: "python examples/welding.py"
+          - id: datasets
+            run_cmd: "python examples/datasets.py"
           # TODO: starting rerun in the CI is flaky
           # - id: collision_setup
           #   run_cmd: "python examples/collision_setup.py"
