@@ -16,12 +16,12 @@ def test_program_serialization_deserialization():
 
     # Create actions with custom settings
     direction_constraint = api.models.DirectionConstraint(
-        world=api.models.Vector3d([0.0, 0.0, 1.0]),
-        tcp=api.models.Vector3d([0.0, 0.0, 1.0]),
+        world=[0.0, 0.0, 1.0],
+        tcp=[0.0, 0.0, 1.0],
         tolerance=0.05,
     )
     constrained_pose = api.models.ConstrainedPose(
-        position=api.models.Vector3d([1.0, 2.0, 3.0]), orientation=0.0
+        position=[1.0, 2.0, 3.0], orientation=0.0
     )
     actions = [
         joint_ptp(home_joints, settings=MotionSettings(tcp_velocity_limit=200)),
@@ -184,12 +184,12 @@ def test_program_serialization_deserialization_collision_scene():
 
 def test_constrained_ptp_to_api_model():
     direction_constraint = api.models.DirectionConstraint(
-        world=api.models.Vector3d([0.0, 0.0, 1.0]),
-        tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+        world=[0.0, 0.0, 1.0],
+        tcp=[0.0, 1.0, 0.0],
         tolerance=0.05,
     )
     constrained_pose = api.models.ConstrainedPose(
-        position=api.models.Vector3d([1.0, 2.0, 3.0]), orientation=0.1
+        position=[1.0, 2.0, 3.0], orientation=0.1
     )
 
     cartesian_motion = cartesian_ptp(constrained_pose, constraints=[direction_constraint])
@@ -200,14 +200,14 @@ def test_constrained_ptp_to_api_model():
 
     joint_motion = joint_ptp((0.0, 0.0, 0.0, 0.0, 0.0, 0.0), constraints=[direction_constraint])
     joint_path = joint_motion.to_api_model()
-    assert isinstance(joint_path.target_joint_position, api.models.DoubleArray)
+    assert isinstance(joint_path.target_joint_position, list)
     assert joint_path.path_definition_name == "DirectionConstrainedJointPTP"
 
 
 def test_ptp_helpers_reject_multiple_constraints():
     direction_constraint = api.models.DirectionConstraint(
-        world=api.models.Vector3d([0.0, 0.0, 1.0]),
-        tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+        world=[0.0, 0.0, 1.0],
+        tcp=[0.0, 1.0, 0.0],
         tolerance=0.05,
     )
 
@@ -219,8 +219,8 @@ def test_ptp_helpers_reject_multiple_constraints():
 
 def test_collision_free_rejects_multiple_constraints():
     direction_constraint = api.models.DirectionConstraint(
-        world=api.models.Vector3d([0.0, 0.0, 1.0]),
-        tcp=api.models.Vector3d([0.0, 1.0, 0.0]),
+        world=[0.0, 0.0, 1.0],
+        tcp=[0.0, 1.0, 0.0],
         tolerance=0.05,
     )
 
