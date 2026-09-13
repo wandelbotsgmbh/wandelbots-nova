@@ -86,8 +86,8 @@ async def plan_and_execute_direction_constrained(ctx: ProgramContext):
     # first phase:
     # project current pose to direction constraint (tcp +z-axis) in cartesian space
     direction_constraint_pos_z = api.models.DirectionConstraint(
-        world=api.models.Vector3d([0.0, 0.0, 1.0]),  # world z-axis
-        tcp=api.models.Vector3d([0.0, 0.0, 1.0]),  # tcp z-axis
+        world=[0.0, 0.0, 1.0],  # world z-axis
+        tcp=[0.0, 0.0, 1.0],  # tcp z-axis
         tolerance=0.05,
     )
 
@@ -114,8 +114,8 @@ async def plan_and_execute_direction_constrained(ctx: ProgramContext):
     # move to the projected current position (keep first 3 joints fixed), then return via direction-constrained joint PTP.
     current_joints = home_joints
     direction_constraint_neg_z = api.models.DirectionConstraint(
-        world=api.models.Vector3d([0.0, 0.0, 1.0]),  # world z-axis
-        tcp=api.models.Vector3d([0.0, 0.0, -1.0]),  # tcp -z-axis
+        world=[0.0, 0.0, 1.0],  # world z-axis
+        tcp=[0.0, 0.0, -1.0],  # tcp -z-axis
         tolerance=0.05,
     )
     projected_joint_positions = await motion_group.project_joint_position_direction_constraint(
