@@ -496,7 +496,7 @@ class MotionGroup(AbstractRobot):
             project_joint_position_direction_constraint_request=api.models.ProjectJointPositionDirectionConstraintRequest(
                 motion_group_model=api.models.MotionGroupModel(motion_group_model),
                 joint_positions=[
-                    api.models.DoubleArray(list(joint_config)) for joint_config in joints
+                    list(joint_config) for joint_config in joints
                 ],
                 constraint=constraint,
                 tcp_offset=tcp_offset.to_api_model(),

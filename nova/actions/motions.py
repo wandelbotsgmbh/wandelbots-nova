@@ -310,7 +310,7 @@ class JointPTP(Motion):
             if not isinstance(self.target, tuple):
                 raise ValueError("Target must be a tuple object")
             return api.models.PathDirectionConstrainedJointPTP(
-                target_joint_position=api.models.DoubleArray(list(self.target)),
+                target_joint_position=list(self.target),
                 constraint=_direction_constraint(self.constraints),
                 path_definition_name="DirectionConstrainedJointPTP",
             )
