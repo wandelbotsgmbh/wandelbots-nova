@@ -494,7 +494,7 @@ class MotionGroup(AbstractRobot):
         response = await self._api_client.kinematics_api.project_joint_position_direction_constraint(
             cell=self._cell,
             project_joint_position_direction_constraint_request=api.models.ProjectJointPositionDirectionConstraintRequest(
-                motion_group_model=api.models.MotionGroupModel(motion_group_model),
+                motion_group_model=motion_group_model,
                 joint_positions=[list(joint_config) for joint_config in joints],
                 constraint=constraint,
                 tcp_offset=tcp_offset.to_api_model(),
@@ -505,7 +505,7 @@ class MotionGroup(AbstractRobot):
         )
 
         return [
-            tuple(joint_position.root) if joint_position is not None else None
+            tuple(joint_position) if joint_position is not None else None
             for joint_position in response.projected_joint_positions
         ]
 
