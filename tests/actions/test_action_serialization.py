@@ -16,13 +16,9 @@ def test_program_serialization_deserialization():
 
     # Create actions with custom settings
     direction_constraint = api.models.DirectionConstraint(
-        world=[0.0, 0.0, 1.0],
-        tcp=[0.0, 0.0, 1.0],
-        tolerance=0.05,
+        world=[0.0, 0.0, 1.0], tcp=[0.0, 0.0, 1.0], tolerance=0.05
     )
-    constrained_pose = api.models.ConstrainedPose(
-        position=[1.0, 2.0, 3.0], orientation=0.0
-    )
+    constrained_pose = api.models.ConstrainedPose(position=[1.0, 2.0, 3.0], orientation=0.0)
     actions = [
         joint_ptp(home_joints, settings=MotionSettings(tcp_velocity_limit=200)),
         cartesian_ptp(target_pose, settings=MotionSettings(tcp_velocity_limit=150)),
@@ -184,13 +180,9 @@ def test_program_serialization_deserialization_collision_scene():
 
 def test_constrained_ptp_to_api_model():
     direction_constraint = api.models.DirectionConstraint(
-        world=[0.0, 0.0, 1.0],
-        tcp=[0.0, 1.0, 0.0],
-        tolerance=0.05,
+        world=[0.0, 0.0, 1.0], tcp=[0.0, 1.0, 0.0], tolerance=0.05
     )
-    constrained_pose = api.models.ConstrainedPose(
-        position=[1.0, 2.0, 3.0], orientation=0.1
-    )
+    constrained_pose = api.models.ConstrainedPose(position=[1.0, 2.0, 3.0], orientation=0.1)
 
     cartesian_motion = cartesian_ptp(constrained_pose, constraints=[direction_constraint])
     cartesian_path = cartesian_motion.to_api_model()
@@ -206,9 +198,7 @@ def test_constrained_ptp_to_api_model():
 
 def test_ptp_helpers_reject_multiple_constraints():
     direction_constraint = api.models.DirectionConstraint(
-        world=[0.0, 0.0, 1.0],
-        tcp=[0.0, 1.0, 0.0],
-        tolerance=0.05,
+        world=[0.0, 0.0, 1.0], tcp=[0.0, 1.0, 0.0], tolerance=0.05
     )
 
     with pytest.raises(ValueError, match="Exactly one DirectionConstraint"):
@@ -219,9 +209,7 @@ def test_ptp_helpers_reject_multiple_constraints():
 
 def test_collision_free_rejects_multiple_constraints():
     direction_constraint = api.models.DirectionConstraint(
-        world=[0.0, 0.0, 1.0],
-        tcp=[0.0, 1.0, 0.0],
-        tolerance=0.05,
+        world=[0.0, 0.0, 1.0], tcp=[0.0, 1.0, 0.0], tolerance=0.05
     )
 
     with pytest.raises(ValueError, match="Exactly one DirectionConstraint"):
