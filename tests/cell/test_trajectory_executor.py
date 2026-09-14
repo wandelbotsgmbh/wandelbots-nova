@@ -215,29 +215,6 @@ class TestIOSyncDriver:
 
         assert gateway.trigger_writes == [True, False]
 
-    async def test_release__bus_origin__writes_and_polls_until_observed(self):
-        gateway = IOGateway()
-        gateway.bus_ios_api = MagicMock()
-        gateway.bus_ios_api.set_bus_io_values = AsyncMock()
-        gateway.bus_ios_api.get_bus_io_values = AsyncMock(
-            side_effect=[
-                [api.models.IOBooleanValue(io="bus-sync", value=False)],
-                [api.models.IOBooleanValue(io="bus-sync", value=True)],
-            ]
-        )
-        bus_trigger = io_write("bus-sync", True, origin=api.models.IOOrigin.BUS_IO)
-        driver = self._driver(
-            clear=io_write("bus-sync", False, origin=api.models.IOOrigin.BUS_IO),
-            release=bus_trigger,
-            watch={"a": watch_condition("bus-sync")},
-            gateway=gateway,
-        )
-
-        await driver.release()
-
-        gateway.bus_ios_api.set_bus_io_values.assert_awaited_once()
-        assert gateway.bus_ios_api.get_bus_io_values.await_count == 2
-
 
 class TestIOOverlay:
     def _executor(

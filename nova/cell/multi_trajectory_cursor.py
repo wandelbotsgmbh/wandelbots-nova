@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 # the barrier gives up rather than waiting for a controller that never answers.
 _TRIGGER_CONFIRM_TIMEOUT = 5.0
 _IO_POLL_INTERVAL = 0.05
+# Bus IO has no server-side wait, so its release is confirmed by re-reading. That
+# read is deferred by this much and run once, off the arm→move window, since it
+# only guards against a dropped write rather than gating the (already-started) run.
+_RELEASE_VERIFY_DELAY = 0.25
 
 
 class SyncDriver(Protocol):
@@ -109,44 +113,72 @@ class IOSyncDriver:
         return self._watch
 
     async def clear(self) -> None:
-        await self._write(self._clear)
+        """Confirmed before the groups arm: arming against a stale *released*
+        value would start a group early and desynchronize the run. Bus IO has no
+        server-side wait, so its confirmation polls the read-back."""
+        async with asyncio.timeout(_TRIGGER_CONFIRM_TIMEOUT):
+            await self._set(self._clear)
+            match self._clear.origin:
+                case api.models.IOOrigin.BUS_IO:
+                    while not await self._bus_reads_back(self._clear):
+                        await asyncio.sleep(_IO_POLL_INTERVAL)
+                case api.models.IOOrigin.CONTROLLER:
+                    await self._await_controller_event(self._clear)
+                case origin:
+                    raise ValueError(f"Unsupported sync IO origin: {origin}")
 
     async def release(self) -> None:
-        await self._write(self._release)
-
-    async def _write(self, action: WriteAction) -> None:
-        """Write the IO and wait until the write is observable.
-
-        Without the confirmation a group could arm its start condition while the
-        IO image still carries the previous barrier's value and start immediately,
-        desynchronizing the run.
-        """
-        io_value = action.to_api_model()
+        """Confirmation is off the critical path — the groups are already armed —
+        so bus IO is re-read once after a delay, only to catch a dropped write."""
         async with asyncio.timeout(_TRIGGER_CONFIRM_TIMEOUT):
-            if action.origin is api.models.IOOrigin.BUS_IO:
+            await self._set(self._release)
+            match self._release.origin:
+                case api.models.IOOrigin.BUS_IO:
+                    await asyncio.sleep(_RELEASE_VERIFY_DELAY)
+                    if not await self._bus_reads_back(self._release):
+                        raise RuntimeError(
+                            f"Sync IO '{self._release.key}' did not take the release value; "
+                            "the write may have been dropped"
+                        )
+                case api.models.IOOrigin.CONTROLLER:
+                    await self._await_controller_event(self._release)
+                case origin:
+                    raise ValueError(f"Unsupported sync IO origin: {origin}")
+
+    async def _set(self, action: WriteAction) -> None:
+        """Write the IO, without waiting for it to become observable."""
+        io_value = action.to_api_model()
+        match action.origin:
+            case api.models.IOOrigin.BUS_IO:
                 await self._api_client.bus_ios_api.set_bus_io_values(
                     cell=self._cell, io_value=[io_value]
                 )
-                while True:
-                    values = await self._api_client.bus_ios_api.get_bus_io_values(
-                        cell=self._cell, ios=[action.key]
-                    )
-                    if values and values[0] == io_value:
-                        break
-                    await asyncio.sleep(_IO_POLL_INTERVAL)
-            else:
+            case api.models.IOOrigin.CONTROLLER:
                 assert action.device_id is not None
                 await self._api_client.controller_ios_api.set_output_values(
                     cell=self._cell, controller=action.device_id, io_value=[io_value]
                 )
-                await self._api_client.controller_ios_api.wait_for_io_event(
-                    cell=self._cell,
-                    controller=action.device_id,
-                    wait_for_io_event_request=api.models.WaitForIOEventRequest(
-                        io=io_value, comparator=api.models.Comparator.COMPARATOR_EQUALS
-                    ),
-                )
+            case origin:
+                raise ValueError(f"Unsupported sync IO origin: {origin}")
         logger.debug(f"Sync IO '{action.key}' set to {action.value}")
+
+    async def _bus_reads_back(self, action: WriteAction) -> bool:
+        """Whether the bus IO currently reads back the written value."""
+        values = await self._api_client.bus_ios_api.get_bus_io_values(
+            cell=self._cell, ios=[action.key]
+        )
+        return bool(values) and values[0] == action.to_api_model()
+
+    async def _await_controller_event(self, action: WriteAction) -> None:
+        """A controller output is waited on with the server-held ``wait_for_io_event``."""
+        assert action.device_id is not None
+        await self._api_client.controller_ios_api.wait_for_io_event(
+            cell=self._cell,
+            controller=action.device_id,
+            wait_for_io_event_request=api.models.WaitForIOEventRequest(
+                io=action.to_api_model(), comparator=api.models.Comparator.COMPARATOR_EQUALS
+            ),
+        )
 
 
 async def _wait_until_waiting_for_io(states: AsyncIterable[api.models.MotionGroupState]) -> None:
