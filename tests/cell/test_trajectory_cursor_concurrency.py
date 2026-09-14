@@ -269,17 +269,50 @@ class TestCursorInstantiationRace:
         # Clean up
         cursor._initialize_task.cancel()
 
-    async def test_pause_before_any_operation_returns_none(self):
-        """pause() with no active operation should return None immediately."""
+    async def test_pause_before_any_operation_is_dispatched(self):
+        """Local idle state must not suppress a stop request."""
         cursor = _make_cursor()
-        result = cursor.pause()
-        assert result is None
+        pause_future = cursor.pause()
+
+        assert not pause_future.done()
+        assert cursor._pending_intent is not None
+        assert cursor._pending_intent.operation_type is OperationType.PAUSE
+        cursor._initialize_task.cancel()
+
+    async def test_pause_after_local_operation_completion_is_still_dispatched(self):
+        """Local completion must not discard a stop that may still be needed remotely."""
+        cursor = _make_cursor()
+        forward_future = cursor.forward()
+        request_loop = cursor._request_loop()
+        forward_request = await anext(request_loop)
+
+        assert isinstance(forward_request, api.models.StartMovementRequest)
+        cursor._complete_operation()
+
+        assert forward_future.done()
+        pause_future = cursor.pause()
+        pause_request = await anext(request_loop)
+
+        assert not pause_future.done()
+        assert isinstance(pause_request, api.models.PauseMovementRequest)
+        await request_loop.aclose()
         cursor._initialize_task.cancel()
 
     async def test_backward_callable_before_initialize_task_completes(self):
         cursor = _make_cursor(initial_location=1.5)
         future = cursor.backward()
         assert not future.done()
+        cursor._initialize_task.cancel()
+
+    async def test_pause_after_detach_returns_failed_future(self):
+        cursor = _make_cursor()
+        cursor.detach()
+
+        future = cursor.pause()
+
+        assert future.done()
+        with pytest.raises(RuntimeError, match="already been detached"):
+            future.result()
         cursor._initialize_task.cancel()
 
 

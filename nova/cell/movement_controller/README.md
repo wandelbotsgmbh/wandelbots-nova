@@ -67,6 +67,10 @@ conclude.
 The cursor derives *operation* completion from the machine, with two guards for level-based
 publishing:
 
+- `pause()` always queues a pause command while the cursor is attached, even when the local
+  operation has already completed. Local operation state cannot prove that the controller has
+  stopped, so it must not suppress a stop request. The returned future reports completion or a
+  controller error; calling `pause()` after detaching returns a failed future.
 - An operation is only marked running on **evidence of motion** (`standstill` false or a
   `RUNNING` detail) — never on the mere presence of an `execute` block, which exists from
   initialization on.

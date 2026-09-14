@@ -112,7 +112,11 @@ async def log_motion(
     mounting = motion_group_setup.mounting or api.models.Pose(
         position=(0, 0, 0), orientation=(0, 0, 0)
     )
-    robot = DHRobot(dh_parameters=motion_group_description.dh_parameters, mounting=mounting)
+    robot = DHRobot(
+        dh_parameters=motion_group_description.dh_parameters,
+        mounting=mounting,
+        kinematic_chain_offset=motion_group_description.kinematic_chain_offset,
+    )
 
     # TODO: merge collision_setups
     collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
