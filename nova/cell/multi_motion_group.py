@@ -23,7 +23,7 @@ synchronized execution — sharing one action list across both, exactly as
     )
 
     # Execute-only, mirroring MotionGroup.execute — the planner stays dormant:
-    await ensemble.execute(recorded_trajectory)
+    await ensemble.execute(recorded_trajectory, tcp={"0@robot": "flange", "0@positioner": None})
     ```
 
 The ensemble is cell-scoped: the multi-motion-group RRT endpoint reasons about
@@ -77,7 +77,7 @@ class MultiMotionGroup:
     async def plan(
         self,
         actions: ActionsLike,
-        tcp: Mapping[str, str | None] | str | None = None,
+        tcp: Mapping[str, str | None] | None = None,
         start_joint_position: Mapping[str, tuple[float, ...]] | None = None,
     ) -> api.models.MultiJointTrajectory:
         """Plan one synchronized collision-free trajectory for the action list.
@@ -92,32 +92,37 @@ class MultiMotionGroup:
     async def execute(
         self,
         trajectory: api.models.MultiJointTrajectory,
+        tcp: Mapping[str, str | None] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
         actions: ActionsLike | None = None,
     ) -> None:
         """Execute the trajectory front to end, synchronized through the barrier.
 
-        Pass the same ``actions`` list given to :meth:`plan` to fire its
+        ``tcp`` is the TCP each group's trajectory was planned for, keyed by group
+        name; pass the same ``actions`` list given to :meth:`plan` to fire its
         location-anchored IO. Delegates to :meth:`TrajectoryExecutor.execute`.
         """
-        await self._executor.execute(trajectory, actions=actions, groups=groups)
+        await self._executor.execute(trajectory, tcp=tcp, actions=actions, groups=groups)
 
     @asynccontextmanager
     async def attach(
         self,
         trajectory: api.models.MultiJointTrajectory,
+        tcp: Mapping[str, str | None] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
         actions: ActionsLike | None = None,
     ) -> AsyncGenerator[MultiTrajectoryCursor, None]:
         """Open an interactive session over the trajectory, delegating to
         :meth:`TrajectoryExecutor.attach`."""
-        async with self._executor.attach(trajectory, actions=actions, groups=groups) as cursor:
+        async with self._executor.attach(
+            trajectory, tcp=tcp, actions=actions, groups=groups
+        ) as cursor:
             yield cursor
 
     async def plan_and_execute(
         self,
         actions: ActionsLike,
-        tcp: Mapping[str, str | None] | str | None = None,
+        tcp: Mapping[str, str | None] | None = None,
         start_joint_position: Mapping[str, tuple[float, ...]] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
     ) -> None:
@@ -132,7 +137,7 @@ class MultiMotionGroup:
             await self._executor.apply_non_motion_actions(actions_list)
             return
         trajectory = await self.plan(actions_list, tcp, start_joint_position)
-        await self.execute(trajectory, actions=actions_list, groups=groups)
+        await self.execute(trajectory, tcp, groups=groups, actions=actions_list)
 
     @classmethod
     def builder(

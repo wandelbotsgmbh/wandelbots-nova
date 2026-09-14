@@ -86,7 +86,7 @@ class MultiMotionGroupPlanner:
     async def plan(
         self,
         actions: ActionsLike,
-        tcp: Mapping[str, str | None] | str | None = None,
+        tcp: Mapping[str, str | None] | None = None,
         start_joint_position: Mapping[str, tuple[float, ...]] | None = None,
     ) -> api.models.MultiJointTrajectory:
         """Plan a synchronized collision-free trajectory for the action list.
@@ -104,9 +104,10 @@ class MultiMotionGroupPlanner:
                 no joint samples; pass the same list to the executor for its IO
                 overlay). Every motion's ``targets`` must cover exactly the
                 planner's groups.
-            tcp: The TCP per group, or a single TCP shared by all. Required for
-                any group whose target is a pose (for inverse kinematics); also
-                selects the motion group setup. ``None`` for a group means no TCP.
+            tcp: The TCP per group, keyed by group name. Required for any group
+                whose target is a pose (for inverse kinematics); also selects the
+                motion group setup. A group left out — or mapped to ``None`` —
+                has no TCP.
             start_joint_position: The start joint position per group. A group
                 left out starts from its current joints.
 
@@ -158,13 +159,13 @@ class MultiMotionGroupPlanner:
             )
         return combine_multi_trajectories(segments)
 
-    def _tcp_for(self, name: str, tcp: Mapping[str, str | None] | str | None) -> str | None:
-        return tcp.get(name) if isinstance(tcp, Mapping) else tcp
+    def _tcp_for(self, name: str, tcp: Mapping[str, str | None] | None) -> str | None:
+        return tcp.get(name) if tcp is not None else None
 
     async def _plan_multi_collision_free(
         self,
         action: MultiCollisionFreeMotion,
-        tcp: Mapping[str, str | None] | str | None,
+        tcp: Mapping[str, str | None] | None,
         current: Mapping[str, tuple[float, ...]],
         setups: Mapping[str, api.models.MotionGroupSetup],
     ) -> api.models.MultiJointTrajectory:

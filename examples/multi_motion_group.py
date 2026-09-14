@@ -12,7 +12,7 @@ from pathlib import Path
 import nova
 from nova import api, run_program
 from nova.actions import jnt
-from nova.cell import GroupArgs, MultiMotionGroup, virtual_controller
+from nova.cell import MultiMotionGroup, virtual_controller
 
 CONTROLLER = "kuka"
 ROBOT, POSITIONER = f"0@{CONTROLLER}", f"1@{CONTROLLER}"
@@ -65,9 +65,7 @@ async def multi_motion_group_trajectory(ctx: nova.ProgramContext):
     ensemble = (
         MultiMotionGroup.builder(groups).sync_on_io(SYNC_IO_ID, controller=CONTROLLER).build()
     )
-    await ensemble.execute(
-        trajectory, groups={name: GroupArgs(tcp=tcp) for name, tcp in TCPS.items()}
-    )
+    await ensemble.execute(trajectory, tcp=TCPS)
 
 
 if __name__ == "__main__":

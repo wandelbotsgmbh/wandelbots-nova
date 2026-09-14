@@ -53,10 +53,15 @@ from nova.cell.session_monitor import SessionMonitor
 
 @dataclass(frozen=True)
 class GroupArgs:
-    """Per-group arguments for one execution.
+    """Per-group execution knobs.
+
+    The TCP the trajectory was planned for is not here: it is the ``tcp`` argument
+    of :meth:`TrajectoryExecutor.execute` / :meth:`~TrajectoryExecutor.attach`,
+    kept a first-class parameter the way :meth:`MotionGroup.execute` takes it — so
+    ``plan_and_execute`` threads one ``tcp`` into both halves without it also
+    living in this bundle.
 
     Attributes:
-        tcp: TCP the trajectory was planned for; passed to trajectory loading.
         ignore_controller_limits: Skip the executing side's limit check when
             initializing the movement, on by default.
 
@@ -77,7 +82,6 @@ class GroupArgs:
             :meth:`MotionGroup.stream_state`.
     """
 
-    tcp: str | None = None
     ignore_controller_limits: bool = True
     state_stream_rate_msecs: int | None = None
 
@@ -141,22 +145,27 @@ class TrajectoryExecutor:
     async def execute(
         self,
         trajectory: api.models.MultiJointTrajectory,
+        tcp: Mapping[str, str | None] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
         actions: ActionsLike | None = None,
     ) -> None:
         """Execute the trajectory front to end, synchronized through the barrier.
 
+        ``tcp`` is the TCP each group's trajectory was planned for, used to load
+        it — keyed by group name.
+
         ``actions`` is the same ensemble action list passed to
         :meth:`MultiMotionGroupPlanner.plan`; its :class:`WriteAction` entries
         become the location-anchored IO overlay fired during execution (see
         :meth:`attach`)."""
-        async with self.attach(trajectory, actions=actions, groups=groups) as cursor:
+        async with self.attach(trajectory, tcp=tcp, actions=actions, groups=groups) as cursor:
             await cursor.forward()
 
     @asynccontextmanager
     async def attach(
         self,
         trajectory: api.models.MultiJointTrajectory,
+        tcp: Mapping[str, str | None] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
         actions: ActionsLike | None = None,
     ) -> AsyncGenerator[MultiTrajectoryCursor, None]:
@@ -186,9 +195,8 @@ class TrajectoryExecutor:
         for name, joint_trajectory in per_group.items():
             motion_group = self._motion_groups[name]
             group_args = (groups or {}).get(name) or GroupArgs()
-            trajectory_id = await motion_group._load_planned_motion(
-                joint_trajectory, group_args.tcp
-            )
+            group_tcp = tcp.get(name) if tcp is not None else None
+            trajectory_id = await motion_group._load_planned_motion(joint_trajectory, group_tcp)
             # Bind the rate so the cursor still receives a zero-arg stream
             # factory; with no rate the bare bound method already is one.
             state_stream_source = (

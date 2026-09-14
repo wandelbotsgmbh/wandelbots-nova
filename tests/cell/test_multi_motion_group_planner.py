@@ -157,14 +157,14 @@ class TestRequestAssembly:
         assert tuple(paths["b"].target_joint_position) == (2.0,) * 6
         assert set(_request_of(api_client).motion_group_setups_by_motion_group_key) == {"a", "b"}
 
-    async def test_shared_tcp_and_algorithm_on_action(self):
+    async def test_tcp_and_algorithm_on_action(self):
         api_client = _gateway(_ok("a"))
         group = _motion_group(api_client, "a")
         planner = MultiMotionGroupPlanner({"a": group})
 
         algorithm = api.models.RRTConnectAlgorithm(max_iterations=42)
         await planner.plan(
-            multi_collision_free({"a": (1.0,) * 6}, algorithm=algorithm), tcp="flange"
+            multi_collision_free({"a": (1.0,) * 6}, algorithm=algorithm), tcp={"a": "flange"}
         )
 
         group.get_setup.assert_awaited_once_with(tcp_name="flange")
@@ -176,7 +176,9 @@ class TestRequestAssembly:
         group = _motion_group(api_client, "a", current_joints=(0.0,) * 6, ik_solutions=[far, near])
         planner = MultiMotionGroupPlanner({"a": group})
 
-        await planner.plan(multi_collision_free({"a": Pose((1, 2, 3, 4, 5, 6))}), tcp="flange")
+        await planner.plan(
+            multi_collision_free({"a": Pose((1, 2, 3, 4, 5, 6))}), tcp={"a": "flange"}
+        )
 
         group._inverse_kinematics.assert_awaited_once()
         target = tuple(
@@ -195,7 +197,9 @@ class TestRequestAssembly:
         group = _motion_group(api_client, "a", ik_solutions=[])
         planner = MultiMotionGroupPlanner({"a": group})
         with pytest.raises(NoInverseKinematicsSolutionFound):
-            await planner.plan(multi_collision_free({"a": Pose((1, 2, 3, 4, 5, 6))}), tcp="flange")
+            await planner.plan(
+                multi_collision_free({"a": Pose((1, 2, 3, 4, 5, 6))}), tcp={"a": "flange"}
+            )
 
 
 class TestBatching:

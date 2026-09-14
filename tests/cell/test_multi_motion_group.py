@@ -67,9 +67,11 @@ class TestDelegation:
         ensemble = MultiMotionGroup(_fake_executor(), planner)
         actions = [multi_collision_free({"a": (0.0,) * 6})]
 
-        result = await ensemble.plan(actions, tcp="flange", start_joint_position={"a": (0.1,) * 6})
+        result = await ensemble.plan(
+            actions, tcp={"a": "flange"}, start_joint_position={"a": (0.1,) * 6}
+        )
 
-        planner.plan.assert_awaited_once_with(actions, "flange", {"a": (0.1,) * 6})
+        planner.plan.assert_awaited_once_with(actions, {"a": "flange"}, {"a": (0.1,) * 6})
         assert result == "TRAJ"
 
     async def test_execute_delegates_to_the_executor(self):
@@ -78,25 +80,27 @@ class TestDelegation:
         actions = [io_write("OUT#1", True, device_id="c")]
         group_args = {"a": GroupArgs()}
 
-        await ensemble.execute("TRAJ", actions=actions, groups=group_args)
+        await ensemble.execute("TRAJ", tcp={"a": "flange"}, actions=actions, groups=group_args)
 
-        executor.execute.assert_awaited_once_with("TRAJ", actions=actions, groups=group_args)
+        executor.execute.assert_awaited_once_with(
+            "TRAJ", tcp={"a": "flange"}, actions=actions, groups=group_args
+        )
 
     async def test_attach_delegates_to_the_executor(self):
         executor = _fake_executor()
 
         @asynccontextmanager
-        async def fake_attach(trajectory, actions=None, groups=None):
-            fake_attach.args = (trajectory, actions, groups)
+        async def fake_attach(trajectory, tcp=None, actions=None, groups=None):
+            fake_attach.args = (trajectory, tcp, actions, groups)
             yield "CURSOR"
 
         executor.attach = fake_attach
         ensemble = MultiMotionGroup(executor, _fake_planner())
         actions = [io_write("OUT#1", True, device_id="c")]
 
-        async with ensemble.attach("TRAJ", actions=actions) as cursor:
+        async with ensemble.attach("TRAJ", tcp={"a": "flange"}, actions=actions) as cursor:
             assert cursor == "CURSOR"
-        assert fake_attach.args == ("TRAJ", actions, None)
+        assert fake_attach.args == ("TRAJ", {"a": "flange"}, actions, None)
 
     async def test_plan_and_execute_chains_the_same_actions_into_both_halves(self):
         executor = _fake_executor()
@@ -104,11 +108,27 @@ class TestDelegation:
         ensemble = MultiMotionGroup(executor, planner)
         actions = [multi_collision_free({"a": (0.0,) * 6}), io_write("OUT#1", True, device_id="c")]
 
-        await ensemble.plan_and_execute(actions, tcp="flange")
+        await ensemble.plan_and_execute(actions, tcp={"a": "flange"})
 
-        planner.plan.assert_awaited_once_with(actions, "flange", None)
-        # the planned trajectory and the very same actions reach execute
-        executor.execute.assert_awaited_once_with("TRAJ", actions=actions, groups=None)
+        planner.plan.assert_awaited_once_with(actions, {"a": "flange"}, None)
+        executor.execute.assert_awaited_once_with(
+            "TRAJ", tcp={"a": "flange"}, groups=None, actions=actions
+        )
+
+    async def test_plan_and_execute_forwards_tcp_and_groups_orthogonally(self):
+        executor = _fake_executor()
+        planner = _fake_planner()
+        ensemble = MultiMotionGroup(executor, planner)
+        actions = [multi_collision_free({"a": (0.0,) * 6})]
+        # tcp is the planning input, groups holds only execution knobs: both reach
+        # execute untouched, neither derived from the other.
+        tcp = {"a": "flange", "b": None}
+        groups = {"a": GroupArgs(state_stream_rate_msecs=50)}
+
+        await ensemble.plan_and_execute(actions, tcp=tcp, groups=groups)
+
+        planner.plan.assert_awaited_once_with(actions, tcp, None)
+        executor.execute.assert_awaited_once_with("TRAJ", tcp=tcp, groups=groups, actions=actions)
 
     async def test_execute_does_not_touch_the_planner(self):
         # An execute-only workflow drives the executor without planning.

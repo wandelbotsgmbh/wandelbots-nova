@@ -105,7 +105,7 @@ async def test_group_args_rate_reaches_each_groups_stream():
     async with asyncio.timeout(5):
         async with executor.attach(
             multi_trajectory("a", "b"),
-            {"a": GroupArgs(state_stream_rate_msecs=250)},  # "b" keeps the default
+            groups={"a": GroupArgs(state_stream_rate_msecs=250)},  # "b" keeps the default
         ):
             pass
 

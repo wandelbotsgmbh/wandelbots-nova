@@ -15,7 +15,7 @@ from datetime import datetime
 
 import nova
 from nova import api, run_program
-from nova.cell import GroupArgs, MultiMotionGroup, virtual_controller
+from nova.cell import MultiMotionGroup, virtual_controller
 
 CONTROLLERS = ("kuka-a", "kuka-b")
 SYNC_IO = "sync-bus"
@@ -145,9 +145,7 @@ async def bus_io_sync_two_controllers(ctx: nova.ProgramContext):
     ]
     try:
         tcps = {name: (await group.tcp_names())[0] for name, group in groups.items()}
-        await ensemble.execute(
-            trajectory, groups={name: GroupArgs(tcp=tcp) for name, tcp in tcps.items()}
-        )
+        await ensemble.execute(trajectory, tcp=tcps)
     finally:
         for watcher in watchers:
             watcher.cancel()
