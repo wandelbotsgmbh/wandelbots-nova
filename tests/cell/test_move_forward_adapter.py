@@ -156,3 +156,39 @@ async def test_start_carries_the_io_overlay_and_io_gates():
     assert starts[0].set_outputs == expected_outputs
     assert starts[0].start_on_io == start_on_io
     assert starts[0].pause_on_io == pause_on_io
+
+
+async def test_context_set_outputs_override_the_derived_overlay():
+    """A context that resolved path triggers carries the finished ``set_outputs``;
+    the adapter must forward it instead of re-deriving the overlay from the actions."""
+    combined_actions = CombinedActions(
+        items=(lin(Pose((100.0, 0, 0, 0, 0, 0))), io_write(key="OUT#900", value=True))
+    )
+    resolved = [
+        api.models.SetIO(
+            io=api.models.IOBooleanValue(io="OUT#900", value=True),
+            location=0.5,
+            io_origin=api.models.IOOrigin.CONTROLLER,
+        )
+    ]
+    context = _context(combined_actions=combined_actions, set_outputs=resolved)
+
+    requests = await _run(context)
+
+    starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
+    assert len(starts) == 1
+    assert starts[0].set_outputs == resolved
+    assert starts[0].set_outputs != combined_actions.to_set_io()
+
+
+async def test_empty_context_set_outputs_is_not_treated_as_missing():
+    """An explicitly empty resolved overlay must not fall back to ``to_set_io()``."""
+    combined_actions = CombinedActions(
+        items=(lin(Pose((100.0, 0, 0, 0, 0, 0))), io_write(key="OUT#900", value=True))
+    )
+    context = _context(combined_actions=combined_actions, set_outputs=[])
+
+    requests = await _run(context)
+
+    starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
+    assert starts[0].set_outputs == []
