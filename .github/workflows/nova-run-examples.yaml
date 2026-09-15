@@ -133,6 +133,10 @@ jobs:
             run_cmd: "python examples/multi_motion_group.py"
           - id: bus_io_sync_two_controllers
             run_cmd: "python examples/bus_io_sync_two_controllers.py"
+          # collision-free (RRT) examples are not run in CI: the endpoint is
+          # flaky/unsupported on the virtual instance (see the entry below).
+          # - id: multi_motion_group_planning
+          #   run_cmd: "python examples/multi_motion_group_planning.py"
           # - id: multi_step_movement_with_collision_free
           #   run_cmd: "python examples/multi_step_movement_with_collision_free.py"
           - id: welding

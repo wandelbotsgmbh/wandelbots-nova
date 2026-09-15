@@ -21,6 +21,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from nova import api
+from nova.actions.io import io_write
+from nova.actions.motions import multi_collision_free
+from nova.cell.multi_motion_group import MultiMotionGroup
 from nova.cell.session_monitor import SyncDriftError
 from nova.cell.trajectory_executor import GroupArgs, TrajectoryExecutor
 from tests.cell.multi_group_doubles import (
@@ -46,6 +49,7 @@ class _FakeGateway(IOGateway):
         self.start_requests: dict[str, list[api.models.StartMovementRequest]] = {}
         self.initialize_requests: dict[str, api.models.InitializeMovementRequest] = {}
         self.execution_cells: dict[str, str] = {}
+        self.execution_controllers: dict[str, str] = {}
         # Milestone counters the tests await, so they never depend on how many
         # event-loop ticks a barrier happens to take.
         self._counts = dict.fromkeys(("init", "start", "pause", "write"), 0)
@@ -80,6 +84,7 @@ class _FakeGateway(IOGateway):
             if isinstance(request, api.models.InitializeMovementRequest):
                 trajectory_id = request.trajectory.id
                 self.execution_cells[trajectory_id] = cell
+                self.execution_controllers[trajectory_id] = controller
                 self.initialize_requests[trajectory_id] = request
                 self._reach("init")
                 responses.put_nowait(api.models.InitializeMovementResponse())
@@ -98,12 +103,10 @@ async def _settle() -> None:
         await asyncio.sleep(0)
 
 
-def _two_group_executor(
-    gateway: _FakeGateway,
-) -> tuple[TrajectoryExecutor, dict[str, asyncio.Queue]]:
+def _two_group_executor(gateway: _FakeGateway) -> tuple[MultiMotionGroup, dict[str, asyncio.Queue]]:
     state_queues = {"a": asyncio.Queue(), "b": asyncio.Queue()}
     executor = (
-        TrajectoryExecutor.builder(
+        MultiMotionGroup.builder(
             {
                 "a": motion_group(gateway, state_queues["a"], trajectory_id="traj-a"),
                 "b": motion_group(gateway, state_queues["b"], trajectory_id="traj-b"),
@@ -134,18 +137,21 @@ class TestTrajectorySplitting:
 
 
 class TestExecutorAddressing:
-    async def test_attach__executes_each_group_through_its_own_cell(self):
+    async def test_attach__executes_each_group_through_its_own_controller(self):
+        # The groups share one cell (the sync barrier is cell-scoped) but sit on
+        # different controllers, each executed through its own.
         gateway = _FakeGateway()
         motion_groups = {
-            "a": motion_group(gateway, trajectory_id="traj-a", cell="cell-a"),
-            "b": motion_group(gateway, trajectory_id="traj-b", cell="cell-b"),
+            "a": motion_group(gateway, trajectory_id="traj-a", controller="ctrl-a"),
+            "b": motion_group(gateway, trajectory_id="traj-b", controller="ctrl-b"),
         }
         executor = TrajectoryExecutor(motion_groups, sync=sync_driver(gateway))
 
         async with executor.attach(multi_trajectory("a", "b")):
             await gateway.reached("init", 2)
 
-        assert gateway.execution_cells == {"traj-a": "cell-a", "traj-b": "cell-b"}
+        assert gateway.execution_controllers == {"traj-a": "ctrl-a", "traj-b": "ctrl-b"}
+        assert set(gateway.execution_cells.values()) == {"cell"}
 
 
 class TestSessionMonitors:
@@ -155,7 +161,7 @@ class TestSessionMonitors:
         gateway = _FakeGateway()
         state_queues = {"a": asyncio.Queue(), "b": asyncio.Queue()}
         executor = (
-            TrajectoryExecutor.builder(
+            MultiMotionGroup.builder(
                 {
                     "a": motion_group(gateway, state_queues["a"], trajectory_id="traj-a"),
                     "b": motion_group(gateway, state_queues["b"], trajectory_id="traj-b"),
@@ -384,3 +390,49 @@ class TestSynchronizedExecution:
             state_queues["b"].put_nowait(ended_state(2.0, at_milliseconds=80))
             await asyncio.wait_for(again, timeout=5)
             assert cursor.current_location >= 2.0 - 0.01
+
+
+class TestIOOverlayReachesTheController:
+    async def test_execute__write_rides_the_owning_groups_start_only(self):
+        # Arrange: two groups on distinct controllers; the write targets b's.
+        gateway = _FakeGateway()
+        state_queues = {"a": asyncio.Queue(), "b": asyncio.Queue()}
+        executor = (
+            MultiMotionGroup.builder(
+                {
+                    "a": motion_group(
+                        gateway, state_queues["a"], controller="ctrl-a", trajectory_id="traj-a"
+                    ),
+                    "b": motion_group(
+                        gateway, state_queues["b"], controller="ctrl-b", trajectory_id="traj-b"
+                    ),
+                }
+            )
+            .sync_on_io("sync-io", controller="ctrl-a")
+            .build()
+        )
+        # Two motions match the trajectory's end location (2.0); the write sits
+        # between them, at motion boundary 1.
+        move = multi_collision_free({"a": (0.0,) * 6, "b": (0.0,) * 6})
+        actions = [move, io_write("OUT#1", True, device_id="ctrl-b"), move]
+
+        # Act: run the barrier through to completion
+        execute_task = asyncio.create_task(
+            executor.execute(multi_trajectory("a", "b"), actions=actions)
+        )
+        await gateway.reached("start", 2)
+        state_queues["a"].put_nowait(wait_for_io_state(at_milliseconds=10))
+        state_queues["b"].put_nowait(wait_for_io_state(at_milliseconds=20))
+        await gateway.reached("write", 2)
+        state_queues["a"].put_nowait(ended_state(2.0, at_milliseconds=30))
+        state_queues["b"].put_nowait(ended_state(2.0, at_milliseconds=40))
+        await asyncio.wait_for(execute_task, timeout=5)
+
+        # Assert: b's start carries the overlay at the motion boundary (1 motion
+        # precedes the write); a's start carries none.
+        b_outputs = gateway.start_requests["traj-b"][0].set_outputs
+        assert b_outputs is not None
+        assert [s.io.io for s in b_outputs] == ["OUT#1"]
+        assert b_outputs[0].location == 1
+        assert b_outputs[0].io.value is True
+        assert not gateway.start_requests["traj-a"][0].set_outputs
