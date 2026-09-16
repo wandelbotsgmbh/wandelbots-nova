@@ -7,7 +7,6 @@ authors = [
     { name = "Christoph Biering", email = "christoph.biering@wandelbots.com" },
     { name = "Mahsum Demir", email = "mahsum.demir@wandelbots.com" },
     { name = "Dirk Sonnemann", email = "dirk.sonnemann@wandelbots.com" },
-    { name = "Andreas Langenhagen", email = "andreas.langenhagen@wandelbots.com" },
     { name = "Stefan Wagner", email = "stefan.wagner@wandelbots.com" },
     { name = "André Kühnert", email = "andre.kuhnert@wandelbots.com" },
 ]

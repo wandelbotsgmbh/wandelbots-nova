@@ -13,19 +13,44 @@ class MotionSettings(pydantic.BaseModel):
     Motion settings are immutable; if you need to change a setting, create a copy and update the new object.
 
     Attributes:
-        blending_auto:
-            Auto-blending is used to keep a constant velocity when blending between two motion commands.
-            It changes the TCP path around the target point of the motion command.
-            The value represents the percentage of the original velocity.
+        blending:
+            Blending alters the TCP path at the target point of a motion command to ensure that
+            the velocity does not drop to zero between two motion commands.
+            Accepts either of the two API blending messages:
+
+            `api.models.BlendingAuto`:
+                min_velocity_in_percent:
+                    Percentage [0-100] of the original velocity that is kept while blending.
+
+            `api.models.BlendingPosition`:
+                position_zone_radius:
+                    Maximum radius in [mm] around the target point where the TCP path can be
+                    altered to blend into the following motion command.
+                position_zone_percentage:
+                    Maximum blending percentage [0-100] based on the trajectory length in
+                    position space around the target point.
+                orientation_zone_radius:
+                    Maximum radius in [rad] for orientation blending around the target orientation.
+                orientation_zone_percentage:
+                    Maximum blending percentage [0-100] for orientation blending based on the
+                    trajectory length in orientation space.
+                joints_zone_radius:
+                    Maximum radius in [rad] for joint space blending around the target joint
+                    configuration.
+                joints_zone_percentage:
+                    Maximum blending percentage [0-100] for joint space blending based on the
+                    trajectory length in joint space.
+                space:
+                    `api.models.BlendingSpace.JOINT` or `api.models.BlendingSpace.CARTESIAN`;
+                    defines the space in which blending is performed.
 
             This setting is not supported for collision-free motions.
+
+        blending_auto:
+            Deprecated, use `blending=api.models.BlendingAuto(min_velocity_in_percent=...)`.
 
         blending_radius:
-            Specifies the maximum radius in [mm] around the motion command's target point
-            where the TCP path can be altered to blend the motion command into the following one.
-            If auto-blending blends too much of the resulting trajectory, use position-blending to restrict the blending zone radius.
-
-            This setting is not supported for collision-free motions.
+            Deprecated, use `blending=api.models.BlendingPosition(position_zone_radius=...)`.
 
         joint_velocity_limits:
             Maximum joint velocity in [rad/s] for each joint.
@@ -58,8 +83,11 @@ class MotionSettings(pydantic.BaseModel):
             Maximum allowed TCP rotation jerk in [rad/s^3]. (experimental)
     """
 
-    blending_auto: int | None = pydantic.Field(default=None)
-    blending_radius: float | None = pydantic.Field(default=None)
+    blending: api.models.BlendingAuto | api.models.BlendingPosition | None = pydantic.Field(
+        default=None, discriminator="blending_name"
+    )
+    blending_auto: int | None = pydantic.Field(default=None, deprecated=True)
+    blending_radius: float | None = pydantic.Field(default=None, deprecated=True)
     joint_velocity_limits: tuple[float, ...] | None = pydantic.Field(default=None)
     joint_acceleration_limits: tuple[float, ...] | None = pydantic.Field(default=None)
     joint_jerk_limits: tuple[float, ...] | None = pydantic.Field(default=None)
@@ -81,14 +109,15 @@ class MotionSettings(pydantic.BaseModel):
         return f"__ms_{field}"
 
     def _get_blending_radius(self) -> float | None:
-        if self.blending_radius is not None:
-            return self.blending_radius
-        return self.position_zone_radius
+        # read through __dict__ so the internal fallback does not raise the field deprecation warning
+        if self.__dict__["blending_radius"] is not None:
+            return self.__dict__["blending_radius"]
+        return self.__dict__["position_zone_radius"]
 
     def _get_blending_auto(self) -> int | None:
-        if self.blending_auto is not None:
-            return self.blending_auto
-        return self.min_blending_velocity
+        if self.__dict__["blending_auto"] is not None:
+            return self.__dict__["blending_auto"]
+        return self.__dict__["min_blending_velocity"]
 
     @pydantic.model_validator(mode="after")
     def validate_blending_settings(self) -> "MotionSettings":
@@ -97,6 +126,9 @@ class MotionSettings(pydantic.BaseModel):
 
         if blending_radius is not None and blending_auto is not None:
             raise ValueError("Can't set both blending_radius and blending_auto")
+
+        if self.blending is not None and (blending_radius is not None or blending_auto is not None):
+            raise ValueError("Can't set both blending and the deprecated blending settings")
 
         joint_limits_lengths = [
             len(lim)
@@ -114,7 +146,11 @@ class MotionSettings(pydantic.BaseModel):
         return self
 
     def has_blending_settings(self) -> bool:
-        return self._get_blending_auto() is not None or self._get_blending_radius() is not None
+        return (
+            self.blending is not None
+            or self._get_blending_auto() is not None
+            or self._get_blending_radius() is not None
+        )
 
     def has_limits_override(self) -> bool:
         return any(
@@ -156,6 +192,9 @@ class MotionSettings(pydantic.BaseModel):
     def as_blending_setting(self) -> api.models.BlendingPosition | api.models.BlendingAuto:
         if not self.has_blending_settings():
             raise ValueError("No blending settings set")
+
+        if self.blending is not None:
+            return self.blending
 
         blending_radius = self._get_blending_radius()
         if blending_radius is not None:
