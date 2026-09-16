@@ -1075,17 +1075,21 @@ class TrajectoryCursor:
             )
             return future
 
-    def pause(self) -> asyncio.Future[OperationResult] | None:
+    def pause(self) -> asyncio.Future[OperationResult]:
         """Pause the current movement operation.
 
         Sends a pause command to stop the robot at its current position.
-        Has no effect if no operation is currently in progress.
 
         Returns:
-            Future that resolves when the robot has stopped, or None if no operation is active.
+            Future that resolves when the robot has stopped.
+            If the cursor has already been detached, returns a failed future.
         """
-        if not self._is_operation_in_progress():
-            return None
+        if self._stop_event.is_set():
+            future: asyncio.Future[OperationResult] = asyncio.Future()
+            future.set_exception(
+                RuntimeError("Cannot pause: TrajectoryCursor has already been detached")
+            )
+            return future
 
         future = self._start_operation(
             OperationType.PAUSE, expected_response_type=api.models.PauseMovementResponse

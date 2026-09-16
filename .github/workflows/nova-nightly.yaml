@@ -1,0 +1,88 @@
+---
+name: "@wandelbots/wandelbots-nova: Publish nightly"
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-main
+  cancel-in-progress: false
+
+jobs:
+  publish-nightly:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: python -m pip install --upgrade uv
+
+      - name: Set nightly version
+        id: version
+        run: |
+          BASE_VERSION=$(uv version --short)
+          DATE=$(date -u +%Y%m%d)
+          VERSION="${BASE_VERSION}.post${DATE}.dev${GITHUB_RUN_NUMBER}"
+          uv version --frozen "${VERSION}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build wheel and source distribution
+        run: uv build
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: wandelbots-nova-${{ steps.version.outputs.version }}-${{ github.run_attempt }}
+          path: dist/*
+          retention-days: 30
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+          skip-existing: true
+
+      - name: Create GitHub prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          TAG="nightly-${VERSION}"
+          printf '%s\n' \
+            "Nightly build from commit ${GITHUB_SHA} on main." \
+            "" \
+            "Install this exact build:" \
+            "" \
+            '```bash' \
+            "pip install wandelbots-nova==${VERSION}" \
+            '```' \
+            "" \
+            "https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}" \
+            > release-notes.md
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" dist/* --clobber
+            gh release edit "${TAG}" --notes-file release-notes.md
+          else
+            gh release create "${TAG}" dist/* \
+              --target "${GITHUB_SHA}" \
+              --title "Nightly ${VERSION}" \
+              --notes-file release-notes.md \
+              --prerelease \
+              --latest=false
+          fi
+...

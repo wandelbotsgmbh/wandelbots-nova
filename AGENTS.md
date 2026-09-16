@@ -44,6 +44,8 @@ When your changes create orphans:
 
 - Remove imports, variables, and functions that **your** changes made unused.
 - Do not remove pre-existing dead code unless asked.
+- Never edit generated dependency lockfiles manually. Regenerate `uv.lock` with `uv sync` or
+  `uv lock`, and use the corresponding package-manager command for other lockfiles.
 
 **Test:** Every changed line should trace directly to the user’s request.
 
