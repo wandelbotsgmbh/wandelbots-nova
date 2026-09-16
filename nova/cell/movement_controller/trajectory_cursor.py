@@ -1336,6 +1336,26 @@ class TrajectoryCursor:
                 # operation is active: observers (guards, overlays, UIs) need states
                 # from before movement starts, not only once it is under way.
                 result = self._state_machine.process_motion_state(motion_group_state)
+                if logger.isEnabledFor(logging.DEBUG):
+                    details = (
+                        motion_group_state.execute.details
+                        if motion_group_state.execute is not None
+                        else None
+                    )
+                    exec_state = (
+                        type(details.state).__name__
+                        if isinstance(details, api.models.TrajectoryDetails)
+                        else None
+                    )
+                    logger.debug(
+                        "frame standstill=%s execute=%s location=%s | %s → %s changed=%s",
+                        motion_group_state.standstill,
+                        exec_state,
+                        result.location,
+                        result.previous_state_id or "-",
+                        result.current_state_id or "-",
+                        result.state_changed,
+                    )
                 if result.has_execute:
                     self._enqueue_state(motion_group_state)
                     if result.location is not None:
