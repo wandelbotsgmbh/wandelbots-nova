@@ -1,0 +1,18 @@
+/init
+
+---
+
+Where is this log message emitted in the SDK code:
+New event '_pause_immediately' put on the 'external' queue
+
+---
+
+where is it called from then
+
+---
+
+If we wanted to debug the state transitions based on received websocket frames (MotionGroupState) is there already suitable instrumentation to see what happens?
+
+---
+
+Do this on a lab branch

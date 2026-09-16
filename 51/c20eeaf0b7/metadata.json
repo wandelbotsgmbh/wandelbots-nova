@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "51c20eeaf0b7",
+  "strategy": "manual-commit",
+  "branch": "lab/state-machine-frame-debug",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "nova/logging/__init__.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/51/c20eeaf0b7/0/metadata.json",
+      "transcript": "/51/c20eeaf0b7/0/full.jsonl",
+      "compact_transcript": "/51/c20eeaf0b7/0/transcript.jsonl",
+      "content_hash": "/51/c20eeaf0b7/0/content_hash.txt",
+      "prompt": "/51/c20eeaf0b7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 620,
+    "cache_creation_tokens": 72138,
+    "cache_read_tokens": 1807130,
+    "output_tokens": 10191,
+    "api_call_count": 25
+  }
+}
