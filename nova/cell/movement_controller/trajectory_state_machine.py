@@ -274,7 +274,7 @@ class TrajectoryExecutionMachine(StateMachine):
 
     # -- Public API -----------------------------------------------------------
 
-    def arm(self, *, stale_terminal: type | None = None) -> None:
+    def arm(self, *, stale_terminal: type | None = None, pause_requested: bool = False) -> None:
         """Begin or resume execution (sends ``start``).
 
         Args:
@@ -284,9 +284,13 @@ class TrajectoryExecutionMachine(StateMachine):
                 :class:`~nova.api.models.TrajectoryEnded` after an intermediate
                 stop with room left to move. Frames carrying it are ignored while
                 ``armed`` until a frame with another discriminator arrives.
+            pause_requested: The operation being armed for is itself a pause (the
+                owner paused before the machine ever left rest), so the parked
+                frame concludes it — see :meth:`request_pause`.
         """
         self.send("start")
         self._stale_terminal = stale_terminal
+        self._pause_requested = pause_requested
 
     def request_pause(self) -> None:
         """Record that the owner sent a pause request.
@@ -606,7 +610,8 @@ class TrajectoryExecutionMachine(StateMachine):
     ) -> None:
         self.failure_reason = (
             f"controller reports {type(trajectory_state).__name__} at location {self.location} "
-            f"(standstill={state.standstill}) while the execution is '{self.current_state.id}' "
+            f"(standstill={state.standstill}) while the execution is "
+            f"'{self._active_configuration_id()}' "
             "and no start was issued"
         )
         self.failed_frame = state
