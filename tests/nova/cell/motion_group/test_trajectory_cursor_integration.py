@@ -272,7 +272,8 @@ async def test_cursor_forward_start_on_io_delays_movement_start(kuka_mg):
 @pytest.mark.integration
 async def test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):
     """pause_on_io must stop the cursor's forward() early, mid-trajectory, with
-    no exception raised — TrajectoryPausedOnIO resolves the operation cleanly."""
+    no exception raised — TrajectoryPausedOnIO resolves the operation as
+    ``paused_on_io`` (ADR 002/003)."""
     mg, kuka = kuka_mg
     await kuka.write("OUT#900", False)
 
@@ -315,7 +316,7 @@ async def test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):
         await asyncio.wait_for(trigger_io_once_moving(), timeout=10.0)
 
         # No exception should propagate: TrajectoryPausedOnIO resolves the
-        # operation as ended, not as an error.
+        # operation as paused on IO, not as an error.
         result = await asyncio.wait_for(forward_future, timeout=15.0)
 
         final_joints = await mg.joints()
@@ -324,6 +325,7 @@ async def test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):
         distance_to_target = abs(final_joints[0] - target_joints[0])
         assert movement_amount > 0.01, "robot didn't move"
         assert distance_to_target > 0.1, "motion wasn't interrupted early"
+        assert result.paused_on_io is True
         assert result.final_location is not None
     finally:
         await kuka.write("OUT#900", False)
@@ -333,11 +335,10 @@ async def test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cursor_detach_on_standstill_tears_down_on_pause_on_io(kuka_mg):
-    """detach_on_standstill=True must fully tear down the control loop when
-    pause_on_io fires mid-motion, exactly as it does on true completion — this
-    pins the TrajectoryPausedOnIO -> is_ended (not is_paused) contract for a
-    cursor caller who opted into auto-detach."""
+async def test_cursor_stays_attached_on_pause_on_io_until_detached(kuka_mg):
+    """An IO pause is a resumable pause, not completion (ADR 002/003): even with
+    detach_on_standstill=True the cursor must stay attached after pause_on_io
+    fires mid-motion, and tear down fully once the caller detaches it."""
     mg, kuka = kuka_mg
     await kuka.write("OUT#900", False)
 
@@ -388,12 +389,15 @@ async def test_cursor_detach_on_standstill_tears_down_on_pause_on_io(kuka_mg):
 
         await asyncio.wait_for(trigger_io_once_moving(), timeout=10.0)
 
-        # The operation resolves cleanly...
-        await asyncio.wait_for(forward_future, timeout=15.0)
+        # The operation resolves cleanly as paused on IO...
+        result = await asyncio.wait_for(forward_future, timeout=15.0)
+        assert result.paused_on_io is True
 
-        # ...but the cursor's control loop must have torn itself down, since
-        # detach_on_standstill=True treats the IO-triggered pause like real
-        # completion (is_ended), not like a resumable pause (is_paused).
+        # ...and the cursor stays attached: the pause is resumable with another
+        # start. Only the caller's detach tears the control loop down.
+        assert not cursor._stop_event.is_set()
+        cursor.detach()
+        await asyncio.sleep(0.5)
         assert cursor._stop_event.is_set()
 
         # _in_queue holds every intermediate MotionGroupState pushed while the
