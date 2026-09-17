@@ -1,0 +1,58 @@
+<task-notification>
+<task-id>a20280dffcc91af45</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/94b012ee-a7cb-4b3c-ad6b-b4432bd1597d/tasks/a20280dffcc91af45.output</output-file>
+<status>completed</status>
+<summary>Agent "Research Python unit libraries" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Task: research Python unit libraries and recommend whether `after_start`/`before_target` should accept a unit-typed quantity besides `seconds=`/`millimeters=`.
+
+## Comparison (verified 2026-09-17)
+
+| Library | Latest | DL/month | Deps (beyond stdlib) | Dimension typing | Pydantic v2 | Verdict |
+|---|---|---|---|---|---|---|
+| **pint** | 0.26.1 (2026-09-10, **py&gt;=3.12**); 0.25.3 (2026-03-19, py&gt;=3.11) | 5.5 M | flexcache, flexparser, platformdirs, typing-extensions (no numpy) | `Quantity` is `Generic[MagnitudeT]` only — **no dimension type param**; mismatch is runtime `DimensionalityError` | via `pydantic-pint` 0.5.0 (2026-08-13) | Only viable general library; `import pint` 252 ms + `UnitRegistry()` 51 ms measured |
+| astropy.units | 8.0.1, py&gt;=3.11 | 2.4 M | numpy&gt;=2, pyerfa, iers-data, PyYAML | `Quantity[u.m]` is `Annotated` metadata — type checkers ignore it; runtime `@quantity_input` | none | Far too heavy for a robot SDK |
+| unyt | 3.1.0 (2026-01-15) | 59 k | numpy, **sympy** | none; runtime `UnitOperationError` | none | sympy dep is a non-starter |
+| quantities | 0.16.4 (2026-01-16) | 246 k | numpy | none | none | numpy-array subclass, no typing, small community |
+| forallpeople | 3.0.0 (2026-08-22) | 2 k | tuplevector | none | none | Engineering-report niche |
+| pyunitx / units | 0.10.2 (2025-07) / 0.07 (**2017**) | 68 / – | sigfig / – | none | none | Dead or tiny |
+| TypedUnits (quantumlib) | 0.0.2 (2025-09-24), py&gt;=3.10 | 49 k | **cython, numpy, protobuf**, attrs, pyparsing | **Yes** — `Length`, `Time` classes; mypy catches `Length` passed as `Frequency` | none | Only lib with static dimension checking, but 10 stars, 0.0.x, compiled, protobuf |
+| impunity | 1.0.5 (2024-11) | – | pint, astor | static analysis via decorator + `Annotated` | none | Research tool, unmaintained |
+| `datetime.timedelta` | stdlib | – | – | distinct type (mypy distinguishes from float) | native | Free win for the time dimension |
+| pint-pandas | 0.8.0 (2026-03) | – | pint, pandas&gt;=3 | – | – | Irrelevant here |
+
+Key facts:
+- pint is the de-facto standard (100× the downloads of anything else), but the **newest line dropped Python 3.11** — a hard dep would force `pint&lt;0.26` while we support 3.11. Its `Quantity` typing does *not* distinguish length from time statically; `after_start(50 * ureg.s)` type-checks fine and only fails at runtime (`DimensionalityError: Cannot convert from 'millimeter' ([length]) to 'second' ([time])`). Conversion is `q.m_as("mm")` / `q.to("mm").magnitude`.
+- No mainstream library gives static dimension checking; the one that does (TypedUnits) is 0.0.x, Cython + protobuf.
+
+## Design evaluation
+
+**(a) keywords only** — zero deps, unit visible at call site, `TimeTrigger | DistanceTrigger` return is trivially typed. Type checker cannot stop `after_start(seconds=50, millimeters=3)`; needs a one-line runtime "exactly one" check.
+
+**(b) pint hard dep** — +4 packages, ~300 ms import on every `import nova`, `pint&lt;0.26` pin for 3.11, no static gain over (a), and `50 * ureg.mm` needs a registry object the user must obtain from us (registries don't mix: quantities from a user's own `UnitRegistry` raise on conversion against ours). Rejected.
+
+**(c) duck-typed quantity, pint optional** — `hasattr(x, "m_as")` → `x.m_as("mm")`; `timedelta` → `.total_seconds()`. No dep, works with any user-supplied pint registry (we never construct quantities, only convert theirs), also with astropy via `to_value`. Cost: signature becomes `seconds: float | timedelta | SupportsMAs | None`, which is honest but wordier; users who don't use pint see nothing.
+
+**(d) own NewType** — `Millimeters = NewType("Millimeters", float)` gives static dimension safety with zero deps, but `after_start(Millimeters(50))` is noisier than `after_start(millimeters=50)` and says the same thing.
+
+## Recommendation
+
+Ship **(a)** now, with **(c) for `timedelta` only**:
+
+```python
+def after_start(*, seconds: float | timedelta | None = None,
+                   millimeters: float | None = None) -&gt; TimeTrigger | DistanceTrigger
+def before_target(*, seconds: float | timedelta | None = None,
+                     millimeters: float | None = None) -&gt; TimeTrigger | DistanceTrigger
+```
+
+`timedelta` is stdlib, pydantic-native, and the only unit type users already have in hand. Accepting pint duck-typed (`m_as`) is a 4-line, dependency-free follow-up if a customer asks; it should not gate today's merge, and a pint hard dependency is not justified (3.11 pin, import cost, no static safety). The keyword names already carry the unit at the call site, which is the actual readability win over the current `after_time(0.3)`.
+
+Sources: [pint PyPI](https://pypi.org/pypi/Pint/json) · [pint 0.25.3](https://pypi.org/pypi/Pint/0.25.3/json) · [pint downloads](https://pypistats.org/packages/pint) · [PlainQuantity source](https://raw.githubusercontent.com/hgrecco/pint/master/pint/facets/plain/quantity.py) · [pint wraps/check](https://pint.readthedocs.io/en/stable/advanced/wrapping.html) · [pydantic-pint](https://pypi.org/pypi/pydantic-pint/json) · [astropy PyPI](https://pypi.org/pypi/astropy/json) · [astropy type hints](https://docs.astropy.org/en/stable/units/type_hints.html) · [unyt](https://pypi.org/pypi/unyt/json) · [quantities](https://pypi.org/pypi/quantities/json) · [forallpeople](https://pypi.org/pypi/forallpeople/json) · [pyunitx](https://pypi.org/pypi/pyunitx/json) · [units](https://pypi.org/pypi/units/json) · [TypedUnits](https://github.com/quantumlib/TypedUnits) · [typedunits PyPI](https://pypi.org/pypi/typedunits/json) · [impunity](https://pypi.org/pypi/impunity/json) · [pint-pandas](https://pypi.org/pypi/Pint-Pandas/json)</result>
+<usage><subagent_tokens>111039</subagent_tokens><tool_uses>45</tool_uses><duration_ms>209420</duration_ms></usage>
+</task-notification>
+
+---
+
+if integration test fail because of the k8s instance missing, I changed the env in the main worktree to have 172.31.10.67 as the current instance, this should work
