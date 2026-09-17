@@ -199,6 +199,15 @@ class TestArmed:
         assert machine.is_paused
         assert machine.pause_reason is PauseReason.USER
 
+    def test_arming_for_a_pause_concludes_on_the_parked_frame(self):
+        """The owner paused before the machine ever left rest: the arm carries the
+        pause request instead of resetting it."""
+        machine = TrajectoryExecutionMachine()
+        machine.arm(pause_requested=True)
+        machine.process_motion_state(_paused_by_user(0.0))
+        assert machine.is_paused
+        assert machine.pause_reason is PauseReason.USER
+
     def test_wait_for_io_keeps_the_machine_armed(self):
         machine = _armed()
         machine.process_motion_state(_wait_for_io())

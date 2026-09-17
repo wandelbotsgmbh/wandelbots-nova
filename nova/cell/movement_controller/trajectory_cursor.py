@@ -864,7 +864,9 @@ class TrajectoryCursor:
             return future
 
         future = self._start_operation(
-            OperationType.FORWARD, expected_response_type=api.models.StartMovementResponse
+            OperationType.FORWARD,
+            expected_response_type=api.models.StartMovementResponse,
+            target_location=target_location,
         )
 
         if target_location is not None:
@@ -912,7 +914,9 @@ class TrajectoryCursor:
             return future
 
         future = self._start_operation(
-            OperationType.BACKWARD, expected_response_type=api.models.StartMovementResponse
+            OperationType.BACKWARD,
+            expected_response_type=api.models.StartMovementResponse,
+            target_location=target_location,
         )
 
         if target_location is not None:
@@ -1193,7 +1197,9 @@ class TrajectoryCursor:
                 if target_location is not None:
                     return target_location > location
                 if self.joint_trajectory is None:
-                    return True
+                    # Unknown length: a repeated END must be allowed to conclude,
+                    # or a start at the real end would wait for motion forever.
+                    return False
                 return location < self.joint_trajectory.locations[-1]
 
     def _complete_operation(self, error: Optional[Exception] = None, *, paused_on_io: bool = False):
@@ -1389,14 +1395,22 @@ class TrajectoryCursor:
                 # is at rest. This happens *before* the frame is processed, which is
                 # the contract the machine's rest-state rules rely on: a RUNNING
                 # frame reaching a machine still at rest means no start was issued.
+                pending_op = self._operation_handler.current_operation
                 if (
-                    self._operation_handler.in_progress()
+                    pending_op is not None
+                    and not pending_op.future.done()
                     and not self._state_machine.is_armed
                     and not self._state_machine.is_executing
                     and not self._state_machine.is_ending
                     and not self._state_machine.is_pausing
                 ):
-                    self._state_machine.arm(stale_terminal=self._stale_terminal_for_next_start)
+                    self._state_machine.arm(
+                        stale_terminal=self._stale_terminal_for_next_start,
+                        # A pause issued before any frame armed the machine replaces
+                        # the movement it was meant to pause; the parked frame must
+                        # still conclude it.
+                        pause_requested=pending_op.operation_type is OperationType.PAUSE,
+                    )
                     self._stale_terminal_for_next_start = None
 
                 # Tee every state to consumers of __aiter__ regardless of whether an
@@ -1404,16 +1418,8 @@ class TrajectoryCursor:
                 # from before movement starts, not only once it is under way.
                 result = self._state_machine.process_motion_state(motion_group_state)
                 if logger.isEnabledFor(logging.DEBUG):
-                    details = (
-                        motion_group_state.execute.details
-                        if motion_group_state.execute is not None
-                        else None
-                    )
-                    exec_state = (
-                        type(details.state).__name__
-                        if isinstance(details, api.models.TrajectoryDetails)
-                        else None
-                    )
+                    frame_state = _frame_execute_state(motion_group_state)
+                    exec_state = type(frame_state).__name__ if frame_state is not None else None
                     logger.debug(
                         "frame standstill=%s execute=%s location=%s | %s → %s changed=%s",
                         motion_group_state.standstill,
