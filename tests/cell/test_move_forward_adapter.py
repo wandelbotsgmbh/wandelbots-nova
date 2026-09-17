@@ -156,3 +156,57 @@ async def test_start_carries_the_io_overlay_and_io_gates():
     assert starts[0].set_outputs == expected_outputs
     assert starts[0].start_on_io == start_on_io
     assert starts[0].pause_on_io == pause_on_io
+
+
+# ---------------------------------------------------------------------------
+# Controller-side IO pause
+# ---------------------------------------------------------------------------
+
+
+def _paused_on_io(location: float) -> api.models.Execute:
+    return _execute(location, api.models.TrajectoryPausedOnIO())
+
+
+class _FedStates:
+    """A state stream fed by the test; stays open until the cursor detaches."""
+
+    def __init__(self):
+        self._queue: asyncio.Queue = asyncio.Queue()
+
+    def feed(self, *states):
+        for state in states:
+            self._queue.put_nowait(state)
+
+    def gen(self):
+        async def _gen():
+            while True:
+                yield await self._queue.get()
+
+        return _gen
+
+
+async def test_io_pause_ends_the_one_shot_execution_early_with_a_warning(caplog):
+    """An IO pause leaves the cursor attached and resumable, but move_forward has no
+    way to observe the signal yet: it ends the execution there (the behaviour before
+    IO pauses became pauses) instead of waiting forever — and says so."""
+    states = _FedStates()
+    pause_on_io = api.models.PauseOnIO(
+        io=api.models.IOBooleanValue(io="hold", value=True),
+        comparator=api.models.Comparator.COMPARATOR_EQUALS,
+        io_origin=api.models.IOOrigin.BUS_IO,
+    )
+    context = _context(motion_group_state_stream_gen=states.gen(), pause_on_io=pause_on_io)
+    requests: list = []
+
+    async def collect():
+        async for request in move_forward(context)(_responses()):
+            requests.append(request)
+
+    run = asyncio.create_task(collect())
+    states.feed(_state(True), _state(False, _execute(0.5)), _state(True, _paused_on_io(1.0)))
+    async with asyncio.timeout(5):
+        await run
+
+    starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
+    assert len(starts) == 1
+    assert "pause_on_io paused the trajectory at location 1.0" in caplog.text
