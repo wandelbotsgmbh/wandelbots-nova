@@ -1,0 +1,169 @@
+this is the observed log where the robot stopped moving despite our program not requesting so
+- program @/Users/q/2lab/cell-plc-simulation/nova/ir999r01/lab/robot_only_loop.py
+- log: @/tmp/exec.log
+
+---
+
+pls visualise the steps and the corresponding frame sequence leading to the failure. The frames should have increasing numbering
+
+---
+
+[Image #1] shows an execute.state "Paused" did you really observe this in the log?
+
+---
+
+The problem is that the standstill jitters in the stream right now. This needs to be fixed upstream.
+What we can do in the SDK is making the Statemachine more robust when sensible and have it fail more clearly, if a unexpected state transition happens,  instead of getting into the wrong state and then being stuck. How could we approach this?
+
+---
+
+<task-notification>
+<task-id>a8a6e294af718103d</task-id>
+<tool-use-id>toolu_016tRjWPht882zfiN5GXPBmi</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/9474d208-f06e-4b3e-a691-e4760dbac378/tasks/a8a6e294af718103d.output</output-file>
+<status>completed</status>
+<summary>Agent "Map cursor error paths and tests" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Findings, by question.
+
+**1. Error path — the cursor never calls `fail`, never reads `is_error`/`is_terminal`**
+- No production call site: `send("fail")`, `.fail()`, `is_error`, `is_terminal` appear only in `trajectory_state_machine.py:293,297` and `tests/cell/test_trajectory_state_machine.py:85,447`. The cursor only reads `is_executing/is_ending/is_pausing/is_ended/is_paused` (`trajectory_cursor.py:1329-1331,1374,1390,1399`). The machine can therefore never reach `error`, and a cursor error leaves it in `executing`/`pausing`.
+- Propagation: `_motion_group_state_monitor`'s `finally` (`trajectory_cursor.py:1406-1428`) fails a still-in-progress operation with `ErrorDuringMovement("Motion group state stream ended before the movement completed")`, then `detach()`s and pushes `_QUEUE_SENTINEL`. An exception raised inside the monitor surfaces as `BaseExceptionGroup` from the `asyncio.TaskGroup` in `cntrl()` (`trajectory_cursor.py:1187-1231`) and is unwrapped when the group holds exactly one exception (`:1229-1230`); otherwise the group itself is raised. Startup liveness failure raises plain `RuntimeError("State monitor failed to start in time")` (`:1214`).
+- `_response_consumer` turns `MovementErrorResponse` into `ErrorDuringMovement`, completes the operation with it *first*, then raises (`:1487-1499`); an unknown response type raises `RuntimeError` (`:1515-1519`). `init_movement_gen` raises `InitMovementFailed` (`:1645`). `nova/exceptions.py:41,52` define both; `SyncDriftError` subclasses `ErrorDuringMovement` (`nova/cell/session_monitor.py:19`).
+- Above the cursor, `MotionGroup._execute` runs `execute_trajectory` inside its own `asyncio.TaskGroup` (`nova/cell/motion_group.py:1067-1082`), so `motion_group.execute()` callers see an `ExceptionGroup` again — pinned by `tests/nova/cell/motion_group/test_motion_group_movement.py:96` (`pytest.RaisesGroup(InitMovementFailed)`), while cursor-level unwrapping is pinned by `tests/cell/test_trajectory_cursor_parity.py:619-668`.
+
+**2. `allow_event_without_transition` / `TransitionNotAllowed`**
+- Neither is set nor caught anywhere: the only `statemachine` references are `trajectory_state_machine.py:69` and the log-level line `nova/logging/__init__.py:21`. So any disallowed event raises `TransitionNotAllowed`. Notably `fail` has **no** `ended.to(error)` edge (`trajectory_state_machine.py:151-157`), and `start` only exists from `idle`/`paused`/`ended` (`:149`) — a `send("start")` while `pausing`/`ending` would raise.
+
+**3. Pause flow**
+- `TrajectoryCursor.pause()` (`:1078-1099`): no-op returning `None` if no operation in progress; otherwise `_start_operation(OperationType.PAUSE, expected_response_type=api.models.PauseMovementResponse)` plus an `Intent(operation_type=PAUSE)` whose `to_commands()` emits a single `api.models.PauseMovementRequest()` (`:464-465`). `_request_loop` marks it commanded before yielding (`:1283-1297`).
+- Frame sequences after a pause request in tests: `tests/cell/test_trajectory_cursor_level_states.py:170-200` (non-standstill `_paused(1.2)` → bare `_state(True)` frames, i.e. `pausing` → `paused`); `test_trajectory_executor_session.py:247-251` uses `paused_state(...)` which is **standstill=True** (`tests/cell/multi_group_doubles.py:67-70`), so it goes straight `executing → paused`.
+- **No test ever feeds a `TrajectoryRunning` frame while the machine is in `pausing`.** The only non-standstill paused frame in the suite is `test_trajectory_cursor_level_states.py:182`, followed only by bare standstills. In code that case hits `_keep_pausing()` (`trajectory_state_machine.py:251-255`) — the machine stays in `pausing` indefinitely.
+
+**4. Resume flow**
+- `forward()` (`:823-869`) only starts a new operation + intent; it never touches the machine. The machine is advanced solely by the monitor's guard: `if in_progress() and not is_executing and not is_ending and not is_pausing: send("start")` (`:1327-1333`). Consequence: a `TrajectoryRunning` frame arriving while the machine is `paused` **does** trigger `send("start")` on that same frame (before `process_motion_state`), so `paused → executing` happens on frame arrival, not on command dispatch. But while `pausing`, the guard deliberately skips `start`, so a resume issued before standstill is invisible to the machine.
+- Machine-level resume is only covered in unit tests: `test_trajectory_state_machine.py:269-299` (`test_start_from_paused`, `test_start_from_ended`), `:492-530` (`test_forward_pause_resume_complete`), `:532-570` (pause → backward). Cursor-level resume-after-pause: `tests/cell/test_trajectory_executor_session.py:233-269` and `:335-358`, both with standstill pauses.
+
+**5. Test infrastructure**
+- `tests/cell/test_trajectory_state_machine.py:22` `_make_motion_group_state(standstill=..., execute=...)`, `:39` `_make_execute(trajectory_state, location=...)`; replay tests load recorded frames from `tests/cell/fixtures/frames_50ms_edge_then_bare_standstill.json` and `frames_step_pause_then_bare_standstill.json` (`:608-669`, incl. a "thinned" variant that drops the PAUSED_BY_USER@standstill window).
+- `tests/cell/test_trajectory_cursor_level_states.py:47-138`: `_state`, `_execute`, `_running/_ended/_paused`, `_stream_then_block` (yields frames then `await asyncio.Future()` so completion must come from the logic, not stream exhaustion), `_responses()` (Initialize + StartMovement then blocks), `_one_shot_cursor(states)`, `_drive(cursor)` (consumes `cursor.cntrl(_responses())` in a task). Representative excerpt at `:177-200` (pause edge then bare standstill).
+- `tests/cell/test_trajectory_cursor_parity.py:82-162` adds `_finite_states`, `_blocking_states`, `_states_after(event)`, `_responses(*inner)`, `_gated_run()` and a `_drive(cursor, responses, on_start=...)` that collects requests. `tests/cell/multi_group_doubles.py:29-78` provides `state/execute_detail/wait_for_io_state/running_state/ended_state/paused_state` plus a `_FakeGateway` used by the executor-session tests.
+
+**6. Docs to keep in sync**
+- `nova/cell/movement_controller/README.md`: publishing modes `5-32`; **States** table `34-44`; **Transitions** `46-63`; cursor completion rules `65-78`; PlantUML diagram `82-121`; **Mermaid diagram** `125-157`; usage example `161-177`.
+- Module docstring ASCII diagram + notes: `trajectory_state_machine.py:11-62`; class docstring state/transition tables `:113-135`.
+- Other docs mentioning `pausing`/the machine: `docs/architecture/incoming/execution-completion-detection.md:136-138,200-201,230,311`; `.../execution-completion-detection-research.md:176,222,265`; `.../pause-on-signal-evaluation.md:19,36,251-277`.
+
+**7. Other consumers**
+- None. `TrajectoryExecutionMachine` is imported only by `nova/cell/movement_controller/trajectory_cursor.py:62` (instantiated at `:672`), re-exported by `nova/cell/movement_controller/__init__.py:3-5`, and used by `tests/cell/test_trajectory_state_machine.py`. `move_forward.py` is a thin adapter over `TrajectoryCursor` (`move_forward.py:5,23`) and does not touch the machine. Nothing in `novax/` references it.</result>
+<usage><subagent_tokens>73307</subagent_tokens><tool_uses>35</tool_uses><duration_ms>180514</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>abb559e738ee12c15</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/9474d208-f06e-4b3e-a691-e4760dbac378/tasks/abb559e738ee12c15.output</output-file>
+<status>completed</status>
+<summary>Agent "Design robust/fail-fast state machine" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>## Design principle
+
+**Transient states (`ending`, `pausing`) follow the discriminator; rest states (`paused`, `ended`) enforce it.** In a transient state the robot is still moving, so a `Running` frame is not physically contradictory — the controller re-armed or never actually settled — and waiting for standstill is wrong either way (stuck, or a wrong completion at the next standstill). In a rest state the op is resolved and standstill confirmed; `Running` there means the robot moves without this cursor having issued `start`. The cursor's guard (`trajectory_cursor.py:1327-1333`) already guarantees `start` precedes `process_motion_state` whenever an op exists, so "machine still at rest when Running arrives" ⇔ "no start issued" — no flag needs passing into the machine. Document that contract in the class docstring.
+
+## 1. Decision table (`process_motion_state`)
+
+| state \ frame | None∧ss | None∧¬ss | Running / WaitForIO | Ended∣PausedOnIO ∧ss | Ended∣PausedOnIO ∧¬ss | PausedByUser ∧ss | PausedByUser ∧¬ss |
+|---|---|---|---|---|---|---|---|
+| executing | keep | keep | keep | →ended | →ending | →paused | →pausing |
+| ending | →ended | keep | **→executing (NEW, warn)** | →ended | keep | →ended (unchanged) | keep |
+| pausing | →paused | keep | **→executing (NEW)** | **→ended (NEW, optional)** | **→ending (NEW, optional)** | →paused | keep |
+| paused | keep | keep (tolerate, debug) | **Running: fail (NEW)** / WaitForIO: keep+debug | **fail (NEW)** | **fail (NEW)** | keep | keep (pre-start jitter, F029 shape) |
+| ended | keep | keep | **Running: fail (NEW)** / WaitForIO: keep+debug | keep | keep | keep (stop / other client initialising) | keep |
+
+Today `paused`/`ended` have no branch at all (everything silently kept). The optional `pausing ∧ Ended → ended` covers a pause requested just before the end; today it lands in `paused` at the end location, which is a lie the PAUSE op then reports. Cheap, consistent, but separable.
+
+`ending ∧ Running`: resume, not fail. `ending` is entered from PausedOnIO too; whether RAE auto-resumes when the IO clears is unknown to the SDK, and `backward()` during end-deceleration also produces Running while `ending` (the guard does not fire in ending). Failing there would be harsh; resuming is correct in both readings.
+
+## 2. Code shape
+
+**`trajectory_state_machine.py`**
+- `fail = ... | ended.to(error)` (:151-157).
+- New: `_resume_executing = pausing.to(executing) | ending.to(executing)`; optional `_end_from_pausing = pausing.to(ended)`, `_begin_ending_from_pausing = pausing.to(ending)`.
+- `__init__`: `self.failure_reason: str | None = None`, `self.failed_frame: api.models.MotionGroupState | None = None`.
+- Replace the `ending`/`pausing` branches (:245-255) with `_handle_ending(ts, standstill)` / `_handle_pausing(ts, standstill)` matching the discriminator first (Running|WaitForIO → `_resume_executing`; terminal → existing standstill logic), and add `elif self.current_state in (self.paused, self.ended): self._handle_at_rest(ts, state)` which calls:
+  ```python
+  def _fail_on_frame(self, state, trajectory_state):
+      self.failure_reason = (f"{type(trajectory_state).__name__} at location {self.location} "
+          f"(standstill={state.standstill}) while machine was '{self.current_state.id}' and no start was issued")
+      self.failed_frame = state
+      self.fail()
+  ```
+  Setting attributes before `self.fail()` avoids relying on python-statemachine event kwargs.
+
+**`nova/exceptions.py`** — after `ErrorDuringMovement` (:52), mirror `SyncDriftError`:
+`class UnexpectedTrajectoryState(ErrorDuringMovement)` with `machine_state`, `trajectory_state`, `standstill`, `location` attributes and a message.
+
+**`trajectory_cursor.py` monitor**
+- After the debug log block (after :1358):
+  ```python
+  if self._state_machine.is_error:
+      error = UnexpectedTrajectoryState(self._state_machine.failure_reason, frame=self._state_machine.failed_frame, ...)
+      self._complete_operation(error=error)   # no-op in practice; keeps finally quiet
+      raise error
+  ```
+  Propagates via the TaskGroup → unwrapped in `cntrl` (:1219-1226) → `execute()` callers see it (ExceptionGroup at the motion_group level, as already pinned).
+- One-shot guard, between the `may_complete_as_paused` check (:1390-1397) and `_complete_operation()` (:1398):
+  ```python
+  if (self._detach_on_standstill and self._state_machine.is_paused
+          and current_op.operation_type is not OperationType.PAUSE):
+      error = UnexpectedTrajectoryState(f"trajectory paused externally at location {self._current_location} during one-shot execution")
+      self._complete_operation(error=error); raise error
+  ```
+  The `is not PAUSE` narrowing is mandatory: `nova/cell/tuner.py:160` uses `detach_on_standstill=True` *and* `pause()` (:116).
+
+## 3. Risk review
+
+- `pause()` mid-motion: PausedByUser (ss or ¬ss) unchanged; `pausing → paused` intact. Level-based deceleration publishes PausedByUser persistently, never Running, so no spurious resume.
+- Resume via `forward()`: guard sends `start` before the frame; rest-state rules never see it. Frames between op completion and `forward()` are PausedByUser/Ended → keep.
+- `backward()` after `ended`: op → `start` → executing → pre-start PausedByUser ping-pong (unchanged) → Running → Ended.
+- `pause_on_io`: `executing ∧ PausedOnIO → ended` unchanged; one-shot detaches. **Assumption to verify live:** RAE does not auto-resume PausedOnIO when the IO clears while an interactive cursor stays attached with no op — that would now raise `ended ∧ Running`. Check with `test_cursor_forward_pause_on_io_stops_early_mid_trajectory` (it clears the IO before `detach()`).
+- `start_on_io`/WaitForIO: keep in executing; tolerated at rest; executor session test (re-arm after ended, `test_trajectory_executor_session.py:355-385`) has an op, so guard fires.
+- Bare standstill: `None` frames unchanged everywhere; fixtures still pass.
+- `TrajectoryExecutor`: cursors are `detach_on_standstill=False` (:170) so C never applies; a fail in one group propagates through the executor's TaskGroup (:198-205), siblings detached in `finally`. `paused_state(ss=True)` without prior Running (`:247-251`) hits `executing → paused` — unchanged.
+
+## 4. Tests
+
+- `test_trajectory_state_machine.py`: replay of F028–F055 synthesised (`PausedByUser ss` ×2 → `PausedByUser ¬ss` ×2 → `Running ¬ss` ×13 → `Running ss` ×11 → `Running ¬ss` → `Ended ss`), assert `is_ended`; parametrised `pausing/ending ∧ Running → executing`; `paused ∧ Running`, `paused ∧ Ended`, `ended ∧ Running` → `is_error` + `failure_reason`; `ended ∧ PausedByUser`, `ended ∧ WaitForIO` → keep; extend `_make_execute` type hint for PausedOnIO/WaitForIO; `ended.to(error)` in `TestErrorTransitions`.
+- `test_trajectory_cursor_level_states.py`: one-shot cursor fed the F028–F055 shape → FORWARD op completes `final_location == 7.0`, consumer exits (detach). Fail-fast: interactive cursor, FORWARD to `ended`, then `Running` frames with no op → `pytest.raises(UnexpectedTrajectoryState)` on the `cntrl` consumer. One-shot external pause → raises. Tuner-shape: one-shot + `pause()` → PAUSE op completes as paused, no raise.
+- Regression: `test_trajectory_state_machine.py` (fixtures), `test_trajectory_cursor_level_states.py`, `test_trajectory_cursor_parity.py`, `test_trajectory_executor_session.py`, `test_move_forward_adapter.py`, `test_execute_shared_stream.py`.
+
+## 5. Changes to the candidate design
+
+- **C conflicts with two pinned tests**: `test_pause_edge_then_bare_standstill_completes_the_operation_as_paused` (:170) and `test_pause_after_motion_still_completes_the_operation_as_paused` (:242) use `_one_shot_cursor` with a FORWARD op and assert `error is None`. Their intent is completion mechanics, not one-shot tolerance; give `_one_shot_cursor` a `detach_on_standstill` parameter and run them interactive. Note external pause+resume in one-shot never worked (resume frames were ignored, `execute()` hung) — C converts a hang into an error, no regression.
+- Narrow B to `Running`/`Ended`/`PausedOnIO` in rest states; tolerate PausedByUser, WaitForIO, None (stop, other client initialising, re-arm).
+- Add `pausing → ended` on Ended (optional).
+- Keep D out of scope; agreed.
+- Docs: README states/transitions/diagrams and module/class docstrings need the new edges and the "start precedes frames" contract.
+
+### Critical Files for Implementation
+- /Users/q/0code/nova-python-sdk/nova/cell/movement_controller/trajectory_state_machine.py
+- /Users/q/0code/nova-python-sdk/nova/cell/movement_controller/trajectory_cursor.py
+- /Users/q/0code/nova-python-sdk/nova/exceptions.py
+- /Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_cursor_level_states.py
+- /Users/q/0code/nova-python-sdk/tests/cell/test_trajectory_state_machine.py</result>
+<usage><subagent_tokens>70915</subagent_tokens><tool_uses>17</tool_uses><duration_ms>296022</duration_ms></usage>
+</task-notification>
+
+---
+
+present the questions again
+
+---
+
+At the beginning of an execution we should see standstill=True and TrajectoryPausedByUser pls incorporate this information into the plan and questions
+
+---
+
+My answer to the last question obout the branch was wrong, let's review that again

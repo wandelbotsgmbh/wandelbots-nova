@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "d9f6aafe6986",
+  "strategy": "manual-commit",
+  "branch": "fix/trajectory-state-machine-armed-transient-rest",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "nova/cell/movement_controller/trajectory_cursor.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d9/f6aafe6986/0/metadata.json",
+      "transcript": "/d9/f6aafe6986/0/full.jsonl",
+      "compact_transcript": "/d9/f6aafe6986/0/transcript.jsonl",
+      "content_hash": "/d9/f6aafe6986/0/content_hash.txt",
+      "prompt": "/d9/f6aafe6986/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2052,
+    "cache_creation_tokens": 925274,
+    "cache_read_tokens": 15963167,
+    "output_tokens": 196631,
+    "api_call_count": 81
+  }
+}
