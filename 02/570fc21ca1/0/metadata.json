@@ -105,6 +105,37 @@
         "label": "Skill: artifact-diagramming",
         "default_collapsed": true
       }
+    },
+    {
+      "id": "claude-skill-toolu_01R84jKCxacguaU49QBsXaUi",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "pr"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "8586ac1a1655",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1512,
+        "end": 1513,
+        "entry_ids": [
+          "99c8a566-339b-4c88-ab77-7b49b9e66aa7"
+        ],
+        "tool_use_id": "toolu_01R84jKCxacguaU49QBsXaUi"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01R84jKCxacguaU49QBsXaUi"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: pr",
+        "default_collapsed": true
+      }
     }
   ],
   "session_metrics": {
