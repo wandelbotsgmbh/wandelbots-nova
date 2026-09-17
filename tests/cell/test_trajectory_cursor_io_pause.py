@@ -104,11 +104,13 @@ def _pause_condition() -> api.models.PauseOnIO:
     )
 
 
-def _cursor(frames: _Frames, *, detach_on_standstill: bool) -> TrajectoryCursor:
+def _cursor(
+    frames: _Frames, *, detach_on_standstill: bool, with_trajectory: bool = True
+) -> TrajectoryCursor:
     return TrajectoryCursor(
         motion_id="traj-1",
         motion_group_state_stream=frames.stream(),
-        joint_trajectory=_joint_trajectory(),
+        joint_trajectory=_joint_trajectory() if with_trajectory else None,
         initial_location=0.0,
         detach_on_standstill=detach_on_standstill,
         emit_motion_events=False,
@@ -251,6 +253,55 @@ async def test_stale_end_frames_after_an_intermediate_stop_do_not_complete_the_n
         async with asyncio.timeout(5):
             result = await second
         assert result.final_location == 3.0
+    finally:
+        cursor.detach()
+        async with asyncio.timeout(5):
+            await consumer
+
+
+async def test_a_zero_distance_retarget_is_concluded_by_the_repeated_end_frame():
+    """forward_to(X) while standing at X after an intermediate stop: there is room
+    left on the trajectory, but not for *this* movement — the repeated END is the
+    honest answer, not a stale one."""
+    frames = _Frames()
+    frames.feed(_state(True), parked())
+    cursor = _cursor(frames, detach_on_standstill=False)
+    consumer, _ = await _drive(cursor)
+    try:
+        first = cursor.forward_to(1.0)
+        frames.feed(running(0.5), ended(1.0))
+        async with asyncio.timeout(5):
+            assert (await first).final_location == 1.0
+
+        again = cursor.forward_to(1.0)
+        frames.feed(ended(1.0), ended(1.0))
+        async with asyncio.timeout(5):
+            result = await again
+        assert result.final_location == 1.0
+        assert result.target_location == 1.0
+    finally:
+        cursor.detach()
+        async with asyncio.timeout(5):
+            await consumer
+
+
+async def test_a_cursor_without_a_trajectory_is_concluded_by_the_repeated_end_frame():
+    """Without a joint trajectory the cursor cannot tell whether a movement has
+    room; it must not assume so, or a start at the real end would wait forever."""
+    frames = _Frames()
+    frames.feed(_state(True), parked())
+    cursor = _cursor(frames, detach_on_standstill=False, with_trajectory=False)
+    consumer, _ = await _drive(cursor)
+    try:
+        first = cursor.forward()
+        frames.feed(running(1.5), ended(3.0))
+        async with asyncio.timeout(5):
+            assert (await first).final_location == 3.0
+
+        again = cursor.forward()
+        frames.feed(ended(3.0), ended(3.0))
+        async with asyncio.timeout(5):
+            assert (await again).final_location == 3.0
     finally:
         cursor.detach()
         async with asyncio.timeout(5):

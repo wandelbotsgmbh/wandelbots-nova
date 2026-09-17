@@ -421,6 +421,31 @@ async def test_pause_requested_by_the_cursor_completes_in_one_shot_mode():
             await asyncio.gather(consumer, return_exceptions=True)
 
 
+async def test_pause_issued_before_any_frame_completes_on_the_parked_frame():
+    """pause() right after forward(), before the machine ever left rest: the PAUSE
+    operation replaces the movement and the parked frame must conclude it (the
+    machine is armed *for the pause*, not for a start)."""
+    frames = _Frames()
+    cursor = _cursor(frames.stream(), detach_on_standstill=True)
+    cursor.forward()
+    pause = cursor.pause()
+    assert pause is not None
+    consumer = await _drive(cursor)
+    try:
+        frames.feed(_state(True, _paused(0.0)), _state(True, _paused(0.0)))
+
+        async with asyncio.timeout(5):
+            result = await pause
+
+        assert result.error is None
+        assert result.operation_type is OperationType.PAUSE
+        assert result.final_location == 0.0
+    finally:
+        cursor.detach()
+        async with asyncio.timeout(5):
+            await asyncio.gather(consumer, return_exceptions=True)
+
+
 # ---------------------------------------------------------------------------
 # Unit level: motion evidence
 # ---------------------------------------------------------------------------
