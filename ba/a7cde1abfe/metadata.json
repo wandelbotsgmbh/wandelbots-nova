@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "baa7cde1abfe",
+  "strategy": "manual-commit",
+  "branch": "fix/trajectory-state-machine-armed-transient-rest",
+  "checkpoints_count": 2,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/ba/a7cde1abfe/0/metadata.json",
+      "transcript": "/ba/a7cde1abfe/0/full.jsonl",
+      "compact_transcript": "/ba/a7cde1abfe/0/transcript.jsonl",
+      "content_hash": "/ba/a7cde1abfe/0/content_hash.txt",
+      "prompt": "/ba/a7cde1abfe/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2572,
+    "cache_creation_tokens": 990384,
+    "cache_read_tokens": 26026456,
+    "output_tokens": 239267,
+    "api_call_count": 101
+  }
+}
