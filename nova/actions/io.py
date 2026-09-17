@@ -10,6 +10,12 @@ class WriteAction(Action):
     value: bool | int | float
     device_id: str | None
     origin: api.models.IOOrigin = api.models.IOOrigin.CONTROLLER
+    at: api.models.AtTrigger | None = None
+    """Optional path trigger placing this write between two motions.
+
+    See :mod:`nova.actions.path_trigger`. When ``None`` the write fires at the motion
+    boundary given by its position in the action list (the default behaviour).
+    """
 
     def to_api_model(
         self,
@@ -32,6 +38,7 @@ def io_write(
     value: bool | int | float,
     device_id: str | None = None,
     origin: api.models.IOOrigin = api.models.IOOrigin.CONTROLLER,
+    at: api.models.AtTrigger | None = None,
 ) -> WriteAction:
     """Create a WriteAction
 
@@ -39,12 +46,20 @@ def io_write(
         key: The key to write
         value: The value to write
         device_id: The device id
+        origin: The IO origin (controller or bus)
+        at: Optional path trigger to fire this write at a precise point within the
+            motion that follows it in the action list. Build one with the helpers in
+            ``nova.actions``: ``after_start(seconds=... | millimeters=...)`` measures
+            from the start of that motion, ``before_target(seconds=... | millimeters=...)``
+            back from its target, ``at_path_fraction(f)`` is a fraction ``[0, 1)`` of it.
+            When omitted, the write fires at the motion boundary given by its position
+            in the action list, i.e. when the following motion starts.
 
     Returns:
         The WriteAction
 
     """
-    return WriteAction(key=key, value=value, device_id=device_id, origin=origin)
+    return WriteAction(key=key, value=value, device_id=device_id, origin=origin, at=at)
 
 
 class ReadAction(Action):

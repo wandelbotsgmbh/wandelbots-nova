@@ -28,8 +28,13 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         # for a zero-length trajectory.
         actions=list(context.combined_actions.items) or None,
         # Server-side IO overlay, attached by the cursor to every start it
-        # emits (each start overrides the previously attached overlay).
-        set_outputs=context.combined_actions.to_set_io(),
+        # emits (each start overrides the previously attached overlay). A
+        # context that resolved path triggers carries the finished overlay.
+        set_outputs=(
+            context.set_outputs
+            if context.set_outputs is not None
+            else context.combined_actions.to_set_io()
+        ),
         start_on_io=context.start_on_io,
         pause_on_io=context.pause_on_io,
         initial_location=0.0,
