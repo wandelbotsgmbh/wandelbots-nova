@@ -1,0 +1,6 @@
+inspect the current state of the branch and the PR in github for it. I want to finalize/merge it today but I want to review or reevaluate the trigger naming whether we can improve it a bit for the user understanding.
+I'm thinke about the user looking at our example for the triggers and him trying to understand how each of the trigger variants work.
+
+---
+
+/login
