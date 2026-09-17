@@ -1,47 +1,50 @@
-"""Path triggers ("Bahnschaltpunkte") for positioning IO writes between motions.
+"""Path triggers ("Bahnschaltpunkte") for positioning IO writes within a motion.
 
 A path trigger attaches an :func:`~nova.actions.io.io_write` to a precise point on the
-planned path *between* two motion actions, instead of only at the integer
-motion-command boundaries.
+planned path *within* a motion, instead of only at the integer motion-command
+boundaries.
 
-Every trigger is *anchored*: the write's position in the action list selects the
-motion segment it belongs to (the segment between the previous and the next motion
-action), and the trigger only addresses a point *within* that segment. A trigger
-placed in one part of the program can therefore never fire somewhere completely
-different on the path.
+Place the write directly *before* the motion it belongs to. Without a trigger it fires
+at that boundary, i.e. when the previous motion has finished and the upcoming motion
+starts. A trigger moves it into the upcoming motion, measured either from the
+motion's **start** or back from its **target**. The trigger can never leave that
+motion: a write placed in one part of the program never fires somewhere else on the
+path.
 
-The trigger types are the ones the NOVA command-routine API uses for its ``at``
-field (``api.models.AtTrigger``), so an action list and a command routine share one
+Use the builders::
+
+    io_write("relay", True, at=after_start(seconds=0.3))      # 0.3 s after the motion starts
+    io_write("relay", True, at=after_start(millimeters=50))   # 50 mm of TCP travel after start
+    io_write("relay", True, at=before_target(seconds=0.3))    # 0.3 s before reaching the target
+    io_write("relay", True, at=before_target(millimeters=50)) # 50 mm of TCP travel before target
+    io_write("relay", True, at=at_path_fraction(0.5))         # halfway through the motion
+
+``seconds`` also accepts a :class:`datetime.timedelta`.
+
+The trigger objects are the ones the NOVA command-routine API uses for its ``at`` field
+(``api.models.AtTrigger``), so an action list and a command routine share one
 vocabulary:
 
-- :class:`~nova.api.models.PathFractionTrigger` — a fraction ``[0, 1)`` within the
-  anchor segment (``0.0`` = at the previous motion, ``0.5`` = halfway to the next).
-- :class:`~nova.api.models.TimeTrigger` — seconds measured from the previous motion
-  (``reference=PREVIOUS``) or back from the next motion (``reference=NEXT``).
-- :class:`~nova.api.models.DistanceTrigger` — Cartesian TCP millimeters measured from
-  the previous motion or back from the next motion.
+- :class:`~nova.api.models.TimeTrigger` / :class:`~nova.api.models.DistanceTrigger` with
+  ``reference=PREVIOUS`` (measured from the start of the upcoming motion, i.e. the end
+  of the previous one) or ``reference=NEXT`` (measured back from the target of the
+  upcoming motion). ``after_start`` / ``before_target`` fix the reference for you; the
+  explicit form is :func:`nova.command_routines.at_time` / ``at_distance``.
+- :class:`~nova.api.models.PathFractionTrigger` — a fraction ``[0, 1)`` of the upcoming
+  motion (``0.0`` = start, ``0.5`` = halfway to the target). ``1.0`` is "at the
+  target", which you express by placing the write *after* the motion without a trigger.
 
-Time and distance triggers are resolved against the planned trajectory when the
-trajectory is executed (time against the planned time profile, distance against the
-cumulative TCP path length obtained via forward kinematics). Offsets that would leave
-the anchor segment are clamped to the segment boundary and a warning is logged. A
-trigger placed after the last motion has no following segment and collapses to the
-trajectory end. See :mod:`nova.actions.path_trigger_resolver`.
-
-Use the builders rather than the model classes directly::
-
-    io_write("relay", True, at=at_path_fraction(0.5))  # halfway through the anchor segment
-    io_write("relay", True, at=after_time(0.5))        # 0.5 s after the previous motion
-    io_write("relay", True, at=before_time(0.5))       # 0.5 s before the next motion
-    io_write("relay", True, at=after_distance(100))    # 100 mm after the previous motion
-    io_write("relay", True, at=before_distance(50))    # 50 mm before the next motion
-
-``at_path_fraction``, ``at_distance`` and ``at_time`` are the same builders that
-:mod:`nova.command_routines` uses; ``after_*`` / ``before_*`` are shorthands that
-fix the ``reference``.
+Time and distance triggers are resolved against the planned trajectory when it is
+executed (time against the planned time profile, distance against the cumulative TCP
+path length obtained via forward kinematics). Offsets that would leave the motion are
+clamped to its boundary and a warning is logged. A trigger placed after the last motion
+has no motion to move into and collapses to the trajectory end. See
+:mod:`nova.actions.path_trigger_resolver`.
 """
 
 from __future__ import annotations
+
+from datetime import timedelta
 
 from nova import api
 from nova.command_routines.commands import at_distance, at_path_fraction, at_time
@@ -58,31 +61,41 @@ __all__ = [
     "DistanceTrigger",
     "PathFractionTrigger",
     "TimeTrigger",
-    "at_distance",
+    "after_start",
     "at_path_fraction",
-    "at_time",
-    "after_distance",
-    "after_time",
-    "before_distance",
-    "before_time",
+    "before_target",
 ]
 
 
-def after_time(seconds: float) -> TimeTrigger:
-    """Trigger ``seconds`` after the previous motion action."""
-    return at_time(seconds, AtReference.PREVIOUS)
+def after_start(
+    *, seconds: float | timedelta | None = None, millimeters: float | None = None
+) -> TimeTrigger | DistanceTrigger:
+    """Trigger ``seconds`` or ``millimeters`` of TCP travel after the upcoming motion starts.
+
+    Pass exactly one of the two keywords.
+    """
+    return _relative_trigger(AtReference.PREVIOUS, seconds, millimeters)
 
 
-def before_time(seconds: float) -> TimeTrigger:
-    """Trigger ``seconds`` before the next motion action."""
-    return at_time(seconds, AtReference.NEXT)
+def before_target(
+    *, seconds: float | timedelta | None = None, millimeters: float | None = None
+) -> TimeTrigger | DistanceTrigger:
+    """Trigger ``seconds`` or ``millimeters`` of TCP travel before the upcoming motion
+    reaches its target.
+
+    Pass exactly one of the two keywords.
+    """
+    return _relative_trigger(AtReference.NEXT, seconds, millimeters)
 
 
-def after_distance(millimeters: float) -> DistanceTrigger:
-    """Trigger ``millimeters`` of TCP travel after the previous motion action."""
-    return at_distance(millimeters, AtReference.PREVIOUS)
-
-
-def before_distance(millimeters: float) -> DistanceTrigger:
-    """Trigger ``millimeters`` of TCP travel before the next motion action."""
-    return at_distance(millimeters, AtReference.NEXT)
+def _relative_trigger(
+    reference: api.models.AtReference, seconds: float | timedelta | None, millimeters: float | None
+) -> TimeTrigger | DistanceTrigger:
+    if (seconds is None) == (millimeters is None):
+        raise ValueError("pass exactly one of seconds= or millimeters=")
+    if seconds is not None:
+        if isinstance(seconds, timedelta):
+            seconds = seconds.total_seconds()
+        return at_time(seconds, reference)
+    assert millimeters is not None
+    return at_distance(millimeters, reference)

@@ -1,6 +1,7 @@
 """Unit tests for path triggers ("Bahnschaltpunkte") and their resolution."""
 
 import math
+from datetime import timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -10,13 +11,9 @@ from nova.actions import (
     DistanceTrigger,
     PathFractionTrigger,
     TimeTrigger,
-    after_distance,
-    after_time,
-    at_distance,
+    after_start,
     at_path_fraction,
-    at_time,
-    before_distance,
-    before_time,
+    before_target,
     io_write,
 )
 from nova.actions.container import CombinedActions
@@ -27,6 +24,7 @@ from nova.actions.path_trigger_resolver import (
     has_path_triggers,
     resolve_set_outputs,
 )
+from nova.command_routines import at_distance, at_time
 
 # Synthetic planned trajectory spanning motion-index locations 0 -> 2.
 # 5 samples, location 1 reached at time 2.0 / arc length 100 mm,
@@ -56,31 +54,45 @@ class TestTriggerBuilders:
         assert isinstance(trig, PathFractionTrigger)
         assert trig.value == 0.5
 
-    def test_after_time_is_previous(self):
-        trig = after_time(0.5)
+    def test_after_start_seconds_is_previous(self):
+        trig = after_start(seconds=0.5)
         assert isinstance(trig, TimeTrigger)
         assert trig.seconds == 0.5
         assert trig.reference is AtReference.PREVIOUS
         assert trig == at_time(0.5, AtReference.PREVIOUS)
 
-    def test_before_time_is_next(self):
-        assert before_time(0.5) == at_time(0.5, AtReference.NEXT)
+    def test_before_target_seconds_is_next(self):
+        assert before_target(seconds=0.5) == at_time(0.5, AtReference.NEXT)
 
-    def test_after_distance_is_previous(self):
-        trig = after_distance(100)
+    def test_after_start_millimeters_is_previous(self):
+        trig = after_start(millimeters=100)
         assert isinstance(trig, DistanceTrigger)
         assert trig.millimeters == 100
         assert trig.reference is AtReference.PREVIOUS
         assert trig == at_distance(100, AtReference.PREVIOUS)
 
-    def test_before_distance_is_next(self):
-        assert before_distance(50) == at_distance(50, AtReference.NEXT)
+    def test_before_target_millimeters_is_next(self):
+        assert before_target(millimeters=50) == at_distance(50, AtReference.NEXT)
+
+    def test_seconds_accepts_timedelta(self):
+        assert after_start(seconds=timedelta(milliseconds=300)) == at_time(
+            0.3, AtReference.PREVIOUS
+        )
+        assert before_target(seconds=timedelta(seconds=2)) == at_time(2.0, AtReference.NEXT)
+
+    def test_exactly_one_unit_required(self):
+        with pytest.raises(ValueError, match="exactly one"):
+            after_start()
+        with pytest.raises(ValueError, match="exactly one"):
+            after_start(seconds=1, millimeters=1)
+        with pytest.raises(ValueError, match="exactly one"):
+            before_target()
 
     def test_negative_values_rejected(self):
         with pytest.raises(ValidationError):
-            after_time(-1)
+            after_start(seconds=-1)
         with pytest.raises(ValidationError):
-            after_distance(-1)
+            after_start(millimeters=-1)
         with pytest.raises(ValidationError):
             at_path_fraction(-0.1)
 
@@ -97,17 +109,17 @@ class TestIoWriteTrigger:
         assert io_write("relay", True).at is None
 
     def test_io_write_with_trigger(self):
-        action = io_write("relay", True, at=after_time(0.5))
+        action = io_write("relay", True, at=after_start(seconds=0.5))
         assert isinstance(action.at, TimeTrigger)
 
     def test_trigger_round_trips_through_serialization(self):
-        action = io_write("relay", True, at=before_distance(25))
+        action = io_write("relay", True, at=before_target(millimeters=25))
         restored = WriteAction.model_validate_json(action.model_dump_json())
         assert restored.at == action.at
         assert restored == action
 
     def test_trigger_uses_the_command_routine_wire_format(self):
-        action = io_write("relay", True, at=after_distance(25))
+        action = io_write("relay", True, at=after_start(millimeters=25))
         assert action.model_dump(mode="json", exclude_none=True)["at"] == {
             "type": "distance",
             "millimeters": 25.0,
@@ -122,12 +134,12 @@ class TestTriggerPredicates:
         assert not has_distance_triggers(actions)
 
     def test_time_trigger_is_not_a_distance_trigger(self):
-        actions = _combined(linear((1, 2, 3)), io_write("a", True, at=after_time(1)))
+        actions = _combined(linear((1, 2, 3)), io_write("a", True, at=after_start(seconds=1)))
         assert has_path_triggers(actions)
         assert not has_distance_triggers(actions)
 
     def test_distance_trigger(self):
-        actions = _combined(linear((1, 2, 3)), io_write("a", True, at=after_distance(1)))
+        actions = _combined(linear((1, 2, 3)), io_write("a", True, at=after_start(millimeters=1)))
         assert has_path_triggers(actions)
         assert has_distance_triggers(actions)
 
@@ -149,7 +161,7 @@ class TestResolveSetOutputs:
     def test_time_trigger_previous(self):
         # anchor = motion 1 (reached at t=2.0); +1s -> t=3.0 -> location 1.5
         actions = _combined(
-            linear((1, 2, 3)), io_write("a", True, at=after_time(1.0)), linear((4, 5, 6))
+            linear((1, 2, 3)), io_write("a", True, at=after_start(seconds=1.0)), linear((4, 5, 6))
         )
         (location,) = _locations(resolve_set_outputs(actions, TIMES, LOCATIONS, POSITIONS))
         assert math.isclose(location, 1.5)
@@ -157,14 +169,14 @@ class TestResolveSetOutputs:
     def test_time_trigger_next(self):
         # next = motion 2 (reached at t=4.0); -1s -> t=3.0 -> location 1.5
         actions = _combined(
-            linear((1, 2, 3)), io_write("a", True, at=before_time(1.0)), linear((4, 5, 6))
+            linear((1, 2, 3)), io_write("a", True, at=before_target(seconds=1.0)), linear((4, 5, 6))
         )
         (location,) = _locations(resolve_set_outputs(actions, TIMES, LOCATIONS, POSITIONS))
         assert math.isclose(location, 1.5)
 
     def test_time_trigger_overshoot_clamped_to_segment(self, caplog):
         actions = _combined(
-            linear((1, 2, 3)), io_write("a", True, at=after_time(100.0)), linear((4, 5, 6))
+            linear((1, 2, 3)), io_write("a", True, at=after_start(seconds=100.0)), linear((4, 5, 6))
         )
         with caplog.at_level("WARNING"):
             (location,) = _locations(resolve_set_outputs(actions, TIMES, LOCATIONS, POSITIONS))
@@ -174,7 +186,9 @@ class TestResolveSetOutputs:
     def test_distance_trigger_previous(self):
         # anchor arc length = 100 mm; +25 mm -> 125 mm -> location 1.25
         actions = _combined(
-            linear((1, 2, 3)), io_write("a", True, at=after_distance(25)), linear((4, 5, 6))
+            linear((1, 2, 3)),
+            io_write("a", True, at=after_start(millimeters=25)),
+            linear((4, 5, 6)),
         )
         (location,) = _locations(resolve_set_outputs(actions, TIMES, LOCATIONS, POSITIONS))
         assert math.isclose(location, 1.25)
@@ -182,14 +196,18 @@ class TestResolveSetOutputs:
     def test_distance_trigger_next(self):
         # next arc length = 200 mm; -25 mm -> 175 mm -> location 1.75
         actions = _combined(
-            linear((1, 2, 3)), io_write("a", True, at=before_distance(25)), linear((4, 5, 6))
+            linear((1, 2, 3)),
+            io_write("a", True, at=before_target(millimeters=25)),
+            linear((4, 5, 6)),
         )
         (location,) = _locations(resolve_set_outputs(actions, TIMES, LOCATIONS, POSITIONS))
         assert math.isclose(location, 1.75)
 
     def test_distance_trigger_overshoot_clamped_to_segment(self, caplog):
         actions = _combined(
-            linear((1, 2, 3)), io_write("a", True, at=before_distance(1000)), linear((4, 5, 6))
+            linear((1, 2, 3)),
+            io_write("a", True, at=before_target(millimeters=1000)),
+            linear((4, 5, 6)),
         )
         with caplog.at_level("WARNING"):
             (location,) = _locations(resolve_set_outputs(actions, TIMES, LOCATIONS, POSITIONS))
@@ -198,7 +216,9 @@ class TestResolveSetOutputs:
 
     def test_distance_trigger_without_positions_falls_back_to_anchor(self, caplog):
         actions = _combined(
-            linear((1, 2, 3)), io_write("a", True, at=after_distance(25)), linear((4, 5, 6))
+            linear((1, 2, 3)),
+            io_write("a", True, at=after_start(millimeters=25)),
+            linear((4, 5, 6)),
         )
         with caplog.at_level("WARNING"):
             set_outputs = resolve_set_outputs(actions, TIMES, LOCATIONS, tcp_positions=None)
@@ -218,7 +238,7 @@ class TestResolveSetOutputs:
         actions = _combined(
             io_write("start", False),
             linear((1, 2, 3)),
-            io_write("a", True, at=after_time(1.0)),
+            io_write("a", True, at=after_start(seconds=1.0)),
             io_write("b", True, at=at_path_fraction(0.75)),
             linear((4, 5, 6)),
             io_write("end", False),
@@ -259,7 +279,7 @@ class TestFlatDomainRuns:
         # segments [0, 2]; a global lookup would land on 2.0 or beyond.
         actions = _combined(
             linear((1, 2, 3)),
-            io_write("a", True, at=after_distance(10)),
+            io_write("a", True, at=after_start(millimeters=10)),
             linear((4, 5, 6)),
             linear((7, 8, 9)),
         )
@@ -273,7 +293,7 @@ class TestFlatDomainRuns:
     def test_next_reference_in_zero_extent_segment_collapses_to_upper(self):
         actions = _combined(
             linear((1, 2, 3)),
-            io_write("a", True, at=before_distance(10)),
+            io_write("a", True, at=before_target(millimeters=10)),
             linear((4, 5, 6)),
             linear((7, 8, 9)),
         )
@@ -286,7 +306,7 @@ class TestFlatDomainRuns:
         # Segment [0, 1] is flat and so is [1, 2]; np.interp over the whole trajectory
         # would return 2.0 for arc length 0. Must stay within [0, 1].
         actions = _combined(
-            io_write("a", True, at=after_distance(0)),
+            io_write("a", True, at=after_start(millimeters=0)),
             linear((1, 2, 3)),
             linear((4, 5, 6)),
             linear((7, 8, 9)),
@@ -301,7 +321,7 @@ class TestFlatDomainRuns:
         actions = _combined(
             linear((1, 2, 3)),
             linear((4, 5, 6)),
-            io_write("a", True, at=after_distance(25)),
+            io_write("a", True, at=after_start(millimeters=25)),
             linear((7, 8, 9)),
         )
         (location,) = _locations(
@@ -314,7 +334,7 @@ class TestFlatDomainRuns:
         # flat arc length.
         actions = _combined(
             linear((1, 2, 3)),
-            io_write("a", True, at=after_time(1.0)),
+            io_write("a", True, at=after_start(seconds=1.0)),
             linear((4, 5, 6)),
             linear((7, 8, 9)),
         )
@@ -326,7 +346,7 @@ class TestFlatDomainRuns:
     def test_too_coarse_segment_falls_back_to_reference_boundary(self):
         # Only one sample inside [1, 2]: nothing to interpolate.
         actions = _combined(
-            linear((1, 2, 3)), io_write("a", True, at=after_time(0.1)), linear((4, 5, 6))
+            linear((1, 2, 3)), io_write("a", True, at=after_start(seconds=0.1)), linear((4, 5, 6))
         )
         (location,) = _locations(
             resolve_set_outputs(actions, [0.0, 2.0, 4.0], [0.0, 1.0, 2.5], None)

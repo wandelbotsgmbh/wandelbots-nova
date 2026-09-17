@@ -3,15 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nova import api
-from nova.actions import (
-    after_distance,
-    after_time,
-    cartesian_ptp,
-    collision_free,
-    io_write,
-    linear,
-    wait,
-)
+from nova.actions import after_start, cartesian_ptp, collision_free, io_write, linear, wait
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
 from nova.actions.io import ReadAction
@@ -662,7 +654,11 @@ async def test_resolve_set_outputs_without_triggers_returns_none(mock_motion_gro
 async def test_resolve_set_outputs_time_trigger_needs_no_kinematics(mock_motion_group):
     mock_motion_group.forward_kinematics = AsyncMock()
     actions = CombinedActions(
-        items=(linear((1, 2, 3)), io_write("a", True, at=after_time(1.0)), linear((4, 5, 6)))
+        items=(
+            linear((1, 2, 3)),
+            io_write("a", True, at=after_start(seconds=1.0)),
+            linear((4, 5, 6)),
+        )
     )
 
     set_outputs = await mock_motion_group._resolve_set_outputs(actions, _planned_line(), None)
@@ -678,7 +674,11 @@ async def test_resolve_set_outputs_distance_trigger_uses_forward_kinematics(mock
         return_value=[Pose((50.0 * i, 0, 0, 0, 0, 0)) for i in range(5)]
     )
     actions = CombinedActions(
-        items=(linear((1, 2, 3)), io_write("a", True, at=after_distance(25)), linear((4, 5, 6)))
+        items=(
+            linear((1, 2, 3)),
+            io_write("a", True, at=after_start(millimeters=25)),
+            linear((4, 5, 6)),
+        )
     )
 
     set_outputs = await mock_motion_group._resolve_set_outputs(actions, trajectory, "Flange")
@@ -696,7 +696,11 @@ async def test_resolve_set_outputs_distance_trigger_without_tcp_falls_back(
 ):
     mock_motion_group.forward_kinematics = AsyncMock()
     actions = CombinedActions(
-        items=(linear((1, 2, 3)), io_write("a", True, at=after_distance(25)), linear((4, 5, 6)))
+        items=(
+            linear((1, 2, 3)),
+            io_write("a", True, at=after_start(millimeters=25)),
+            linear((4, 5, 6)),
+        )
     )
 
     with caplog.at_level("WARNING"):
@@ -711,7 +715,7 @@ async def test_resolve_set_outputs_distance_trigger_without_tcp_falls_back(
 async def test_direct_non_motion_path_warns_when_a_trigger_has_no_motion(mock_motion_group, caplog):
     """Without a motion there is no segment to anchor to: the write still happens,
     immediately and in list order, but the dropped trigger must not pass silently."""
-    actions = [io_write("OUT#1", True, at=after_time(2.0)), io_write("OUT#2", False)]
+    actions = [io_write("OUT#1", True, at=after_start(seconds=2.0)), io_write("OUT#2", False)]
 
     with caplog.at_level("WARNING"):
         await mock_motion_group.plan_and_execute(actions, "Flange")

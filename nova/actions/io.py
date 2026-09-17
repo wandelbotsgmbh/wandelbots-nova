@@ -47,14 +47,13 @@ def io_write(
         value: The value to write
         device_id: The device id
         origin: The IO origin (controller or bus)
-        at: Optional path trigger to fire this write at a precise point between two
-            motions. Build one with the helpers in ``nova.actions``:
-            ``at_path_fraction`` (fraction of the anchor segment), ``after_time`` /
-            ``before_time`` (seconds) or ``after_distance`` / ``before_distance``
-            (millimeters of TCP travel); or with ``at_time`` / ``at_distance`` and an
-            explicit ``AtReference``. All are anchored to the write's position in the
-            action list. When omitted, the write fires at the motion boundary implied
-            by its position in the action list.
+        at: Optional path trigger to fire this write at a precise point within the
+            motion that follows it in the action list. Build one with the helpers in
+            ``nova.actions``: ``after_start(seconds=... | millimeters=...)`` measures
+            from the start of that motion, ``before_target(seconds=... | millimeters=...)``
+            back from its target, ``at_path_fraction(f)`` is a fraction ``[0, 1)`` of it.
+            When omitted, the write fires at the motion boundary given by its position
+            in the action list, i.e. when the following motion starts.
 
     Returns:
         The WriteAction

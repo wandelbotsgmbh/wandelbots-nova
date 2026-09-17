@@ -1,29 +1,30 @@
 """
-Example: Path triggers ("Bahnschaltpunkte") for IO writes between motions.
+Example: Path triggers ("Bahnschaltpunkte") for IO writes within a motion.
 
-A path trigger lets you fire an ``io_write`` at a precise point on the planned
-path *between* two motion actions, instead of only at the motion-command
-boundaries. The trigger is anchored to the action's position in the action list
-(the motion segment between the previous and the next motion) and addresses a
-point *within* that segment using one of three modes:
+A path trigger lets you fire an ``io_write`` at a precise point on the planned path
+*within* a motion, instead of only at the motion-command boundaries.
 
-- ``at_path_fraction(f)``      -> fraction [0, 1) of the segment (0.0 = previous motion)
-- ``after_time(seconds)``      -> seconds after the previous motion
-- ``before_time(seconds)``     -> seconds before the next motion
-- ``after_distance(mm)``       -> mm of TCP travel after the previous motion
-- ``before_distance(mm)``      -> mm of TCP travel before the next motion
+Place the ``io_write`` directly *before* the motion it belongs to. Without a trigger it
+fires at that boundary, i.e. when the motion starts. With a trigger it fires inside the
+motion, measured from the motion's start or back from its target:
 
-These are the same trigger types the NOVA command-routine API uses (``AtTrigger``);
-``at_time`` / ``at_distance`` with an explicit ``AtReference`` are available too.
+- ``after_start(seconds=0.3)``       -> 0.3 s after the motion starts
+- ``after_start(millimeters=50)``    -> 50 mm of TCP travel after the motion starts
+- ``before_target(seconds=0.3)``     -> 0.3 s before the motion reaches its target
+- ``before_target(millimeters=50)``  -> 50 mm of TCP travel before the target
+- ``at_path_fraction(0.5)``          -> halfway through the motion (fraction in [0, 1))
 
-Time- and distance-based triggers are resolved against the planned trajectory
-during ``execute`` (distance uses the planned Cartesian TCP path length). Values
-that overshoot the anchor segment are clamped to its boundary with a warning.
+``seconds`` also accepts a ``datetime.timedelta``. The trigger objects are the same
+``AtTrigger`` types the NOVA command-routine API uses for ``set_io(at=...)``.
 
-This example provisions a virtual KUKA and pulses a single controller digital
-output at several points along a square-ish path so you can observe the output
-toggling as the robot moves. Adjust ``TRIGGER_IO`` to a digital output that exists
-on your controller.
+Time- and distance-based triggers are resolved against the planned trajectory during
+``execute`` (distance uses the planned Cartesian TCP path length). Values that
+overshoot the motion are clamped to its boundary with a warning.
+
+This example provisions a virtual KUKA and pulses a single controller digital output
+at several points along a square-ish path so you can observe the output toggling as
+the robot moves. Adjust ``TRIGGER_IO`` to a digital output that exists on your
+controller.
 
 Prerequisites:
 - A NOVA instance (see .env / NOVA_API, NOVA_ACCESS_TOKEN)
@@ -31,14 +32,14 @@ Prerequisites:
     PYTHONPATH=. uv run python examples/path_triggers.py
 """
 
+from datetime import timedelta
+
 import nova
 from nova import api, run_program
 from nova.actions import (
-    after_distance,
-    after_time,
+    after_start,
     at_path_fraction,
-    before_distance,
-    before_time,
+    before_target,
     cartesian_ptp,
     io_write,
     joint_ptp,
@@ -80,25 +81,23 @@ async def main(ctx: nova.ProgramContext) -> None:
     p2 = home_pose @ Pose((150, 150, 0, 0, 0, 0))
     p3 = home_pose @ Pose((0, 150, 0, 0, 0, 0))
 
-    # Each io_write is anchored to the motion segment it is placed in (the move
-    # arriving at the motion that follows it in this list).
+    # Every io_write belongs to the motion that follows it in this list.
     actions = [
         joint_ptp(home_joints, settings=normal),
-        # Make sure the output starts low at the home boundary (no trigger).
+        # No trigger: fires at the boundary, right when the home -> p1 move starts.
         io_write(TRIGGER_IO, False),
-        # Fire 0.3 s into the home -> p1 move.
-        io_write(TRIGGER_IO, True, at=after_time(0.3)),
+        # --- home -> p1: raise the output 0.3 s after the move starts.
+        io_write(TRIGGER_IO, True, at=after_start(seconds=0.3)),
         cartesian_ptp(p1, settings=fast),
-        # Drop the output 50 mm into the p1 -> p2 move.
-        io_write(TRIGGER_IO, False, at=after_distance(50)),
+        # --- p1 -> p2: drop it 50 mm into the move.
+        io_write(TRIGGER_IO, False, at=after_start(millimeters=50)),
         cartesian_ptp(p2, settings=fast),
-        # Raise it again 50 mm before reaching p3.
-        io_write(TRIGGER_IO, True, at=before_distance(50)),
+        # --- p2 -> p3: raise it 50 mm before reaching p3.
+        io_write(TRIGGER_IO, True, at=before_target(millimeters=50)),
         cartesian_ptp(p3, settings=fast),
-        # Drop it exactly halfway through the p3 -> home move.
+        # --- p3 -> home: drop it halfway, raise it 0.3 s before arriving home.
         io_write(TRIGGER_IO, False, at=at_path_fraction(0.5)),
-        # And raise it 0.3 s before arriving back home.
-        io_write(TRIGGER_IO, True, at=before_time(0.3)),
+        io_write(TRIGGER_IO, True, at=before_target(seconds=timedelta(milliseconds=300))),
         joint_ptp(home_joints, settings=normal),
     ]
 
