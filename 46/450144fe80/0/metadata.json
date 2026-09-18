@@ -1,0 +1,58 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "46450144fe80",
+  "session_id": "78bb3f32-cd75-4fb5-bc5f-796b30b090ab",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-18T15:56:44.345244Z",
+  "branch": "fix/cursor-stale-terminal-after-resume",
+  "checkpoints_count": 3,
+  "save_step_count": 1,
+  "files_touched": [
+    "nova/cell/movement_controller/README.md",
+    "nova/cell/movement_controller/trajectory_state_machine.py",
+    "tests/cell/test_trajectory_cursor_level_states.py",
+    "tests/cell/test_trajectory_state_machine.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5-1",
+  "turn_id": "3d35fe2682e6",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 1560,
+    "cache_creation_tokens": 492538,
+    "cache_read_tokens": 15241494,
+    "output_tokens": 84731,
+    "api_call_count": 105
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-18T15:56:44.271268Z",
+    "agent_lines": 281,
+    "agent_removed": 219,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 281,
+    "total_lines_changed": 500,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 267,
+      "agent_lines_removed": 0
+    }
+  ]
+}

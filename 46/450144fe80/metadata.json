@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "46450144fe80",
+  "strategy": "manual-commit",
+  "branch": "fix/cursor-stale-terminal-after-resume",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "nova/cell/movement_controller/README.md",
+    "nova/cell/movement_controller/trajectory_state_machine.py",
+    "tests/cell/test_trajectory_cursor_level_states.py",
+    "tests/cell/test_trajectory_state_machine.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/46/450144fe80/0/metadata.json",
+      "transcript": "/46/450144fe80/0/full.jsonl",
+      "compact_transcript": "/46/450144fe80/0/transcript.jsonl",
+      "content_hash": "/46/450144fe80/0/content_hash.txt",
+      "prompt": "/46/450144fe80/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1560,
+    "cache_creation_tokens": 492538,
+    "cache_read_tokens": 15241494,
+    "output_tokens": 84731,
+    "api_call_count": 105
+  }
+}
