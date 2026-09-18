@@ -19,6 +19,7 @@ class RobotState(pydantic.BaseModel):
     pose: Pose
     tcp: str | None
     joints: tuple[float, ...]
+    commanded_joints: tuple[float, ...] | None = None
 
 
 class MotionState(pydantic.BaseModel):
