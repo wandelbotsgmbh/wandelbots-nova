@@ -35,6 +35,11 @@ State diagram::
 
     Any state may transition to ``error`` via :meth:`fail`.
 
+A ``start`` out of ``ended`` or ``paused`` ignores frames that repeat the
+terminal state it leaves (same kind, same location) until a different frame
+arrives: level-based controllers keep re-publishing the previous stop until
+they take up the new command, and those frames belong to the old operation.
+
 The ``ss`` edges out of ``ending`` and ``pausing`` fire on any standstill
 frame, **with or without an ``execute`` block**: RAE publishes the execute
 state level-based (persistently, robotics/wbr!2262), but controllers older
@@ -71,6 +76,12 @@ from statemachine import State, StateMachine
 from nova import api
 
 logger = logging.getLogger(__name__)
+
+_TERMINAL_STATES = (
+    api.models.TrajectoryEnded,
+    api.models.TrajectoryPausedByUser,
+    api.models.TrajectoryPausedOnIO,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +187,23 @@ class TrajectoryExecutionMachine(StateMachine):
 
     def __init__(self) -> None:
         self.location: float | None = None
+        # (state kind, location) of the last terminal frame seen, and the one a
+        # resume must ignore while the controller still re-publishes it.
+        self._last_terminal: tuple[type, float] | None = None
+        self._stale_terminal: tuple[type, float] | None = None
         super().__init__()
+
+    def on_start(self, source: State) -> None:
+        # Level-based publishing (robotics/wbr!2262) keeps re-publishing the
+        # terminal state of the previous stop until the controller has taken up
+        # the new command. Resuming from `ended`/`paused` therefore first sees
+        # the old END_OF_TRAJECTORY / PAUSED_BY_USER frames again; concluding
+        # the new operation from them would report it finished at its start.
+        # They are told apart from a genuine new terminal state by identity:
+        # same kind at the same location as the state we are leaving. A genuine
+        # one is always preceded by a different frame (WAIT_FOR_IO or RUNNING),
+        # which lifts the filter.
+        self._stale_terminal = self._last_terminal if source in (self.ended, self.paused) else None
 
     def _active_configuration_id(self) -> str:
         """String id for the active configuration (uses :attr:`StateChart.configuration`)."""
@@ -238,6 +265,27 @@ class TrajectoryExecutionMachine(StateMachine):
             location = state.execute.details.location
             self.location = location
             trajectory_state = state.execute.details.state
+
+            terminal = (
+                (type(trajectory_state), location)
+                if isinstance(trajectory_state, _TERMINAL_STATES)
+                else None
+            )
+            if self._stale_terminal is not None:
+                if terminal == self._stale_terminal:
+                    if self.current_state == self.executing:
+                        self._keep_executing()
+                    current_id = self._active_configuration_id()
+                    return StateUpdate(
+                        location=location,
+                        has_execute=True,
+                        state_changed=current_id != previous_state_id,
+                        previous_state_id=previous_state_id,
+                        current_state_id=current_id,
+                    )
+                self._stale_terminal = None
+            if terminal is not None:
+                self._last_terminal = terminal
 
             if self.current_state == self.executing:
                 self._handle_executing(trajectory_state, standstill=state.standstill)
