@@ -91,7 +91,7 @@ PYTHONPATH=. uv run pytest -rs -v path/to/test_file.py
 PYTHONPATH=. uv run pytest -rs -v path/to/test_file.py::test_name
 ```
 
-If local passes but CI fails: check **Python version** (`3.11` in the workflows),
+If local passes but CI fails: check **Python version** (`3.12` in the workflows),
 missing extras in `uv sync`, `PYTHONPATH=.`, or a required env var
 (`CELL_NAME`, `NOVA_API`, `NOVA_ACCESS_TOKEN`).
 
