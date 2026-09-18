@@ -73,6 +73,7 @@ def _execute(
         api.models.TrajectoryRunning
         | api.models.TrajectoryEnded
         | api.models.TrajectoryPausedByUser
+        | api.models.TrajectoryWaitForIO
     ),
     location: float,
 ) -> api.models.Execute:
@@ -94,6 +95,18 @@ def _ended(location: float) -> api.models.Execute:
 
 def _paused(location: float) -> api.models.Execute:
     return _execute(api.models.TrajectoryPausedByUser(), location)
+
+
+def _waiting_for_io(location: float) -> api.models.Execute:
+    return _execute(api.models.TrajectoryWaitForIO(), location)
+
+
+async def _stream_from_queue(
+    queue: asyncio.Queue[api.models.MotionGroupState],
+) -> AsyncIterator[api.models.MotionGroupState]:
+    """A stream the test feeds frame by frame, open forever."""
+    while True:
+        yield await queue.get()
 
 
 async def _stream_then_block(
@@ -262,6 +275,58 @@ async def test_pause_after_motion_still_completes_the_operation_as_paused():
         assert result.final_location == 1.2
     finally:
         # paused is not ended: one-shot does not detach on a pause
+        cursor.detach()
+        async with asyncio.timeout(5):
+            await asyncio.gather(consumer, return_exceptions=True)
+
+
+async def test_stepping_on_after_forward_to_is_not_resolved_by_the_re_published_end():
+    """``forward_to(1.0)`` then ``forward()`` on one attached cursor — the
+    executor's interactive flow, as reproduced on the virtual controller: after
+    the stop at 1.0 the controller re-publishes END_OF_TRAJECTORY@1.0 every step
+    until it takes up the new start, then WAIT_FOR_IO / RUNNING, then the real
+    end. The second operation must resolve at 2.0, not at its own start."""
+    frames: asyncio.Queue[api.models.MotionGroupState] = asyncio.Queue()
+    cursor = TrajectoryCursor(
+        motion_id="traj-1",
+        motion_group_state_stream=_stream_from_queue(frames),
+        joint_trajectory=_joint_trajectory(),
+        initial_location=0.0,
+        detach_on_standstill=False,
+        emit_motion_events=False,
+    )
+    consumer = await _drive(cursor)
+
+    async def feed(*states: api.models.MotionGroupState) -> None:
+        for state in states:
+            frames.put_nowait(state)
+        await asyncio.sleep(0.05)
+
+    try:
+        first = cursor.forward_to(1.0)
+        await feed(
+            _state(False, _running(0.5)), _state(False, _ended(1.0)), _state(True, _ended(1.0))
+        )
+        async with asyncio.timeout(5):
+            assert (await first).final_location == 1.0
+
+        second = cursor.forward()
+        # the previous stop, re-published while the command is on its way
+        await feed(_state(True, _ended(1.0)), _state(True, _ended(1.0)), _state(True, _ended(1.0)))
+        assert not second.done(), "the re-published end of the previous stop resolved the resume"
+
+        await feed(
+            _state(True, _waiting_for_io(1.0)),
+            _state(True, _running(1.0)),
+            _state(False, _running(1.5)),
+            _state(True, _ended(2.0)),
+            _state(True, _ended(2.0)),
+        )
+        async with asyncio.timeout(5):
+            result = await second
+        assert result.error is None
+        assert result.final_location == 2.0
+    finally:
         cursor.detach()
         async with asyncio.timeout(5):
             await asyncio.gather(consumer, return_exceptions=True)
