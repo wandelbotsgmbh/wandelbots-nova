@@ -1148,7 +1148,7 @@ class MotionGroup(AbstractRobot):
             tg.create_task(execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}")
 
             async for motion_group_state in subscription:
-                if motion_group_state.execute:
+                if motion_group_state.execute and motion_group_state.execute.details is not None:
                     yield motion_group_state_to_motion_state(motion_group_state)
 
     async def _tune_trajectory(
