@@ -15,6 +15,7 @@ Examples on how to use the wandelbots-nova library.
 9. [Kinematic configuration](kinematic_configuration.py)
 10. [Path triggers (IO writes between motions)](path_triggers.py)
 11. [Use datasets in a program](datasets.py)
+12. [Blend between motion commands](blending.py)
 
 ## Usage
 
