@@ -551,7 +551,17 @@ class MotionGroup(AbstractRobot):
             tcps = await self.tcps()
             tcp_offset = Pose(position=tcps[tcp].position, orientation=tcps[tcp].orientation)
             pose = Pose(motion_group_state.flange_pose) @ tcp_offset
-        return RobotState(pose=pose, tcp=tcp, joints=tuple(motion_group_state.joint_position))
+
+        measured_joints = tuple(motion_group_state.joint_position)
+        commanded_joints = (
+            None
+            if motion_group_state.execute is None
+            else tuple(motion_group_state.execute.joint_position)
+        )
+
+        return RobotState(
+            pose=pose, tcp=tcp, joints=measured_joints, commanded_joints=commanded_joints
+        )
 
     async def stream_state(
         self, response_rate_msecs: int | None = None
@@ -596,7 +606,9 @@ class MotionGroup(AbstractRobot):
 
     async def joints(self) -> tuple[float, ...]:
         """Returns the current joint positions of the motion group."""
-        return (await self.get_state()).joints
+        current_state = await self.get_state()
+
+        return current_state.commanded_joints or current_state.joints
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:
         """
@@ -1136,7 +1148,7 @@ class MotionGroup(AbstractRobot):
             tg.create_task(execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}")
 
             async for motion_group_state in subscription:
-                if motion_group_state.execute:
+                if motion_group_state.execute and motion_group_state.execute.details is not None:
                     yield motion_group_state_to_motion_state(motion_group_state)
 
     async def _tune_trajectory(
