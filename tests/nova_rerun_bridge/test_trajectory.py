@@ -376,9 +376,7 @@ class TestLogRobotGeometriesEmptyTrajectory:
         visualizer.show_collision_link_chain = False
         visualizer.show_collision_tool = False
 
-        empty_trajectory = api.models.JointTrajectory(
-            joint_positions=[], times=[], locations=[], tcp="tcp"
-        )
+        empty_trajectory = api.models.JointTrajectory(joint_positions=[], times=[], locations=[])
         mock_times = Mock()
 
         # Call the real method on a mock instance — should not raise
