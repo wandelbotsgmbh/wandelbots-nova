@@ -296,7 +296,8 @@ class ProgramRunner(ABC):
         Raises:
             Exception: If the program execution failed
         """
-        self._thread.join()
+        if self._thread is not None:
+            self._thread.join()
         if self._exc:
             raise self._exc
 
@@ -698,6 +699,7 @@ def run_program(
         raise KeyboardInterrupt()
 
     # TODO how do we restore previous handler after program run?
+    prev_signal_handler = None
     if SIGINT_HANLER_ENABLED:
         prev_signal_handler = signal.signal(signal.SIGINT, sigint_handler)
 

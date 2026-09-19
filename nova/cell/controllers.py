@@ -2,6 +2,7 @@ import json
 from math import pi
 
 from nova import api
+from nova.cell.motion_group_models import MotionGroupModel
 
 MANUFACTURER_HOME_POSITIONS = {
     api.models.Manufacturer.ABB: [0.0, 0.0, 0.0, 0.0, pi / 2, pi, 0.0],
@@ -105,7 +106,7 @@ def yaskawa_controller(name: str, controller_ip: str) -> api.models.RobotControl
 def virtual_controller(
     name: str,
     manufacturer: api.models.Manufacturer,
-    type: api.models.VirtualControllerTypes | None = None,
+    type: MotionGroupModel | None = None,
     controller_config_json: str | None = None,
     position: list[float] | str | None = None,
 ) -> api.models.RobotController:
@@ -114,7 +115,7 @@ def virtual_controller(
     Args:
         name (str): The name of the controller.
         manufacturer (api.models.Manufacturer): The manufacturer of the robot.
-        type (api.models.VirtualControllerTypes | None): One of the available virtual controller types for this manufacturer.
+        type (str | None): Robot type string (e.g., "universalrobots-ur10e", "kuka-kr16_r2010_2").
         position: (list[float] | None): Initial joint position of the first motion group from the virtual robot controller.
         controller_config_json (str | None): Complete JSON configuration of the virtual robot controller.
     """
@@ -128,7 +129,9 @@ def virtual_controller(
     virtual_config = api.models.VirtualController(
         manufacturer=manufacturer,
         type=type,
-        json_=controller_config_json,
+        # The field is `json_` but its alias is `json`, and the model does not set
+        # populate_by_name — passing `json_=` here silently discarded the value.
+        json=controller_config_json,
         initial_joint_position=json.dumps(position),
     )
     return _build_controller(name=name, configuration=virtual_config)

@@ -19,11 +19,11 @@ def log_safety_zones(
         raise ValueError("DH parameters cannot be None")
 
     mounting = motion_group_description.mounting or api.models.Pose(
-        position=api.models.Vector3d([0, 0, 0]), orientation=api.models.RotationVector([0, 0, 0])
+        position=(0, 0, 0), orientation=(0, 0, 0)
     )
     robot = DHRobot(motion_group_description.dh_parameters, mounting)
 
-    zones = motion_group_description.safety_zones.root
+    zones = motion_group_description.safety_zones
     for zone_id, collider in zones.items():
         entity_path = f"{motion_group_id}/zones/zone_{rr.escape_entity_path_part(zone_id)}"
         polygons = collider_to_polygons(collider)

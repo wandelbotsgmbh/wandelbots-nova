@@ -19,6 +19,7 @@ class RobotState(pydantic.BaseModel):
     pose: Pose
     tcp: str | None
     joints: tuple[float, ...]
+    commanded_joints: tuple[float, ...] | None = None
 
 
 class MotionState(pydantic.BaseModel):
@@ -59,6 +60,6 @@ def motion_group_state_to_motion_state(
     path_parameter = motion_group_state.execute.details.location
     return MotionState(
         motion_group_id=motion_group_state.motion_group,
-        path_parameter=path_parameter.root,
-        state=RobotState(pose=Pose(tcp_pose), tcp=tcp_name, joints=tuple(joints.root)),
+        path_parameter=path_parameter,
+        state=RobotState(pose=Pose(tcp_pose), tcp=tcp_name, joints=tuple(joints)),
     )

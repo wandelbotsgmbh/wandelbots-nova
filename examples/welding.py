@@ -15,13 +15,13 @@ Simple example to demonstrate how to add a welding part to the collision world a
 """
 
 
-async def load_and_transform_mesh(filepath: str, pose: api.models.Pose) -> trimesh.Geometry:
+async def load_and_transform_mesh(filepath: str, pose: api.models.Pose) -> trimesh.Trimesh:
     """Load mesh and transform to desired position."""
-    scene = trimesh.load_mesh(filepath, file_type="stl")
+    scene: trimesh.Trimesh = trimesh.load_mesh(filepath, file_type="stl")
 
     # Create transformation matrix from Pose
     transform = np.eye(4)
-    transform[:3, 3] = pose.position.root if pose.position else [0, 0, 0]
+    transform[:3, 3] = pose.position if pose.position else [0, 0, 0]
     scene.apply_transform(transform)
     return scene
 
@@ -86,10 +86,7 @@ async def build_collision_world(
     # define robot base
     base_collider = api.models.Collider(
         shape=api.models.Cylinder(radius=200, height=300, shape_type="cylinder"),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([0, 0, -155]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[0, 0, -155], orientation=[0, 0, 0]),
     )
     await collision_api.store_collider(cell=cell_name, collider="base", collider2=base_collider)
 
@@ -98,10 +95,7 @@ async def build_collision_world(
         shape=api.models.Box(
             size_x=2000, size_y=2000, size_z=10, shape_type="box", box_type=api.models.BoxType.FULL
         ),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([0, 0, -310]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[0, 0, -310], orientation=[0, 0, 0]),
     )
     await collision_api.store_collider(cell=cell_name, collider="floor", collider2=floor_collider)
 
@@ -110,10 +104,7 @@ async def build_collision_world(
         shape=api.models.Box(
             size_x=5, size_y=5, size_z=100, shape_type="box", box_type=api.models.BoxType.FULL
         ),
-        pose=api.models.Pose(
-            position=api.models.Vector3d([0, 0, 50]),
-            orientation=api.models.RotationVector([0, 0, 0]),
-        ),
+        pose=api.models.Pose(position=[0, 0, 50], orientation=[0, 0, 0]),
     )
     await collision_api.store_collision_tool(
         cell=cell_name, tool="tool_box", request_body={"tool_collider": tool_collider}
@@ -128,15 +119,13 @@ async def build_collision_world(
 
     # assemble scene
     robot_link_colliders = await nova.api.motion_group_models_api.get_motion_group_collision_model(
-        motion_group_model=motion_group_description.motion_group_model.root
+        motion_group_model=motion_group_description.motion_group_model
     )
-    link_chain = api.models.LinkChain(
-        [api.models.Link(robot_link_collider) for robot_link_collider in robot_link_colliders]
-    )
-    robot_tool = api.models.Tool({"tool_geometry": tool_collider})
+    link_chain = list(robot_link_colliders)
+    robot_tool = {"tool_geometry": tool_collider}
 
     collision_setup = api.models.CollisionSetup(
-        colliders=api.models.ColliderDictionary(colliders), tool=robot_tool, link_chain=link_chain
+        colliders=colliders, tool=robot_tool, link_chain=link_chain
     )
     setup_id = "collision_scene"
     await scene_api.store_collision_setup(
@@ -179,7 +168,7 @@ async def calculate_seam_poses(mesh_pose: api.models.Pose) -> tuple[Pose, Pose, 
             virtual_controller(
                 name="ur10e-welding",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         ],
         cleanup_controllers=False,
@@ -188,8 +177,7 @@ async def calculate_seam_poses(mesh_pose: api.models.Pose) -> tuple[Pose, Pose, 
 async def test(ctx: nova.ProgramContext):
     # Define position for the welding part
     mesh_pose = api.models.Pose(
-        position=api.models.Vector3d([500, 0, -300]),
-        orientation=api.models.RotationVector([0, 0, 0]),
+        position=[500, 0, -300], orientation=[0, 0, 0]
     )  # in front of robot, on floor
 
     # Load and transform mesh
@@ -198,7 +186,7 @@ async def test(ctx: nova.ProgramContext):
     )
 
     # Log to rerun
-    await log_mesh_to_rerun(scene)  # type: ignore
+    await log_mesh_to_rerun(scene)
 
     cell = ctx.nova.cell()
     controller = await cell.controller("ur10e-welding")
@@ -211,8 +199,8 @@ async def test(ctx: nova.ProgramContext):
         coordinate_system=api.models.CoordinateSystem(
             coordinate_system="world",
             name="mounting",
-            position=api.models.Vector3d([0, 0, 0]),
-            orientation=api.models.Orientation([0, 0, 0]),
+            position=[0, 0, 0],
+            orientation=[0, 0, 0],
             orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         ),
     )
@@ -224,8 +212,8 @@ async def test(ctx: nova.ProgramContext):
         tcp=tcp_name,
         robot_tcp_data=api.models.RobotTcpData(
             name="torch",
-            position=api.models.Vector3d([0, 0, 100]),
-            orientation=api.models.Orientation([0, 0, 0]),
+            position=[0, 0, 100],
+            orientation=[0, 0, 0],
             orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         ),
     )
@@ -238,9 +226,7 @@ async def test(ctx: nova.ProgramContext):
 
     # Add mesh to collision world
     mesh_collider = await add_mesh_to_collision_world(
-        collision_api=ctx.nova.api.store_collision_components_api,
-        cell_name=cell.id,
-        scene=scene,  # type: ignore
+        collision_api=ctx.nova.api.store_collision_components_api, cell_name=cell.id, scene=scene
     )
 
     # Build collision world with welding part included
@@ -272,7 +258,7 @@ async def test(ctx: nova.ProgramContext):
             target=seam1_approach,
             collision_setup=collision_setup,
             settings=MotionSettings(tcp_velocity_limit=500),
-            algorithm=api.models.CollisionFreeAlgorithm(api.models.MidpointInsertionAlgorithm()),
+            algorithm=api.models.MidpointInsertionAlgorithm(),
         ),
         linear(
             target=seam1_start,
@@ -291,7 +277,7 @@ async def test(ctx: nova.ProgramContext):
             target=seam2_approach,
             collision_setup=collision_setup,
             settings=MotionSettings(tcp_velocity_limit=500),
-            algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
+            algorithm=api.models.RRTConnectAlgorithm(),
         ),
         # Second seam with collision checking
         linear(
@@ -310,7 +296,7 @@ async def test(ctx: nova.ProgramContext):
             target=(0, -np.pi / 2, np.pi / 2, 0, 0, 0),
             collision_setup=collision_setup,
             settings=MotionSettings(tcp_velocity_limit=500),
-            algorithm=api.models.CollisionFreeAlgorithm(api.models.RRTConnectAlgorithm()),
+            algorithm=api.models.RRTConnectAlgorithm(),
         ),
     ]
 

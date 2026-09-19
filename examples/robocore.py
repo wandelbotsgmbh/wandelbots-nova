@@ -12,7 +12,7 @@ from math import pi
 import numpy as np
 
 import nova
-from nova import Controller, api
+from nova import Controller, api, run_program
 from nova.actions import Action, cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
 
@@ -32,8 +32,8 @@ class RobotPosition:
 
 ROBOT_POSITIONS = {
     "FANUC": RobotPosition(
-        mounting=api.models.Vector3d([600, 0, 350]),
-        orientation=api.models.Orientation([0, 0, 0]),
+        mounting=[600, 0, 350],
+        orientation=[0, 0, 0],
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(1000, 0, 100, pi, 0, 0),  # TCP down
         # Halfway between FANUC and KUKA
@@ -42,8 +42,8 @@ ROBOT_POSITIONS = {
         motion_group_id=1,
     ),
     "KUKA": RobotPosition(
-        mounting=api.models.Vector3d([0, 600, 0]),
-        orientation=api.models.Orientation([0, 0, pi / 2]),
+        mounting=[0, 600, 0],
+        orientation=[0, 0, pi / 2],
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(0, 1000, 100, pi, 0, 0),  # TCP down
         # Halfway between KUKA and YASKAWA
@@ -52,8 +52,8 @@ ROBOT_POSITIONS = {
         motion_group_id=0,
     ),
     "YASKAWA": RobotPosition(
-        mounting=api.models.Vector3d([-600, 0, 350]),
-        orientation=api.models.Orientation([0, 0, pi]),
+        mounting=[-600, 0, 350],
+        orientation=[0, 0, pi],
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(-1000, 0, 100, pi, 0, 0),  # TCP down
         # Halfway between YASKAWA and ABB
@@ -62,8 +62,8 @@ ROBOT_POSITIONS = {
         motion_group_id=0,
     ),
     "ABB": RobotPosition(
-        mounting=api.models.Vector3d([0, -600, 0]),
-        orientation=api.models.Orientation([0, 0, -pi / 2]),
+        mounting=[0, -600, 0],
+        orientation=[0, 0, -pi / 2],
         orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         cube_position=(0, -1000, 100, pi, 0, 0),  # TCP down
         # Halfway between ABB and FANUC
@@ -175,22 +175,16 @@ def calculate_handover_orientation(
             virtual_controller(
                 name="fanuc",
                 manufacturer=api.models.Manufacturer.FANUC,
-                type=api.models.VirtualControllerTypes.FANUC_LR_MATE_200I_D7_L,
+                type="fanuc-lrmate200id_7l",
             ),
             virtual_controller(
-                name="kuka",
-                manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_KR6_R700_2,
+                name="kuka", manufacturer=api.models.Manufacturer.KUKA, type="kuka-kr6_r700_2"
             ),
             virtual_controller(
-                name="abb",
-                manufacturer=api.models.Manufacturer.ABB,
-                type=api.models.VirtualControllerTypes.ABB_IRB1200_7,
+                name="abb", manufacturer=api.models.Manufacturer.ABB, type="abb-irb1200_7"
             ),
             virtual_controller(
-                name="yaskawa",
-                manufacturer=api.models.Manufacturer.YASKAWA,
-                type=api.models.VirtualControllerTypes.YASKAWA_GP7,
+                name="yaskawa", manufacturer=api.models.Manufacturer.YASKAWA, type="yaskawa-gp7"
             ),
         ],
         cleanup_controllers=False,
@@ -277,4 +271,4 @@ async def main(ctx: nova.ProgramContext):
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run_program(main)

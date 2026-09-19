@@ -15,7 +15,7 @@ async def test_program_runner_with_unrelated_controller_in_estop():
             virtual_controller(
                 name="kuka-no-estop",
                 manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_KR16_R1610_2,
+                type="kuka-kr16_r1610_2",
             )
         ],
         cleanup_controllers=False,
@@ -48,7 +48,7 @@ async def test_program_runner_with_unrelated_controller_in_estop():
         virtual_controller(
             name="ur10e-estop",
             manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-            type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+            type="universalrobots-ur10e",
         )
     )
     # Set the controller in estop

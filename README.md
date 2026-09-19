@@ -5,6 +5,8 @@
 [![Build status](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml/badge.svg)](https://github.com/wandelbotsgmbh/wandelbots-nova/actions/workflows/nova-release.yaml)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/wandelbotsgmbh/wandelbots-nova)
 
+> **📚 New to the SDK?** Explore the [DeepWiki documentation](https://deepwiki.com/wandelbotsgmbh/wandelbots-nova) for architecture guides and tutorials. You can also **chat with it** to get code examples, detailed explanations, and answers to your questions.
+
 This library provides an SDK for the Wandelbots NOVA API.
 
 The SDK will help you to build your own apps and services using Python on top of Wandelbots NOVA and makes programming a robot as easy as possible.
@@ -13,21 +15,32 @@ The SDK will help you to build your own apps and services using Python on top of
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Prerequisites](#prerequisites)
-- [Quickstart](#quickstart)
-- [Installation](#installation)
-  - [Install with pip](#install-with-pip)
-  - [Install with uv and rerun visualization](#install-with-uv-and-rerun-visualization)
-  - [Configure environment variables](#configure-environment-variables)
-- [Using the SDK](#using-the-sdk)
-  - [API essentials](#api-essentials)
-  - [Example gallery](#example-gallery)
-- [Wandelscript](#wandelscript)
-- [NOVAx](#novax)
-- [Development](#development)
-- [Release process](#release-process)
-- [Additional resources](#additional-resources)
+- [wandelbots-nova (Python SDK)](#wandelbots-nova-python-sdk)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Prerequisites](#prerequisites)
+  - [Quickstart](#quickstart)
+  - [Installation](#installation)
+    - [Install with pip](#install-with-pip)
+    - [Install a nightly build](#install-a-nightly-build)
+    - [Install with uv and rerun visualization](#install-with-uv-and-rerun-visualization)
+    - [Configure Environment Variables](#configure-environment-variables)
+  - [Using the SDK](#using-the-sdk)
+    - [API essentials](#api-essentials)
+    - [Example gallery](#example-gallery)
+  - [NOVAx](#novax)
+    - [Registering programs](#registering-programs)
+  - [Development](#development)
+    - [Formatting](#formatting)
+    - [Yaml linting](#yaml-linting)
+    - [Branch versions for testing](#branch-versions-for-testing)
+  - [Release process](#release-process)
+    - [Branch behaviour overview](#branch-behaviour-overview)
+    - [Stable releases from `main`](#stable-releases-from-main)
+    - [Nightly builds from `main`](#nightly-builds-from-main)
+    - [LTS releases from `release/\*`](#lts-releases-from-release)
+    - [Create a dev build (manual)](#create-a-dev-build-manual)
+  - [Additional resources](#additional-resources)
 
 ## Overview
 
@@ -54,6 +67,24 @@ Install the library using pip:
 ```bash
 pip install wandelbots-nova
 ```
+
+### Install a nightly build
+
+Every commit on `main` is published as a prerelease package. Install the newest nightly build:
+
+```bash
+pip install --pre --upgrade wandelbots-nova
+```
+
+Nightly versions use the format `5.11.0.post20260914.dev123`. Pin a specific build when you need
+reproducible results:
+
+```bash
+pip install wandelbots-nova==5.11.0.post20260914.dev123
+```
+
+Browse all available versions on the [PyPI release history](https://pypi.org/project/wandelbots-nova/#history)
+or download wheel and source-distribution files from the [GitHub Releases page](https://github.com/wandelbotsgmbh/wandelbots-nova/releases).
 
 ### Install with uv and rerun visualization
 
@@ -140,41 +171,9 @@ Curated examples in this repository showcase typical SDK workflows:
 
 <img width="100%" alt="thumbnail" src="https://github.com/user-attachments/assets/6f0c441e-b133-4a3a-bf0e-0e947d3efad4" />
 
-## Wandelscript (deprecated)
+8. **Merge trajectories with blending**: [merge_trajectories.py](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/merge_trajectories.py)
 
-> [!WARNING]
-> Wandelscript is deprecated and will be removed in a future release. For more information on how to migrate Wandelscript to Python programs, click [here](https://docs.wandelbots.io/latest/pathplanning-local-development#migrating-wandelscript-to-python-programs).
-
-Wandelscript is a domain-specific language for programming robots.
-It is a declarative language that allows you to describe the robot's behavior in a high-level way.
-Wandelscript is suited to get yourself familiar with robot programming.
-
-```bash
-uv add wandelbots-nova --extra wandelscript
-```
-
-Here is a simple example of a Wandelscript program:
-
-```python
-robot = get_controller("controller")[0]
-tcp("Flange")
-home = read(robot, "pose")
-sync
-
-# Set the velocity of the robot to 200 mm/s
-velocity(200)
-
-for i = 0..3:
-    move via ptp() to home
-    # Move to a pose concatenating the home pose
-    move via line() to (50, 20, 30, 0, 0, 0) :: home
-    move via line() to (100, 20, 30, 0, 0, 0) :: home
-    move via line() to (50, 20, 30, 0, 0, 0) :: home
-    move via ptp() to home
-```
-
-To get started, use the [Quickstart](https://docs.wandelbots.io/latest/pathplanning-maintained/wandelscript/quickstart).
-For implementation details or contributing to Wandelscript, refer to the [Wandelscript readme](/wandelscript/README.md).
+9. **Kinematic configuration**: [kinematic_configuration.py](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/kinematic_configuration.py)
 
 ## NOVAx
 
@@ -187,9 +186,39 @@ You can create a new NOVAx app using the [NOVA CLI](https://github.com/wandelbot
 nova app create "your-nova-app" -g python_app
 ```
 
-For more information on using NOVAx see the [README](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/README.md). Explore [this example](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/your-nova-app/app.py) to use the NOVAx entry point.
+For more information on using NOVAx see the [README](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/README.md). Explore [this example](https://github.com/wandelbotsgmbh/wandelbots-nova/tree/main/examples/your-nova-app/app/register_programs.py) to use the NOVAx entry point.
 
-> **Important:** When using NOVAx, you must import the actual program functions from their respective Python files. Only importing the program files won't suffice. This ensures proper function registration and execution within the NOVAx runtime environment.
+> **Important:** A `@nova.program` function is registered once the module that defines it is imported. NOVAx handles this for you when you enable directory scanning via `programs_dir` — see [Registering programs](#registering-programs) below.
+
+### Registering programs
+
+Programs register themselves with a global registry when decorated with `@nova.program`, so NOVAx just needs the modules that define them to be imported. There are three ways to get them registered, and they can be combined:
+
+- **Directory scanning:** when you pass `programs_dir`, NOVAx scans that directory and imports every `.py` file under it (recursively), so dropping a new file in is enough — no manual import needed. Files whose name starts with `_` (e.g. `__init__.py`) are skipped, and a missing directory is ignored. It is off by default; configure it via the constructor:
+
+  ```python
+  from nova import Novax
+
+  Novax(app)  # no scanning (default)
+  Novax(app, programs_dir="my_pkg/robot_programs")  # scan a directory
+  Novax(app, programs_dir=None)  # explicit: no scanning
+  ```
+
+- **Plain import:** any program imported elsewhere (inside or outside `programs/`) is still registered.
+
+  ```python
+  import my_pkg.special_program  # noqa: F401  (registers on import)
+  ```
+
+- **Explicit:** `novax.register_module("my_pkg.programs")` imports a module/file and registers its programs on demand.
+
+For local development you can serve everything from a short script without any FastAPI boilerplate:
+
+```python
+from nova import Novax
+
+Novax(programs_dir="programs").serve(port=3000)  # scan ./programs and serve
+```
 
 ## Development
 
@@ -233,27 +262,37 @@ wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/
 
 ### Branch behaviour overview
 
-| Branch      | Purpose                                                | Published to                           | Example version      |
-| ----------- | ------------------------------------------------------ | -------------------------------------- | -------------------- |
-| `main`      | Stable releases (semantic versioning vX.Y.Z)           | PyPI (`pip install wandelbots-nova`)   | `v1.13.0`            |
-| `release/*` | LTS-releases, pre-releases or hotfixes for older lines | PyPI (labeled with release suffix)     | `v1.8.7-release-1.x` |
-| any other   | Development builds                                     | GitHub actions (not published to PyPI) | `e4c8af0647839...`   |
+| Branch      | Purpose                                                | Published to                       | Example version                |
+| ----------- | ------------------------------------------------------ | ---------------------------------- | ------------------------------ |
+| `main`      | Stable releases and a nightly for every commit         | PyPI and GitHub Releases           | `5.11.0.post20260914.dev123`   |
+| `release/*` | LTS-releases, pre-releases or hotfixes for older lines | PyPI (labeled with release suffix) | `v1.8.7-release-1.x`           |
+| any other   | Development builds                                     | GitHub Actions                     | `e4c8af0647839...`             |
 
 ### Stable releases from `main`
 
-Merging into main triggers the release workflow:
+Releases are managed by [release-please](https://github.com/googleapis/release-please):
 
-1. `semantic-release` analyzes commit messages and bumps the version automatically.
-2. A source distribution and wheel are built and uploaded to PyPI.
-3. A GitHub release is created (or updated) with the release assets.
+1. On every push to `main`, release-please opens/updates a **release PR** that bumps the version (derived from Conventional Commits) and updates the changelog.
+2. Merging that release PR tags the release, then a source distribution and wheel are built and uploaded to PyPI.
+3. A GitHub release is created with the release assets.
+
+### Nightly builds from `main`
+
+Every commit pushed to `main` also produces a uniquely versioned nightly package. The nightly
+workflow publishes the wheel and source distribution to PyPI, stores them as a GitHub Actions
+artifact for 30 days, and creates an immutable GitHub prerelease linked to the source commit.
+
+Use the [GitHub Releases page](https://github.com/wandelbotsgmbh/wandelbots-nova/releases) to list
+nightly builds and download their files, or use the [PyPI release history](https://pypi.org/project/wandelbots-nova/#history)
+to see stable and nightly package versions together.
 
 ### LTS releases from `release/\*`
 
 If you're on older major versions or under a special LTS contract:
 
 1. Use (or create) a branch like `release/1.x`, `release/customer-foo`, etc.
-2. Every commit to these branches triggers the same workflow as on `main`.
-3. Versions include the branch name to prevent collisions, e.g. `v1.8.7-release-1.x`
+2. Every commit to these branches triggers the release-branch build workflow, which publishes an alpha build to PyPI.
+3. Versions include a date/commit suffix to prevent collisions, e.g. `v1.8.7.a2026072803`
 
 ### Create a dev build (manual)
 
@@ -267,6 +306,18 @@ Need a temporary test build? Use GitHub actions:
    ```bash
        pip install "wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@<commit>"
    ```
+
+Alternatively, trigger the same workflow from your terminal and wait for the
+install string. This requires the authenticated [GitHub CLI](https://cli.github.com/)
+(`gh auth login`) and a pushed feature branch (not `main` or `release/*`):
+
+```bash
+uv run dev-wheel
+```
+
+It dispatches the workflow for the current branch, watches the run to
+completion, and prints the ready-to-use `pip install` command pinned to the
+built commit.
 
 ## Additional resources
 

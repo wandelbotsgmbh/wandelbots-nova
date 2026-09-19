@@ -21,7 +21,7 @@ uv run ruff check --select I --fix
 uv run ruff check .
 
 # Type checking
-uv run mypy
+uv run ty check
 
 PYTHONPATH=. uv run pytest -rs -v -m "not integration"
 # Run all unit tests (excluding integration tests)
@@ -32,8 +32,9 @@ PYTHONPATH=. uv run pytest -rs -v path/to/test_file.py
 # Run a specific test
 PYTHONPATH=. uv run pytest -rs -v path/to/test_file.py::test_function_name
 
-# Pre-commit hooks
-pre-commit run --files <changed files>
+# Git hooks (husky + lint-staged): auto-format/lint staged files on commit
+npm install          # one-time setup: activates the husky pre-commit hook
+npx lint-staged      # run the hook manually against staged files
 
 # Build package
 uv build
@@ -60,14 +61,6 @@ This SDK enables Python developers to control industrial robots through the Wand
 - **novax/**: App framework for building FastAPI server applications
   - `Novax` - FastAPI integration with program registration and lifecycle management
   - Used with `nova app create` CLI to scaffold new apps
-
-- **wandelscript/**: Domain-specific language for robot programming
-  - Grammar defined in `wandelscript/grammar/` (ANTLR4)
-  - Runtime execution in `runtime.py`
-  - Built-in functions in `builtins/`
-# Run Wandelscript CLI
-uv run wandelscript my_script.ws
-uv run ws my_script.ws  # shortcut
 ```
 
 ### Core Usage Pattern

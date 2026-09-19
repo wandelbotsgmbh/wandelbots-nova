@@ -63,7 +63,7 @@ def foreign_function(
             @wraps(fn)
             def wrapper(*args: Any, **kwargs: Any) -> Any:
                 bound = sig.bind_partial(*args, **kwargs)
-                converted = {}
+                converted: dict[str, Any] = {}
                 for name, value in bound.arguments.items():
                     param = sig.parameters[name]
                     anno = param.annotation

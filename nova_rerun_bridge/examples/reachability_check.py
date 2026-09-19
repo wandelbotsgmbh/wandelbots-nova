@@ -1,11 +1,9 @@
-import asyncio
-
 import numpy as np
 import rerun as rr
 import trimesh
 
 import nova
-from nova import Nova, api
+from nova import Nova, api, run_program
 from nova.actions import cartesian_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -39,7 +37,7 @@ def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
             virtual_controller(
                 name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         ],
         cleanup_controllers=False,
@@ -117,4 +115,4 @@ async def test():
 
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    run_program(test)

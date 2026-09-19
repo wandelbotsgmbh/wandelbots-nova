@@ -7,7 +7,7 @@ from typing import Any, AsyncGenerator
 import pytest
 
 from nova import Nova, api
-from nova.actions import ptp
+from nova.actions import ptp, wait
 from nova.actions.base import Action
 from nova.actions.io import io_write
 from nova.cell import virtual_controller
@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-@pytest.mark.integration
 async def setup_controllers() -> AsyncGenerator[tuple[Controller, Controller], None]:
     async with Nova() as nova:
         cell = nova.cell()
@@ -29,7 +28,7 @@ async def setup_controllers() -> AsyncGenerator[tuple[Controller, Controller], N
             virtual_controller(
                 name="ur-test",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         )
 
@@ -38,7 +37,7 @@ async def setup_controllers() -> AsyncGenerator[tuple[Controller, Controller], N
             virtual_controller(
                 name="kuka-test",
                 manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_KR16_R2010_2,
+                type="kuka-kr16_r2010_2",
             )
         )
 
@@ -46,7 +45,6 @@ async def setup_controllers() -> AsyncGenerator[tuple[Controller, Controller], N
 
 
 @pytest.fixture
-@pytest.mark.integration
 async def setup_virtual_profinet() -> AsyncGenerator[tuple[str, ...], None]:
     async with Nova() as nova:
         bus_io_service_ready = asyncio.Event()
@@ -62,12 +60,14 @@ async def setup_virtual_profinet() -> AsyncGenerator[tuple[str, ...], None]:
             bus_io_service_ready.set()
         except Exception:
             await nova.api.bus_ios_api.add_bus_io_service(
-                cell="cell", bus_io_type=api.models.BusIOType(api.models.BusIOProfinetVirtual())
+                cell="cell", bus_io_type=api.models.BusIOProfinetVirtual()
             )
-            # sometimes we get error if we communicate with bus io right after we get the "connected" message
-            await asyncio.sleep(30)
 
-        await bus_io_service_ready.wait()
+        # Wait (event-driven) until the bus IO service reports CONNECTED instead of a
+        # fixed sleep, then keep a short settle buffer: communicating with the bus IO
+        # immediately after the "connected" message can still error.
+        await asyncio.wait_for(bus_io_service_ready.wait(), timeout=60)
+        await asyncio.sleep(5)
 
         await nova.api.bus_ios_api.add_profinet_io(
             cell="cell",
@@ -287,6 +287,54 @@ SET_IO_ON_PATH_TEST_CASES = [
         ),
         id="multiple_bus_io_at_the_end",
     ),
+    pytest.param(
+        SetIOOnPathTestCase(
+            description="set controller io with a write-only action list",
+            controller_io_prestate={"digital_in[0]": False, "digital_in[1]": False},
+            actions=[io_write("digital_in[0]", True), io_write("digital_in[1]", True)],
+            expected_controller_io={"digital_in[0]": True, "digital_in[1]": True},
+        ),
+        id="write_only_controller_io",
+    ),
+    pytest.param(
+        SetIOOnPathTestCase(
+            description="set bus io with a write-only action list",
+            bus_io_prestate={"test_bool": False, "test_bool_2": False},
+            actions=[
+                io_write("test_bool", True, origin=api.models.IOOrigin.BUS_IO),
+                io_write("test_bool_2", True, origin=api.models.IOOrigin.BUS_IO),
+            ],
+            expected_bus_io={"test_bool": True, "test_bool_2": True},
+        ),
+        id="write_only_bus_io",
+    ),
+    pytest.param(
+        SetIOOnPathTestCase(
+            description="set mixed controller and bus io with a write-only action list",
+            controller_io_prestate={"digital_in[0]": False},
+            bus_io_prestate={"test_bool": False},
+            actions=[
+                io_write("digital_in[0]", True),
+                io_write("test_bool", True, origin=api.models.IOOrigin.BUS_IO),
+            ],
+            expected_controller_io={"digital_in[0]": True},
+            expected_bus_io={"test_bool": True},
+        ),
+        id="write_only_mixed_io",
+    ),
+    pytest.param(
+        SetIOOnPathTestCase(
+            description="set bus io with a write-wait-write action list and no motions",
+            bus_io_prestate={"test_bool": False, "test_bool_2": False},
+            actions=[
+                io_write("test_bool", True, origin=api.models.IOOrigin.BUS_IO),
+                wait(0.1),
+                io_write("test_bool_2", True, origin=api.models.IOOrigin.BUS_IO),
+            ],
+            expected_bus_io={"test_bool": True, "test_bool_2": True},
+        ),
+        id="write_wait_write_only_bus_io",
+    ),
 ]
 
 
@@ -421,3 +469,28 @@ async def test_wait_io_with_noisy_integer(setup_virtual_profinet: tuple[str, ...
         # VERIFY
         async with asyncio.timeout(5):
             await wait_task
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_wait_io_initial_state_already_met(setup_virtual_profinet: tuple[str, ...]):
+    """wait_for_bus_io should return immediately when the initial state already satisfies the callback."""
+    test_bool, _, _, _ = setup_virtual_profinet
+
+    async with Nova() as nova:
+        # SETUP – set the IO to the target value *before* calling wait_for_bus_io
+        await set_bus_io_value({test_bool: True}, nova=nova)
+
+        call_log: list[dict[str, IOChange]] = []
+
+        def on_change(changes: dict[str, IOChange]) -> bool:
+            call_log.append(changes)
+            return changes[test_bool].new_value is True
+
+        # EXECUTE & VERIFY – should return immediately from initial state check
+        async with asyncio.timeout(2):
+            await wait_for_bus_io([test_bool], on_change=on_change, nova=nova)
+
+        assert len(call_log) == 1
+        assert call_log[0][test_bool].old_value is None
+        assert call_log[0][test_bool].new_value is True

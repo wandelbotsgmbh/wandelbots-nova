@@ -28,13 +28,10 @@ You can use the SDK with different Nova environments such as the Wandelbots Port
 from nova.config import NovaConfig
 
 portal_config = NovaConfig(
-    host="https://xxxxx.instance.wandelbots.io",
-    access_token="your_access_token",
+    host="https://xxxxx.instance.wandelbots.io", access_token="your_access_token"
 )
 
-ipc_config = NovaConfig(
-    host="http://192.168.0.10",
-)
+ipc_config = NovaConfig(host="http://192.168.0.10")
 ```
 
 Pass the configuration into `Nova` when you create it:

@@ -35,6 +35,20 @@ State diagram::
 
     Any state may transition to ``error`` via :meth:`fail`.
 
+A ``start`` out of ``ended`` or ``paused`` ignores frames that repeat the
+terminal state it leaves (same kind, same location) until a different frame
+arrives: level-based controllers keep re-publishing the previous stop until
+they take up the new command, and those frames belong to the old operation.
+
+The ``ss`` edges out of ``ending`` and ``pausing`` fire on any standstill
+frame, **with or without an ``execute`` block**: RAE publishes the execute
+state level-based (persistently, robotics/wbr!2262), but controllers older
+than that drop the block the instant the robot settles, leaving bare
+standstill frames as the only completion signal. A bare standstill never
+concludes anything from ``executing`` — without a terminal discriminator
+there is nothing to conclude. See this package's README for the full wire
+behaviour of both publishing modes.
+
 Example::
 
     machine = TrajectoryExecutionMachine()
@@ -62,6 +76,12 @@ from statemachine import State, StateMachine
 from nova import api
 
 logger = logging.getLogger(__name__)
+
+_TERMINAL_STATES = (
+    api.models.TrajectoryEnded,
+    api.models.TrajectoryPausedByUser,
+    api.models.TrajectoryPausedOnIO,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +187,32 @@ class TrajectoryExecutionMachine(StateMachine):
 
     def __init__(self) -> None:
         self.location: float | None = None
+        # (state kind, location) of the last terminal frame seen, and the one a
+        # resume must ignore while the controller still re-publishes it.
+        self._last_terminal: tuple[type, float] | None = None
+        self._stale_terminal: tuple[type, float] | None = None
         super().__init__()
+
+    def on_start(self, source: State) -> None:
+        # Level-based publishing (robotics/wbr!2262) keeps re-publishing the
+        # terminal state of the previous stop until the controller has taken up
+        # the new command. Resuming from `ended`/`paused` therefore first sees
+        # the old END_OF_TRAJECTORY / PAUSED_BY_USER frames again; concluding
+        # the new operation from them would report it finished at its start.
+        # They are told apart from a genuine new terminal state by identity:
+        # same kind at the same location as the state we are leaving. A genuine
+        # one is always preceded by a different frame (WAIT_FOR_IO or RUNNING),
+        # which lifts the filter.
+        self._stale_terminal = self._last_terminal if source in (self.ended, self.paused) else None
+
+    def _active_configuration_id(self) -> str:
+        """String id for the active configuration (uses :attr:`StateChart.configuration`)."""
+        cfg = self.configuration
+        if not cfg:
+            return ""
+        if len(cfg) == 1:
+            return next(iter(cfg)).id
+        return ",".join(s.id for s in cfg)
 
     # -- Public API -----------------------------------------------------------
 
@@ -186,27 +231,61 @@ class TrajectoryExecutionMachine(StateMachine):
             A :class:`StateUpdate` with location, execute presence and
             transition information.
         """
-        previous_state_id: str = self.current_state.id
+        previous_state_id: str = self._active_configuration_id()
         has_execute = state.execute is not None
         location: float | None = None
 
         if not has_execute:
-            # No execute info — skip.  The API guarantees that once execute is
-            # set it will remain present in subsequent states, so a bare
-            # standstill (without execute) is not a reliable completion signal.
+            # No execute details on this frame. Current controllers drop the
+            # trajectory `execute` block the instant the robot settles
+            # (robotics/wbr MotionPointGenerator removes the provider on
+            # END_OF_TRAJECTORY/USER_PAUSED, not only on STOPPED — slated to
+            # change with wbr!2262), so a bare standstill can be the only
+            # completion signal we ever receive. When we are already waiting
+            # for standstill (`ending` / `pausing`), honour it: the
+            # discriminator (`TrajectoryEnded` / `TrajectoryPausedByUser`) was
+            # already seen on the transition into that state. Otherwise there
+            # is nothing to conclude from the frame.
+            if state.standstill:
+                if self.current_state == self.ending:
+                    self._end_after_standstill()
+                elif self.current_state == self.pausing:
+                    self._pause_after_standstill()
+            current_id = self._active_configuration_id()
             return StateUpdate(
                 has_execute=False,
-                state_changed=False,
+                state_changed=current_id != previous_state_id,
                 previous_state_id=previous_state_id,
-                current_state_id=self.current_state.id,
+                current_state_id=current_id,
             )
 
         # Execute *is* present ------------------------------------------------
         assert state.execute is not None  # mypy
         if isinstance(state.execute.details, api.models.TrajectoryDetails):
-            location = state.execute.details.location.root
+            location = state.execute.details.location
             self.location = location
             trajectory_state = state.execute.details.state
+
+            terminal = (
+                (type(trajectory_state), location)
+                if isinstance(trajectory_state, _TERMINAL_STATES)
+                else None
+            )
+            if self._stale_terminal is not None:
+                if terminal == self._stale_terminal:
+                    if self.current_state == self.executing:
+                        self._keep_executing()
+                    current_id = self._active_configuration_id()
+                    return StateUpdate(
+                        location=location,
+                        has_execute=True,
+                        state_changed=current_id != previous_state_id,
+                        previous_state_id=previous_state_id,
+                        current_state_id=current_id,
+                    )
+                self._stale_terminal = None
+            if terminal is not None:
+                self._last_terminal = terminal
 
             if self.current_state == self.executing:
                 self._handle_executing(trajectory_state, standstill=state.standstill)
@@ -223,12 +302,13 @@ class TrajectoryExecutionMachine(StateMachine):
                 else:
                     self._keep_pausing()
 
+        current_id = self._active_configuration_id()
         return StateUpdate(
             location=location,
             has_execute=True,
-            state_changed=self.current_state.id != previous_state_id,
+            state_changed=current_id != previous_state_id,
             previous_state_id=previous_state_id,
-            current_state_id=self.current_state.id,
+            current_state_id=current_id,
         )
 
     # -- Convenience properties -----------------------------------------------

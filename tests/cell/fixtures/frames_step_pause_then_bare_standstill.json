@@ -1,0 +1,4719 @@
+{
+ "description": "Pause window of a real step-rate capture (virtual UR10e, batch 20260814-demo_dev-k8s run01_api_pause): PAUSED_BY_USER visible briefly, then the execute block drops and only bare standstill frames follow (the robotics/wbr!2322 scenario on a current controller).",
+ "frames": [
+  {
+   "timestamp": "2026-08-14T13:56:57.968685067Z",
+   "sequence_number": 45998,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.5955175161361694,
+    -1.3457913398742676,
+    -1.7710802555084229,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     695.1199196373371,
+     -174.14999490543755,
+     790.3711945929251
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168546063639e-08,
+     2.0598506849150864e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     695.1199196373371,
+     -174.14999490543755,
+     790.3711945929251
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168546063639e-08,
+     2.0598506849150864e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.5956056701323333,
+     -1.3449885620993605,
+     -1.771794879287166,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "RUNNING",
+      "time_to_end": 3751
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7551969170550042
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     -3.401866741629492,
+     -3.5574804714533454e-12,
+     49.87564663144255
+    ],
+    "rotation": [
+     2.944339218726204e-14,
+     2.944780875962221e-14,
+     -1.5902210956490604e-21
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     -3.401866741629492,
+     -3.5574804714533454e-12,
+     49.87564663144255
+    ],
+    "rotation": [
+     2.944339218726204e-14,
+     2.944780875962221e-14,
+     -1.5902210956490604e-21
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:57.976704858Z",
+   "sequence_number": 45999,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.5956056118011475,
+    -1.3449885845184326,
+    -1.7717949151992798,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     695.0924734419294,
+     -174.14999490543735,
+     790.7701275440601
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168546063637e-08,
+     2.0598506824487914e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     695.0924734419294,
+     -174.14999490543735,
+     790.7701275440601
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168546063637e-08,
+     2.0598506824487914e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.5956938788420951,
+     -1.344185709308917,
+     -1.7725095233678478,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "RUNNING",
+      "time_to_end": 3743
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7578818697327621
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     -3.4416849728247163,
+     4.256708534929816e-11,
+     49.678273930505746
+    ],
+    "rotation": [
+     -6.367559449509428e-14,
+     -3.921032803499196e-14,
+     2.4099500871401786e-21
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     -3.4416849728247163,
+     4.256708534929816e-11,
+     49.678273930505746
+    ],
+    "rotation": [
+     -6.367559449509428e-14,
+     -3.921032803499196e-14,
+     2.4099500871401786e-21
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:57.984686657Z",
+   "sequence_number": 46000,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.595693826675415,
+    -1.344185709953308,
+    -1.7725095748901367,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     695.0648141097598,
+     -174.1499949054374,
+     791.168995643582
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168546063637e-08,
+     2.0598506775162004e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     695.0648141097598,
+     -174.1499949054374,
+     791.168995643582
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168546063637e-08,
+     2.0598506775162004e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.5957820970835683,
+     -1.3433827697633092,
+     -1.7732242446719821,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "RUNNING",
+      "time_to_end": 3735
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7605673643015193
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     -3.486745700029828,
+     -2.3048353087384533e-11,
+     50.0862569766227
+    ],
+    "rotation": [
+     6.375575853586626e-14,
+     -4.920040382451377e-14,
+     -4.9537464160272165e-21
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     -3.486745700029828,
+     -2.3048353087384533e-11,
+     50.0862569766227
+    ],
+    "rotation": [
+     6.375575853586626e-14,
+     -4.920040382451377e-14,
+     -4.9537464160272165e-21
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:57.992687257Z",
+   "sequence_number": 46001,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.5957820415496826,
+    -1.343382716178894,
+    -1.7732242345809937,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     695.0368688605305,
+     -174.14999490543744,
+     791.5678815226287
+    ],
+    "orientation": [
+     -3.141592609878402,
+     -6.866168929729171e-08,
+     1.8731556702607953e-08
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     695.0368688605305,
+     -174.14999490543744,
+     791.5678815226287
+    ],
+    "orientation": [
+     -3.141592609878402,
+     -6.866168929729171e-08,
+     1.8731556702607953e-08
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.595870324859104,
+     -1.3425797434411386,
+     -1.773939043218617,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "RUNNING",
+      "time_to_end": 3727
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7632529170631248
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     -3.5067072533882993,
+     -1.7657565741503532e-12,
+     49.79932291823431
+    ],
+    "rotation": [
+     1.4678008766472805e-14,
+     -2.2358829339554088e-05,
+     -3.055555246021354e-14
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     -3.5067072533882993,
+     -1.7657565741503532e-12,
+     49.79932291823431
+    ],
+    "rotation": [
+     1.4678008766472805e-14,
+     -2.2358829339554088e-05,
+     -3.055555246021354e-14
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.000689537Z",
+   "sequence_number": 46002,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.5958703756332397,
+    -1.34257972240448,
+    -1.7739390134811401,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     695.0086964194974,
+     -174.14999490543732,
+     791.9666067884068
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168528624294e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     695.0086964194974,
+     -174.14999490543732,
+     791.9666067884068
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168528624294e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.5959585621710493,
+     -1.341776630321043,
+     -1.7746539190267674,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "RUNNING",
+      "time_to_end": 15
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7659389689745983
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     -3.534382016288256,
+     2.308736447895136e-11,
+     49.8111871167034
+    ],
+    "rotation": [
+     -9.813344420811617e-15,
+     2.979695921465661e-05,
+     1.9909015302014648e-14
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     -3.534382016288256,
+     2.308736447895136e-11,
+     49.8111871167034
+    ],
+    "rotation": [
+     -9.813344420811617e-15,
+     2.979695921465661e-05,
+     1.9909015302014648e-14
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.008688467Z",
+   "sequence_number": 46003,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.5959585905075073,
+    -1.3417766094207764,
+    -1.7746539115905762,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9801512386997,
+     -174.14999490543747,
+     792.3654179533047
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168546063639e-08,
+     2.059850675049905e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9801512386997,
+     -174.14999490543747,
+     792.3654179533047
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168546063639e-08,
+     2.059850675049905e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.5960026844039068,
+     -1.341375041205116,
+     -1.7750113859098369,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "RUNNING",
+      "time_to_end": 7
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7672820515352553
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     -3.59265643671533,
+     -3.3748972877220006e-11,
+     49.87386404300782
+    ],
+    "rotation": [
+     -2.944111988807048e-14,
+     -7.446898432668228e-06,
+     1.757655682940621e-14
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     -3.59265643671533,
+     -3.3748972877220006e-11,
+     49.87386404300782
+    ],
+    "rotation": [
+     -2.944111988807048e-14,
+     -7.446898432668228e-06,
+     1.757655682940621e-14
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.016701638Z",
+   "sequence_number": 46004,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.5960026979446411,
+    -1.3413749933242798,
+    -1.775011420249939,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9657644199522,
+     -174.14999490543758,
+     792.5648329440068
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168546063637e-08,
+     2.0598506824487914e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9657644199522,
+     -174.14999490543758,
+     792.5648329440068
+    ],
+    "orientation": [
+     -3.1415926098783937,
+     -6.866168546063637e-08,
+     2.0598506824487914e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     -0.907993674090295,
+     -1.239668155068215e-11,
+     12.388716407810115
+    ],
+    "rotation": [
+     -4.876662314766607e-15,
+     1.0784491563520772e-13,
+     -6.945992958347872e-15
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     -0.907993674090295,
+     -1.239668155068215e-11,
+     12.388716407810115
+    ],
+    "rotation": [
+     -4.876662314766607e-15,
+     1.0784491563520772e-13,
+     -6.945992958347872e-15
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.024686877Z",
+   "sequence_number": 46005,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     -1.8182463813322753,
+     7.081363245578227e-12,
+     25.013395961796448
+    ],
+    "rotation": [
+     7.858114265345893e-14,
+     -5.881602316604896e-14,
+     -5.224442527916367e-21
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     -1.8182463813322753,
+     7.081363245578227e-12,
+     25.013395961796448
+    ],
+    "rotation": [
+     7.858114265345893e-14,
+     -5.881602316604896e-14,
+     -5.224442527916367e-21
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.032682947Z",
+   "sequence_number": 46006,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0.9059328649950248,
+     0,
+     -12.493935556421166
+    ],
+    "rotation": [
+     -2.459470117294609e-14,
+     9.837881465450862e-15,
+     1.5235413010890955e-21
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0.9059328649950248,
+     0,
+     -12.493935556421166
+    ],
+    "rotation": [
+     -2.459470117294609e-14,
+     9.837881465450862e-15,
+     1.5235413010890955e-21
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.040694068Z",
+   "sequence_number": 46007,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.048720638Z",
+   "sequence_number": 46008,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.056690547Z",
+   "sequence_number": 46009,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.064691197Z",
+   "sequence_number": 46010,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.072697408Z",
+   "sequence_number": 46011,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.080686497Z",
+   "sequence_number": 46012,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.088688557Z",
+   "sequence_number": 46013,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.096684437Z",
+   "sequence_number": 46014,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.104676467Z",
+   "sequence_number": 46015,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.112683857Z",
+   "sequence_number": 46016,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.120678137Z",
+   "sequence_number": 46017,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.128699348Z",
+   "sequence_number": 46018,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": false,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.136705988Z",
+   "sequence_number": 46019,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.144689577Z",
+   "sequence_number": 46020,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "execute": {
+    "joint_position": [
+     2.220446049250313e-16,
+     -1.596046809021744,
+     -1.3409734303817238,
+     -1.775368872115392,
+     1.5707963705062855,
+     -1.5707963705062864
+    ],
+    "details": {
+     "kind": "TRAJECTORY",
+     "state": {
+      "kind": "PAUSED_BY_USER",
+      "time_to_end": 0
+     },
+     "trajectory": "3c33ba0b-35f2-4cc1-9f5b-b83689dfa052",
+     "location": 0.7686251340959116
+    }
+   },
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.152681477Z",
+   "sequence_number": 46021,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.160655296Z",
+   "sequence_number": 46022,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.168685607Z",
+   "sequence_number": 46023,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.176677847Z",
+   "sequence_number": 46024,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.184671317Z",
+   "sequence_number": 46025,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.192657366Z",
+   "sequence_number": 46026,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.200674387Z",
+   "sequence_number": 46027,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.208683287Z",
+   "sequence_number": 46028,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.216683217Z",
+   "sequence_number": 46029,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.224685327Z",
+   "sequence_number": 46030,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.232679467Z",
+   "sequence_number": 46031,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.240655176Z",
+   "sequence_number": 46032,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.248683947Z",
+   "sequence_number": 46033,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.256659086Z",
+   "sequence_number": 46034,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.264677537Z",
+   "sequence_number": 46035,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.272682917Z",
+   "sequence_number": 46036,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.280670727Z",
+   "sequence_number": 46037,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.288684307Z",
+   "sequence_number": 46038,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.296677247Z",
+   "sequence_number": 46039,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.304647466Z",
+   "sequence_number": 46040,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.312680487Z",
+   "sequence_number": 46041,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.320681507Z",
+   "sequence_number": 46042,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.328670537Z",
+   "sequence_number": 46043,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  {
+   "timestamp": "2026-08-14T13:56:58.336657916Z",
+   "sequence_number": 46044,
+   "motion_group": "0@cdexp-ur10e",
+   "controller": "cdexp-ur10e",
+   "joint_position": [
+    2.220446049250313e-16,
+    -1.596046805381775,
+    -1.3409733772277832,
+    -1.7753689289093018,
+    1.5707963705062866,
+    -1.5707963705062866
+   ],
+   "joint_limit_reached": {
+    "limit_reached": [
+     false,
+     false,
+     false,
+     false,
+     false,
+     false
+    ]
+   },
+   "joint_torque": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "joint_current": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "flange_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "tcp": "Flange",
+   "tcp_pose": {
+    "position": [
+     694.9513060379302,
+     -174.14999490543758,
+     792.7642319284269
+    ],
+    "orientation": [
+     -3.1415926098783933,
+     -6.866168546063637e-08,
+     2.0598506799824954e-07
+    ]
+   },
+   "standstill": true,
+   "description_revision": 0,
+   "flange_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   },
+   "tcp_velocity": {
+    "translation": [
+     0,
+     0,
+     0
+    ],
+    "rotation": [
+     0,
+     0,
+     0
+    ]
+   }
+  }
+ ]
+}

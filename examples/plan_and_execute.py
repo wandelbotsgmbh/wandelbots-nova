@@ -23,7 +23,7 @@ from nova.types import MotionSettings, Pose
             virtual_controller(
                 name="ur10e",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         ],
         cleanup_controllers=False,
@@ -46,7 +46,9 @@ async def plan_and_execute(ctx: nova.ProgramContext):
 
     slow = MotionSettings(tcp_velocity_limit=50)
     normal = MotionSettings(tcp_velocity_limit=250)
-    fast = MotionSettings(tcp_velocity_limit=500, position_zone_radius=10)
+    fast = MotionSettings(
+        tcp_velocity_limit=500, blending=api.models.BlendingPosition(position_zone_radius=10)
+    )
 
     # The trajectory builder is a context manager that can be used to build a trajectory with fine-grained control over the settings
     t = TrajectoryBuilder(settings=normal)

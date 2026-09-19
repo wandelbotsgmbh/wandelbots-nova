@@ -4,6 +4,7 @@ import inspect
 import json
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import (
     Annotated,
     Any,
@@ -17,6 +18,7 @@ from typing import (
     get_args,
     get_origin,
     get_type_hints,
+    overload,
 )
 
 from docstring_parser import Docstring
@@ -34,8 +36,10 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue, models_json_schema
 
 from nova import Nova, api
-
-from .context import ProgramContext, current_program_context_var
+from nova import datasets as ds
+from nova.datasets import Dataset, LoadDatasetRequest
+from nova.program import registry
+from nova.program.context import ProgramContext, current_program_context_var
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +50,19 @@ Return = TypeVar("Return")
 class ProgramPreconditions(BaseModel):
     controllers: list[api.models.RobotController] | None = None
     cleanup_controllers: bool = False
+    dataset: LoadDatasetRequest | None = Field(
+        default=None,
+        description=(
+            "Dataset to load before the program runs, e.g. via `nova.datasets.local_dataset()` "
+            "or `nova.datasets.remote_dataset()`. A local dataset's path is resolved relative to "
+            "the file of the @nova.program that declares it, not the current working directory."
+        ),
+    )
 
 
 class Program(BaseModel, Generic[Parameters, Return]):
-    _wrapped: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(
-        default_factory=lambda *args, **kwargs: None  # type: ignore[assignment]
+    _wrapped: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(  # ty: ignore[invalid-assignment]
+        default_factory=lambda *args, **kwargs: None
     )
     _viewer: Any | None = PrivateAttr(default=None)
     program_id: str
@@ -70,9 +82,9 @@ class Program(BaseModel, Generic[Parameters, Return]):
         params = list(signature.parameters.values())
         if not params or params[0].name != "ctx":
             raise TypeError(
-                f"Program function '{value.__name__}' must have 'ctx' as its first parameter. "
+                f"Program function '{value.__name__}' must have 'ctx' as its first parameter. "  # ty: ignore[unresolved-attribute]
                 "Define it as 'async def "
-                f"{value.__name__}(ctx, ...):'."
+                f"{value.__name__}(ctx, ...):'."  # ty: ignore[unresolved-attribute]
             )
 
         # If ctx is untyped, annotate it with NovaProgramContext for better introspection
@@ -81,7 +93,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
             annotations.setdefault("ctx", ProgramContext)
             value.__annotations__ = annotations
 
-        program_id = value.__name__
+        program_id = value.__name__  # ty: ignore[unresolved-attribute]
         docstring = parse_docstring(value.__doc__ or "")
         description = docstring.description
 
@@ -94,7 +106,6 @@ class Program(BaseModel, Generic[Parameters, Return]):
             input_model=input_model_,
             output_model=output_type,
         )
-
         # mypy does not recognise that `value` is an async function returning a coroutine,
         # so we help it with a cast here.
         program._wrapped = cast(Callable[..., Coroutine[Any, Any, Return]], value)
@@ -129,14 +140,15 @@ class Program(BaseModel, Generic[Parameters, Return]):
             )
 
         if not nova.is_connected():
-            logger.warn(
+            logger.warning(
                 "The provided NOVA instance is not connected. "
                 "Use `from nova import run_program` and run your program via `run_program(my_program, ...)`."
                 "OR provide an opened NOVA instance via `nova=...`."
             )
 
         if ctx is None:
-            ctx = ProgramContext(nova=nova, program_id=self.program_id)
+            dataset = await self._load_dataset(nova)
+            ctx = ProgramContext(nova=nova, program_id=self.program_id, dataset=dataset)
 
         current_program_context_var.set(ctx)
 
@@ -175,6 +187,27 @@ class Program(BaseModel, Generic[Parameters, Return]):
 
                 _cleanup_active_viewers()
 
+    async def _load_dataset(self, nova: Nova) -> Dataset | None:
+        """Load the dataset declared in this program's preconditions, before it starts running.
+
+        A relative local path resolves against the file that declares this program.
+        """
+        if not (self.preconditions and self.preconditions.dataset):
+            return None
+
+        dataset_request = self.preconditions.dataset
+        if dataset_request.type == "remote":
+            return await ds.fetch(nova, dataset_request.dataset, revision=dataset_request.revision)
+        elif dataset_request.type == "local":
+            code = getattr(inspect.unwrap(self._wrapped), "__code__", None)
+            if code is None:
+                raise RuntimeError(
+                    f"Could not determine the file that declares program '{self.program_id}', "
+                    f"which is required to resolve its relative local dataset path '{dataset_request.path}'."
+                )
+            program_dir = Path(code.co_filename).resolve().parent
+            return await ds.read(dataset_request.path, base_dir=program_dir)
+
     def _log(self, level: str, message: str) -> None:
         """Log a message with program prefix."""
         prefix = f"Nova Program '{self.name}'"
@@ -212,8 +245,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
     def __repr__(self) -> str:
         if self.input_model:
             input_fields = ", ".join(
-                f"{k}: {v.annotation.__name__}"  # type: ignore
-                for k, v in self.input_model.model_fields.items()
+                f"{k}: {v.annotation.__name__}" for k, v in self.input_model.model_fields.items()
             )
         else:
             input_fields = "none"
@@ -222,10 +254,10 @@ class Program(BaseModel, Generic[Parameters, Return]):
         if hasattr(self.output_model, "model_fields") and "root" in self.output_model.model_fields:
             root_annotation = self.output_model.model_fields["root"].annotation
             # If it's a TypeVar, get its bound type
-            if hasattr(root_annotation, "__bound__") and root_annotation.__bound__:  # type: ignore
-                output_type = root_annotation.__bound__.__name__  # type: ignore
+            if hasattr(root_annotation, "__bound__") and root_annotation.__bound__:
+                output_type = root_annotation.__bound__.__name__
             else:
-                output_type = root_annotation.__name__  # type: ignore
+                output_type = root_annotation.__name__
         else:
             output_type = self.output_model.__name__
 
@@ -258,13 +290,13 @@ class Program(BaseModel, Generic[Parameters, Return]):
         for name, field in self.input_model.model_fields.items():
             # Convert field type to appropriate Python type
             field_type = field.annotation
-            if hasattr(field_type, "__origin__") and field_type.__origin__ is Annotated:  # type: ignore
-                field_type = field_type.__origin__  # type: ignore
+            if hasattr(field_type, "__origin__") and field_type.__origin__ is Annotated:
+                field_type = field_type.__origin__
 
             # Handle optional fields
             is_optional = False
-            if hasattr(field_type, "__origin__") and field_type.__origin__ is Union:  # type: ignore
-                field_type = field_type.__args__[0]  # type: ignore
+            if hasattr(field_type, "__origin__") and field_type.__origin__ is Union:
+                field_type = field_type.__args__[0]
                 is_optional = True
 
             # For complex types (like Pydantic models), use JSON parsing
@@ -282,7 +314,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 parser.add_argument(
                     f"--{name}",
                     dest=name,
-                    type=field_type,  # type: ignore
+                    type=field_type,
                     default=field.default if field.default is not None else None,
                     required=not is_optional and field.default is None,
                     help=field.description or f"{name} parameter",
@@ -385,6 +417,24 @@ def input_and_output_types(
     return input_type, output
 
 
+@overload
+def program(
+    _func: Callable[Parameters, Return],
+) -> Program[Parameters, Coroutine[Any, Any, Return]]: ...
+
+
+@overload
+def program(
+    _func: None = None,
+    *,
+    id: str | None = None,
+    name: str | None = None,
+    description: str | None = None,
+    preconditions: ProgramPreconditions | None = None,
+    viewer: Any | None = None,
+) -> Callable[[Callable[Parameters, Return]], Program[Parameters, Coroutine[Any, Any, Return]]]: ...
+
+
 def program(
     # allows bare @nova.program
     _func: Callable[Parameters, Return] | None = None,
@@ -402,9 +452,12 @@ def program(
         id: ID of the program (needs to be unique across all programs)
         name: Readable name of the program
         description: Description of the program
-        preconditions: ProgramPreconditions containing controller configurations and cleanup settings
+        preconditions: ProgramPreconditions containing controller configurations, cleanup settings,
+            and an optional dataset to load before the program runs.
             Based on the program preconditions, a robot cell is created when running the program in a runner
             Only devices that are part of the preconditions are opened and listened for e.g. estop handling
+            A local dataset's path (see `nova.datasets.local_dataset()`) is resolved relative to the
+            file of this @nova.program, not the current working directory.
         viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
 
     Decorator / decorator-factory for creating Nova programs.
@@ -431,7 +484,7 @@ def program(
     ) -> Program[Parameters, Coroutine[Any, Any, Return]]:
         # Validate that the function is async
         if not asyncio.iscoroutinefunction(function):
-            raise TypeError(f"Program function '{function.__name__}' must be async")
+            raise TypeError(f"Program function '{function.__name__}' must be async")  # ty: ignore[unresolved-attribute]
 
         program_obj = Program.validate(function)
         if id:
@@ -442,6 +495,7 @@ def program(
             program_obj.description = description
         program_obj.preconditions = preconditions
         program_obj._viewer = viewer
+        registry.register(program_obj)
         return program_obj
 
     # If used as @nova.program(), return the decorator.

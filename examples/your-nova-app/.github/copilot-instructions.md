@@ -6,22 +6,19 @@
 
 ## 1) Project Structure (What lives where?)
 
-A Nova app exposes a FastAPI service and one or more robot programs written in Python or WandelScript.
+A Nova app exposes a FastAPI service and one or more robot programs written in Python.
 
 ```
 <app_name>/
 ├─ __main__.py           # FastAPI entry point + program registry (keep this small)
 └─ programs/             # Where YOU write most code
-   ├─ start_here.py      # Example Python program
-   ├─ hello.ws           # Example WandelScript program
-   └─ ws_extensions.py   # Python↔WandelScript bridge (FFI)
+   └─ start_here.py      # Example Python program
 ```
 
 **Quick notes**
 
 * Work mainly in **`programs/`**. Create simple, well‑named files (one program per file is fine).
 * Keep `__main__.py` minimal: register routes/programs and delegate real logic to `programs/` files.
-* If you expose functions to WandelScript, keep them tiny and well‑documented in `ws_extensions.py`.
 * The app may be mounted under a variable **BASE\_PATH** in production (e.g., `/cell/<app-name>`). Avoid hard‑coding `/` in links or requests; rely on the framework’s resolved base path.
 
 ---

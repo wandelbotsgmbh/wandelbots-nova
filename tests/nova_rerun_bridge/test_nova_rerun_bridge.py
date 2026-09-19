@@ -20,11 +20,10 @@ class TestNovaRerunBridgeInit:
         """Should initialize with Nova instance and default settings."""
         mock_nova = Mock()
 
-        with patch.object(NovaRerunBridge, "_ensure_models_exist"):
-            bridge = NovaRerunBridge(mock_nova, spawn=False)
+        bridge = NovaRerunBridge(mock_nova, spawn=False)
 
-            assert bridge.nova == mock_nova
-            assert isinstance(bridge._streaming_tasks, dict)
+        assert bridge.nova == mock_nova
+        assert isinstance(bridge._streaming_tasks, dict)
 
     @patch("nova_rerun_bridge.nova_rerun_bridge.rr")
     @patch("nova_rerun_bridge.nova_rerun_bridge.logger")
@@ -33,16 +32,15 @@ class TestNovaRerunBridgeInit:
         """Should handle VS Code environment correctly."""
         mock_nova = Mock()
 
-        with patch.object(NovaRerunBridge, "_ensure_models_exist"):
-            NovaRerunBridge(mock_nova)
+        NovaRerunBridge(mock_nova)
 
-            # Should call rr.init with spawn=False
-            mock_rr.init.assert_called_once()
-            args, kwargs = mock_rr.init.call_args
-            assert not kwargs.get("spawn")
+        # Should call rr.init with spawn=False
+        mock_rr.init.assert_called_once()
+        args, kwargs = mock_rr.init.call_args
+        assert not kwargs.get("spawn")
 
-            # Should save recording
-            mock_rr.save.assert_called_once_with("nova.rrd")
+        # Should save recording
+        mock_rr.save.assert_called_once_with("nova.rrd")
 
     @patch("nova_rerun_bridge.nova_rerun_bridge.rr")
     @patch("nova_rerun_bridge.nova_rerun_bridge.logger")
@@ -52,36 +50,13 @@ class TestNovaRerunBridgeInit:
         mock_nova = Mock()
         custom_id = "custom_recording_123"
 
-        with patch.object(NovaRerunBridge, "_ensure_models_exist"):
-            NovaRerunBridge(mock_nova, recording_id=custom_id, spawn=True)
+        NovaRerunBridge(mock_nova, recording_id=custom_id, spawn=True)
 
-            # Should call rr.init with custom recording ID when spawn=True
-            mock_rr.init.assert_called_once()
-            args, kwargs = mock_rr.init.call_args
-            assert kwargs.get("recording_id") == custom_id
-            assert kwargs.get("spawn") is True
-
-    @patch("nova_rerun_bridge.nova_rerun_bridge.Path")
-    @patch("nova_rerun_bridge.nova_rerun_bridge.get_project_root")
-    def test_missing_models_warning(self, mock_get_root, mock_path):
-        """Should warn when robot models are missing."""
-        mock_get_root.return_value = "/fake/root"
-        mock_models_dir = Mock()
-        mock_models_dir.exists.return_value = False
-        mock_path.return_value.__truediv__.return_value = mock_models_dir
-
-        mock_nova = Mock()
-
-        with (
-            patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
-            patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
-            patch("builtins.print") as mock_print,
-        ):
-            NovaRerunBridge(mock_nova, spawn=False)
-
-            # Should print warning about missing models
-            mock_print.assert_called_once()
-            assert "Models not found" in mock_print.call_args[0][0]
+        # Should call rr.init with custom recording ID when spawn=True
+        mock_rr.init.assert_called_once()
+        args, kwargs = mock_rr.init.call_args
+        assert kwargs.get("recording_id") == custom_id
+        assert kwargs.get("spawn") is True
 
 
 class TestSetupBlueprint:
@@ -102,7 +77,6 @@ class TestSetupBlueprint:
         mock_controller.motion_groups = AsyncMock(return_value=[mock_motion_group])
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
             patch("nova_rerun_bridge.nova_rerun_bridge.send_blueprint") as mock_send,
@@ -125,7 +99,6 @@ class TestSetupBlueprint:
         mock_cell.controllers = AsyncMock(return_value=[])
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
             patch("nova_rerun_bridge.nova_rerun_bridge.logger") as mock_logger,
             patch("nova_rerun_bridge.nova_rerun_bridge.send_blueprint") as mock_send,
@@ -159,7 +132,6 @@ class TestSetupBlueprint:
         mock_controller2.motion_groups = AsyncMock(return_value=[mock_group3])
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
             patch("nova_rerun_bridge.nova_rerun_bridge.send_blueprint") as mock_send,
@@ -192,7 +164,6 @@ class TestCollisionSetups:
         mock_nova._api_client = mock_api_client
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
             patch("nova_rerun_bridge.nova_rerun_bridge.log_collision_setups") as mock_log,
@@ -222,7 +193,6 @@ class TestCollisionSetups:
         mock_nova._api_client = mock_api_client
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
             patch("nova_rerun_bridge.nova_rerun_bridge.log_collision_setups") as mock_log,
@@ -252,7 +222,6 @@ class TestCollisionSetups:
         mock_nova._api_client = mock_api_client
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
         ):
@@ -277,7 +246,6 @@ class TestSafetyZones:
         mock_motion_group.get_description = AsyncMock(return_value=mock_motion_group_description)
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr") as mock_rr,
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
             patch("nova_rerun_bridge.nova_rerun_bridge.log_safety_zones") as mock_log,
@@ -297,7 +265,6 @@ class TestSafetyZones:
         mock_nova = Mock()
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
             patch("nova_rerun_bridge.nova_rerun_bridge.log_safety_zones"),
@@ -319,7 +286,6 @@ class TestCoordinateSystem:
         mock_nova = Mock()
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr") as mock_rr,
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
         ):
@@ -339,7 +305,6 @@ class TestCoordinateSystem:
         mock_nova = Mock()
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr") as mock_rr,
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
         ):
@@ -367,7 +332,6 @@ class TestContextManager:
         mock_nova._api_client = mock_api_client
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
             patch("nova_rerun_bridge.nova_rerun_bridge.Nova") as mock_nova_class,
@@ -391,7 +355,6 @@ class TestContextManager:
         mock_nova._api_client = mock_api_client
 
         with (
-            patch.object(NovaRerunBridge, "_ensure_models_exist"),
             patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
             patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
             patch("nova_rerun_bridge.nova_rerun_bridge.Nova") as mock_nova_class,

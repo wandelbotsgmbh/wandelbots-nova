@@ -36,7 +36,7 @@ from nova.types import MotionSettings, Pose
             virtual_controller(
                 name="kuka-kr16-r2010",
                 manufacturer=api.models.Manufacturer.KUKA,
-                type=api.models.VirtualControllerTypes.KUKA_KR16_R2010_2,
+                type="kuka-kr16_r2010_2",
             )
         ],
         cleanup_controllers=False,
@@ -70,10 +70,10 @@ async def start(
         joint_ptp(home_joints, settings=normal),  # Move to home position slowly
         cartesian_ptp(target_pose, settings=fast),  # Move to target pose
         cartesian_ptp(
-            target_pose @ [200, 0, 0, 0, 0, 0], settings=fast
+            target_pose @ Pose([200, 0, 0, 0, 0, 0]), settings=fast
         ),  # Move 100mm in target pose's local x-axis
         linear(
-            target_pose @ (200, 200, 0, 0, 0, 0), settings=fast
+            target_pose @ Pose(200, 200, 0, 0, 0, 0), settings=fast
         ),  # Move 100mm in local x and y axes
         joint_ptp(home_joints, settings=normal),
         cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0)), settings=fast),

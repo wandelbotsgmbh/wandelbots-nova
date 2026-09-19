@@ -1,6 +1,301 @@
 # CHANGELOG
 
 
+## [5.11.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.10.0...v5.11.0) (2026-07-30)
+
+
+### Features
+
+* improve slack release message ([#461](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/461)) ([bfb1a8c](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bfb1a8c188ed5c67ba0b099e5aa8568f3ead2923))
+
+## [5.10.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.9.0...v5.10.0) (2026-07-29)
+
+
+### Features
+
+* **NDX-812:** Setup release-please + husky in wandelbots-nova ([#456](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/456)) ([d03d6f8](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d03d6f8f6c6d836e26ce009b45b8c554e8b25a35))
+
+
+### Bug Fixes
+
+* fixed release please [#2](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/2) by using a PAT ([#459](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/459)) ([251e19d](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/251e19d66b15ee0f5fc5651b9c9b6fa434c02815))
+* fixed release-please step ([#458](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/458)) ([ebf1b70](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ebf1b701c25d98dd9fc7c1e6cef2fd0089583e16))
+
+## v5.9.0 (2026-07-23)
+
+### Features
+
+- Added docs for program usage (#453)
+  ([#453](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/453),
+  [`42496f6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/42496f66a46c67451c701f6171d30d9bab05efc8))
+
+
+## v5.8.1 (2026-07-23)
+
+### Chores
+
+- Configure dependabot (#451) ([#451](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/451),
+  [`cbb65bc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/cbb65bc246ac06f6c4cb10302bd269bb43e1d626))
+
+
+## v5.8.0 (2026-07-20)
+
+### Features
+
+- **NDX-817**: Make it possible to hot-reload novax programs on changes on the instance (#452)
+  ([#452](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/452),
+  [`774006c`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/774006cdc6fc415f30c9867b0da96f4da03f568e))
+
+
+## v5.7.6 (2026-07-16)
+
+### Chores
+
+- Generate motion group models from api (#440)
+  ([#440](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/440),
+  [`5eadb32`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5eadb32467ed8a0c4511ce3b424f2b797d1c6155))
+
+
+## v5.7.5 (2026-07-15)
+
+### Bug Fixes
+
+- Update virtual env version to fix setuptools cve (#447)
+  ([#447](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/447),
+  [`496f115`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/496f1159a1c81612a746474a76aa8850a5dd3a40))
+
+
+## v5.7.4 (2026-07-10)
+
+### Bug Fixes
+
+- Add start_on_io and pause_on_io params to TrajectoryCursor (#445)
+  ([#445](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/445),
+  [`3b997bf`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/3b997bf382f77d2a9d4c58db27eb7ea97d56587d))
+
+
+## v5.7.3 (2026-07-08)
+
+### Chores
+
+- Upgrade rerun-sdk to 0.34.0 (#443)
+  ([#443](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/443),
+  [`5c00fa4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5c00fa416c00ea22b61e5fbc534d384ce1d41357))
+
+
+## v5.7.2 (2026-07-06)
+
+### Bug Fixes
+
+- Rerun visualization for DH theta robot meshes (#439)
+  ([#439](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/439),
+  [`bbb8e5e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bbb8e5e55b89be64889ae35c9f7547b36830b257))
+
+
+## v5.7.1 (2026-07-06)
+
+### Bug Fixes
+
+- GR00T schema validation for IO state observations (#438)
+  ([#438](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/438),
+  [`9487296`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/948729631ff075ca547e6af333d526a30c2c8264))
+
+
+## v5.7.0 (2026-07-01)
+
+### Features
+
+- Made novax usage easier e.g. autoscanning (#437)
+  ([#437](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/437),
+  [`fc10ad6`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fc10ad6abb94d1583c64a1bd489ca4d5df938b68))
+
+
+## v5.6.3 (2026-06-26)
+
+### Bug Fixes
+
+- **NDX-777**: Ignore non-motion actions instead of failing (#436)
+  ([#436](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/436),
+  [`a109c8a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a109c8aa6e04089560327b857af585c9e6101af3))
+
+
+## v5.6.2 (2026-06-25)
+
+### Bug Fixes
+
+- **NDX-728**: Revert clamping the mg limits and refactoring (#433)
+  ([#433](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/433),
+  [`2421bfc`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2421bfc89934352dc3ecb247f8b1f37827a5c181))
+
+
+## v5.6.1 (2026-06-24)
+
+### Bug Fixes
+
+- **NDX-752**: Use torque limits when planning a trajectory (#432)
+  ([#432](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/432),
+  [`bb99551`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb99551e52df4cfd40ceeb88c86d01d3186d7650))
+
+
+## v5.6.0 (2026-06-24)
+
+### Features
+
+- Update collision setup example (#435)
+  ([#435](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/435),
+  [`61f9e1d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/61f9e1d5450a5810dae91dc59f4d3864e1bb26f8))
+
+
+## v5.5.0 (2026-06-24)
+
+### Features
+
+- Add policy package to execute learned policies (imitation learning, reinforcement learning) (#428)
+  ([#428](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/428),
+  [`8a0f57e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8a0f57e3afdae6fbcf79e3ef67a983bbc4a22e66))
+
+
+## v5.4.2 (2026-06-12)
+
+### Bug Fixes
+
+- **NDX-728**: Clamp joint limits based on mg limits, added entire.io (#431)
+  ([#431](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/431),
+  [`7a06a3a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7a06a3af7f558eb040289f9298abe46963ee737a))
+
+
+## v5.4.1 (2026-06-09)
+
+### Bug Fixes
+
+- Fixed cursor index clamping (#430)
+  ([#430](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/430),
+  [`6225a7d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/6225a7d6e0e04d9806066693053ff74cfb8c6b01))
+
+
+## v5.4.0 (2026-06-09)
+
+### Bug Fixes
+
+- **NDX-440**: Issues with io_write actions (#411)
+  ([#411](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/411),
+  [`90d3d0d`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/90d3d0d1b6234168acc164aaf930489112d430b9))
+
+### Features
+
+- **NDX-767**: Show complete action selection (not just the line) (#429)
+  ([#429](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/429),
+  [`b95fd48`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/b95fd487eeb15f5560b1d9f00d0db1733e0d4c25))
+
+
+## v5.3.0 (2026-06-04)
+
+### Features
+
+- Add support of cartesian PTP with configured pose (#425)
+  ([#425](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/425),
+  [`75e362b`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/75e362be934d62b6387b7c59db19096f13599d94))
+
+
+## v5.2.0 (2026-06-04)
+
+### Features
+
+- Add on-demand robot model downloading from NOVA API (#422)
+  ([#422](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/422),
+  [`38c2279`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/38c227916ffc0194d2d4dd5379ca6835af0091e3))
+
+
+## v5.1.4 (2026-06-03)
+
+### Chores
+
+- **api**: Update wandelbots-api-client to 26.4.0 (#423)
+  ([#423](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/423),
+  [`fe1d72e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fe1d72e0e2d74e7867caf5d7cf9486bbd3a2131b))
+
+
+## v5.1.3 (2026-05-20)
+
+### Bug Fixes
+
+- **NDX-626**: Harden trajectory cursor concurrency handling (#418)
+  ([#418](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/418),
+  [`8cab9ce`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8cab9ceae721bcf7fcddf2b8da85cd3f15eaa345))
+
+
+## v5.1.2 (2026-05-19)
+
+### Bug Fixes
+
+- **NDX-729**: Restrict python-statemachine dependency version (#421)
+  ([#421](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/421),
+  [`d128444`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/d1284449138937131d28186a17879cd6fecc7f0b))
+
+
+## v5.1.1 (2026-05-12)
+
+### Chores
+
+- **examples**: Add example for merge trajectories (#419)
+  ([#419](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/419),
+  [`acc6aa4`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/acc6aa4d33f73c6aa0bca6837ce488c85d9bba77))
+
+
+## v5.1.0 (2026-05-06)
+
+### Features
+
+- **NDX-696**: Add jerk limit fields to MotionSettings and fix zero value blending bug (#416)
+  ([#416](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/416),
+  [`ab52952`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/ab52952a6b0965435e8e6e145031af094fa38c37))
+
+
+## v5.0.1 (2026-05-06)
+
+### Bug Fixes
+
+- **NDX-698**: Use payload defaults and per-call overrides in planning (#417)
+  ([#417](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/417),
+  [`853f91a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/853f91a5666f38294b3d9e59b9e03155ea33e35b))
+
+
+## v5.0.0 (2026-04-22)
+
+### Bug Fixes
+
+- Pin NOVA API to version ~26.3 (#415)
+  ([#415](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/415),
+  [`5881677`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/5881677d65330656c42cac051d55df2691096744))
+
+
+## v4.13.0 (2026-04-20)
+
+### Features
+
+- **api**: Update wandelbots-api-client to 26.3 (#414)
+  ([#414](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/414),
+  [`8ce1a8e`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/8ce1a8ea8ac318800672a58ea7f7c1d0aeed308f))
+
+
+## v4.12.1 (2026-04-20)
+
+### Bug Fixes
+
+- **NDX-665**: Check initial state in wait_for_bus_io before listening for changes (#413)
+  ([#413](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/413),
+  [`bb327b0`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/bb327b072633a9f6e64ae7c0980260acc041a590))
+
+
+## v4.12.0 (2026-04-14)
+
+### Features
+
+- Make TCP optional for plan/execute to support motion groups without TCP (#412)
+  ([#412](https://github.com/wandelbotsgmbh/wandelbots-nova/pull/412),
+  [`19d284a`](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/19d284ad6b2345b1f865d7e5287242cba784ae3b))
+
+
 ## v4.11.3 (2026-03-13)
 
 ### Bug Fixes

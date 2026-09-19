@@ -1,4 +1,5 @@
 import re
+from io import BytesIO
 from typing import Any, cast
 
 import numpy as np
@@ -10,19 +11,23 @@ from nova import api
 from nova.types import Pose
 from nova_rerun_bridge import colors
 from nova_rerun_bridge.dh_robot import DHRobot
-from nova_rerun_bridge.helper_scripts.download_models import get_project_root
 from nova_rerun_bridge.hull_visualizer import HullVisualizer
 
 
-def get_model_path(model_name: str) -> str:
-    """Get absolute path to model file in project directory"""
-    return str(get_project_root() / "models" / f"{model_name}.glb")
+def _copy_graph_matrix(matrix: object) -> np.ndarray:
+    """Copy a transform matrix from :meth:`trimesh.scene.transforms.SceneGraph.get`.
+
+    Trimesh/numpy stubs expose the matrix with a covariant dtype variable that does
+    not match :func:`numpy.copy` overloads; building a new array avoids ``call-overload``.
+    """
+    return np.array(matrix, dtype=np.float64, copy=True)
 
 
 def _batch_dh_transforms(
     dh_parameters: list[api.models.DHParameter],
     all_joint_positions: np.ndarray,
     mounting_matrix: np.ndarray,
+    kinematic_chain_offset_matrix: np.ndarray,
 ) -> np.ndarray:
     """Compute FK for all samples and all links in one vectorised pass.
 
@@ -30,11 +35,15 @@ def _batch_dh_transforms(
         dh_parameters: List of DH parameter objects (one per joint).
         all_joint_positions: Shape ``(N, num_joints)`` joint values.
         mounting_matrix: ``(4, 4)`` base mounting transform.
+        kinematic_chain_offset_matrix: ``(4, 4)`` transform from the base frame to
+            the start of the DH chain, applied from index 1 onward to mirror
+            :meth:`RobotVisualizer.compute_forward_kinematics`.
 
     Returns:
         ``(num_links+1, N, 4, 4)`` accumulated transforms.  Index 0 is the
-        mounting repeated for every sample, index *k* is the accumulated
-        transform after joint *k-1*.
+        mounting repeated for every sample (no offset yet, matching the base-link
+        mesh rest position), index *k* is the accumulated transform after joint
+        *k-1* with the kinematic chain offset applied.
     """
     num_samples = all_joint_positions.shape[0]
     num_joints = len(dh_parameters)
@@ -42,6 +51,9 @@ def _batch_dh_transforms(
     accumulated = np.tile(mounting_matrix, (num_samples, 1, 1))
     result = np.empty((num_joints + 1, num_samples, 4, 4))
     result[0] = accumulated
+
+    # The kinematic chain offset only applies from the start of the DH chain onward.
+    accumulated = np.matmul(accumulated, kinematic_chain_offset_matrix)
 
     for joint_index, dh_param in enumerate(dh_parameters):
         joint_values = all_joint_positions[:, joint_index]
@@ -125,7 +137,7 @@ class RobotVisualizer:
         albedo_factor: list = [255, 255, 255],
         collision_link_chain: api.models.LinkChain | None = None,
         collision_tcp: api.models.Tool | None = None,
-        motion_group_model: str = "",
+        model_data: bytes | None = None,
         show_collision_link_chain: bool = False,
         show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
@@ -141,7 +153,7 @@ class RobotVisualizer:
         :param albedo_factor: A list representing the RGB values [R, G, B] to apply as the albedo factor.
         :param collision_link_chain: Collision link chain geometries for the robot
         :param collision_tcp: Collision TCP geometries
-        :param model_from_controller: Model name from controller for loading robot mesh
+        :param model_data: GLB model data as bytes, loaded directly from the NOVA API
         :param show_collision_link_chain: Whether to render robot collision mesh geometry
         :param show_collision_tool: Whether to render TCP tool collision geometry
         :param show_safety_link_chain: Whether to render robot safety geometry (from controller)
@@ -158,12 +170,21 @@ class RobotVisualizer:
         self.base_entity_path = base_entity_path.rstrip("/")
         self.albedo_factor = albedo_factor
         self.mesh_loaded = False
+        self.inverse_mounting_transform = np.linalg.inv(
+            self.robot.pose_to_matrix(self.robot.mounting)
+        )
+        self.zero_link_transforms_without_mounting = [
+            self.inverse_mounting_transform @ transform
+            for transform in self.compute_forward_kinematics(
+                joint_positions=[0.0] * len(self.robot.dh_parameters)
+            )
+        ]
         # Group collision geometries by link
         self.collision_link_geometries: list[Any] = (
-            cast(list[Any], collision_link_chain.root) if collision_link_chain else []
+            cast(list[Any], collision_link_chain) if collision_link_chain else []
         )
         self.collision_tcp_geometries: dict[str, api.models.Collider] = (
-            cast(dict[str, api.models.Collider], collision_tcp.root) if collision_tcp else {}
+            collision_tcp if collision_tcp else {}
         )
         self.show_collision_link_chain = show_collision_link_chain
         self.show_collision_tool = show_collision_tool
@@ -174,22 +195,21 @@ class RobotVisualizer:
         self.layer_nodes_dict: dict[str, list[str]] = {}
         self.parent_nodes_dict: dict[str, str] = {}
 
-        # load mesh
-        try:
-            glb_path = get_model_path(motion_group_model)
-            self.scene = trimesh.load_scene(glb_path, file_type="glb")
-            self.mesh_loaded = True
-            self.edge_data = self.scene.graph.transforms.edge_data
+        if model_data:
+            try:
+                self.scene = trimesh.load_scene(BytesIO(model_data), file_type="glb")
+                self.mesh_loaded = True
+                self.edge_data = self.scene.graph.transforms.edge_data
 
-            # After loading, auto-discover any child nodes that match *_J0n
-            self.discover_joints()
-        except Exception as e:
-            print(f"Failed to load mesh: {e}")
+                # After loading, auto-discover any child nodes that match *_J0n
+                self.discover_joints()
+            except Exception as e:
+                print(f"Failed to load mesh: {e}")
 
         # Group safety geometries by link index for easier lookup later on
         for link_chain in robot_model_geometries:
-            for link_index, link in enumerate(link_chain.root or []):
-                self.link_geometries.setdefault(link_index, []).extend(link.root.values())
+            for link_index, link in enumerate(link_chain or []):
+                self.link_geometries.setdefault(link_index, []).extend(link.values())
 
     def discover_joints(self):
         """
@@ -261,16 +281,21 @@ class RobotVisualizer:
             return np.eye(4)
         return self.robot.pose_to_matrix(
             api.models.Pose(
-                position=api.models.Vector3d(list(init_pose.position.to_tuple())),
-                orientation=api.models.RotationVector(list(init_pose.orientation.to_tuple())),
+                position=init_pose.position.to_tuple(), orientation=init_pose.orientation.to_tuple()
             )
         )
 
     # TODO: this will not work yet
     def compute_forward_kinematics(self, joint_positions: list[float]):
-        """Compute link transforms using the robot's methods."""
+        """Compute link transforms using the robot's methods.
+
+        ``transforms[0]`` is the base frame (mounting only, no ``kinematic_chain_offset``
+        applied yet), matching the base-link mesh's own rest position -- the offset only
+        applies from the start of the DH chain onward, i.e. to ``transforms[1:]``.
+        """
         accumulated = self.robot.pose_to_matrix(self.robot.mounting)
         transforms = [accumulated.copy()]
+        accumulated = accumulated @ self.robot.pose_to_matrix(self.robot.kinematic_chain_offset)
         for dh_param, joint_position in zip(
             self.robot.dh_parameters, joint_positions, strict=False
         ):
@@ -308,6 +333,56 @@ class RobotVisualizer:
 
         return color
 
+    def get_dh_theta_mesh_correction(
+        self, link_index: int, root_transform: np.ndarray, joint_transform: np.ndarray
+    ) -> np.ndarray:
+        """Return the extra rotation needed after flattening a GLB link mesh.
+
+        The Rerun visualizer flattens GLB meshes and logs each mesh as its own Rerun
+        entity. Once flattened, meshes no longer inherit the original GLB joint
+        transforms, so the visualizer has to recreate the missing joint-to-mesh offset.
+
+        Some GLB joint frames already contain a DH theta offset (or some other
+        rest-pose rotation relative to their mesh geometry). Applying the offset again
+        would rotate those meshes twice.
+
+        Apply the extra correction only when static zero-pose frame checks show that
+        the flattened GLB mesh needs it:
+        - if the DH zero-pose joint origin and GLB joint origin differ, do not rotate
+          around the DH origin because that would move the mesh incorrectly;
+        - if the origins match but the orientations differ, solve directly for the
+          rotation that reconciles the GLB rest-pose frame with the DH zero-pose frame,
+          rather than only ever testing a Z-axis rotation by the DH theta value. A
+          plain Z-axis test previously missed nodes whose rest-pose mismatch is exactly
+          180 degrees: rotating an already-180-degrees-off frame by another 180 degrees
+          around world Z does not generally cancel the mismatch unless the frames
+          happen to commute, so some wrist/flange nodes stayed uncorrected even though
+          a (non-Z-axis) rotation was needed and computable from the same data.
+        """
+        identity_transform = np.eye(4)
+        if link_index >= len(self.zero_link_transforms_without_mounting):
+            return identity_transform
+
+        root_rotation = root_transform[:3, :3]
+        zero_link_transform = self.zero_link_transforms_without_mounting[link_index]
+        glb_joint_position = root_rotation @ (joint_transform[:3, 3] * 1000)
+        if np.linalg.norm(zero_link_transform[:3, 3] - glb_joint_position) > 1.0:
+            return identity_transform
+
+        base_rotation = root_rotation.T @ zero_link_transform[:3, :3]
+        target_rotation = root_rotation @ joint_transform[:3, :3].T
+
+        # Exact rotation such that base_rotation @ correction @ target_rotation == I,
+        # i.e. the rotation that makes the flattened mesh's zero-pose orientation match
+        # the DH-predicted zero-pose orientation exactly, whatever that rotation is.
+        correction_rotation = base_rotation.T @ target_rotation.T
+        if Rotation.from_matrix(correction_rotation).magnitude() < 1e-6:
+            return identity_transform
+
+        correction_transform = np.eye(4)
+        correction_transform[:3, :3] = correction_rotation
+        return correction_transform
+
     def get_transform_matrix(self):
         """
         Creates a transformation matrix that converts from glTF's right-handed Y-up
@@ -337,14 +412,14 @@ class RobotVisualizer:
             # if the dh parameters are not at 0,0,0 from the mesh we have to move the first mesh joint
             if "J00" in joint_name:
                 base_transform_, _ = self.scene.graph.get(frame_to=joint_name)
-                base_transform = base_transform_.copy()
+                base_transform = _copy_graph_matrix(base_transform_)
             base_transform[:3, 3] *= 1000
 
             # if the mesh has the pivot not in the center, we need to adjust the transform
             cumulative_transform, _ = self.scene.graph.get(
                 frame_to=self.parent_nodes_dict[geom.metadata.get("node")]
             )
-            ctransform = cumulative_transform.copy()
+            ctransform = _copy_graph_matrix(cumulative_transform)
 
             # scale positions to mm
             ctransform[:3, 3] *= 1000
@@ -426,7 +501,7 @@ class RobotVisualizer:
                         collider.pose.orientation[0],
                         collider.pose.orientation[1],
                         collider.pose.orientation[2],
-                        collider.pose.orientation[3],
+                        collider.pose.orientation[3],  # ty: ignore[index-out-of-bounds]
                     ]
                 )
                 transform[:3, :3] = rot_mat.as_matrix()
@@ -546,7 +621,7 @@ class RobotVisualizer:
         # Convex hull geometry
         elif isinstance(geometry.shape, api.models.ConvexHull):
             polygons = HullVisualizer.compute_hull_outlines_from_points(
-                np.array([v.root for v in geometry.shape.vertices])
+                np.array([v for v in geometry.shape.vertices])
             )
 
             if polygons:
@@ -730,25 +805,20 @@ class RobotVisualizer:
 
                     # calculate the inverse transform to get the mesh in the correct position
                     cumulative_transform, _ = self.scene.graph.get(frame_to=joint_name)
-                    ctransform = cumulative_transform.copy()
+                    ctransform = _copy_graph_matrix(cumulative_transform)
                     inverse_transform = np.linalg.inv(ctransform)
-
-                    # DH theta is rotated, rotate mesh around z in direction of theta
-                    rotation_matrix_z_4x4 = np.eye(4)
-                    if len(self.robot.dh_parameters) > link_index:
-                        theta = self.robot.dh_parameters[link_index].theta or 0.0
-                        rotation_matrix_z_4x4[:3, :3] = Rotation.from_euler(
-                            "z", theta, degrees=False
-                        ).as_matrix()
 
                     # scale positions to mm
                     inverse_transform[:3, 3] *= 1000
 
                     root_transform = self.get_transform_matrix()
+                    theta_correction_transform = self.get_dh_theta_mesh_correction(
+                        link_index, root_transform, ctransform
+                    )
 
                     transform = root_transform @ inverse_transform
 
-                    final_transform = link_transform @ rotation_matrix_z_4x4 @ transform
+                    final_transform = link_transform @ theta_correction_transform @ transform
 
                     self.init_mesh(entity_path, geom, joint_name)
                     log_geometry(entity_path, final_transform)
@@ -790,10 +860,13 @@ class RobotVisualizer:
         if not trajectory.joint_positions:
             return
 
-        all_joints = np.array([jp.root for jp in trajectory.joint_positions], dtype=np.float64)
+        all_joints = np.array(trajectory.joint_positions, dtype=np.float64)
 
         mounting_matrix = self.robot.pose_to_matrix(self.robot.mounting)
-        all_transforms = _batch_dh_transforms(self.robot.dh_parameters, all_joints, mounting_matrix)
+        kinematic_chain_offset_matrix = self.robot.pose_to_matrix(self.robot.kinematic_chain_offset)
+        all_transforms = _batch_dh_transforms(
+            self.robot.dh_parameters, all_joints, mounting_matrix, kinematic_chain_offset_matrix
+        )
 
         link_positions: dict[str, list] = {}
         link_rotations: dict[str, list] = {}
@@ -820,21 +893,18 @@ class RobotVisualizer:
                         geom.metadata = {"node": node_name}
                         filtered_geoms.append(geom)
 
-                # DH theta is rotated, rotate mesh around z in direction of theta
-                rotation_matrix_z_4x4 = np.eye(4)
-                if len(self.robot.dh_parameters) > link_index:
-                    theta = self.robot.dh_parameters[link_index].theta or 0.0
-                    rotation_matrix_z_4x4[:3, :3] = Rotation.from_euler(
-                        "z", theta, degrees=False
-                    ).as_matrix()
-
                 # Calculate the inverse transform to get the mesh in the correct position
                 cumulative_transform, _ = self.scene.graph.get(frame_to=joint_name)
-                inverse_transform = np.linalg.inv(cumulative_transform.copy())
+                ctransform = _copy_graph_matrix(cumulative_transform)
+                inverse_transform = np.linalg.inv(ctransform)
                 # Scale positions to mm
                 inverse_transform[:3, 3] *= 1000
 
-                static_part = rotation_matrix_z_4x4 @ root_transform @ inverse_transform
+                theta_correction_transform = self.get_dh_theta_mesh_correction(
+                    link_index, root_transform, ctransform
+                )
+
+                static_part = theta_correction_transform @ root_transform @ inverse_transform
                 final_transforms = np.matmul(link_transforms_batch, static_part)
 
                 for geom in filtered_geoms:

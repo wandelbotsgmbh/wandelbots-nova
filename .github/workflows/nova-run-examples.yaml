@@ -60,18 +60,68 @@ jobs:
       PORTAL_PROD_INSTANCE_ID: ${{ steps.create.outputs.PORTAL_PROD_INSTANCE_ID }}
       PORTAL_PROD_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
 
+  create_motion_group_models:
+    needs: [setup-instance]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up Python environment
+        run: |
+          pip install uv
+          uv sync
+
+      - name: Decode output secrets
+        uses: cloudposse/github-action-secret-outputs@main
+        id: role
+        with:
+          secret: ${{ secrets.GPG_PASSWORD }}
+          op: decode
+          in: ${{ needs.setup-instance.outputs.PORTAL_PROD_ACCESS_TOKEN }}
+
+      - name: Generate motion group models
+        env:
+          NOVA_API: https://${{ needs.setup-instance.outputs.PORTAL_PROD_HOST }}
+          NOVA_ACCESS_TOKEN: ${{ steps.role.outputs.out }}
+        run: |
+          uv run python ./nova/helper_scripts/create_motion_group_models.py
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add nova/cell/motion_group_models.py
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update motion group models"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
+
   # This job runs the integration tests and examples
   test-integration:
     runs-on: ubuntu-latest
-    needs: setup-instance
+    needs: [setup-instance, create_motion_group_models]
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
         include:
           # single entry for the whole integration‑test batch
+          # NOTE: no `-s` — let pytest capture stdout/logs and only print them for
+          # failing tests; otherwise every passing test dumps the per-API-call INFO
+          # logs and the result log becomes huge.
           - id: integration
-            run_cmd: "pytest -rs -s -v -m integration"
+            run_cmd: "pytest -rs -v -m integration"
           # each example gets its own matrix entry
           - id: start_here
             run_cmd: "python examples/start_here.py"
@@ -79,12 +129,20 @@ jobs:
             run_cmd: "python examples/plan_and_execute.py"
           - id: move_multiple_robots
             run_cmd: "python examples/move_multiple_robots.py"
+          - id: multi_motion_group
+            run_cmd: "python examples/multi_motion_group.py"
+          - id: bus_io_sync_two_controllers
+            run_cmd: "python examples/bus_io_sync_two_controllers.py"
+          # collision-free (RRT) examples are not run in CI: the endpoint is
+          # flaky/unsupported on the virtual instance (see the entry below).
+          # - id: multi_motion_group_planning
+          #   run_cmd: "python examples/multi_motion_group_planning.py"
           # - id: multi_step_movement_with_collision_free
           #   run_cmd: "python examples/multi_step_movement_with_collision_free.py"
-          - id: run_wandelscript_file
-            run_cmd: "python examples/run_wandelscript_file.py"
           - id: welding
             run_cmd: "python examples/welding.py"
+          - id: datasets
+            run_cmd: "python examples/datasets.py"
           # TODO: starting rerun in the CI is flaky
           # - id: collision_setup
           #   run_cmd: "python examples/collision_setup.py"

@@ -35,10 +35,7 @@ def _make_dh_parameters() -> list[api.models.DHParameter]:
 
 def _make_mounting_pose() -> api.models.Pose:
     """Non-identity mounting pose."""
-    return api.models.Pose(
-        position=api.models.Vector3d([10.0, 20.0, 30.0]),
-        orientation=api.models.RotationVector([0.1, 0.2, 0.3]),
-    )
+    return api.models.Pose(position=(10.0, 20.0, 30.0), orientation=(0.1, 0.2, 0.3))
 
 
 SAMPLE_JOINTS: list[list[float]] = [
@@ -71,7 +68,7 @@ class TestBatchDHTransforms:
         mounting_matrix = robot.pose_to_matrix(mounting_pose)
 
         all_joints = np.array(SAMPLE_JOINTS)  # (N, 3)
-        batch_result = _batch_dh_transforms(dh_params, all_joints, mounting_matrix)
+        batch_result = _batch_dh_transforms(dh_params, all_joints, mounting_matrix, np.eye(4))
 
         # batch_result shape: (num_links+1, N, 4, 4)
         num_links_plus_one = len(dh_params) + 1
@@ -93,7 +90,7 @@ class TestBatchDHTransforms:
         mounting_matrix = np.eye(4)
 
         all_joints = np.zeros((1, len(dh_params)))
-        batch_result = _batch_dh_transforms(dh_params, all_joints, mounting_matrix)
+        batch_result = _batch_dh_transforms(dh_params, all_joints, mounting_matrix, np.eye(4))
 
         np.testing.assert_allclose(
             batch_result[0, 0], np.eye(4), atol=1e-12, err_msg="Link-0 should be identity"
@@ -110,7 +107,7 @@ class TestBatchDHTransforms:
         joint_value = pi / 4
         all_joints = np.array([[joint_value]])
 
-        batch_result = _batch_dh_transforms(dh_params, all_joints, mounting_matrix)
+        batch_result = _batch_dh_transforms(dh_params, all_joints, mounting_matrix, np.eye(4))
 
         # Build the expected DH transform manually
         c, s = np.cos(joint_value), np.sin(joint_value)
@@ -135,7 +132,7 @@ class TestBatchDHTransforms:
         joint_value = 0.5
         all_joints = np.array([[joint_value]])
 
-        batch_result = _batch_dh_transforms(dh_params, all_joints, mounting_matrix)
+        batch_result = _batch_dh_transforms(dh_params, all_joints, mounting_matrix, np.eye(4))
 
         # With reverse, effective theta = 0 + joint_value * (-1) = -0.5
         effective_theta = -joint_value
@@ -144,6 +141,26 @@ class TestBatchDHTransforms:
             [[c, -s, 0.0, 0.0], [s, c, 0.0, 0.0], [0.0, 0.0, 1.0, 100.0], [0.0, 0.0, 0.0, 1.0]]
         )
         np.testing.assert_allclose(batch_result[1, 0], expected, atol=1e-12)
+
+    def test_kinematic_chain_offset_applied_from_first_link(self):
+        """The offset applies from index 1 onward, leaving the base frame untouched."""
+        dh_params = _make_dh_parameters()
+        mounting_matrix = np.eye(4)
+        offset_matrix = np.eye(4)
+        offset_matrix[:3, 3] = [5.0, -7.0, 3.0]
+
+        all_joints = np.zeros((1, len(dh_params)))
+        with_offset = _batch_dh_transforms(dh_params, all_joints, mounting_matrix, offset_matrix)
+        without_offset = _batch_dh_transforms(dh_params, all_joints, mounting_matrix, np.eye(4))
+
+        # Base frame (index 0) is the mounting only, unaffected by the offset.
+        np.testing.assert_allclose(with_offset[0, 0], without_offset[0, 0], atol=1e-12)
+
+        # With identity mounting, every DH-chain link is left-multiplied by the offset.
+        for link_idx in range(1, len(dh_params) + 1):
+            np.testing.assert_allclose(
+                with_offset[link_idx, 0], offset_matrix @ without_offset[link_idx, 0], atol=1e-9
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -86,7 +86,7 @@ class TrajectoryTuner:
                 command = data.get("command")
                 speed = data.get("speed")
                 if speed is not None:
-                    speed = pydantic.PositiveInt(speed)
+                    speed = pydantic.TypeAdapter(pydantic.PositiveInt).validate_python(speed)
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning(f"Invalid message format in trajectory-cursor: {e}")
                 return
@@ -179,7 +179,7 @@ class TrajectoryTuner:
                 await execution_task
                 continue_tuning_event.clear()
                 current_location = (
-                    current_cursor._current_location
+                    current_cursor.current_location
                 )  # TODO is this the cleanest way to get the current location?
 
                 # somehow obtain the modified actions for the next iteration

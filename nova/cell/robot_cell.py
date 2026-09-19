@@ -182,7 +182,7 @@ class IODevice(InputDevice, OutputDevice, Protocol):
 class AbstractDeviceState(Protocol):
     """A state of a device"""
 
-    def __eq__(self, other: "AbstractDeviceState") -> bool:
+    def __eq__(self, other: "AbstractDeviceState") -> bool:  # ty: ignore[invalid-method-override]
         """Check if the state is equal to another state"""
 
 
@@ -218,21 +218,36 @@ class AbstractRobot(Device):
     def id(self):
         return self._id
 
+    def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
+        return False
+
+    async def _execute_direct_non_motion_actions(self, actions: list[Action]) -> None:
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support direct execution of non-motion action lists"
+        )
+
     @abstractmethod
     async def _plan(
         self,
         actions: list[Action],
-        tcp: str,
+        tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
+        payload_override: str | api.models.Payload | None = None,
+        singularity_handling: api.models.SingularityHandling | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
         Args:
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
+                position of the robot is used.
+            payload_override (str | api.models.Payload | None): Override for the dynamics payload used by the planner.
+                Only use this when you are certain the physical controller is configured with the same payload.
+            singularity_handling (api.models.SingularityHandling | None): Strategy for handling wrist singularities
+                along a cartesian path. If None, the API default (NONE) is used. Experimental.
 
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
@@ -241,20 +256,36 @@ class AbstractRobot(Device):
     async def plan(
         self,
         actions: ActionsLike,
-        tcp: str,
+        tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
+        payload_override: str | api.models.Payload | None = None,
+        singularity_handling: api.models.SingularityHandling | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions.
 
         Args:
             actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
                 Only motion actions are considered for planning.
-            tcp (str): The id of the tool center point (TCP)
-            start_joint_position: the initial position of the robot
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
+                position of the robot is used.
             motion_group_setup (api.models.MotionGroupSetup | None): The motion group setup to be used for planning.
                  If None, the motion group setup will be fetched from the robot.
+            payload_override (str | api.models.Payload | None): Override for the dynamics payload
+                used by the planner. A string is resolved against the controller's registered
+                payloads; an :class:`api.models.Payload` instance is used directly. When ``None``,
+                the payload is resolved using the precedence documented in
+                :meth:`MotionGroup.get_setup`. When ``motion_group_setup`` is also provided, this
+                overrides its ``payload`` field.
+
+                .. warning:: Only use this when you are certain the physical controller is
+                   configured with the same payload. In most cases the automatic resolution
+                   is correct and should be preferred.
+
+            singularity_handling (api.models.SingularityHandling | None): Strategy for handling
+                wrist singularities along a cartesian path. If None, the API default (NONE) is
+                used. Experimental.
 
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
@@ -274,6 +305,8 @@ class AbstractRobot(Device):
                 tcp=tcp,
                 start_joint_position=start_joint_position,
                 motion_group_setup=motion_group_setup,
+                payload_override=payload_override,
+                singularity_handling=singularity_handling,
             )
 
             # Automatic viewer integration - log planning results if viewers are active
@@ -287,7 +320,7 @@ class AbstractRobot(Device):
             raise planning_error
 
     async def _log_planning_results(
-        self, actions: list[Action], trajectory: api.models.JointTrajectory, tcp: str
+        self, actions: list[Action], trajectory: api.models.JointTrajectory, tcp: str | None
     ) -> None:
         """Log planning results to active viewers if any are configured."""
         from nova.cell.motion_group import MotionGroup
@@ -304,7 +337,9 @@ class AbstractRobot(Device):
                 actions=actions, trajectory=trajectory, tcp=tcp, motion_group=self
             )
 
-    async def _log_planning_error(self, actions: list[Action], error: Exception, tcp: str) -> None:
+    async def _log_planning_error(
+        self, actions: list[Action], error: Exception, tcp: str | None
+    ) -> None:
         """Log planning error to active viewers if any are configured."""
         from nova.cell.motion_group import MotionGroup
         from nova.viewers import get_viewer_manager
@@ -321,31 +356,39 @@ class AbstractRobot(Device):
     def _execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
+                execution progress, in milliseconds. None falls back to
+                NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
+                rate (the server's behavior when no rate is requested).
         """
 
     async def stream_execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         actions: ActionsLike,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -354,11 +397,15 @@ class AbstractRobot(Device):
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             actions (list[Action] | Action | None): The actions to be executed. Defaults to None.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
+                execution progress, in milliseconds. None falls back to
+                NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
+                rate (the server's behavior when no rate is requested).
         """
         actions_list = _normalize_actions(actions)
 
@@ -369,6 +416,7 @@ class AbstractRobot(Device):
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
+            state_stream_rate_msecs=state_stream_rate_msecs,
         )
 
         async with aclosing(motion_state_stream) as motion_state_stream:
@@ -378,21 +426,27 @@ class AbstractRobot(Device):
     async def execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         actions: ActionsLike,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> None:
         """Execute a planned motion
 
         Args:
             joint_trajectory (api.models.JointTrajectory): The planned joint trajectory
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             actions (list[Action] | Action): The actions to be executed.
             movement_controller (MovementController): The movement controller to be used. Defaults to move_forward
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
+                execution progress, in milliseconds. None falls back to
+                NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
+                rate (the server's behavior when no rate is requested).
         """
 
         motion_state_stream = self.stream_execute(
@@ -402,6 +456,7 @@ class AbstractRobot(Device):
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
+            state_stream_rate_msecs=state_stream_rate_msecs,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for _ in motion_state_stream:
@@ -410,30 +465,56 @@ class AbstractRobot(Device):
     async def stream_plan_and_execute(
         self,
         actions: ActionsLike,
-        tcp: str,
+        tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        payload_override: str | api.models.Payload | None = None,
+        singularity_handling: api.models.SingularityHandling | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncIterable[MotionState]:
         """Plan and execute a trajectory for the given actions.
 
         Args:
             actions (list[Action] | Action): The actions to be planned and executed.
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position (tuple[float, ...] | None): The starting joint position.
             movement_controller (MovementController | None): The movement controller to be used. Defaults to move_forward.
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            payload_override (str | api.models.Payload | None): Override for the dynamics payload
+                used by the planner. See :meth:`plan` for resolution rules and caveats.
+            singularity_handling (api.models.SingularityHandling | None): Strategy for handling
+                wrist singularities along a cartesian path. If None, the API default (NONE) is
+                used. Experimental.
+            state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
+                execution progress, in milliseconds. None falls back to
+                NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
+                rate (the server's behavior when no rate is requested).
         """
-        joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
+        actions_list = _normalize_actions(actions)
+
+        if self._supports_direct_non_motion_actions(actions_list):
+            await self._execute_direct_non_motion_actions(actions_list)
+            return
+
+        joint_trajectory = await self.plan(
+            actions_list,
+            tcp,
+            start_joint_position=start_joint_position,
+            payload_override=payload_override,
+            singularity_handling=singularity_handling,
+        )
         motion_state_stream = self.stream_execute(
             joint_trajectory,
             tcp,
-            actions,
+            actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
+            state_stream_rate_msecs=state_stream_rate_msecs,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for motion_state in motion_state_stream:
@@ -442,34 +523,60 @@ class AbstractRobot(Device):
     async def plan_and_execute(
         self,
         actions: ActionsLike,
-        tcp: str,
+        tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        payload_override: str | api.models.Payload | None = None,
+        singularity_handling: api.models.SingularityHandling | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> None:
         """Plan and execute a trajectory for the given actions.
 
         Args:
             actions (list[Action] | Action): The actions to be planned and executed.
-            tcp (str): The id of the tool center point (TCP)
+            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position (tuple[float, ...] | None): The starting joint position.
             movement_controller (MovementController | None): The movement controller to be used. Defaults to move_forward.
             start_on_io (StartOnIO | None): The start on IO. If none, does not wait for IO. Defaults to None.
             pause_on_io (PauseOnIO | None): The pause on IO. If none, does not pause on IO. Defaults to None.
+            payload_override (str | api.models.Payload | None): Override for the dynamics payload
+                used by the planner. See :meth:`plan` for resolution rules and caveats.
+            singularity_handling (api.models.SingularityHandling | None): Strategy for handling
+                wrist singularities along a cartesian path. If None, the API default (NONE) is
+                used. Experimental.
+            state_stream_rate_msecs (int | None): Rate of the motion-group state stream that feeds
+                execution progress, in milliseconds. None falls back to
+                NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
+                rate (the server's behavior when no rate is requested).
 
         Raises:
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
                 pose in a collision-free motion.
         """
-        joint_trajectory = await self.plan(actions, tcp, start_joint_position=start_joint_position)
+        actions_list = _normalize_actions(actions)
+
+        if self._supports_direct_non_motion_actions(actions_list):
+            await self._execute_direct_non_motion_actions(actions_list)
+            return
+
+        joint_trajectory = await self.plan(
+            actions_list,
+            tcp,
+            start_joint_position=start_joint_position,
+            payload_override=payload_override,
+            singularity_handling=singularity_handling,
+        )
         await self.execute(
             joint_trajectory,
             tcp,
-            actions,
+            actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
+            state_stream_rate_msecs=state_stream_rate_msecs,
         )
 
     @abstractmethod
@@ -583,9 +690,9 @@ class RobotCell:
         devices = {"timer": timer, **kwargs}
         # TODO: if "timer" has not the same id it cannot correctly be serialized/deserialized currently
         for device_name, device in devices.items():
-            if device is not None and device_name != device.id:
+            if device is not None and device_name != device.id:  # ty: ignore[unresolved-attribute]
                 raise ValueError(
-                    f"The device name should match its name in the robotcell but are '{device_name}' and '{device.id}'"
+                    f"The device name should match its name in the robotcell but are '{device_name}' and '{device.id}'"  # ty: ignore[unresolved-attribute]
                 )
         self._devices = devices
         self._device_exit_stack = AsyncExitStack()

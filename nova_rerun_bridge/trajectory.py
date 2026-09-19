@@ -11,6 +11,7 @@ from nova.types import Pose
 from nova_rerun_bridge.collision_scene import extract_link_chain_and_tcp
 from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.dh_robot import DHRobot
+from nova_rerun_bridge.model_loader import load_model_data
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
 
@@ -109,9 +110,13 @@ async def log_motion(
         raise ValueError("DH parameters cannot be None")
 
     mounting = motion_group_setup.mounting or api.models.Pose(
-        position=api.models.Vector3d([0, 0, 0]), orientation=api.models.RotationVector([0, 0, 0])
+        position=(0, 0, 0), orientation=(0, 0, 0)
     )
-    robot = DHRobot(dh_parameters=motion_group_description.dh_parameters, mounting=mounting)
+    robot = DHRobot(
+        dh_parameters=motion_group_description.dh_parameters,
+        mounting=mounting,
+        kinematic_chain_offset=motion_group_description.kinematic_chain_offset,
+    )
 
     # TODO: merge collision_setups
     collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
@@ -123,6 +128,8 @@ async def log_motion(
 
     # Get or create visualizer from cache
     if motion_group.id not in _visualizer_cache:
+        model_data = await load_model_data(motion_group_model, motion_group._api_client)
+
         collision_link_chain, collision_tcp = extract_link_chain_and_tcp(
             collision_setups=collision_setups
         )
@@ -132,19 +139,12 @@ async def log_motion(
         if motion_group_description.safety_tool_colliders is not None:
             tool_colliders = motion_group_description.safety_tool_colliders.get(tcp)
             if tool_colliders is not None:
-                tcp_geometries = dict(tool_colliders.root)
+                tcp_geometries = dict(tool_colliders)
 
         # Build safety link chain
         safety_link_chain: list[api.models.LinkChain] = []
         if motion_group_description.safety_link_colliders is not None:
-            safety_link_chain = [
-                api.models.LinkChain(
-                    [
-                        api.models.Link(link.root)
-                        for link in motion_group_description.safety_link_colliders
-                    ]
-                )
-            ]
+            safety_link_chain = [list(motion_group_description.safety_link_colliders)]
 
         _visualizer_cache[motion_group.id] = RobotVisualizer(
             robot=robot,
@@ -152,7 +152,7 @@ async def log_motion(
             tcp_geometries=tcp_geometries,
             static_transform=False,
             base_entity_path=f"motion/{motion_group_id}",
-            motion_group_model=motion_group_model,
+            model_data=model_data,
             collision_link_chain=collision_link_chain,
             collision_tcp=collision_tcp,
             show_collision_link_chain=show_collision_link_chain,
@@ -207,7 +207,7 @@ async def log_trajectory(
     motion_group_id = motion_group.id
 
     # TODO: calculate tcp pose from joint positions
-    joint_positions = [tuple(p.root) for p in trajectory.joint_positions]
+    joint_positions = [tuple(p) for p in trajectory.joint_positions]
     tcp_poses = await motion_group.forward_kinematics(joints=joint_positions, tcp=tcp)
     positions = [[p.position.x, p.position.y, p.position.z] for p in tcp_poses]
 
@@ -221,7 +221,7 @@ async def log_trajectory(
     # Calculate and log joint positions
     line_segments_batch = []
     for joint_position in trajectory.joint_positions:
-        robot_joint_positions = robot.calculate_joint_positions(joint_positions=joint_position.root)
+        robot_joint_positions = robot.calculate_joint_positions(joint_positions=joint_position)
         line_segments_batch.append([robot_joint_positions])  # Wrap each as a line strip
 
     rr.send_columns(
@@ -262,7 +262,7 @@ def log_tcp_pose(
 
     # Log TCP and tool asset
     tcp_entity_path = f"/motion/{motion_group_id}/tcp_position"
-    rr.log(tcp_entity_path, rr.Transform3D(clear=False, axis_length=100))
+    rr.log(tcp_entity_path, rr.TransformAxes3D(axis_length=100))
     if tool_asset:
         rr.log(tcp_entity_path, rr.Asset3D(path=tool_asset), static=True)
 

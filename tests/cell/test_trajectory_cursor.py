@@ -1,11 +1,18 @@
 """Tests for TrajectoryCursor action index and location logic."""
 
+import asyncio
+import contextlib
+import json
 from unittest.mock import MagicMock
 
 import pytest
 
 from nova.actions.motions import lin
-from nova.cell.movement_controller.trajectory_cursor import MovementOption, TrajectoryCursor
+from nova.cell.movement_controller.trajectory_cursor import (
+    MovementOption,
+    TrajectoryCursor,
+    action_index_for_location,
+)
 from nova.types import Pose
 
 
@@ -14,7 +21,7 @@ def create_cursor(num_actions: int, initial_location: float) -> TrajectoryCursor
     actions = [lin(Pose((i * 100, 0, 0, 0, 0, 0))) for i in range(num_actions)]
 
     joint_trajectory = MagicMock()
-    joint_trajectory.locations = [MagicMock(root=float(i)) for i in range(num_actions + 1)]
+    joint_trajectory.locations = [float(i) for i in range(num_actions + 1)]
 
     cursor = object.__new__(TrajectoryCursor)
     cursor.joint_trajectory = joint_trajectory
@@ -32,7 +39,7 @@ def create_cursor(num_actions: int, initial_location: float) -> TrajectoryCursor
     [
         pytest.param(0.0, 0, id="at_trajectory_start"),
         pytest.param(0.5, 0, id="midway_through_first_action"),
-        pytest.param(1.0, 1, id="at_action_boundary"),
+        pytest.param(1.0, 0, id="at_action_boundary_belongs_to_finished_action"),
         pytest.param(1.7, 1, id="midway_through_middle_action"),
         pytest.param(2.5, 2, id="at_last_action"),
         pytest.param(3.0, 2, id="at_trajectory_end_clamps_to_last"),
@@ -117,7 +124,7 @@ def test_previous_action_start(location, expected):
     [
         pytest.param(3, 0.0, False, id="at_trajectory_start_returns_none"),
         pytest.param(3, 0.5, False, id="in_first_action_returns_none"),
-        pytest.param(3, 1.0, True, id="at_second_action_boundary"),
+        pytest.param(3, 1.0, False, id="at_first_action_end_boundary_returns_none"),
         pytest.param(3, 1.5, True, id="in_second_action"),
         pytest.param(3, 2.5, True, id="in_last_action"),
         pytest.param(1, 0.5, False, id="single_action_returns_none"),
@@ -190,7 +197,7 @@ def create_cursor_without_actions(end_location: float, initial_location: float) 
     """Helper to create a TrajectoryCursor without actions for testing."""
     cursor = object.__new__(TrajectoryCursor)
     cursor.joint_trajectory = MagicMock()
-    cursor.joint_trajectory.locations = [MagicMock(root=0.0), MagicMock(root=end_location)]
+    cursor.joint_trajectory.locations = [0.0, end_location]
     cursor.actions = None
     cursor._current_location = initial_location
     cursor._target_location = initial_location
@@ -245,3 +252,149 @@ def test_motion_event_with_no_actions():
     # Should serialize without error
     json_data = event.model_dump_json()
     assert '"current_action":null' in json_data or '"current_action": null' in json_data
+
+
+@pytest.mark.parametrize(
+    "location, num_actions, expected",
+    [
+        pytest.param(0.0, 3, 0, id="at_start"),
+        pytest.param(0.5, 3, 0, id="within_first"),
+        pytest.param(1.0, 3, 0, id="at_boundary_belongs_to_finished_action"),
+        pytest.param(2.9, 3, 2, id="within_last"),
+        pytest.param(3.0, 3, 2, id="at_end_clamps"),
+        pytest.param(9.0, 3, 2, id="beyond_end_clamps"),
+        pytest.param(0.0, 1, 0, id="single_action_start"),
+        pytest.param(1.0, 1, 0, id="single_action_end_clamps"),
+    ],
+)
+def test_action_index_for_location(location, num_actions, expected):
+    assert action_index_for_location(location, num_actions) == expected
+
+
+def test_motion_event_includes_source_spans():
+    """Forward motion highlights the last visited action and targets the next one."""
+    cursor = create_cursor(num_actions=3, initial_location=1.5)
+    # Forward through segment [1, 2]: highlight action at 1.0, target action at 2.0.
+    last_visited = cursor._action_at_location(1.0)
+    heading_to = cursor._action_at_location(2.0)
+
+    event = cursor._get_motion_event(forward=True)
+
+    assert event.current_action_source is not None
+    assert event.current_action_source.start_line is not None
+    assert event.current_action is last_visited
+    assert event.current_action_source == last_visited.source_location
+    assert event.target_location == 2.0
+    assert event.target_action is heading_to
+    assert event.target_action_source == heading_to.source_location
+
+
+def test_motion_event_backward_highlights_last_visited():
+    """Backward motion highlights the action just left and targets the lower boundary."""
+    cursor = create_cursor(num_actions=3, initial_location=1.5)
+    # Backward through segment [1, 2]: highlight action at 2.0, target action at 1.0.
+    last_visited = cursor._action_at_location(2.0)
+    heading_to = cursor._action_at_location(1.0)
+
+    event = cursor._get_motion_event(forward=False)
+
+    assert event.current_action is last_visited
+    assert event.current_action_source == last_visited.source_location
+    assert event.target_location == 1.0
+    assert event.target_action is heading_to
+    assert event.target_action_source == heading_to.source_location
+
+
+def test_motion_event_source_spans_serialize():
+    """Source spans are part of the serialized payload sent to the editor."""
+    cursor = create_cursor(num_actions=2, initial_location=0.0)
+    event = cursor._get_motion_event()
+
+    payload = json.loads(event.model_dump_json())
+    assert payload["current_action_source"] is not None
+    assert payload["current_action_source"]["start_line"] is not None
+    assert payload["current_action_source"] == event.current_action_source.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Non-motion actions in the incoming action list (Option B)
+# ---------------------------------------------------------------------------
+#
+# The planner only assigns trajectory location units to motion actions
+# (see nova.actions.container.CombinedActions.to_motion_command). When the
+# caller passes a mixed list (motions + WriteAction / WaitAction / ...), the
+# trajectory's end location matches the number of motions, not len(actions).
+#
+# The cursor must:
+#   1. not raise during construction,
+#   2. keep its motion-aligned indexing (self.actions only contains motions),
+#   3. preserve the original list (with non-motion actions in order) so that
+#      future work can emit events on traversal of non-motion actions.
+
+
+async def _silent_state_stream():
+    """An async stream that yields nothing and never completes."""
+    import asyncio as _asyncio
+
+    await _asyncio.Future()
+    yield  # pragma: no cover
+
+
+def _trajectory_for_motion_count(num_motions: int):
+    """Minimal real JointTrajectory whose end location matches num_motions."""
+    from nova import api as _api
+
+    n = num_motions + 1
+    return _api.models.JointTrajectory(
+        joint_positions=[[0.0] * 6] * n,
+        times=[float(i) for i in range(n)],
+        locations=[float(i) for i in range(n)],
+    )
+
+
+async def test_cursor_accepts_mixed_motion_and_non_motion_actions():
+    """Cursor construction must tolerate non-motion actions in the action list.
+
+    Per the planner contract, joint_trajectory.locations[-1] equals the number
+    of motion actions, not the total number of actions. The cursor must filter
+    non-motion actions from its motion-aligned ``self.actions`` while keeping
+    the original list available for future event-emission work.
+    """
+    from nova.actions.io import io_write
+
+    motions = [lin(Pose((i * 100.0, 0, 0, 0, 0, 0))) for i in range(3)]
+    write = io_write(key="digital_out[0]", value=True)
+    # Interleave so order matters for the preserved raw list.
+    actions = [motions[0], write, motions[1], motions[2]]
+
+    trajectory = _trajectory_for_motion_count(num_motions=3)
+
+    # Construction must not raise the length-mismatch ValueError.
+    cursor = TrajectoryCursor(
+        motion_id="traj-mixed",
+        motion_group_state_stream=_silent_state_stream(),
+        joint_trajectory=trajectory,
+        actions=actions,
+        initial_location=0.0,
+    )
+    try:
+        # The motion-aligned action list drives indexing and must contain
+        # only the motion actions.
+        assert cursor.actions is not None
+        assert len(cursor.actions) == 3
+        assert list(cursor.actions) == motions
+
+        # Location-to-action indexing stays consistent with the trajectory.
+        assert cursor.end_location == 3.0
+        assert cursor.current_action is motions[0]
+
+        # The original action list (with non-motion entries, in order) is
+        # preserved so the follow-up work can emit events for them.
+        assert cursor._raw_actions == tuple(actions)
+    finally:
+        # Tear down the background init task started by __init__. Cancel +
+        # await so the task is fully reaped before the test exits (avoids
+        # "Task was destroyed but it is pending!" warnings).
+        cursor._initialize_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await cursor._initialize_task

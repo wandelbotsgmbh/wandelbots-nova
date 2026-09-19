@@ -119,7 +119,7 @@ class Vector3d(pydantic.BaseModel):
         return np.concatenate([np.cos(half_angle)[None], values * np.sinc(half_angle / np.pi) / 2])
 
     def to_api_model(self) -> api.models.Vector3d:
-        return api.models.Vector3d(list(self.to_tuple()))
+        return self.to_tuple()
 
     @pydantic.model_serializer
     def serialize_model(self) -> dict[str, float]:

@@ -323,9 +323,9 @@ class RobotContext(Statement):
     ... '''
     >>> store = _run_program_debug(code).store
     >>> store['a']
-    Pose(position=Vector3d(x=0.0, y=0.0, z=7.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+    Pose(position=Vector3d(x=0.0, y=0.0, z=7.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
     >>> store['b']
-    Pose(position=Vector3d(x=0.0, y=0.0, z=11.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+    Pose(position=Vector3d(x=0.0, y=0.0, z=11.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
     """
 
     robots: list[Expression]
@@ -359,7 +359,7 @@ class SyncContext(Statement):
     ... '''
     >>> store = _run_program_debug(code).store
     >>> store['a']
-    Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+    Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
 
     >>> code = '''
     ... sync
@@ -567,7 +567,7 @@ class Atom(Rule, Generic[ElementType], ABC):
     ... '''
     >>> store = _run_program_debug(code).store
     >>> store['c']
-    Pose(position=Vector3d(x=1.0, y=2.0, z=8.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+    Pose(position=Vector3d(x=1.0, y=2.0, z=8.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
     """
 
     @abstractmethod
@@ -886,7 +886,7 @@ class Unary(Atom[ElementType]):
     ... '''
     >>> store = _run_program_debug(code).store
     >>> store['a']
-    Pose(position=Vector3d(x=-1.0, y=-2.0, z=-3.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+    Pose(position=Vector3d(x=-1.0, y=-2.0, z=-3.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
     """
 
     a: Atom[ElementType]
@@ -1182,7 +1182,7 @@ class FrameRelation(Atom[Pose]):
     ... '''
     >>> store = _run_program_debug(code).store
     >>> store["pose"]
-    Pose(position=Vector3d(x=0.0, y=10.0, z=20.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0))
+    Pose(position=Vector3d(x=0.0, y=10.0, z=20.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
     """
 
     target: Reference

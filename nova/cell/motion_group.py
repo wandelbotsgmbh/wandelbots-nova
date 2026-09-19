@@ -1,28 +1,36 @@
 import asyncio
 import logging
-from contextlib import aclosing
 from functools import partial
-from typing import AsyncGenerator, cast
+from typing import AsyncGenerator
 
 import numpy as np
 
 from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
+from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
-from nova.actions.motions import CollisionFreeMotion
+from nova.actions.motions import CartesianPTP, Circular, CollisionFreeMotion, Linear
+from nova.actions.path_trigger_resolver import (
+    has_distance_triggers,
+    has_path_triggers,
+    resolve_set_outputs,
+)
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, PlanTrajectoryFailed
 from nova.types import Pose, RobotState
 from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils.collision_setup import (
-    get_joint_position_limits_from_motion_group_setup,
     get_safety_collision_setup_from_motion_group_description,
-    motion_group_setup_from_motion_group_description,
     validate_collision_setups,
 )
 from nova.utils.joint_trajectory import combine_trajectories
-from nova.utils.motion_group_settings import update_motion_group_setup_with_motion_settings
+from nova.utils.motion_group_setup import (
+    clamp_limit_set_to_max,
+    get_joint_position_limits_from_motion_group_setup,
+    motion_group_setup_from_motion_group_description,
+    update_motion_group_setup_with_motion_settings,
+)
 
 from .movement_controller import move_forward
 from .robot_cell import AbstractRobot
@@ -114,6 +122,25 @@ def _find_and_sort_best_joint_solutions(
     return [tuple(solution) for solution in np_sorted_solutions]
 
 
+def _with_collision_setup(
+    motion_group_setup: api.models.MotionGroupSetup,
+    key: str,
+    collision_setup: api.models.CollisionSetup | None,
+) -> api.models.MotionGroupSetup:
+    """Return a copy of the setup with ``collision_setup`` registered under ``key``.
+
+    The input setup is deep-copied so the caller's instance is not mutated. The copy is
+    intentionally a deep copy even though collision scenes can be large, because we must not
+    create a side effect on the provided motion group setup.
+    """
+    motion_group_setup = motion_group_setup.model_copy(deep=True)
+    if motion_group_setup.collision_setups is None:
+        motion_group_setup.collision_setups = {}
+    if collision_setup is not None:
+        motion_group_setup.collision_setups[key] = collision_setup
+    return motion_group_setup
+
+
 class MotionGroup(AbstractRobot):
     """Manages motion planning and execution within a specified motion group."""
 
@@ -146,6 +173,41 @@ class MotionGroup(AbstractRobot):
     def current_motion(self) -> str | None:
         return self._current_motion
 
+    def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:
+        return len(actions) > 0 and all(
+            isinstance(action, (WaitAction, WriteAction)) for action in actions
+        )
+
+    async def _execute_direct_non_motion_actions(self, actions: list[Action]) -> None:
+        for action in actions:
+            if isinstance(action, WaitAction):
+                await asyncio.sleep(action.wait_for_in_seconds)
+                continue
+
+            if not isinstance(action, WriteAction):
+                raise ValueError(f"Unsupported non-motion action type: {type(action).__name__}")
+
+            if action.at is not None:
+                # Without a motion there is no path to anchor the trigger to; the
+                # write fires immediately in list order (the "no motion" collapse).
+                logger.warning(
+                    "Path trigger %r on io_write(%r) is ignored: the action list contains no "
+                    "motion, so the write fires immediately.",
+                    action.at,
+                    action.key,
+                )
+
+            if action.origin == api.models.IOOrigin.BUS_IO:
+                await self._api_client.bus_ios_api.set_bus_io_values(
+                    cell=self._cell, io_value=[action.to_api_model()]
+                )
+            else:
+                await self._api_client.controller_ios_api.set_output_values(
+                    cell=self._cell,
+                    controller=self._controller_id,
+                    io_value=[action.to_api_model()],
+                )
+
     # TODO: does this needs to be cached?
     async def _fetch_motion_group_description(self) -> api.models.MotionGroupDescription:
         return await self._api_client.motion_group_api.get_motion_group_description(
@@ -167,22 +229,131 @@ class MotionGroup(AbstractRobot):
             api.models.MotionGroupModel: The motion group model.
         """
         motion_group_description = await self._fetch_motion_group_description()
-        return motion_group_description.motion_group_model.root
+        return motion_group_description.motion_group_model
 
-    async def get_setup(self, tcp_name: str | None = None) -> api.models.MotionGroupSetup:
+    async def get_setup(
+        self, tcp_name: str | None = None, payload_override: str | api.models.Payload | None = None
+    ) -> api.models.MotionGroupSetup:
         """Get the motion group setup.
 
+        The returned setup carries a single payload that the planner uses for dynamics
+        (torque limits, acceleration scaling, ...). The payload is resolved using the
+        following precedence (first match wins):
+
+        1. If the caller passes ``payload_override`` explicitly, it is used. A string
+           is looked up in ``description.payloads`` (raises ``KeyError`` if unknown);
+           a ``Payload`` instance is used as-is (this also allows passing ad-hoc
+           payloads that are not registered on the controller).
+
+           .. warning:: Only use this if you have ensured the physical controller is
+              configured with the same payload. In most cases the automatic resolution
+              (rules 2-4) is correct and should be preferred.
+
+        2. **Convention:** if ``tcp_name`` is provided AND ``description.payloads``
+           contains an entry whose key equals ``tcp_name``, that payload is used. A
+           payload registered under the same name as a TCP is implicitly considered
+           the payload for that tool. Document/register payloads accordingly to take
+           advantage of this default.
+        3. Otherwise the active payload selected on the controller
+           (``MotionGroupState.payload``) is looked up in ``description.payloads``.
+        4. Otherwise, if exactly one payload is registered, it is used.
+        5. Otherwise no payload is set.
+
         Args:
-            tcp_name (str): The TCP to get the setup for.
+            tcp_name: The TCP to get the setup for. Also feeds into payload
+                resolution rule 2.
+            payload_override: Explicit payload override. A string resolves a
+                registered payload by name; a ``Payload`` instance is used directly.
+                Only use this when you are certain the physical controller is
+                configured with the same payload.
 
         Returns:
             api.models.MotionGroupSetup: The motion group setup.
+
+        Raises:
+            KeyError: If ``payload_override`` is a string that is not present in
+                ``description.payloads``.
         """
-        # TODO allow to specify payload
         motion_group_description = await self._fetch_motion_group_description()
-        return motion_group_setup_from_motion_group_description(
-            motion_group_description=motion_group_description, tcp_name=tcp_name
+        resolved_payload = await self._resolve_payload(
+            payload_override=payload_override,
+            tcp_name=tcp_name,
+            motion_group_description=motion_group_description,
         )
+        return motion_group_setup_from_motion_group_description(
+            motion_group_description=motion_group_description,
+            tcp_name=tcp_name,
+            payload=resolved_payload,
+        )
+
+    @staticmethod
+    def _log_payload_override(name: str) -> None:
+        logger.info(
+            "Using explicit payload override '%s' for planning. "
+            "Ensure the physical controller is configured with the same payload.",
+            name,
+        )
+
+    async def _resolve_payload(
+        self,
+        payload_override: str | api.models.Payload | None,
+        tcp_name: str | None,
+        motion_group_description: api.models.MotionGroupDescription,
+    ) -> api.models.Payload | None:
+        """Resolve a payload using the precedence documented in :meth:`get_setup`."""
+        payloads = motion_group_description.payloads or {}
+
+        # Rule 1: explicit caller arg
+        if isinstance(payload_override, api.models.Payload):
+            self._log_payload_override(payload_override.name)
+            return payload_override
+        if isinstance(payload_override, str):
+            self._log_payload_override(payload_override)
+            return payloads[payload_override]
+
+        # Rule 2: TCP-name convention
+        if tcp_name is not None and tcp_name in payloads:
+            return payloads[tcp_name]
+
+        # Rule 3: active payload from controller state
+        try:
+            state = await self._fetch_state()
+        except Exception as e:
+            logger.debug(f"Could not fetch motion group state for payload resolution: {e}")
+            state = None
+        active_id = state.payload if state is not None else None
+        if active_id is not None and active_id in payloads:
+            return payloads[active_id]
+
+        # Rule 4: single registered payload
+        if len(payloads) == 1:
+            return next(iter(payloads.values()))
+
+        # Rule 5: nothing
+        return None
+
+    async def payloads(self) -> dict[str, api.models.Payload]:
+        """Return the payloads registered on the controller for this motion group.
+
+        Maps payload id to its full :class:`api.models.Payload` configuration.
+        """
+        motion_group_description = await self._fetch_motion_group_description()
+        return dict(motion_group_description.payloads or {})
+
+    async def payload_names(self) -> list[str]:
+        """Return the ids of the payloads registered for this motion group."""
+        return list((await self.payloads()).keys())
+
+    async def active_payload_name(self) -> str | None:
+        """Return the id of the payload currently selected on the controller, if any."""
+        return (await self._fetch_state()).payload
+
+    async def active_payload(self) -> api.models.Payload | None:
+        """Return the :class:`api.models.Payload` currently selected on the controller."""
+        active = await self.active_payload_name()
+        if active is None:
+            return None
+        return (await self.payloads()).get(active)
 
     async def get_mounting(self) -> Pose | None:
         """Get the mounting of the motion group.
@@ -212,11 +383,11 @@ class MotionGroup(AbstractRobot):
         description = await self._fetch_motion_group_description()
         collision_model = (
             await self._api_client.motion_group_models_api.get_motion_group_collision_model(
-                motion_group_model=description.motion_group_model.root
+                motion_group_model=description.motion_group_model
             )
         )
 
-        return api.models.LinkChain([api.models.Link(link) for link in collision_model])
+        return list(collision_model)
 
     # TODO: check the response type, it is not easy to use
     # API returns list of list of list of float ( 3 inner lists )
@@ -239,7 +410,7 @@ class MotionGroup(AbstractRobot):
                 When provided, the calculation will avoid configurations that lead to collisions.
                 If link_chain or tool are not specified in the collision setup, they will be automatically populated
                 from the motion group's default collision setup to ensure robot and tool geometry are included.
-                Check `nova.utils.collision_setup.motion_group_setup_from_motion_group_description` for default collision setups used for the inverse kinematics calculation.
+                Check `nova.utils.motion_group_setup.motion_group_setup_from_motion_group_description` for default collision setups used for the inverse kinematics calculation.
 
         Returns:
             list[list[tuple[float, ...]]]: All found joint position solutions for each pose. The outer list corresponds to each pose,
@@ -258,7 +429,7 @@ class MotionGroup(AbstractRobot):
         response = await self._api_client.kinematics_api.inverse_kinematics(
             cell=self._cell,
             inverse_kinematics_request=api.models.InverseKinematicsRequest(
-                motion_group_model=api.models.MotionGroupModel(motion_group_model),
+                motion_group_model=motion_group_model,
                 tcp_poses=[pose.to_api_model() for pose in poses],
                 tcp_offset=tcp_offset.to_api_model(),
                 mounting=mounting.to_api_model() if mounting is not None else None,
@@ -266,10 +437,17 @@ class MotionGroup(AbstractRobot):
                 collision_setups=motion_group_setup.collision_setups,
             ),
         )
-        return response.joints
+        return response.joints  # ty: ignore[invalid-return-type]
 
-    async def forward_kinematics(self, joints: list[tuple[float, ...]], tcp: str) -> list[Pose]:
+    async def forward_kinematics(
+        self, joints: list[tuple[float, ...]], tcp: str | None
+    ) -> list[Pose]:
         """Get the forward kinematics of the motion group.
+
+        Args:
+            joints: The joint configurations to compute poses for.
+            tcp: The TCP to apply. If None, no TCP offset is applied and the returned
+                poses are the flange poses.
 
         Returns:
             list[Pose]: The forward kinematics of the motion group. Empty list if not available.
@@ -277,18 +455,18 @@ class MotionGroup(AbstractRobot):
         if len(joints) == 0:
             raise ValueError("Provide at least one joint configuration")
 
-        joint_positions = [api.models.DoubleArray(list(joint_config)) for joint_config in joints]
+        joint_positions = [list(joint_config) for joint_config in joints]
 
-        tcp_offset = await self.tcp_offset(tcp)
+        tcp_offset = (await self.tcp_offset(tcp)).to_api_model() if tcp is not None else None
         motion_group_model = await self.get_model()
         mounting = await self.get_mounting()
 
         response = await self._api_client.kinematics_api.forward_kinematics(
             cell=self._cell,
             forward_kinematics_request=api.models.ForwardKinematicsRequest(
-                motion_group_model=api.models.MotionGroupModel(motion_group_model),
+                motion_group_model=motion_group_model,
                 joint_positions=joint_positions,
-                tcp_offset=tcp_offset.to_api_model(),
+                tcp_offset=tcp_offset,
                 mounting=mounting.to_api_model() if mounting is not None else None,
             ),
         )
@@ -297,6 +475,35 @@ class MotionGroup(AbstractRobot):
             raise ValueError("No TCP poses returned from forward kinematics")
 
         return [Pose(tcp_pose) for tcp_pose in response.tcp_poses]
+
+    async def get_kinematic_configuration(
+        self, joints: list[tuple[float, ...]]
+    ) -> list[api.models.KinematicConfiguration]:
+        """Get the kinematic configuration for each joint configuration.
+
+        Only supported for 6-DOF robots with spherical or offset wrist. Raises an API
+        error (422) for unsupported motion groups.
+
+        Args:
+            joints: The joint configurations to compute kinematic configurations for.
+
+        Returns:
+            list[KinematicConfiguration]: One entry per input joint configuration.
+        """
+        if len(joints) == 0:
+            raise ValueError("Provide at least one joint configuration")
+
+        joint_positions = [list(j) for j in joints]
+        motion_group_model = await self.get_model()
+
+        response = await self._api_client.kinematics_api.get_kinematic_configuration(
+            cell=self._cell,
+            get_kinematic_configuration_request=api.models.GetKinematicConfigurationRequest(
+                motion_group_model=motion_group_model, joint_positions=joint_positions
+            ),
+        )
+
+        return response.kinematic_configurations
 
     async def open(self):
         # TODO if there is no explicit motion group activation, what should we do here?
@@ -320,7 +527,9 @@ class MotionGroup(AbstractRobot):
         try:
             if self._current_motion is None:
                 raise ValueError("No motion to stop")
-            await self._api_client.motion_api.stop_execution(
+            # FIXME: `motion_api` does not exist on ApiGateway in the v2 API, so this
+            # call raises AttributeError if reached. Tracked by the TODO above.
+            await self._api_client.motion_api.stop_execution(  # ty: ignore[unresolved-attribute]
                 cell=self._cell, motion=self._current_motion
             )
             logger.debug(f"Motion {self.current_motion} stopped.")
@@ -342,7 +551,17 @@ class MotionGroup(AbstractRobot):
             tcps = await self.tcps()
             tcp_offset = Pose(position=tcps[tcp].position, orientation=tcps[tcp].orientation)
             pose = Pose(motion_group_state.flange_pose) @ tcp_offset
-        return RobotState(pose=pose, tcp=tcp, joints=tuple(motion_group_state.joint_position))
+
+        measured_joints = tuple(motion_group_state.joint_position)
+        commanded_joints = (
+            None
+            if motion_group_state.execute is None
+            else tuple(motion_group_state.execute.joint_position)
+        )
+
+        return RobotState(
+            pose=pose, tcp=tcp, joints=measured_joints, commanded_joints=commanded_joints
+        )
 
     async def stream_state(
         self, response_rate_msecs: int | None = None
@@ -352,24 +571,44 @@ class MotionGroup(AbstractRobot):
 
         This method provides a real-time stream of robot state information including
         joint positions and TCP pose data for the motion group.
+
+        All consumers of one motion group share a single underlying websocket per
+        gateway; this call only subscribes to it. The websocket is opened at the
+        rate of its first subscriber: a later subscriber asking for a slower rate
+        is downsampled client-side, one asking for a faster rate receives the
+        socket's (slower) rate and a warning is logged.
+
         Args:
             response_rate_msecs (int | None): The rate at which state updates are streamed
-                                             in milliseconds. Defaults to None for maximum rate.
+                                             in milliseconds. Defaults to None, which streams
+                                             at the controller's own step rate — the fastest
+                                             the server emits.
         """
-        response_stream = self._api_client.motion_group_api.stream_motion_group_state(
-            cell=self._cell,
-            controller=self._controller_id,
-            motion_group=self.id,
-            response_rate=response_rate_msecs,
+        subscription = self._state_stream().subscribe(response_rate_msecs)
+        try:
+            async for state in subscription:
+                yield state
+        finally:
+            await subscription.aclose()
+
+    def _state_stream(self):
+        """The shared state stream of this motion group on its gateway."""
+        return self._api_client.motion_group_state_stream(
+            cell=self._cell, controller_id=self._controller_id, motion_group_id=self.id
         )
 
-        async with aclosing(response_stream) as response_stream:
-            async for response in response_stream:
-                yield response
+    def _resolve_state_stream_rate(self, explicit_rate_msecs: int | None) -> int | None:
+        """Resolution: explicit parameter, then NovaConfig, then None (controller step rate)."""
+        if explicit_rate_msecs is not None:
+            return explicit_rate_msecs
+        config = getattr(self._api_client, "config", None)
+        return config.motion_group_state_rate_msecs if config is not None else None
 
     async def joints(self) -> tuple[float, ...]:
         """Returns the current joint positions of the motion group."""
-        return (await self.get_state()).joints
+        current_state = await self.get_state()
+
+        return current_state.commanded_joints or current_state.joints
 
     async def tcp_pose(self, tcp: str | None = None) -> Pose:
         """
@@ -406,7 +645,7 @@ class MotionGroup(AbstractRobot):
                 name=tcp_offset.name,
                 position=tcp_offset.pose.position,
                 # TODO: what is the correct rotation type here then?
-                orientation=api.models.Orientation(tcp_offset.pose.orientation.root)
+                orientation=list(tcp_offset.pose.orientation)
                 if tcp_offset.pose.orientation is not None
                 else None,
             )
@@ -486,7 +725,7 @@ class MotionGroup(AbstractRobot):
         )
 
     async def _load_planned_motion(
-        self, joint_trajectory: api.models.JointTrajectory, tcp: str
+        self, joint_trajectory: api.models.JointTrajectory, tcp: str | None
     ) -> str:
         load_plan_response = await self._api_client.trajectory_caching_api.add_trajectory(
             cell=self._cell,
@@ -507,9 +746,10 @@ class MotionGroup(AbstractRobot):
     async def _plan_with_collision_check(
         self,
         actions: list[Action],
-        tcp: str,
+        tcp: str | None,
         motion_group_setup: api.models.MotionGroupSetup,
         start_joint_position: tuple[float, ...],
+        singularity_handling: api.models.SingularityHandling | None = None,
     ) -> api.models.JointTrajectory:
         """
         This method plans a trajectory and checks for collisions.
@@ -544,24 +784,26 @@ class MotionGroup(AbstractRobot):
         collision_setups = validate_collision_setups(actions)
         first_collision_setup = collision_setups[0] if len(collision_setups) > 0 else None
 
-        # this is bad for memory because collision scenes can be very large
-        # but we do it for now anyway because we don't want to create side effect on the provided motion group setup
-        motion_group_setup = motion_group_setup.model_copy(deep=True)
-        if motion_group_setup.collision_setups is None:
-            motion_group_setup.collision_setups = api.models.CollisionSetups({})
+        # global_limits stays at the controller maximum here; the user MotionSettings are sent as
+        # a per-segment limits_override inside each motion command (see
+        # CombinedActions.to_motion_command). This is possible because PlanTrajectoryRequest carries
+        # a list of MotionCommands, each with its own LimitsOverride field. The collision-free path
+        # (_plan_collision_free) cannot do this and folds the limits into global_limits instead --
+        # see the note there for why the two paths necessarily differ.
+        motion_group_setup = _with_collision_setup(
+            motion_group_setup, "collision-check", first_collision_setup
+        )
 
-        if first_collision_setup is not None:
-            motion_group_setup.collision_setups.root["collision-check"] = first_collision_setup
-
-        motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # type: ignore
+        motion_commands = CombinedActions(items=tuple(actions)).to_motion_command()  # ty: ignore[invalid-argument-type]
 
         # Plan the trajectory
         plan_trajectory_response = await self._api_client.trajectory_planning_api.plan_trajectory(
             cell=self._cell,
             plan_trajectory_request=api.models.PlanTrajectoryRequest(
                 motion_group_setup=motion_group_setup,
-                start_joint_position=api.models.DoubleArray(list(start_joint_position)),
+                start_joint_position=list(start_joint_position),
                 motion_commands=motion_commands,
+                singularity_handling=singularity_handling or api.models.SingularityHandling.NONE,
             ),
         )
 
@@ -578,7 +820,7 @@ class MotionGroup(AbstractRobot):
     async def _plan_collision_free(
         self,
         action: CollisionFreeMotion,
-        tcp: str,
+        tcp: str | None,
         motion_group_setup: api.models.MotionGroupSetup,
         start_joint_position: tuple[float, ...] | None = None,
     ) -> api.models.JointTrajectory:
@@ -600,19 +842,14 @@ class MotionGroup(AbstractRobot):
         if start_joint_position is None:
             raise RuntimeError("start_joint_position must be provided for CollisionFreeMotion")
 
-        # this is bad for memory because collision scenes can be very large
-        # but we do it for now anyway because we don't want to create side effect on the provided motion group setup
-        motion_group_setup = motion_group_setup.model_copy(deep=True)
-        if motion_group_setup.collision_setups is None:
-            motion_group_setup.collision_setups = api.models.CollisionSetups({})
-
-        if action.collision_setup is not None:
-            motion_group_setup.collision_setups.root["collision-free-motion"] = (
-                action.collision_setup
-            )
+        motion_group_setup = _with_collision_setup(
+            motion_group_setup, "collision-free-motion", action.collision_setup
+        )
 
         best_joint_solutions: list[tuple[float, ...]] = []
         if isinstance(action.target, Pose):
+            if tcp is None:
+                raise ValueError("TCP is required for collision_free with Pose target")
             solutions = await self._inverse_kinematics(
                 poses=[action.target], tcp=tcp, motion_group_setup=motion_group_setup
             )
@@ -632,11 +869,29 @@ class MotionGroup(AbstractRobot):
         else:
             raise ValueError("Invalid target type for CollisionFreeMotion")
 
-        # Update the collision setup with user data
+        # The collision-checked path keeps global_limits at the controller maximum and sends user
+        # limits as a per-segment limits_override. We cannot mirror that here: PlanCollisionFreeRequest
+        # has no limits_override field (only motion_group_setup, start_joint_position, target,
+        # constraint, algorithm) and no per-segment motion-command list, so folding the user
+        # MotionSettings into global_limits is the ONLY mechanism the released API offers. This is
+        # API-forced, not a stylistic choice.
+        #
+        # The two paths are functionally equivalent whenever the user limit <= the controller
+        # maximum (the effective ceiling is the user limit either way). If a user limit exceeds the
+        # controller maximum, folding would raise global_limits above what the hardware supports, so
+        # we clamp the folded limits back to the controller maximum below. This is a temporary
+        # workaround until the collision-free planner clamps server-side (see clamp_limit_set_to_max).
         if action.settings is not None:
-            update_motion_group_setup_with_motion_settings(
+            # global_limits still holds the controller maximum here (from the setup builder); keep a
+            # reference so the folded user limits can be clamped back to it.
+            controller_max_limits = motion_group_setup.global_limits
+            motion_group_setup = update_motion_group_setup_with_motion_settings(
                 motion_group_setup=motion_group_setup, settings=action.settings
             )
+            if motion_group_setup.global_limits is not None and controller_max_limits is not None:
+                motion_group_setup.global_limits = clamp_limit_set_to_max(
+                    motion_group_setup.global_limits, controller_max_limits
+                )
 
         for best_joint_solution in best_joint_solutions:
             try:
@@ -645,8 +900,8 @@ class MotionGroup(AbstractRobot):
                     cell=self._cell,
                     plan_collision_free_request=api.models.PlanCollisionFreeRequest(
                         motion_group_setup=motion_group_setup,
-                        start_joint_position=api.models.DoubleArray(list(start_joint_position)),
-                        target=api.models.DoubleArray(list(best_joint_solution)),
+                        start_joint_position=list(start_joint_position),
+                        target=list(best_joint_solution),
                         algorithm=action.algorithm,
                     ),
                 )
@@ -667,15 +922,33 @@ class MotionGroup(AbstractRobot):
     async def _plan(
         self,
         actions: list[Action],
-        tcp: str,
+        tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
+        payload_override: str | api.models.Payload | None = None,
+        singularity_handling: api.models.SingularityHandling | None = None,
     ) -> api.models.JointTrajectory:
         if not actions:
             raise ValueError("No actions provided")
 
+        if tcp is None:
+            _requires_tcp = (Linear, CartesianPTP, Circular)
+            for action in actions:
+                if isinstance(action, _requires_tcp):
+                    raise ValueError(
+                        "TCP is required for cartesian motion actions (lin, ptp, cir). "
+                        "Provide a TCP or use joint-space actions (jnt) instead."
+                    )
+                if isinstance(action, CollisionFreeMotion) and isinstance(action.target, Pose):
+                    raise ValueError(
+                        "TCP is required for collision_free motions with a Pose target. "
+                        "Provide a TCP or use a joint-space target instead."
+                    )
+
         current_joints = start_joint_position or await self.joints()
-        motion_group_setup = motion_group_setup or await self.get_setup(tcp)
+        motion_group_setup = await self._resolve_setup_for_plan(
+            tcp=tcp, motion_group_setup=motion_group_setup, payload_override=payload_override
+        )
 
         # TODO: can be done in parallel, would be a big performance boost
         all_trajectories = []
@@ -684,7 +957,7 @@ class MotionGroup(AbstractRobot):
                 raise ValueError("Empty batch of actions")
 
             if isinstance(batch[0], CollisionFreeMotion):
-                motion: CollisionFreeMotion = cast(CollisionFreeMotion, batch[0])
+                motion: CollisionFreeMotion = batch[0]
                 trajectory = await self._plan_collision_free(
                     action=motion,
                     tcp=tcp,
@@ -694,28 +967,10 @@ class MotionGroup(AbstractRobot):
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
 
-                current_joints = tuple(trajectory.joint_positions[-1].root)
+                current_joints = tuple(trajectory.joint_positions[-1])
             elif isinstance(batch[0], WaitAction):
-                # Waits generate a trajectory with the same joint position at each timestep
-                # Use 50ms timesteps from 0 to wait_for_in_seconds
-                wait_time = batch[0].wait_for_in_seconds
-                timestep = 0.050  # 50ms timestep
-                num_steps = max(2, int(wait_time / timestep) + 1)  # Ensure at least 2 points
-
-                # Create equal-length arrays for positions, times, and locations
-                joint_positions = [
-                    api.models.Joints(list(current_joints)) for _ in range(num_steps)
-                ]
-                times = [i * timestep for i in range(num_steps)]
-                # Ensure the last timestep is exactly the wait duration
-                times[-1] = wait_time
-                # Use the same location value for all points
-                locations = [0] * num_steps
-
-                trajectory = api.models.JointTrajectory(
-                    joint_positions=joint_positions,
-                    times=times,
-                    locations=[api.models.Location(float(loc)) for loc in locations],
+                trajectory = self._build_wait_trajectory(
+                    current_joints, batch[0].wait_for_in_seconds
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
@@ -726,6 +981,7 @@ class MotionGroup(AbstractRobot):
                     tcp=tcp,
                     start_joint_position=current_joints,
                     motion_group_setup=motion_group_setup,
+                    singularity_handling=singularity_handling,
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
@@ -733,22 +989,111 @@ class MotionGroup(AbstractRobot):
 
         return combine_trajectories(all_trajectories)
 
+    async def _resolve_setup_for_plan(
+        self,
+        tcp: str | None,
+        motion_group_setup: api.models.MotionGroupSetup | None,
+        payload_override: str | api.models.Payload | None,
+    ) -> api.models.MotionGroupSetup:
+        """Return the motion group setup to plan with, applying any payload override."""
+        if motion_group_setup is None:
+            return await self.get_setup(tcp_name=tcp, payload_override=payload_override)
+
+        if payload_override is None:
+            return motion_group_setup
+
+        # Caller supplied both an explicit setup and a payload override;
+        # the explicit payload wins. Do not mutate the caller's setup.
+        motion_group_setup = motion_group_setup.model_copy(deep=True)
+        if isinstance(payload_override, api.models.Payload):
+            # Already a concrete Payload — no need to fetch the description.
+            self._log_payload_override(payload_override.name)
+            motion_group_setup.payload = payload_override
+        else:
+            description = await self._fetch_motion_group_description()
+            motion_group_setup.payload = await self._resolve_payload(
+                payload_override=payload_override,
+                tcp_name=tcp,
+                motion_group_description=description,
+            )
+        return motion_group_setup
+
+    @staticmethod
+    def _build_wait_trajectory(
+        current_joints: tuple[float, ...], wait_time: float
+    ) -> api.models.JointTrajectory:
+        """Build a trajectory that holds ``current_joints`` for ``wait_time`` seconds."""
+        # Waits generate a trajectory with the same joint position at each timestep.
+        # Use 50ms timesteps from 0 to wait_time.
+        timestep = 0.050  # 50ms timestep
+        num_steps = max(2, int(wait_time / timestep) + 1)  # Ensure at least 2 points
+
+        joint_positions = [list(current_joints) for _ in range(num_steps)]
+        times = [i * timestep for i in range(num_steps)]
+        # Ensure the last timestep is exactly the wait duration
+        times[-1] = wait_time
+        return api.models.JointTrajectory(
+            joint_positions=joint_positions, times=times, locations=[0.0 for _ in range(num_steps)]
+        )
+
+    async def _resolve_set_outputs(
+        self,
+        combined_actions: CombinedActions,
+        joint_trajectory: api.models.JointTrajectory,
+        tcp: str | None,
+    ) -> list[api.models.SetIO] | None:
+        """Resolve path-triggered write actions into the ``set_outputs`` IO overlay.
+
+        Time and distance triggers only become concrete once the trajectory is
+        planned. Distance triggers additionally need the per-sample TCP positions,
+        computed here via forward kinematics (only when such triggers are present).
+
+        Returns ``None`` when no write action carries a trigger, so the default
+        ``CombinedActions.to_set_io()`` overlay applies unchanged.
+        """
+        if not has_path_triggers(combined_actions):
+            return None
+
+        tcp_positions: list[tuple[float, ...]] | None = None
+        if has_distance_triggers(combined_actions):
+            if tcp is None:
+                logger.warning(
+                    "Distance-based path triggers require a TCP but none was provided; "
+                    "these triggers fall back to their motion boundary."
+                )
+            else:
+                joints = [tuple(sample) for sample in joint_trajectory.joint_positions]
+                poses = await self.forward_kinematics(joints, tcp)
+                tcp_positions = [pose.position.to_tuple() for pose in poses]
+
+        set_outputs = resolve_set_outputs(
+            combined_actions, joint_trajectory.times, joint_trajectory.locations, tcp_positions
+        )
+        logger.debug(
+            "Resolved path triggers to set_outputs locations: %s",
+            [entry.location for entry in set_outputs],
+        )
+        return set_outputs
+
     # TODO: refactor and simplify code, tests are already there
     async def _execute(
         self,
         joint_trajectory: api.models.JointTrajectory,
-        tcp: str,
+        tcp: str | None,
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncGenerator[MotionState, None]:
+        state_stream_rate = self._resolve_state_stream_rate(state_stream_rate_msecs)
         # This is the entrypoint for the trajectory tuning mode
         if ENABLE_TRAJECTORY_TUNING:
             logger.info("Entering trajectory tuning mode...")
             try:
                 async for motion_group_state in self._tune_trajectory(
-                    joint_trajectory, tcp, actions
+                    joint_trajectory, tcp, actions, state_stream_rate_msecs=state_stream_rate
                 ):
                     yield motion_group_state_to_motion_state(motion_group_state)
             except (Exception, BaseException) as e:
@@ -762,53 +1107,57 @@ class MotionGroup(AbstractRobot):
         # Load planned trajectory
         trajectory_id = await self._load_planned_motion(joint_trajectory, tcp)
 
+        combined_actions = CombinedActions(items=tuple(actions))  # ty: ignore[invalid-argument-type]
+        set_outputs = await self._resolve_set_outputs(combined_actions, joint_trajectory, tcp)
+
         controller = movement_controller(
             MovementControllerContext(
-                combined_actions=CombinedActions(items=tuple(actions)),  # type: ignore
+                combined_actions=combined_actions,
                 motion_id=trajectory_id,
+                set_outputs=set_outputs,
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
-                motion_group_state_stream_gen=self.stream_state,
+                # The cursor subscribes to the same shared stream this relay
+                # reads from: one state websocket per motion group, however many
+                # consumers an execution has.
+                motion_group_state_stream_gen=lambda: self._state_stream().subscribe(
+                    state_stream_rate
+                ),
+                joint_trajectory=joint_trajectory,
             )
         )
 
-        class MotionGroupStateSentinel:
-            pass
-
-        states = asyncio.Queue[api.models.MotionGroupState | MotionGroupStateSentinel]()
-        SENTINEL = MotionGroupStateSentinel()
-
-        async def monitor_motion_group_state():
-            async for motion_group_state in self.stream_state():
-                if motion_group_state.execute:
-                    states.put_nowait(motion_group_state)
+        # The relay's own subscription. The execution task acloses it when the
+        # protocol ends, which ends the iteration below; the TaskGroup exits
+        # with all children already finished, so nothing is ever cancelled into
+        # a websocket teardown (the socket itself is closed by the shared
+        # stream's pump, in its own context).
+        subscription = self._state_stream().subscribe(state_stream_rate)
 
         async def execution():
             try:
                 await self._api_client.trajectory_execution_api.execute_trajectory(
                     cell=self._cell,
                     controller=self._controller_id,
-                    client_request_generator=controller,
+                    client_request_generator=controller,  # ty: ignore[invalid-argument-type]
                 )
             finally:
-                states.put_nowait(SENTINEL)
+                await subscription.aclose()
 
         async with asyncio.TaskGroup() as tg:
-            monitor_task = tg.create_task(monitor_motion_group_state())
-
             tg.create_task(execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}")
 
-            while (motion_group_state_ := await states.get()) is not SENTINEL:
-                assert isinstance(motion_group_state_, api.models.MotionGroupState)
-                yield motion_group_state_to_motion_state(motion_group_state_)
-
-            # when the execution task finished
-            # task group will still wait for the monitoring task
-            # so we need to cancel it
-            monitor_task.cancel()
+            async for motion_group_state in subscription:
+                if motion_group_state.execute and motion_group_state.execute.details is not None:
+                    yield motion_group_state_to_motion_state(motion_group_state)
 
     async def _tune_trajectory(
-        self, joint_trajectory: api.models.JointTrajectory, tcp: str, actions: list[Action]
+        self,
+        joint_trajectory: api.models.JointTrajectory,
+        tcp: str | None,
+        actions: list[Action],
+        *,
+        state_stream_rate_msecs: int | None = None,
     ) -> AsyncGenerator[api.models.MotionGroupState, None]:
         start_joints = await self.joints()
 
@@ -826,5 +1175,12 @@ class MotionGroup(AbstractRobot):
             controller=self._controller_id,
         )
         tuner = TrajectoryTuner(plan_fn, execute_fn)
-        async for response in tuner.tune(actions, self.stream_state):
+        # The tuner calls the factory zero-arg; binding the resolved rate here
+        # keeps that seam untouched (same pattern as the TrajectoryExecutor).
+        state_stream_source = (
+            partial(self.stream_state, state_stream_rate_msecs)
+            if state_stream_rate_msecs is not None
+            else self.stream_state
+        )
+        async for response in tuner.tune(actions, state_stream_source):
             yield response

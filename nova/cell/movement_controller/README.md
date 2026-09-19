@@ -2,6 +2,35 @@
 
 This module provides `TrajectoryExecutionMachine`, a finite-state machine that encapsulates the state handling logic for trajectory execution lifecycle, shared across movement controllers (`move_forward`, `TrajectoryCursor`, etc.).
 
+## How the controller publishes execution state
+
+Execution progress is **observed** on the `MotionGroupState` stream — the `executeTrajectory`
+websocket only acknowledges requests and never delivers a completion message. The
+`execute.details.state` discriminator (`RUNNING`, `END_OF_TRAJECTORY`, `PAUSED_BY_USER`,
+`WAIT_FOR_IO`, `PAUSED_ON_IO`) together with the top-level `standstill` flag is the entire signal.
+
+RAE publishes the execute state **level-based** (robotics/wbr!2262):
+
+- The `execute` block is present from `InitializeMovementRequest` until the execution is stopped
+  or its websocket is torn down — its mere presence does **not** mean the robot is moving.
+- Terminal and paused states are **re-published every controller step** while they hold:
+  `END_OF_TRAJECTORY` after the motion ends, `PAUSED_BY_USER` for as long as a pause holds.
+  Completion and pause are durable, re-observable conditions — no consumer has to catch a
+  single-step event, so any state-stream rate detects them.
+- Between `InitializeMovementRequest` and the actual motion start the state is also
+  `PAUSED_BY_USER` (at standstill): a *parked* trajectory is indistinguishable from a paused one
+  on the wire. Consumers must not conclude a movement operation from a paused state unless that
+  operation was actually seen running (see the cursor rules below).
+- A stopped execution also reports `PAUSED_BY_USER` (there is no separate wire kind); after
+  stop/teardown the `execute` block disappears.
+
+Controllers **older than wbr!2262** instead drop the `execute` block the instant the robot
+settles: `END_OF_TRAJECTORY` / `PAUSED_BY_USER` are visible at standstill for only one or two
+control cycles, after which nothing but bare standstill frames arrive. Since every stream between
+the control loop and a client may drop frames, the machine treats a bare standstill frame as the
+completion of an already-observed `ending`/`pausing` — the discriminator was seen on the way in,
+the standstill concludes it.
+
 ## States
 
 | State | Description |
@@ -26,6 +55,38 @@ This module provides `TrajectoryExecutionMachine`, a finite-state machine that e
 - `TrajectoryEnded` (no standstill) → `ending` → (on standstill) → `ended`
 - `TrajectoryPausedByUser` + standstill → `paused`
 - `TrajectoryPausedByUser` (no standstill) → `pausing` → (on standstill) → `paused`
+
+The standstill that completes `ending → ended` and `pausing → paused` counts **with or without an
+`execute` block on the frame**: pre-!2262 controllers drop the block at settle, so a bare
+standstill frame can be the only completion signal that ever arrives. A bare standstill never
+concludes anything from `executing` — without a terminal discriminator there is nothing to
+conclude.
+
+## Completion rules in `TrajectoryCursor`
+
+The cursor derives *operation* completion from the machine, with two guards for level-based
+publishing:
+
+- `pause()` always queues a pause command while the cursor is attached, even when the local
+  operation has already completed. Local operation state cannot prove that the controller has
+  stopped, so it must not suppress a stop request. The returned future reports completion or a
+  controller error; calling `pause()` after detaching returns a failed future.
+- An operation is only marked running on **evidence of motion** (`standstill` false or a
+  `RUNNING` detail) — never on the mere presence of an `execute` block, which exists from
+  initialization on.
+- A `paused` machine state concludes only a PAUSE operation, or a movement operation that was
+  seen running. This keeps the persistent pre-start `PAUSED_BY_USER` frames from resolving a
+  movement that never moved.
+- A `start` out of `ended`/`paused` (a resume, or stepping on after `forward_to`) ignores frames that
+  repeat the terminal state it leaves — same kind at the same location — until any different frame
+  arrives. The controller keeps re-publishing the previous stop until it has taken up the new command;
+  concluding the new operation from those frames reported it finished at its own start location
+  (observed on the virtual controller: `forward_to(1.0)` then `forward()` resolved at 1.0 while the
+  robot ran on to the end). A genuine new terminal state is always preceded by `WAIT_FOR_IO` or
+  `RUNNING`, which lifts the filter — including a start issued at the very end of the trajectory.
+- `ended` concludes any commanded operation; in one-shot mode (`move_forward`) it also detaches
+  the cursor, which closes the execution websocket — the client's teardown acknowledges the
+  persistent terminal state.
 
 ---
 

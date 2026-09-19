@@ -26,7 +26,7 @@ from nova.types import Pose
             virtual_controller(
                 name="ur10e",
                 manufacturer=models.Manufacturer.UNIVERSALROBOTS,
-                type=models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         ],
         cleanup_controllers=False,

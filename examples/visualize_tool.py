@@ -1,7 +1,7 @@
 import asyncio
 
 import nova
-from nova import api
+from nova import api, run_program
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
 from nova.types import Pose
@@ -9,8 +9,8 @@ from nova.types import Pose
 TOOL_ASSET = "nova_rerun_bridge/example_data/tool.stl"
 robot_tcp_data = api.models.RobotTcpData(
     name="vacuum",
-    position=api.models.Vector3d([0, -80, 340]),
-    orientation=api.models.Orientation([0, 0, 0]),
+    position=[0, -80, 340],
+    orientation=[0, 0, 0],
     orientation_type=api.models.OrientationType.ROTATION_VECTOR,
 )
 
@@ -23,7 +23,7 @@ robot_tcp_data = api.models.RobotTcpData(
             virtual_controller(
                 name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         ],
         cleanup_controllers=True,
@@ -69,4 +69,4 @@ async def test(ctx: nova.ProgramContext):
 
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    run_program(test)

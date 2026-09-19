@@ -72,7 +72,8 @@ class Cell:
                 controller_id=controller_id,
                 id=controller_id,
                 config=self._api_client.config,
-            )
+            ),
+            api_gateway=self._api_client,
         )
 
     def _create_controller_from_config(

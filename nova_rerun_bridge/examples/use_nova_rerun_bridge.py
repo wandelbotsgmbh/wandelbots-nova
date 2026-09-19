@@ -1,7 +1,5 @@
-import asyncio
-
 import nova
-from nova import Nova, api
+from nova import Nova, api, run_program
 from nova.actions import cartesian_ptp, linear
 from nova.cell import virtual_controller
 from nova.exceptions import PlanTrajectoryFailed
@@ -18,7 +16,7 @@ from nova_rerun_bridge import NovaRerunBridge
             virtual_controller(
                 name="ur10",
                 manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-                type=api.models.VirtualControllerTypes.UNIVERSALROBOTS_UR10E,
+                type="universalrobots-ur10e",
             )
         ],
         cleanup_controllers=False,
@@ -71,4 +69,4 @@ async def test():
 
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    run_program(test)

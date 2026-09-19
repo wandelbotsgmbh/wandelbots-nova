@@ -5,7 +5,9 @@ correctly, including forward/backward movement, pauses, standstill detection
 and multi-phase completion (TrajectoryEnded followed by standstill).
 """
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -24,9 +26,10 @@ def _make_motion_group_state(
     return api.models.MotionGroupState(
         timestamp=datetime.now(timezone.utc),
         sequence_number=1,
+        description_revision=0,
         motion_group="mg-0",
         controller="ctrl-0",
-        joint_position=api.models.Joints(root=[0.0] * 6),
+        joint_position=[0.0] * 6,
         joint_limit_reached=api.models.MotionGroupStateJointLimitReached(limit_reached=[False] * 6),
         standstill=standstill,
         execute=execute,
@@ -38,6 +41,7 @@ def _make_execute(
         api.models.TrajectoryRunning
         | api.models.TrajectoryEnded
         | api.models.TrajectoryPausedByUser
+        | api.models.TrajectoryWaitForIO
     ),
     location: float = 1.0,
 ) -> api.models.Execute:
@@ -45,9 +49,7 @@ def _make_execute(
     return api.models.Execute(
         joint_position=[0.0] * 6,
         details=api.models.TrajectoryDetails(
-            trajectory="traj-123",
-            location=api.models.Location(root=location),
-            state=trajectory_state,
+            trajectory="traj-123", location=location, state=trajectory_state
         ),
     )
 
@@ -140,11 +142,13 @@ class TestTrajectoryEnded:
         assert machine.is_ended
         assert result.state_changed
 
-    def test_ending_then_bare_standstill_does_not_end(self):
-        """Standalone standstill without execute does NOT transition to ended.
+    def test_ending_then_bare_standstill_ends(self):
+        """A bare standstill frame (no execute) completes ending → ended.
 
-        The API guarantees execute persists once set, so bare standstill is
-        unreliable for determining completion.
+        Current controllers drop the trajectory ``execute`` block the instant
+        the robot settles (robotics/wbr MotionPointGenerator; changes with
+        wbr!2262), so after ``TrajectoryEnded`` was observed, a bare standstill
+        can be the only completion signal that ever arrives.
         """
         machine = TrajectoryExecutionMachine()
         machine.send("start")
@@ -155,10 +159,40 @@ class TestTrajectoryEnded:
         machine.process_motion_state(state1)
         assert machine.is_ending
 
-        # Bare standstill (no execute) — should NOT complete
+        # Bare standstill (no execute) — completes: the discriminator was
+        # already seen on the way into `ending`.
         state2 = _make_motion_group_state(standstill=True)
-        machine.process_motion_state(state2)
-        assert machine.is_ending  # still waiting
+        result = machine.process_motion_state(state2)
+        assert machine.is_ended
+        assert result.state_changed
+        assert not result.skip
+
+    def test_pausing_then_bare_standstill_pauses(self):
+        """A bare standstill frame (no execute) completes pausing → paused."""
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+
+        state1 = _make_motion_group_state(
+            standstill=False, execute=_make_execute(api.models.TrajectoryPausedByUser())
+        )
+        machine.process_motion_state(state1)
+        assert machine.is_pausing
+
+        state2 = _make_motion_group_state(standstill=True)
+        result = machine.process_motion_state(state2)
+        assert machine.is_paused
+        assert result.state_changed
+
+    def test_bare_standstill_in_executing_does_not_end(self):
+        """Without a terminal discriminator, bare standstill concludes nothing:
+        the machine must not fabricate a completion from `executing`."""
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+
+        state = _make_motion_group_state(standstill=True)
+        result = machine.process_motion_state(state)
+        assert machine.is_executing
+        assert result.skip
 
     def test_ending_stays_in_ending_without_standstill(self):
         machine = TrajectoryExecutionMachine()
@@ -264,6 +298,152 @@ class TestResumeFromPaused:
         # Restart
         machine.send("start")
         assert machine.is_executing
+
+
+class TestStaleTerminalFramesAfterResume:
+    """Level-based publishing (robotics/wbr!2262) keeps re-publishing the
+    previous stop's terminal state until the controller takes up the new
+    command. A ``start`` out of ``ended``/``paused`` must not conclude from
+    those frames — the virtual controller reproduced ``forward_to(1.0)`` then
+    ``forward()`` resolving at 1.0 while the robot ran on to the end."""
+
+    @staticmethod
+    def _ended_at(machine: TrajectoryExecutionMachine, location: float) -> None:
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), location)
+            )
+        )
+        assert machine.is_ended
+
+    def test_re_published_end_of_previous_stop_is_ignored_after_start(self):
+        machine = TrajectoryExecutionMachine()
+        self._ended_at(machine, 1.0)
+
+        machine.send("start")
+        for _ in range(3):
+            result = machine.process_motion_state(
+                _make_motion_group_state(
+                    standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 1.0)
+                )
+            )
+            assert machine.is_executing
+            assert not result.state_changed
+            assert result.location == 1.0
+
+    def test_different_frame_lifts_the_filter_and_the_new_end_completes(self):
+        machine = TrajectoryExecutionMachine()
+        self._ended_at(machine, 1.0)
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 1.0)
+            )
+        )
+
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryWaitForIO(), 1.0)
+            )
+        )
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=False,
+                execute=_make_execute(api.models.TrajectoryRunning(time_to_end=500), 1.5),
+            )
+        )
+        assert machine.is_executing
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 2.0)
+            )
+        )
+        assert machine.is_ended
+        assert machine.location == 2.0
+
+    def test_start_at_the_end_completes_on_the_end_republished_after_wait_for_io(self):
+        """A start issued at the very end: the controller answers WAIT_FOR_IO
+        and then END_OF_TRAJECTORY at the same location again, with no RUNNING
+        frame in between (observed on the virtual controller). The WAIT_FOR_IO
+        frame lifts the filter, so the second END is a genuine completion."""
+        machine = TrajectoryExecutionMachine()
+        self._ended_at(machine, 2.0)
+        machine.send("start")
+
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 2.0)
+            )
+        )
+        assert machine.is_executing
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryWaitForIO(), 2.0)
+            )
+        )
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 2.0)
+            )
+        )
+        assert machine.is_ended
+
+    def test_end_of_previous_stop_while_decelerating_is_ignored_too(self):
+        """The stale frame is identified by kind and location, not standstill."""
+        machine = TrajectoryExecutionMachine()
+        self._ended_at(machine, 1.0)
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=False, execute=_make_execute(api.models.TrajectoryEnded(), 1.0)
+            )
+        )
+        assert machine.is_executing
+
+    def test_re_published_pause_of_previous_stop_is_ignored_after_resume(self):
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedByUser(), 0.8)
+            )
+        )
+        assert machine.is_paused
+
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedByUser(), 0.8)
+            )
+        )
+        assert machine.is_executing
+
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=False,
+                execute=_make_execute(api.models.TrajectoryRunning(time_to_end=500), 1.0),
+            )
+        )
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedByUser(), 1.2)
+            )
+        )
+        assert machine.is_paused
+        assert machine.location == 1.2
+
+    def test_first_start_has_nothing_stale(self):
+        """From idle a terminal frame is genuine — a resume filter must not
+        appear where nothing was left behind."""
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 0.0)
+            )
+        )
+        assert machine.is_ended
 
 
 # ---------------------------------------------------------------------------
@@ -565,3 +745,72 @@ class TestStateUpdateResult:
         state = _make_motion_group_state(standstill=False)
         result = machine.process_motion_state(state)
         assert result.skip
+
+
+# ---------------------------------------------------------------------------
+# Replay of a real captured stream
+# ---------------------------------------------------------------------------
+
+
+class TestRecordedStreamReplay:
+    def test_50ms_capture_edge_then_bare_standstill_reaches_ended(self):
+        """Replay of a real 50 ms state-stream capture (virtual UR10e).
+
+        The recorded shape is the measured production failure mode of the
+        throttled stream: ``TrajectoryEnded`` arrives while the robot is still
+        decelerating (standstill False), the controller then drops the
+        ``execute`` block at settle, and only bare standstill frames follow.
+        The machine previously discarded those frames and hung in ``ending``
+        forever; it must complete to ``ended``.
+        """
+        fixture = json.loads(
+            (
+                Path(__file__).parent / "fixtures" / "frames_50ms_edge_then_bare_standstill.json"
+            ).read_text()
+        )
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        for raw in fixture["frames"]:
+            machine.process_motion_state(api.models.MotionGroupState.model_validate(raw))
+        assert machine.is_ended
+
+    def test_step_capture_pause_then_bare_standstill_reaches_paused(self):
+        """Replay of a real step-rate pause capture (the robotics/wbr!2322
+        scenario on a current controller): PAUSED_BY_USER is published almost
+        exclusively while still decelerating; standstill coincides with it for
+        only the last couple of steps before the ``execute`` block drops.
+
+        Replayed twice: the full capture, and a thinned variant with the
+        PAUSED_BY_USER@standstill frames removed — which is exactly what a
+        throttled stream delivers (frames are dropped, and the pause-at-
+        standstill window is one to two steps wide). Both must reach
+        ``paused``; the thinned variant previously hung in ``pausing``.
+        """
+        fixture = json.loads(
+            (
+                Path(__file__).parent / "fixtures" / "frames_step_pause_then_bare_standstill.json"
+            ).read_text()
+        )
+        frames = [api.models.MotionGroupState.model_validate(raw) for raw in fixture["frames"]]
+
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        for state in frames:
+            machine.process_motion_state(state)
+        assert machine.is_paused
+
+        def paused_at_standstill(state: api.models.MotionGroupState) -> bool:
+            return (
+                state.standstill
+                and state.execute is not None
+                and isinstance(state.execute.details, api.models.TrajectoryDetails)
+                and isinstance(state.execute.details.state, api.models.TrajectoryPausedByUser)
+            )
+
+        thinned = [s for s in frames if not paused_at_standstill(s)]
+        assert len(thinned) < len(frames), "fixture must contain the dropped-frame window"
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        for state in thinned:
+            machine.process_motion_state(state)
+        assert machine.is_paused

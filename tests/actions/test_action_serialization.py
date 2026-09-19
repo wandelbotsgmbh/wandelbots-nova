@@ -75,16 +75,14 @@ def test_program_serialization_deserialization_collision_scene():
     home_joints = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     target_pose = Pose((1.0, 2.0, 3.0, 0.0, 0.0, 0.0))
     collision_scene = api.models.CollisionSetup(
-        colliders=api.models.ColliderDictionary(
-            {
-                "box1": api.models.Collider(
-                    shape=api.models.Box(
-                        size_x=976, size_y=676, size_z=1, shape_type="box", box_type="FULL"
-                    ),
-                    pose=api.models.Pose(position=[1080, -480, -82]),
-                )
-            }
-        )
+        colliders={
+            "box1": api.models.Collider(
+                shape=api.models.Box(
+                    size_x=976, size_y=676, size_z=1, shape_type="box", box_type="FULL"
+                ),
+                pose=api.models.Pose(position=[1080, -480, -82]),
+            )
+        }
     )
 
     # Create actions with custom settings

@@ -11,11 +11,30 @@ from nova.actions.motions import (
     joint_ptp,
     lin,
     linear,
+    multi_collision_free,
     ptp,
+)
+from nova.actions.path_trigger import (
+    AtReference,
+    AtTrigger,
+    DistanceTrigger,
+    PathFractionTrigger,
+    TimeTrigger,
+    after_start,
+    at_path_fraction,
+    before_target,
 )
 from nova.actions.trajectory_builder import TrajectoryBuilder
 
 __all__ = [
+    "AtReference",
+    "AtTrigger",
+    "DistanceTrigger",
+    "PathFractionTrigger",
+    "TimeTrigger",
+    "after_start",
+    "at_path_fraction",
+    "before_target",
     "Action",
     "cartesian_ptp",
     "ptp",
@@ -29,6 +48,7 @@ __all__ = [
     "lin",
     "wait",
     "collision_free",
+    "multi_collision_free",
     "MovementController",
     "MovementControllerContext",
     "TrajectoryBuilder",

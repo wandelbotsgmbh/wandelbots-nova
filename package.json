@@ -1,0 +1,20 @@
+{
+  "name": "wandelbots-nova-hooks",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Dev-only Git hooks (husky + lint-staged) for the wandelbots-nova Python repo. Not published; exists solely to run ruff formatting/linting on staged files at commit time.",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2"
+  },
+  "lint-staged": {
+    "*.py": [
+      "uv run ruff check --select I --fix",
+      "uv run ruff check --fix",
+      "uv run ruff format"
+    ]
+  }
+}
