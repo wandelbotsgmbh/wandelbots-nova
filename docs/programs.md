@@ -33,7 +33,7 @@ gives you a connected `nova` instance, the `cell`, and cycle helpers.
 
 ## Prerequisites
 
-- Python `>=3.11, <3.13`
+- Python `>=3.12, <3.13`
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/) installed
 - The `novax` extra installed:
 
