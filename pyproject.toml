@@ -10,7 +10,7 @@ authors = [
     { name = "Stefan Wagner", email = "stefan.wagner@wandelbots.com" },
     { name = "André Kühnert", email = "andre.kuhnert@wandelbots.com" },
 ]
-requires-python = ">=3.12, <3.13"
+requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
@@ -54,7 +54,7 @@ novapolicy = [
     "aiortc>=1.14.0",
     "msgpack>=1.1.0,<2",
     "Pillow>=10.0.0",
-    "pyzmq>=26.0.0,<27",
+    "pyzmq>=27.0.0,<28",
     "requests>=2.33.1",
 ]
 benchmark = [

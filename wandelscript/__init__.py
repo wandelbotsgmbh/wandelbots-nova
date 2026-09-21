@@ -11,12 +11,19 @@ Example:
 Vector3d(x=0.0, y=1.0, z=5.0)
 """
 
-import wandelscript.antlrvisitor  # load Program.from_code # noqa: F401
-from wandelscript import builtins, motions
-from wandelscript.metamodel import Program, register_builtin_func
-from wandelscript.runner import WandelscriptProgramRunner, run, run_wandelscript_program
-from wandelscript.runtime import Store
-from wandelscript.version import version
+from wandelscript import _geometricalgebra_compat
+
+_geometricalgebra_compat.apply()
+
+from wandelscript import builtins, motions  # noqa: E402
+from wandelscript.metamodel import Program, register_builtin_func  # noqa: E402
+from wandelscript.runner import (  # noqa: E402
+    WandelscriptProgramRunner,
+    run,
+    run_wandelscript_program,
+)
+from wandelscript.runtime import Store  # noqa: E402
+from wandelscript.version import version  # noqa: E402
 
 __version__ = version
 

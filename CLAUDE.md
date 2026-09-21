@@ -6,7 +6,7 @@ Official Python SDK for the Wandelbots NOVA API. NOVA is a robot-agnostic operat
 ## Project Overview
 
 
-**Requirements**: Python >=3.12, <3.13
+**Requirements**: Python >=3.12
 
 ## Build & Development Commands
 
