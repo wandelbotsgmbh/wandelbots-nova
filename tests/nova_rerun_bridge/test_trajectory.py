@@ -380,4 +380,8 @@ class TestLogRobotGeometriesEmptyTrajectory:
         mock_times = Mock()
 
         # Call the real method on a mock instance — should not raise
-        RobotVisualizer.log_robot_geometries(visualizer, empty_trajectory, mock_times)
+        result = RobotVisualizer.log_robot_geometries(visualizer, empty_trajectory, mock_times)
+
+        # The empty-trajectory guard must short-circuit before any FK work.
+        assert result is None
+        visualizer.robot.pose_to_matrix.assert_not_called()

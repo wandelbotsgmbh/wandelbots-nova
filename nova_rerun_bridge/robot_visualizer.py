@@ -104,7 +104,21 @@ def _batch_collect(
     translations = final_transforms[:, :3, 3].tolist()
     rot_matrices = final_transforms[:, :3, :3]
 
-    rotations = Rotation.from_matrix(rot_matrices)
+    try:
+        rotations = Rotation.from_matrix(rot_matrices)
+    except (np.linalg.LinAlgError, ValueError, RuntimeError):
+        # Mirror rotation_matrix_to_axis_angle's fallback: replace non-finite
+        # matrices with identity and orthonormalize (fixing reflections) so a
+        # single bad sample cannot abort the whole trajectory's extraction.
+        finite = np.isfinite(rot_matrices).all(axis=(1, 2))
+        safe = np.where(finite[:, np.newaxis, np.newaxis], rot_matrices, np.eye(3))
+        u, _, vt = np.linalg.svd(safe)
+        ortho = u @ vt
+        reflected = np.linalg.det(ortho) < 0
+        if reflected.any():
+            u[reflected, :, -1] *= -1
+            ortho[reflected] = u[reflected] @ vt[reflected]
+        rotations = Rotation.from_matrix(ortho)
     rotvecs = rotations.as_rotvec()
     angles = np.linalg.norm(rotvecs, axis=1)
     safe_angles = np.where(angles > 1e-8, angles, 1.0)
@@ -893,6 +907,10 @@ class RobotVisualizer:
                         geom.metadata = {"node": node_name}
                         filtered_geoms.append(geom)
 
+                # Skip the per-link transform work when this link has no meshes to log
+                if not filtered_geoms:
+                    continue
+
                 # Calculate the inverse transform to get the mesh in the correct position
                 cumulative_transform, _ = self.scene.graph.get(frame_to=joint_name)
                 ctransform = _copy_graph_matrix(cumulative_transform)
@@ -918,6 +936,8 @@ class RobotVisualizer:
         # --- Safety link chain geometries ---
         if self.show_safety_link_chain:
             for link_index, geometries in self.link_geometries.items():
+                if link_index >= all_transforms.shape[0]:
+                    continue
                 link_transforms_batch = all_transforms[link_index]
                 for i, geom in enumerate(geometries):
                     entity_path = (
@@ -945,6 +965,8 @@ class RobotVisualizer:
         # --- Collision link geometries ---
         if self.show_collision_link_chain and self.collision_link_geometries:
             for link_index, geometries in enumerate(self.collision_link_geometries):
+                if link_index >= all_transforms.shape[0]:
+                    break
                 geom_dict = cast(
                     dict[str, api.models.Collider],
                     geometries.root if hasattr(geometries, "root") else geometries,

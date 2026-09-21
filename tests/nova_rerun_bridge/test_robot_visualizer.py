@@ -162,6 +162,33 @@ class TestBatchDHTransforms:
                 with_offset[link_idx, 0], offset_matrix @ without_offset[link_idx, 0], atol=1e-9
             )
 
+    def test_offset_with_non_identity_mounting_matches_scalar(self):
+        """With non-identity mounting AND offset, batch FK must match the scalar chain.
+
+        Guards the mounting x offset interaction, where the offset is not a simple
+        left-multiply, exactly as compute_forward_kinematics composes them.
+        """
+        dh_params = _make_dh_parameters()
+        robot = DHRobot(dh_params, _make_mounting_pose())
+        mounting_matrix = robot.pose_to_matrix(robot.mounting)
+        offset_matrix = np.eye(4)
+        offset_matrix[:3, :3] = Rotation.from_euler("xyz", [0.2, -0.1, 0.3]).as_matrix()
+        offset_matrix[:3, 3] = [4.0, -2.0, 1.0]
+
+        joints = [0.3, -0.5, 0.7]
+        result = _batch_dh_transforms(dh_params, np.array([joints]), mounting_matrix, offset_matrix)
+
+        # Reference: mounting (index 0), then offset, then the DH chain (index 1..).
+        accumulated = mounting_matrix.copy()
+        expected = [accumulated.copy()]
+        accumulated = accumulated @ offset_matrix
+        for dh_param, jp in zip(dh_params, joints, strict=False):
+            accumulated = accumulated @ robot.dh_transform(dh_param=dh_param, joint_position=jp)
+            expected.append(accumulated.copy())
+
+        for link_idx in range(len(dh_params) + 1):
+            np.testing.assert_allclose(result[link_idx, 0], expected[link_idx], atol=1e-9)
+
 
 # ---------------------------------------------------------------------------
 # TestBatchCollect
@@ -268,3 +295,32 @@ class TestBatchCollect:
 
         assert len(positions["test/append"]) == 2
         assert len(rotations["test/append"]) == 2
+
+    def test_handles_non_finite_and_reflection_without_raising(self):
+        """A non-finite or det<0 transform must degrade gracefully, not abort the batch.
+
+        scipy Rotation.from_matrix rejects NaN and det<0 (reflection) matrices; the
+        batch path must fall back like rotation_matrix_to_axis_angle instead of
+        letting one bad sample kill the whole trajectory's extraction.
+        """
+        good = self._build_transform(
+            Rotation.from_euler("z", 45, degrees=True).as_matrix(), np.array([1.0, 2.0, 3.0])
+        )
+        reflection = self._build_transform(np.diag([-1.0, 1.0, 1.0]), np.zeros(3))
+        non_finite = self._build_transform(np.eye(3), np.zeros(3))
+        non_finite[0, 0] = np.nan
+        batch = np.stack([good, reflection, non_finite])
+
+        positions: dict[str, list] = {}
+        rotations: dict[str, list] = {}
+        # scipy inspects the NaN matrix's determinant before raising; that numpy
+        # invalid-value warning is expected here and not a failure signal.
+        with np.errstate(invalid="ignore"):
+            _batch_collect(batch, positions, rotations, "test/degraded")
+
+        assert len(rotations["test/degraded"]) == 3
+        for rr_rot in rotations["test/degraded"]:
+            assert np.isfinite(rr_rot.angle)
+            np.testing.assert_allclose(np.linalg.norm(rr_rot.axis), 1.0, atol=1e-6)
+        # The non-finite sample falls back to identity -> zero rotation.
+        assert rotations["test/degraded"][2].angle == pytest.approx(0.0, abs=1e-7)
