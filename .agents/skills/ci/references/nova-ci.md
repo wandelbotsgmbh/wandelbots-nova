@@ -12,7 +12,7 @@ pip install uv        # if uv not installed
 uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
 ```
 
-Python is pinned to **3.12** in the workflows (SDK requires `>=3.12, <3.13`).
+Python is pinned to **3.12** in the workflows (SDK requires `>=3.12`).
 
 ## Always runs (broad paths)
 
