@@ -65,6 +65,7 @@ class Rerun(Viewer):
         show_safety_link_chain: bool = True,
         tcp_tools: dict[str, str] | None = None,
         trajectory_sample_interval_ms: float = 50.0,
+        wall_clock: bool = False,
     ) -> None:
         """
         Initialize the Rerun viewer.
@@ -82,6 +83,11 @@ class Rerun(Viewer):
                 samples for visualization. Lower values = higher fidelity, higher values = better
                 performance. Sampling is adaptive, keeping more points at high-curvature regions.
                 (default: 50.0ms, equivalent to 20 samples/second)
+            wall_clock: Place each trajectory on the timeline at the real elapsed time it was
+                planned instead of directly after the same motion group's previous trajectory.
+                The default drops the time a robot spent waiting (for a lock, a signal, another
+                robot), so robots that took turns in reality replay as moving at the same time.
+                Enable this for multi-robot coordination programs. (default: False)
         """
         self.application_id: str | None = application_id
         self.spawn: bool = spawn
@@ -92,6 +98,7 @@ class Rerun(Viewer):
         self.show_safety_link_chain: bool = show_safety_link_chain
         self.tcp_tools: dict[str, str] = tcp_tools or {}
         self.trajectory_sample_interval_ms: float = trajectory_sample_interval_ms
+        self.wall_clock: bool = wall_clock
         self._bridge: NovaRerunBridgeProtocol | None = None
         self._logged_safety_zones: set[str] = (
             set()
@@ -136,6 +143,7 @@ class Rerun(Viewer):
                 show_collision_link_chain=self.show_collision_link_chain,
                 show_collision_tool=self.show_collision_tool,
                 show_safety_link_chain=self.show_safety_link_chain,
+                wall_clock=self.wall_clock,
             )
             self._bridge = cast(NovaRerunBridgeProtocol, bridge)
         except ImportError:
