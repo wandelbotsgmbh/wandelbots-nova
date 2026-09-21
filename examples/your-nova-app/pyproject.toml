@@ -5,7 +5,7 @@ description = ""
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
-    "wandelbots-nova[novax,nova-rerun-bridge]>=5.8.0,<6",
+    "wandelbots-nova[novax,nova-rerun-bridge]>=6.0.0,<7",
     "python-decouple~=3.8",
     "requests>=2.32.3,<3",
 ]
@@ -15,7 +15,7 @@ app = "app.register_programs:main"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.21",
+    "ruff>=0.16.8",
     # Enables fast file watching for `uvicorn --reload` (Skaffold hot-reload loop).
     "watchfiles>=0.24",
 ]
