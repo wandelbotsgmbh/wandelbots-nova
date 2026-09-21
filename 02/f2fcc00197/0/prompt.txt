@@ -1,0 +1,9 @@
+There is a PR for the feature/Use-commanded-joints-as-start-joints branch where the CI fails can you check why and wether it is flakyness or a real issue?
+
+---
+
+analyse it in a new branch from main in a separate worktree
+
+---
+
+rebase feat/pause-on-io-resume onto main
