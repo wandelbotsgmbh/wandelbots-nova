@@ -28,19 +28,23 @@ re-publishes the terminal state it was in (`PAUSED_ON_IO`, `END_OF_TRAJECTORY`) 
 cycles before `RUNNING`. The machine handled the parked shape by bouncing `executing ⇄ paused`
 on every frame, with the cursor refusing to complete and re-sending `start` (22 times per
 execution in the trace); ADR 002 handled the re-published terminal with a cursor-side
-stale-frame guard.
+stale-frame guard, and #521 (2026-09-18) added an identity filter in the machine — a `start`
+out of `ended`/`paused` ignores frames repeating that stop (same kind, same location) until
+a different frame arrives.
 
 ## Decision
 
 1. **A new `armed` state models "start issued, robot not yet moving".** `start` enters
    `armed`, the first `RUNNING` frame enters `executing`. While armed, the parked
-   `PAUSED_BY_USER` at standstill, `WAIT_FOR_IO`, bare frames and the *stale terminal* the
-   start was issued out of (named by the owner: `arm(stale_terminal=…)`) change nothing. A
+   `PAUSED_BY_USER` at standstill, `WAIT_FOR_IO`, bare frames and the re-published terminal
+   state of the stop the start left (#521's identity filter, unchanged) change nothing. A
    `PAUSED_BY_USER` without standstill is the robot leaving the parked state and is
    remembered; a parked frame after that, or after the owner called `request_pause()`, is a
-   real pause. `PAUSED_ON_IO` that is not stale is a real pause (no parked look-alike exists
-   for it; ADR 002 §2). `END_OF_TRAJECTORY` at standstill that is not stale completes — a
-   zero-length trajectory may never show motion.
+   real pause, and a pause requested on a resume is concluded by the very `PAUSED_BY_USER`
+   frame the filter would otherwise ignore. `PAUSED_ON_IO` is a real pause (no parked
+   look-alike exists for it; ADR 002 §2). `END_OF_TRAJECTORY` at standstill completes — a
+   zero-length trajectory may never show motion; a start at the very end is answered with
+   `WAIT_FOR_IO` and END again, which the filter lets through.
 2. **Transient states follow the discriminator.** In `pausing` and `ending` the robot is still
    moving, so a `RUNNING` frame is not a contradiction: the pause or end never settled, or the
    controller re-armed. The machine returns to `executing`. Waiting for standstill would hang
@@ -97,9 +101,8 @@ that an external pause before motion still looks like the parked frame.
 ## Consequences
 
 - The cursor's `may_complete_as_paused` guard and ADR 002's stale-terminal cursor guard are
-  gone; `armed` owns both rules. The cursor still decides *which* terminal is stale
-  (`_stale_terminal_state_for`: `PAUSED_ON_IO` after an IO pause, `END_OF_TRAJECTORY` after an
-  intermediate stop with room to move) and passes it to `arm`.
+  gone; `armed` owns the parked rule and hosts #521's identity filter. The cursor no longer
+  has to know which terminal is stale or whether a movement has room — frame identity decides.
 - `TrajectoryCursor.pause()` tells the machine (`request_pause()`), so a pause issued before
   the robot moved concludes on the parked frame.
 - A trace of a healthy execution reads `armed → executing → ending → ended`; the 22-frame

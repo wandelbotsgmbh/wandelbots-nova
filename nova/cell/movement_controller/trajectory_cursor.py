@@ -678,12 +678,6 @@ class TrajectoryCursor:
 
         self._state_machine = TrajectoryExecutionMachine()
         self._operation_handler = OperationHandler()
-        # The terminal execute state the next start is issued out of, while the
-        # controller still re-publishes it (level-based PAUSED_ON_IO /
-        # END_OF_TRAJECTORY keep arriving until the new start is processed).
-        # Handed to the machine when it is armed so those frames do not complete
-        # the fresh operation before it ever moved. See _stale_terminal_state_for.
-        self._stale_terminal_for_next_start: type | None = None
 
         self._initialize_task = asyncio.create_task(self.ainitialize())
 
@@ -1151,56 +1145,12 @@ class TrajectoryCursor:
         target_location: Optional[float] = None,
     ) -> asyncio.Future[OperationResult]:
         """Start a new operation, returning a Future that will be resolved when the operation completes."""
-        self._stale_terminal_for_next_start = self._stale_terminal_state_for(
-            operation_type, target_location
-        )
         return self._operation_handler.start(
             operation_type,
             start_location=self._current_location,
             expected_response_type=expected_response_type,
             target_location=target_location,
         )
-
-    def _stale_terminal_state_for(
-        self, operation_type: OperationType, target_location: Optional[float]
-    ) -> type | None:
-        """Which re-published terminal state must not complete a new operation.
-
-        An IO pause is always resumable, so its frames are stale for any new
-        operation. An ``ended`` machine re-publishes END_OF_TRAJECTORY at an
-        intermediate stop (``forward_to``) exactly like at the real end; only when
-        the requested movement has room to move is a repeated END stale — a start
-        with nowhere to go is legitimately concluded by it.
-        """
-        if self._state_machine.is_paused_on_io:
-            return api.models.TrajectoryPausedOnIO
-        if self._state_machine.is_ended and self._movement_has_room(
-            operation_type, target_location
-        ):
-            return api.models.TrajectoryEnded
-        return None
-
-    def _movement_has_room(
-        self, operation_type: OperationType, target_location: Optional[float]
-    ) -> bool:
-        location = self._current_location
-        match operation_type:
-            case OperationType.PAUSE:
-                return False
-            case (
-                OperationType.BACKWARD
-                | OperationType.BACKWARD_TO
-                | OperationType.BACKWARD_TO_PREVIOUS_ACTION
-            ):
-                return location > 0.0 if target_location is None else target_location < location
-            case _:
-                if target_location is not None:
-                    return target_location > location
-                if self.joint_trajectory is None:
-                    # Unknown length: a repeated END must be allowed to conclude,
-                    # or a start at the real end would wait for motion forever.
-                    return False
-                return location < self.joint_trajectory.locations[-1]
 
     def _complete_operation(self, error: Optional[Exception] = None, *, paused_on_io: bool = False):
         """Complete the current operation with the given status."""
@@ -1405,13 +1355,11 @@ class TrajectoryCursor:
                     and not self._state_machine.is_pausing
                 ):
                     self._state_machine.arm(
-                        stale_terminal=self._stale_terminal_for_next_start,
                         # A pause issued before any frame armed the machine replaces
                         # the movement it was meant to pause; the parked frame must
                         # still conclude it.
-                        pause_requested=pending_op.operation_type is OperationType.PAUSE,
+                        pause_requested=pending_op.operation_type is OperationType.PAUSE
                     )
-                    self._stale_terminal_for_next_start = None
 
                 # Tee every state to consumers of __aiter__ regardless of whether an
                 # operation is active: observers (guards, overlays, UIs) need states
