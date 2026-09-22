@@ -17,10 +17,13 @@ RAE publishes the execute state **level-based** (robotics/wbr!2262):
   `END_OF_TRAJECTORY` after the motion ends, `PAUSED_BY_USER` for as long as a pause holds.
   Completion and pause are durable, re-observable conditions — no consumer has to catch a
   single-step event, so any state-stream rate detects them.
-- Between `InitializeMovementRequest` and the actual motion start the state is also
-  `PAUSED_BY_USER` (at standstill): a *parked* trajectory is indistinguishable from a paused one
-  on the wire. Consumers must not conclude a movement operation from a paused state unless that
-  operation was actually seen running (see the cursor rules below).
+- Between `InitializeMovementRequest` and the actual motion start the state is
+  `PAUSED_BY_USER` at standstill: the *parked* shape. On the wire it is indistinguishable
+  from a pause; the machine models it as its own phase (`armed`, below) instead.
+- At motion start the two fields do not flip in the same step: `standstill` drops to `false`
+  one control cycle **before** the discriminator changes from `PAUSED_BY_USER` to `RUNNING`
+  (measured 2026-09-16). `standstill` can also flicker back to `true` for a few cycles while
+  `RUNNING` and the location advance — an upstream defect; the SDK must not read it as a stop.
 - A stopped execution also reports `PAUSED_BY_USER` (there is no separate wire kind); after
   stop/teardown the `execute` block disappears.
 - `PAUSED_ON_IO` is published while the controller holds a `pause_on_io` pause. The controller
@@ -29,6 +32,7 @@ RAE publishes the execute state **level-based** (robotics/wbr!2262):
   holds at the start yields `PAUSED_ON_IO` at the start location without any motion; after a
   resume the pause is re-published for a few control cycles before `RUNNING` appears
   (measured, see `docs/architecture/incoming/pause-on-signal-evaluation.md` and ADR 002).
+  `END_OF_TRAJECTORY` is re-published the same way after a restart out of `ended`.
 
 Controllers **older than wbr!2262** instead drop the `execute` block the instant the robot
 settles: `END_OF_TRAJECTORY` / `PAUSED_BY_USER` are visible at standstill for only one or two
@@ -42,66 +46,101 @@ the standstill concludes it.
 | State | Description |
 |-------|-------------|
 | `idle` | Initial state — no trajectory active, waiting for `start` |
+| `armed` | `start` issued, robot not yet moving. The parked `PAUSED_BY_USER` and the re-published terminal state of the stop a resume leaves (same kind, same location) change nothing here |
 | `executing` | Robot is moving (`TrajectoryRunning`) |
 | `ending` | `TrajectoryEnded` received but robot not yet at standstill |
 | `pausing` | `TrajectoryPausedByUser` or `TrajectoryPausedOnIO` received, not yet at standstill |
 | `paused` | Robot paused and at standstill — may `start` again to resume; `pause_reason` is `USER` or `IO` |
 | `ended` | Trajectory finished **and** robot at standstill |
-| `error` | Unrecoverable error — terminal state |
+| `error` | A frame contradicted the tracked execution (`failure_reason`, `failed_frame`), or `fail` was called — terminal |
+
+Three regimes decide how a frame is read (ADR 003):
+
+- **armed** expects the parked shape and waits for `RUNNING`;
+- **transient** (`ending`, `pausing`) follows the discriminator — the robot is still moving, so a
+  `RUNNING` frame returns to `executing` rather than waiting for a standstill that may be jitter;
+- **rest** (`paused`, `ended`) enforces it — `RUNNING` without a `start` from this machine is an
+  error for a user pause or a finished trajectory, and an observed resume for an IO pause.
 
 ## Transitions
 
 ### External Commands
-- `start` — begin or resume execution (from `idle`, `paused`, or `ended`)
-- `fail` — signal an error from any non-terminal state
+- `arm()` (event `start`) — begin or resume execution (from `idle`, `paused`, or `ended`) →
+  `armed`. A start out of `ended`/`paused` (a resume, or stepping on after `forward_to`) ignores
+  frames that repeat the terminal state it leaves — same kind at the same location — until any
+  different frame arrives. The controller keeps re-publishing the previous stop until it has
+  taken up the new command; concluding the new operation from those frames reported it finished
+  at its own start location (observed on the virtual controller: `forward_to(1.0)` then
+  `forward()` resolved at 1.0 while the robot ran on to the end). A genuine new terminal state
+  is always preceded by `WAIT_FOR_IO` or `RUNNING`, which lifts the filter — including a start
+  issued at the very end of the trajectory. A pause requested on the resume is concluded by the
+  very `PAUSED_BY_USER` frame the filter would otherwise ignore. When the cursor is *certain* the
+  new movement has nowhere to go (`forward()` at the end, `backward()` at the start, a target equal
+  to the current location) it arms with `accept_repeated_terminal=True` and the repeated stop
+  concludes the operation at once, without waiting for the controller's `WAIT_FOR_IO`; with an
+  unknown trajectory length the cursor makes no such claim.
+- `request_pause()` — the owner sent a `PauseMovementRequest`; the next `PAUSED_BY_USER` at
+  standstill is a real pause even while `armed`.
+- `fail` — signal an error from any non-error state
+
+The owner must send `start` for a new movement command **before** processing the frames that
+follow it; the rest-state rules rely on it.
 
 ### Internal Transitions (via `process_motion_state`)
-- `TrajectoryRunning` → stay in `executing`
-- `TrajectoryEnded` + standstill → `ended`
-- `TrajectoryEnded` (no standstill) → `ending` → (on standstill) → `ended`
-- `TrajectoryPausedByUser` + standstill → `paused` (`pause_reason = USER`)
-- `TrajectoryPausedByUser` (no standstill) → `pausing` → (on standstill) → `paused`
-- `TrajectoryPausedOnIO` + standstill → `paused` (`pause_reason = IO`)
-- `TrajectoryPausedOnIO` (no standstill) → `pausing` → (on standstill) → `paused`
-- `TrajectoryRunning` while `paused` → `executing` (a resume observed on the wire)
+
+`armed`:
+- `TrajectoryRunning` → `executing`
+- `TrajectoryPausedByUser` + standstill → stay (parked); → `paused` (`USER`) if the robot was
+  seen leaving standstill before, or `request_pause()` was called
+- `TrajectoryPausedByUser` (no standstill) → stay, remember that the robot moved
+- `TrajectoryPausedOnIO` → `paused` / `pausing` (`IO`)
+- `TrajectoryEnded` + standstill → `ended` (a zero-length trajectory may never show motion);
+  (no standstill) → `ending`
+- a frame repeating the stop the start left (see `arm()`) → stay
+- `TrajectoryWaitForIO`, bare frames → stay
+
+`executing`:
+- `TrajectoryRunning` / `TrajectoryWaitForIO` → stay (also with `standstill=true`)
+- `TrajectoryEnded` + standstill → `ended`; (no standstill) → `ending`
+- `TrajectoryPausedByUser` / `TrajectoryPausedOnIO` + standstill → `paused`; (no standstill) → `pausing`
+
+`ending` / `pausing`:
+- standstill (with or without an `execute` block) → `ended` / `paused`
+- `TrajectoryRunning` → `executing` (the end / pause never settled)
+- `pausing` + `TrajectoryEnded` → `ended` / `ending` (a pause requested just before the end)
+
+`paused` / `ended`:
+- `TrajectoryRunning` while `paused` with `pause_reason = IO` → `executing` (observed resume)
+- `TrajectoryRunning` while `paused` with `pause_reason = USER`, or while `ended` → `error`
+- `TrajectoryPausedByUser` / `TrajectoryPausedOnIO` while `paused` → `pause_reason` follows the wire
+- anything else → stay (logged)
 
 The standstill that completes `ending → ended` and `pausing → paused` counts **with or without an
 `execute` block on the frame**: pre-!2262 controllers drop the block at settle, so a bare
 standstill frame can be the only completion signal that ever arrives. A bare standstill never
-concludes anything from `executing` — without a terminal discriminator there is nothing to
-conclude.
+concludes anything from `armed` or `executing` — without a terminal discriminator there is
+nothing to conclude.
 
 ## Completion rules in `TrajectoryCursor`
 
-The cursor derives *operation* completion from the machine, with two guards for level-based
-publishing:
+The cursor derives *operation* completion from the machine:
 
-- `pause()` always queues a pause command while the cursor is attached, even when the local
-  operation has already completed. Local operation state cannot prove that the controller has
-  stopped, so it must not suppress a stop request. The returned future reports completion or a
-  controller error; calling `pause()` after detaching returns a failed future.
+- The cursor arms the machine on the first frame after a movement command was issued, before
+  that frame is processed. A pause requested before that (`pause()` right after `forward()`)
+  arms the machine for the pause, so the parked frame concludes it.
 - An operation is only marked running on **evidence of motion** (`standstill` false or a
-  `RUNNING` detail) — never on the mere presence of an `execute` block, which exists from
-  initialization on.
-- A `paused` machine state concludes only a PAUSE operation, or a movement operation that was
-  seen running. This keeps the persistent pre-start `PAUSED_BY_USER` frames from resolving a
-  movement that never moved.
-- A `start` out of `ended`/`paused` (a resume, or stepping on after `forward_to`) ignores frames that
-  repeat the terminal state it leaves — same kind at the same location — until any different frame
-  arrives. The controller keeps re-publishing the previous stop until it has taken up the new command;
-  concluding the new operation from those frames reported it finished at its own start location
-  (observed on the virtual controller: `forward_to(1.0)` then `forward()` resolved at 1.0 while the
-  robot ran on to the end). A genuine new terminal state is always preceded by `WAIT_FOR_IO` or
-  `RUNNING`, which lifts the filter — including a start issued at the very end of the trajectory.
-- A `paused` machine state with `pause_reason = IO` concludes any **commanded** operation as
-  `OperationResult.paused_on_io = True` — also one that never moved, since the controller only
-  reports `PAUSED_ON_IO` after a start armed with `pause_on_io`. An operation started while the
-  machine is still paused on IO ignores `PAUSED_ON_IO` frames until a frame with another state
-  arrived (the level-based re-publish after a resume).
-- `ended` concludes any commanded operation; in one-shot mode (`move_forward`) it also detaches
-  the cursor, which closes the execution websocket — the client's teardown acknowledges the
-  persistent terminal state. An IO pause is `paused`, never `ended`, so the cursor stays
-  attached; `move_forward` waits for the signal to clear and starts again (ADR 002).
+  `RUNNING` detail) — never on the mere presence of an `execute` block.
+- `ended` and `paused` conclude any **commanded** operation. A `paused` machine with
+  `pause_reason = IO` completes it with `OperationResult.paused_on_io = True`
+  (`final_location` is the pause location); the cursor stays attached so the movement can be
+  resumed with another start. `move_forward` (the `execute()` path) waits for the signal to clear
+  and starts again (ADR 002); without a release waiter it ends the execution early, with a warning.
+- One-shot mode (`detach_on_standstill`, i.e. `move_forward`): `ended` detaches the cursor,
+  which closes the execution websocket. A `paused` with `pause_reason = USER` that this cursor
+  did not request (pendant, another client) fails the operation and the protocol loop with
+  `UnexpectedTrajectoryState` — there is no resume path, and waiting would never end.
+- A machine in `error` fails the current operation and raises `UnexpectedTrajectoryState`
+  (`nova.exceptions`) from the protocol loop, so `execute()` raises instead of hanging.
 
 ---
 
@@ -119,28 +158,44 @@ skinparam state {
 state idle <<initial>>
 state error <<final>>
 
-idle --> executing : start
-paused --> executing : start / resume
-ended --> executing : start
+idle --> armed : start
+paused --> armed : start / resume
+ended --> armed : start
+
+armed --> armed : PAUSED_BY_USER (parked)\nre-published previous stop\nWAIT_FOR_IO
+armed --> executing : TrajectoryRunning
+armed --> paused : PAUSED_BY_USER [standstill]\n(moved | pause requested)\nPAUSED_ON_IO [standstill]
+armed --> pausing : PAUSED_ON_IO [!standstill]
+armed --> ended : TrajectoryEnded [standstill]
+armed --> ending : TrajectoryEnded [!standstill]
 
 executing --> executing : TrajectoryRunning
 executing --> ended : TrajectoryEnded\n[standstill]
 executing --> ending : TrajectoryEnded\n[!standstill]
-executing --> paused : TrajectoryPausedByUser | TrajectoryPausedOnIO\n[standstill]
-executing --> pausing : TrajectoryPausedByUser | TrajectoryPausedOnIO\n[!standstill]
-paused --> executing : TrajectoryRunning (observed resume)
+executing --> paused : PAUSED_BY_USER | PAUSED_ON_IO\n[standstill]
+executing --> pausing : PAUSED_BY_USER | PAUSED_ON_IO\n[!standstill]
 
 ending --> ending : [!standstill]
 ending --> ended : [standstill]
+ending --> executing : TrajectoryRunning
 
 pausing --> pausing : [!standstill]
 pausing --> paused : [standstill]
+pausing --> executing : TrajectoryRunning
+pausing --> ended : TrajectoryEnded [standstill]
+pausing --> ending : TrajectoryEnded [!standstill]
+
+paused --> executing : TrajectoryRunning\n[reason = IO] (observed resume)
+paused --> error : TrajectoryRunning\n[reason = USER]
+ended --> error : TrajectoryRunning
 
 idle --> error : fail
+armed --> error : fail
 executing --> error : fail
 ending --> error : fail
 pausing --> error : fail
 paused --> error : fail
+ended --> error : fail
 
 error --> [*]
 
@@ -155,32 +210,49 @@ error --> [*]
 stateDiagram-v2
     [*] --> idle
 
-    idle --> executing : start
-    paused --> executing : start (resume)
-    ended --> executing : start
+    idle --> armed : start
+    paused --> armed : start (resume)
+    ended --> armed : start
+
+    armed --> armed : PAUSED_BY_USER (parked) / re-published previous stop / WAIT_FOR_IO
+    armed --> executing : TrajectoryRunning
+    armed --> paused : PAUSED_BY_USER [standstill, moved or pause requested] / PAUSED_ON_IO [standstill]
+    armed --> pausing : PAUSED_ON_IO [!standstill]
+    armed --> ended : TrajectoryEnded [standstill]
+    armed --> ending : TrajectoryEnded [!standstill]
 
     executing --> executing : TrajectoryRunning
     executing --> ended : TrajectoryEnded [standstill]
     executing --> ending : TrajectoryEnded [!standstill]
-    executing --> paused : TrajectoryPausedByUser / TrajectoryPausedOnIO [standstill]
-    executing --> pausing : TrajectoryPausedByUser / TrajectoryPausedOnIO [!standstill]
-    paused --> executing : TrajectoryRunning (observed resume)
+    executing --> paused : PAUSED_BY_USER / PAUSED_ON_IO [standstill]
+    executing --> pausing : PAUSED_BY_USER / PAUSED_ON_IO [!standstill]
 
     ending --> ending : [!standstill]
     ending --> ended : [standstill]
+    ending --> executing : TrajectoryRunning
 
     pausing --> pausing : [!standstill]
     pausing --> paused : [standstill]
+    pausing --> executing : TrajectoryRunning
+    pausing --> ended : TrajectoryEnded [standstill]
+    pausing --> ending : TrajectoryEnded [!standstill]
+
+    paused --> executing : TrajectoryRunning [reason = IO] (observed resume)
+    paused --> error : TrajectoryRunning [reason = USER]
+    ended --> error : TrajectoryRunning
 
     idle --> error : fail
+    armed --> error : fail
     executing --> error : fail
     ending --> error : fail
     pausing --> error : fail
     paused --> error : fail
+    ended --> error : fail
 
     error --> [*]
 
     note right of idle : Initial state
+    note right of armed : Start issued, waiting for motion
     note right of error : Terminal state
 ```
 
@@ -190,7 +262,7 @@ stateDiagram-v2
 
 ```python
 machine = TrajectoryExecutionMachine()
-machine.send("start")
+machine.arm()
 
 async for state in motion_group_states:
     result = machine.process_motion_state(state)
@@ -198,8 +270,10 @@ async for state in motion_group_states:
     if result.location is not None:
         update_location(result.location)
 
+    if machine.is_error:
+        raise RuntimeError(machine.failure_reason)
     if machine.is_ended:
         break
     if machine.is_paused:
-        handle_pause()
+        handle_pause(machine.pause_reason)
 ```

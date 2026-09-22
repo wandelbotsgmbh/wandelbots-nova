@@ -1,15 +1,15 @@
 """Cursor behaviour on a controller-side IO pause (``pause_on_io`` → ``PAUSED_ON_IO``).
 
-Measured wire behaviour (docs/architecture/incoming/pause-on-signal-evaluation.md): the
-controller reports ``PAUSED_ON_IO`` level-based for as long as it holds the pause, never
+Measured wire behaviour (docs/architecture/incoming/pause-on-signal-evaluation.md, ADR 002):
+the controller reports ``PAUSED_ON_IO`` level-based for as long as it holds the pause, never
 resumes by itself, and honours a new ``StartMovementRequest`` only once the condition has
 cleared. Between init and the first start it reports the parked ``PAUSED_BY_USER``; a
 condition that is already true at the start yields ``PAUSED_ON_IO`` without any motion.
 
 These tests pin the cursor's side of that contract: an IO pause completes the movement
-operation *as paused* (not as reached target), keeps the cursor attached, and the stale
-IO-pause frames the controller still publishes right after a resume do not complete the
-resumed operation.
+operation *as paused on IO* (not as reached target), keeps the cursor attached, and the
+stale IO-pause frames the controller still publishes right after a resume do not complete
+the resumed operation.
 """
 
 from __future__ import annotations
@@ -74,6 +74,12 @@ def ended(location: float) -> api.models.MotionGroupState:
     return _state(True, _execute(api.models.TrajectoryEnded(), location))
 
 
+def waiting_for_io(location: float) -> api.models.MotionGroupState:
+    """What the controller answers to a start with nothing to move, before it
+    re-publishes END_OF_TRAJECTORY (observed on the virtual controller)."""
+    return _state(True, _execute(api.models.TrajectoryWaitForIO(), location))
+
+
 class _Frames:
     """A never-ending state stream the test feeds frame by frame."""
 
@@ -104,13 +110,15 @@ def _pause_condition() -> api.models.PauseOnIO:
     )
 
 
-def _one_shot_cursor(frames: _Frames) -> TrajectoryCursor:
+def _cursor(
+    frames: _Frames, *, detach_on_standstill: bool, with_trajectory: bool = True
+) -> TrajectoryCursor:
     return TrajectoryCursor(
         motion_id="traj-1",
         motion_group_state_stream=frames.stream(),
-        joint_trajectory=_joint_trajectory(),
+        joint_trajectory=_joint_trajectory() if with_trajectory else None,
         initial_location=0.0,
-        detach_on_standstill=True,
+        detach_on_standstill=detach_on_standstill,
         emit_motion_events=False,
         pause_on_io=_pause_condition(),
     )
@@ -134,7 +142,7 @@ async def _settle(rounds: int = 20) -> None:
 async def test_io_pause_completes_the_movement_as_paused_and_keeps_the_cursor_attached():
     frames = _Frames()
     frames.feed(_state(True), parked())
-    cursor = _one_shot_cursor(frames)
+    cursor = _cursor(frames, detach_on_standstill=True)
     operation = cursor.forward()
     consumer, requests = await _drive(cursor)
     try:
@@ -148,7 +156,7 @@ async def test_io_pause_completes_the_movement_as_paused_and_keeps_the_cursor_at
         assert result.final_location == 1.0
         await _settle()
         # `paused`, not `ended`: even the one-shot cursor stays attached so the
-        # movement can be resumed with another start.
+        # movement can be resumed with another start (move_forward decides).
         assert not consumer.done()
         assert not cursor._stop_event.is_set()
         starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
@@ -165,7 +173,7 @@ async def test_io_pause_before_any_motion_completes_the_operation():
     this must resolve the movement — nothing else ever will."""
     frames = _Frames()
     frames.feed(_state(True), parked())
-    cursor = _one_shot_cursor(frames)
+    cursor = _cursor(frames, detach_on_standstill=True)
     operation = cursor.forward()
     consumer, _ = await _drive(cursor)
     try:
@@ -185,7 +193,7 @@ async def test_io_pause_before_any_motion_completes_the_operation():
 async def test_stale_io_pause_frames_after_a_resume_do_not_complete_the_resumed_operation():
     frames = _Frames()
     frames.feed(_state(True), parked())
-    cursor = _one_shot_cursor(frames)
+    cursor = _cursor(frames, detach_on_standstill=True)
     first = cursor.forward()
     consumer, requests = await _drive(cursor)
     try:
@@ -233,14 +241,7 @@ async def test_stale_end_frames_after_an_intermediate_stop_do_not_complete_the_n
     frames = _Frames()
     frames.feed(_state(True), parked())
     # A session cursor (as the multi-group executor builds it): no auto-detach.
-    cursor = TrajectoryCursor(
-        motion_id="traj-1",
-        motion_group_state_stream=frames.stream(),
-        joint_trajectory=_joint_trajectory(),
-        initial_location=0.0,
-        detach_on_standstill=False,
-        emit_motion_events=False,
-    )
+    cursor = _cursor(frames, detach_on_standstill=False)
     consumer, _ = await _drive(cursor)
     try:
         first = cursor.forward_to(1.0)
@@ -264,19 +265,61 @@ async def test_stale_end_frames_after_an_intermediate_stop_do_not_complete_the_n
             await consumer
 
 
-async def test_a_start_at_the_real_end_is_still_concluded_by_the_repeated_end_frame():
-    """With nowhere left to move, the re-published END is the honest answer, not a
-    stale one: the operation must not hang."""
+async def test_a_zero_distance_retarget_is_concluded_by_the_repeated_end_frame():
+    """forward_to(X) while standing at X after an intermediate stop: the cursor knows
+    this movement has nowhere to go and arms the machine to accept the repeated END,
+    so the operation completes without waiting for the controller's WAIT_FOR_IO."""
     frames = _Frames()
     frames.feed(_state(True), parked())
-    cursor = TrajectoryCursor(
-        motion_id="traj-1",
-        motion_group_state_stream=frames.stream(),
-        joint_trajectory=_joint_trajectory(),
-        initial_location=0.0,
-        detach_on_standstill=False,
-        emit_motion_events=False,
-    )
+    cursor = _cursor(frames, detach_on_standstill=False)
+    consumer, _ = await _drive(cursor)
+    try:
+        first = cursor.forward_to(1.0)
+        frames.feed(running(0.5), ended(1.0))
+        async with asyncio.timeout(5):
+            assert (await first).final_location == 1.0
+
+        again = cursor.forward_to(1.0)
+        frames.feed(ended(1.0), ended(1.0))
+        async with asyncio.timeout(5):
+            result = await again
+        assert result.final_location == 1.0
+        assert result.target_location == 1.0
+    finally:
+        cursor.detach()
+        async with asyncio.timeout(5):
+            await consumer
+
+
+async def test_a_cursor_without_a_trajectory_is_concluded_by_the_end_after_wait_for_io():
+    """Without a joint trajectory the cursor cannot claim a movement has nowhere to go,
+    so it relies on the controller's WAIT_FOR_IO to lift the identity filter."""
+    frames = _Frames()
+    frames.feed(_state(True), parked())
+    cursor = _cursor(frames, detach_on_standstill=False, with_trajectory=False)
+    consumer, _ = await _drive(cursor)
+    try:
+        first = cursor.forward()
+        frames.feed(running(1.5), ended(3.0))
+        async with asyncio.timeout(5):
+            assert (await first).final_location == 3.0
+
+        again = cursor.forward()
+        frames.feed(ended(3.0), waiting_for_io(3.0), ended(3.0))
+        async with asyncio.timeout(5):
+            assert (await again).final_location == 3.0
+    finally:
+        cursor.detach()
+        async with asyncio.timeout(5):
+            await consumer
+
+
+async def test_a_start_at_the_real_end_is_concluded_by_the_repeated_end_frame():
+    """forward() at the real end: the cursor arms the machine to accept the repeated
+    END, so the operation completes at once — whether or not WAIT_FOR_IO follows."""
+    frames = _Frames()
+    frames.feed(_state(True), parked())
+    cursor = _cursor(frames, detach_on_standstill=False)
     consumer, _ = await _drive(cursor)
     try:
         first = cursor.forward()

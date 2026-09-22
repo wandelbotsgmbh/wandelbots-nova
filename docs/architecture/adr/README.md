@@ -37,3 +37,5 @@ Status legend: 🕒 Proposed · ✅ Accepted · ⚠ Superseded / deprecated
 ### Execution
 
 - [001](./001-merge-movement-controllers-into-trajectory-cursor.md) — `move_forward` becomes a `TrajectoryCursor` adapter ✅
+- [002](./002-io-pause-is-resumable.md) — a controller-side IO pause is a suspended execution, not completion ✅
+- [003](./003-trajectory-state-machine-armed-transient-rest.md) — the execution machine reads frames by regime: armed, transient, rest; contradictions fail ✅

@@ -59,11 +59,8 @@ from blinker import signal
 from nova import api
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
-from nova.cell.movement_controller.trajectory_state_machine import (
-    PauseReason,
-    TrajectoryExecutionMachine,
-)
-from nova.exceptions import ErrorDuringMovement, InitMovementFailed
+from nova.cell.movement_controller.trajectory_state_machine import TrajectoryExecutionMachine
+from nova.exceptions import ErrorDuringMovement, InitMovementFailed, UnexpectedTrajectoryState
 from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream
 from nova.utils import SourceLocation
 
@@ -375,30 +372,6 @@ class OperationHandler:
             and self._operation.operation_state is not OperationState.INITIAL
         )
 
-    def may_complete_as_paused(self, reason: PauseReason | None = PauseReason.USER) -> bool:
-        """Whether a terminal paused state can belong to the current operation.
-
-        A PAUSE operation is completed by exactly the pause it commanded. Any
-        other operation may only be concluded by a *user* pause after it
-        demonstrably ran: with level-based execute state (robotics/wbr!2262) the
-        controller publishes PAUSED_BY_USER persistently between initialization
-        and the actual motion start, and those frames must not resolve a
-        movement operation that never moved.
-
-        An *IO* pause has no such parked look-alike — the controller reports
-        PAUSED_ON_IO only after a start armed with ``pause_on_io`` — so it
-        concludes any commanded movement, including one whose condition was
-        already true at the start and therefore never moved. Stale IO-pause
-        frames after a resume are filtered by the cursor, not here.
-        """
-        if self._operation is None:
-            return False
-        if self._operation.operation_type is OperationType.PAUSE:
-            return True
-        if reason is PauseReason.IO:
-            return True
-        return self._operation.operation_state is OperationState.RUNNING
-
     @property
     def current_operation(self) -> Optional[Operation]:
         """Get the current operation, if any."""
@@ -705,14 +678,6 @@ class TrajectoryCursor:
 
         self._state_machine = TrajectoryExecutionMachine()
         self._operation_handler = OperationHandler()
-        # The terminal execute state an operation was started out of, while the
-        # controller still re-publishes it: level-based PAUSED_ON_IO /
-        # END_OF_TRAJECTORY frames keep arriving until the controller has
-        # processed the new start, and must not complete the fresh operation as
-        # "paused again" / "ended again" before it ever moved. Cleared by the
-        # first frame that reports anything else. See
-        # _motion_group_state_monitor and _stale_terminal_state_for.
-        self._stale_terminal_state: type | None = None
 
         self._initialize_task = asyncio.create_task(self.ainitialize())
 
@@ -893,7 +858,9 @@ class TrajectoryCursor:
             return future
 
         future = self._start_operation(
-            OperationType.FORWARD, expected_response_type=api.models.StartMovementResponse
+            OperationType.FORWARD,
+            expected_response_type=api.models.StartMovementResponse,
+            target_location=target_location,
         )
 
         if target_location is not None:
@@ -941,7 +908,9 @@ class TrajectoryCursor:
             return future
 
         future = self._start_operation(
-            OperationType.BACKWARD, expected_response_type=api.models.StartMovementResponse
+            OperationType.BACKWARD,
+            expected_response_type=api.models.StartMovementResponse,
+            target_location=target_location,
         )
 
         if target_location is not None:
@@ -1136,6 +1105,9 @@ class TrajectoryCursor:
         future = self._start_operation(
             OperationType.PAUSE, expected_response_type=api.models.PauseMovementResponse
         )
+        # Before the robot moves, PAUSED_BY_USER at standstill is the parked shape the
+        # machine ignores; a pause we asked for must still conclude there.
+        self._state_machine.request_pause()
         self._set_intent(
             Intent(
                 operation_type=OperationType.PAUSE
@@ -1173,7 +1145,6 @@ class TrajectoryCursor:
         target_location: Optional[float] = None,
     ) -> asyncio.Future[OperationResult]:
         """Start a new operation, returning a Future that will be resolved when the operation completes."""
-        self._stale_terminal_state = self._stale_terminal_state_for(operation_type, target_location)
         return self._operation_handler.start(
             operation_type,
             start_location=self._current_location,
@@ -1181,28 +1152,16 @@ class TrajectoryCursor:
             target_location=target_location,
         )
 
-    def _stale_terminal_state_for(
-        self, operation_type: OperationType, target_location: Optional[float]
-    ) -> type | None:
-        """Which re-published terminal state must not complete a new operation.
-
-        An IO pause is always resumable, so its frames are stale for any new
-        operation. An ``ended`` machine re-publishes END_OF_TRAJECTORY at an
-        intermediate stop (``forward_to``) exactly like at the real end; only when
-        the requested movement has room to move is a repeated END stale — a start
-        with nowhere to go is legitimately concluded by it.
-        """
-        if self._state_machine.is_paused_on_io:
-            return api.models.TrajectoryPausedOnIO
-        if self._state_machine.is_ended and self._movement_has_room(
-            operation_type, target_location
-        ):
-            return api.models.TrajectoryEnded
-        return None
-
     def _movement_has_room(
         self, operation_type: OperationType, target_location: Optional[float]
     ) -> bool:
+        """Whether the requested movement can move at all — ``True`` when unsure.
+
+        Decides if a re-published terminal state may conclude a fresh operation at
+        once (see :meth:`TrajectoryExecutionMachine.arm`). Claiming "no room" wrongly
+        would complete a movement at its own start, so an unknown trajectory length
+        counts as room; the controller's ``WAIT_FOR_IO`` then lifts the filter.
+        """
         location = self._current_location
         match operation_type:
             case OperationType.PAUSE:
@@ -1409,37 +1368,63 @@ class TrajectoryCursor:
             ):
                 ready_event.set()
 
-                # Ensure the state machine is in executing state when an operation
-                # is active.  This replaces the old manual kick in _start_operation()
-                # and correctly handles resuming after paused/ended states.
+                # Arm the state machine when an operation is active and the machine
+                # is at rest. This happens *before* the frame is processed, which is
+                # the contract the machine's rest-state rules rely on: a RUNNING
+                # frame reaching a machine still at rest means no start was issued.
+                pending_op = self._operation_handler.current_operation
                 if (
-                    self._operation_handler.in_progress()
+                    pending_op is not None
+                    and not pending_op.future.done()
+                    and not self._state_machine.is_armed
                     and not self._state_machine.is_executing
                     and not self._state_machine.is_ending
                     and not self._state_machine.is_pausing
                 ):
-                    self._state_machine.send("start")
-                    current_op = self._operation_handler.current_operation
-                    if current_op is not None and not self._movement_has_room(
-                        current_op.operation_type, current_op.target_location
-                    ):
-                        self._state_machine.accept_repeated_terminal()
+                    self._state_machine.arm(
+                        # A pause issued before any frame armed the machine replaces
+                        # the movement it was meant to pause; the parked frame must
+                        # still conclude it.
+                        pause_requested=pending_op.operation_type is OperationType.PAUSE,
+                        # A command with nowhere to go is answered by the stop it
+                        # leaves; only claim that when it is certain.
+                        accept_repeated_terminal=not self._movement_has_room(
+                            pending_op.operation_type, pending_op.target_location
+                        ),
+                    )
 
                 # Tee every state to consumers of __aiter__ regardless of whether an
                 # operation is active: observers (guards, overlays, UIs) need states
                 # from before movement starts, not only once it is under way.
                 result = self._state_machine.process_motion_state(motion_group_state)
+                if logger.isEnabledFor(logging.DEBUG):
+                    frame_state = _frame_execute_state(motion_group_state)
+                    exec_state = type(frame_state).__name__ if frame_state is not None else None
+                    logger.debug(
+                        "frame standstill=%s execute=%s location=%s | %s → %s changed=%s",
+                        motion_group_state.standstill,
+                        exec_state,
+                        result.location,
+                        result.previous_state_id or "-",
+                        result.current_state_id or "-",
+                        result.state_changed,
+                    )
                 if result.has_execute:
                     self._enqueue_state(motion_group_state)
                     if result.location is not None:
                         self._current_location = result.location
-                frame_state = _frame_execute_state(motion_group_state)
-                if self._stale_terminal_state is not None and not isinstance(
-                    frame_state, self._stale_terminal_state
-                ):
-                    # Anything else proves the controller has moved on from the
-                    # terminal state an operation was started out of.
-                    self._stale_terminal_state = None
+
+                if self._state_machine.is_error:
+                    # The frame contradicted the tracked execution (e.g. RUNNING while
+                    # paused by user with no start issued). Tear the execution down
+                    # with the reason instead of tracking a state that can never end.
+                    error = UnexpectedTrajectoryState(
+                        self._state_machine.failure_reason or "trajectory state machine failed",
+                        machine_state=result.previous_state_id,
+                        frame=self._state_machine.failed_frame,
+                    )
+                    self._complete_operation(error=error)
+                    raise error
 
                 current_op = self._operation_handler.current_operation
                 if current_op is None or current_op.future.done():
@@ -1462,35 +1447,24 @@ class TrajectoryCursor:
                             "was never commanded — not completing it."
                         )
                         continue
-                    pause_reason = self._state_machine.pause_reason
-                    paused_on_io = self._state_machine.is_paused and pause_reason is PauseReason.IO
-                    if self._stale_terminal_state is not None and isinstance(
-                        frame_state, self._stale_terminal_state
+                    paused_on_io = self._state_machine.is_paused_on_io
+                    if (
+                        self._detach_on_standstill
+                        and self._state_machine.is_paused
+                        and not paused_on_io
+                        and current_op.operation_type is not OperationType.PAUSE
                     ):
-                        # The controller still re-publishes the terminal state this
-                        # operation was started out of; it has not processed the
-                        # start yet. Completing here would report a resumed
-                        # movement as paused/ended again before it ever moved.
-                        logger.debug(
-                            "Stale %s frame after a (re)start — not completing the "
-                            "current operation.",
-                            type(frame_state).__name__,
+                        # One-shot execution has no resume path: a pause that this
+                        # cursor did not request (pendant, another client) would leave
+                        # execute() waiting forever. Fail it instead.
+                        error = UnexpectedTrajectoryState(
+                            f"trajectory was paused by user at location {self._current_location} "
+                            "during one-shot execution; only this cursor may pause it",
+                            machine_state=result.current_state_id,
+                            frame=motion_group_state,
                         )
-                        continue
-                    # A paused state can only conclude a pause operation, an IO
-                    # pause, or a movement operation that was seen running.
-                    # Level-based execute state (robotics/wbr!2262) publishes
-                    # PAUSED_BY_USER persistently between initialize and motion
-                    # start; those frames must not resolve a movement that never
-                    # moved.
-                    if self._state_machine.is_paused and not (
-                        self._operation_handler.may_complete_as_paused(pause_reason)
-                    ):
-                        logger.debug(
-                            "Paused trajectory state observed before the current operation "
-                            "showed any motion — not completing it."
-                        )
-                        continue
+                        self._complete_operation(error=error)
+                        raise error
                     self._complete_operation(paused_on_io=paused_on_io)
                     # An IO pause is `paused`, never `ended`: the cursor stays
                     # attached so the movement can be resumed with another start.
