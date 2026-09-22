@@ -1,0 +1,33 @@
+There is a PR for the feature/Use-commanded-joints-as-start-joints branch where the CI fails can you check why and wether it is flakyness or a real issue?
+
+---
+
+analyse it in a new branch from main in a separate worktree
+
+---
+
+rebase feat/pause-on-io-resume onto main
+
+---
+
+<task-notification>
+<task-id>b2c96r3s4</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/78bb3f32-cd75-4fb5-bc5f-796b30b090ab/tasks/b2c96r3s4.output</output-file>
+<status>completed</status>
+<summary>Background command "Run the pause-on-IO, cursor and executor integration tests live on the rebased branch" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bcpl74ls3</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/78bb3f32-cd75-4fb5-bc5f-796b30b090ab/tasks/bcpl74ls3.output</output-file>
+<status>completed</status>
+<summary>Background command "Run the whole unit suite on the rebased branch" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+push
