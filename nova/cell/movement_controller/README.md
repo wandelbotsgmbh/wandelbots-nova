@@ -46,7 +46,7 @@ the standstill concludes it.
 | State | Description |
 |-------|-------------|
 | `idle` | Initial state — no trajectory active, waiting for `start` |
-| `armed` | `start` issued, robot not yet moving. The parked `PAUSED_BY_USER` and a re-published stale terminal (`PAUSED_ON_IO` / `END_OF_TRAJECTORY` of the state the start was issued out of) change nothing here |
+| `armed` | `start` issued, robot not yet moving. The parked `PAUSED_BY_USER` and the re-published terminal state of the stop a resume leaves (same kind, same location) change nothing here |
 | `executing` | Robot is moving (`TrajectoryRunning`) |
 | `ending` | `TrajectoryEnded` received but robot not yet at standstill |
 | `pausing` | `TrajectoryPausedByUser` or `TrajectoryPausedOnIO` received, not yet at standstill |
@@ -65,10 +65,16 @@ Three regimes decide how a frame is read (ADR 003):
 ## Transitions
 
 ### External Commands
-- `arm(stale_terminal=…)` (event `start`) — begin or resume execution (from `idle`, `paused`, or
-  `ended`) → `armed`. `stale_terminal` names the discriminator the controller will keep
-  re-publishing until it has processed the new start; frames carrying it are ignored while
-  `armed` until any other discriminator arrives.
+- `arm()` (event `start`) — begin or resume execution (from `idle`, `paused`, or `ended`) →
+  `armed`. A start out of `ended`/`paused` (a resume, or stepping on after `forward_to`) ignores
+  frames that repeat the terminal state it leaves — same kind at the same location — until any
+  different frame arrives. The controller keeps re-publishing the previous stop until it has
+  taken up the new command; concluding the new operation from those frames reported it finished
+  at its own start location (observed on the virtual controller: `forward_to(1.0)` then
+  `forward()` resolved at 1.0 while the robot ran on to the end). A genuine new terminal state
+  is always preceded by `WAIT_FOR_IO` or `RUNNING`, which lifts the filter — including a start
+  issued at the very end of the trajectory. A pause requested on the resume is concluded by the
+  very `PAUSED_BY_USER` frame the filter would otherwise ignore.
 - `request_pause()` — the owner sent a `PauseMovementRequest`; the next `PAUSED_BY_USER` at
   standstill is a real pause even while `armed`.
 - `fail` — signal an error from any non-error state
@@ -83,9 +89,10 @@ follow it; the rest-state rules rely on it.
 - `TrajectoryPausedByUser` + standstill → stay (parked); → `paused` (`USER`) if the robot was
   seen leaving standstill before, or `request_pause()` was called
 - `TrajectoryPausedByUser` (no standstill) → stay, remember that the robot moved
-- `TrajectoryPausedOnIO` → `paused` / `pausing` (`IO`) unless it is the stale terminal
-- `TrajectoryEnded` + standstill → `ended` unless it is the stale terminal (a zero-length
-  trajectory may never show motion); (no standstill) → `ending`
+- `TrajectoryPausedOnIO` → `paused` / `pausing` (`IO`)
+- `TrajectoryEnded` + standstill → `ended` (a zero-length trajectory may never show motion);
+  (no standstill) → `ending`
+- a frame repeating the stop the start left (see `arm()`) → stay
 - `TrajectoryWaitForIO`, bare frames → stay
 
 `executing`:
@@ -115,9 +122,8 @@ nothing to conclude.
 The cursor derives *operation* completion from the machine:
 
 - The cursor arms the machine on the first frame after a movement command was issued, before
-  that frame is processed, and hands it the stale terminal to ignore (`PAUSED_ON_IO` after an
-  IO pause; `END_OF_TRAJECTORY` after an intermediate `forward_to` stop when the new movement
-  has room to move — a start with nowhere to go is legitimately concluded by the repeated END).
+  that frame is processed. A pause requested before that (`pause()` right after `forward()`)
+  arms the machine for the pause, so the parked frame concludes it.
 - An operation is only marked running on **evidence of motion** (`standstill` false or a
   `RUNNING` detail) — never on the mere presence of an `execute` block.
 - `ended` and `paused` conclude any **commanded** operation. A `paused` machine with
@@ -152,7 +158,7 @@ idle --> armed : start
 paused --> armed : start / resume
 ended --> armed : start
 
-armed --> armed : PAUSED_BY_USER (parked)\nstale terminal\nWAIT_FOR_IO
+armed --> armed : PAUSED_BY_USER (parked)\nre-published previous stop\nWAIT_FOR_IO
 armed --> executing : TrajectoryRunning
 armed --> paused : PAUSED_BY_USER [standstill]\n(moved | pause requested)\nPAUSED_ON_IO [standstill]
 armed --> pausing : PAUSED_ON_IO [!standstill]
@@ -204,7 +210,7 @@ stateDiagram-v2
     paused --> armed : start (resume)
     ended --> armed : start
 
-    armed --> armed : PAUSED_BY_USER (parked) / stale terminal / WAIT_FOR_IO
+    armed --> armed : PAUSED_BY_USER (parked) / re-published previous stop / WAIT_FOR_IO
     armed --> executing : TrajectoryRunning
     armed --> paused : PAUSED_BY_USER [standstill, moved or pause requested] / PAUSED_ON_IO [standstill]
     armed --> pausing : PAUSED_ON_IO [!standstill]

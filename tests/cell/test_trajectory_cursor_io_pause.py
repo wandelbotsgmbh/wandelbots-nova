@@ -74,6 +74,12 @@ def ended(location: float) -> api.models.MotionGroupState:
     return _state(True, _execute(api.models.TrajectoryEnded(), location))
 
 
+def waiting_for_io(location: float) -> api.models.MotionGroupState:
+    """What the controller answers to a start with nothing to move, before it
+    re-publishes END_OF_TRAJECTORY (observed on the virtual controller)."""
+    return _state(True, _execute(api.models.TrajectoryWaitForIO(), location))
+
+
 class _Frames:
     """A never-ending state stream the test feeds frame by frame."""
 
@@ -259,10 +265,10 @@ async def test_stale_end_frames_after_an_intermediate_stop_do_not_complete_the_n
             await consumer
 
 
-async def test_a_zero_distance_retarget_is_concluded_by_the_repeated_end_frame():
-    """forward_to(X) while standing at X after an intermediate stop: there is room
-    left on the trajectory, but not for *this* movement — the repeated END is the
-    honest answer, not a stale one."""
+async def test_a_zero_distance_retarget_is_concluded_by_the_end_after_wait_for_io():
+    """forward_to(X) while standing at X after an intermediate stop: the controller
+    re-publishes the old END (stale), then answers the start with WAIT_FOR_IO and END
+    at the same location again — that second END is the genuine answer."""
     frames = _Frames()
     frames.feed(_state(True), parked())
     cursor = _cursor(frames, detach_on_standstill=False)
@@ -275,6 +281,9 @@ async def test_a_zero_distance_retarget_is_concluded_by_the_repeated_end_frame()
 
         again = cursor.forward_to(1.0)
         frames.feed(ended(1.0), ended(1.0))
+        await _settle()
+        assert not again.done(), "the re-published end of the previous stop resolved the retarget"
+        frames.feed(waiting_for_io(1.0), ended(1.0))
         async with asyncio.timeout(5):
             result = await again
         assert result.final_location == 1.0
@@ -285,9 +294,9 @@ async def test_a_zero_distance_retarget_is_concluded_by_the_repeated_end_frame()
             await consumer
 
 
-async def test_a_cursor_without_a_trajectory_is_concluded_by_the_repeated_end_frame():
-    """Without a joint trajectory the cursor cannot tell whether a movement has
-    room; it must not assume so, or a start at the real end would wait forever."""
+async def test_a_cursor_without_a_trajectory_is_concluded_by_the_end_after_wait_for_io():
+    """The stale filter needs no trajectory length: it works by frame identity, so a
+    cursor built without a joint trajectory behaves the same at the real end."""
     frames = _Frames()
     frames.feed(_state(True), parked())
     cursor = _cursor(frames, detach_on_standstill=False, with_trajectory=False)
@@ -299,7 +308,7 @@ async def test_a_cursor_without_a_trajectory_is_concluded_by_the_repeated_end_fr
             assert (await first).final_location == 3.0
 
         again = cursor.forward()
-        frames.feed(ended(3.0), ended(3.0))
+        frames.feed(ended(3.0), waiting_for_io(3.0), ended(3.0))
         async with asyncio.timeout(5):
             assert (await again).final_location == 3.0
     finally:
@@ -308,9 +317,9 @@ async def test_a_cursor_without_a_trajectory_is_concluded_by_the_repeated_end_fr
             await consumer
 
 
-async def test_a_start_at_the_real_end_is_still_concluded_by_the_repeated_end_frame():
-    """With nowhere left to move, the re-published END is the honest answer, not a
-    stale one: the operation must not hang."""
+async def test_a_start_at_the_real_end_is_concluded_by_the_end_after_wait_for_io():
+    """With nowhere left to move the controller answers WAIT_FOR_IO and then END at
+    the same location again (observed); the operation must not hang on it."""
     frames = _Frames()
     frames.feed(_state(True), parked())
     cursor = _cursor(frames, detach_on_standstill=False)
@@ -323,6 +332,9 @@ async def test_a_start_at_the_real_end_is_still_concluded_by_the_repeated_end_fr
 
         again = cursor.forward()
         frames.feed(ended(3.0), ended(3.0))
+        await _settle()
+        assert not again.done(), "the re-published end of the previous stop resolved the restart"
+        frames.feed(waiting_for_io(3.0), ended(3.0))
         async with asyncio.timeout(5):
             assert (await again).final_location == 3.0
     finally:
