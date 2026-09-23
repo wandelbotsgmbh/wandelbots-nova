@@ -377,10 +377,13 @@ class InterlockClient:
                 subset early (e.g. ``ir360r01`` drops slot 7 before the rest).
                 Note that a partial release keeps the client "holding", so a
                 further :meth:`acquire` is still refused until the rest is
-                released too.
+                released too.  Slots already released under this grant are
+                skipped by later calls, even if a partner has taken them since.
 
         Raises:
-            ForeignRelease: some lock in the grant is now held by someone else.
+            ForeignRelease: some lock in the grant is now held by someone else,
+                or — for a grant that was already fully released — by a newer
+                grant of this same client.
                 Everything that was still legitimately ours has been released;
                 the foreign locks were left untouched.  Treat as a program
                 abort — this robot's view of the cell has diverged.
@@ -389,12 +392,25 @@ class InterlockClient:
         wanted = set(slots) if slots is not None else None
         foreign: dict[str, LockRecord] = {}
 
-        for key, _ in sorted(grant.revisions.items()):
+        # A grant is live while any of its keys is still held at the revision it
+        # took.  Keys of a live grant that are no longer held were released
+        # earlier under it (a partial release) — a partner may legitimately hold
+        # them by now, so they are skipped.  A spent grant is re-examined in
+        # full: releasing it again is a stale handle, loud if anyone took over.
+        live = any(self._held.get(key) == rev for key, rev in grant.revisions.items())
+
+        for key, rev in sorted(grant.revisions.items()):
+            if live and self._held.get(key) != rev:
+                continue
             record, current_rev = await self._read(kv, key)
             if record is None:
                 self._held.pop(key, None)
                 continue
-            if record.holder != grant.holder or record.run_id != grant.run_id:
+            if (
+                record.holder != grant.holder
+                or record.run_id != grant.run_id
+                or current_rev != rev  # fencing: our own newer lock is not this grant's
+            ):
                 logger.error(
                     "[%s] refusing to release %s: held by %s/%s",
                     self._robot,

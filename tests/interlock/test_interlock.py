@@ -254,6 +254,52 @@ async def test_partial_slot_release():
     assert freed.holder == "ir340r02"
 
 
+async def _partial_release_then_partner_takes_it():
+    """r01 holds both zones, drops the r02 zone early, and r02 moves in."""
+    kv = FakeKV()
+    r01, r02 = make_client(kv, "ir340r01"), make_client(kv, "ir340r02")
+    grant = await r01.acquire([GEO40["r01_r02"], GEO40["r01_r03"]])
+    await r01.release(grant, slots=[9])
+    await asyncio.wait_for(r02.acquire([GEO40["r01_r02"]], timeout=2), timeout=3)
+    return kv, r01, grant
+
+
+async def test_second_partial_release_skips_slot_the_partner_took():
+    """Audi 360 pair, 2026-09-10: the second partial release out of the same grant
+    re-read the first one's key, now legitimately the partner's, as foreign."""
+    kv, r01, grant = await _partial_release_then_partner_takes_it()
+
+    await r01.release(grant, slots=[11])
+
+    assert r01.held == []
+    still = await kv.get(GEO40["r01_r02"].key)
+    assert LockRecord.model_validate_json(still.value).holder == "ir340r02"
+
+
+async def test_full_release_after_partial_skips_slot_the_partner_took():
+    kv, r01, grant = await _partial_release_then_partner_takes_it()
+
+    await r01.release(grant)
+
+    assert r01.held == []
+    still = await kv.get(GEO40["r01_r02"].key)
+    assert LockRecord.model_validate_json(still.value).holder == "ir340r02"
+
+
+async def test_stale_grant_does_not_release_a_newer_grant():
+    """Fencing: the same key re-acquired by the same client is a different lock."""
+    kv = FakeKV()
+    r01 = make_client(kv, "ir340r01")
+    old = await r01.acquire([GEO40["r01_r02"]])
+    await r01.release(old)
+    await r01.acquire([GEO40["r01_r02"]])
+
+    with pytest.raises(ForeignRelease):
+        await r01.release(old)
+    assert r01.held == [GEO40["r01_r02"].key]
+    assert await kv.get(GEO40["r01_r02"].key)
+
+
 async def test_release_all_clears_everything():
     kv = FakeKV()
     r01 = make_client(kv, "ir340r01")
