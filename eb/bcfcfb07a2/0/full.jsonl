@@ -1,0 +1,4 @@
+{"type":"session.start","data":{"sessionId":"e7a7b0a3-fd84-44f5-9c26-fe59f2b98ea5","version":1,"producer":"copilot-agent","copilotVersion":"0.66.0","vscodeVersion":"1.138.0","startTime":"2026-09-21T11:56:13.199Z"},"id":"1ba133c9-1077-4f0c-af7e-2242f9ac402b","timestamp":"2026-09-21T11:56:13.199Z","parentId":null}
+{"type":"user.message","data":{"content":"improve formatting","attachments":[]},"id":"a07a46d1-52f0-4d16-8ca9-19df26a890b1","timestamp":"2026-09-21T11:56:13.624Z","parentId":"1ba133c9-1077-4f0c-af7e-2242f9ac402b"}
+{"type":"assistant.turn_start","data":{"turnId":"0"},"id":"f0237281-a151-4dc2-b65d-525374b45928","timestamp":"2026-09-21T11:56:16.690Z","parentId":"a07a46d1-52f0-4d16-8ca9-19df26a890b1"}
+{"type":"assistant.turn_end","data":{"turnId":"0"},"id":"6038f400-44a7-48bb-bda7-55da36330512","timestamp":"2026-09-21T11:56:19.461Z","parentId":"f0237281-a151-4dc2-b65d-525374b45928"}
