@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "ef7ab877ffc7",
+  "strategy": "manual-commit",
+  "branch": "chore/specsmd",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".specs-fire/standards/coding-standards.md",
+    ".specs-fire/standards/constitution.md",
+    ".specs-fire/standards/system-architecture.md",
+    ".specs-fire/standards/tech-stack.md",
+    ".specs-fire/standards/testing-standards.md",
+    ".specs-fire/state.yaml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ef/7ab877ffc7/0/metadata.json",
+      "transcript": "/ef/7ab877ffc7/0/full.jsonl",
+      "compact_transcript": "/ef/7ab877ffc7/0/transcript.jsonl",
+      "content_hash": "/ef/7ab877ffc7/0/content_hash.txt",
+      "prompt": "/ef/7ab877ffc7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 46,
+    "cache_creation_tokens": 43982,
+    "cache_read_tokens": 668924,
+    "output_tokens": 10563,
+    "api_call_count": 23
+  }
+}
