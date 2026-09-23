@@ -2,10 +2,12 @@
 grouped under a named, revisioned resource.
 """
 
-from nova.datasets.datasets import fetch, read, transform_to_frame, transform_to_world
-from nova.datasets.exceptions import DatasetError, DatasetNotFoundError
+from nova.datasets.datasets import fetch, read
+from nova.datasets.exceptions import DatasetError, DatasetNotFoundError, FrameResolutionError
 from nova.datasets.types import (
     Dataset,
+    DatasetFrame,
+    DatasetPose,
     LoadDatasetRequest,
     LoadLocalDatasetRequest,
     LoadRemoteDatasetRequest,
@@ -16,12 +18,13 @@ from nova.datasets.types import (
 __all__ = [
     "Dataset",
     "DatasetError",
+    "DatasetFrame",
     "DatasetNotFoundError",
+    "DatasetPose",
+    "FrameResolutionError",
     "LoadDatasetRequest",
     "LoadLocalDatasetRequest",
     "LoadRemoteDatasetRequest",
-    "transform_to_frame",
-    "transform_to_world",
     "fetch",
     "read",
     "remote_dataset",

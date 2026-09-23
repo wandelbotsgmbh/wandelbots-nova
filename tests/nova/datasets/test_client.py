@@ -11,6 +11,7 @@ from nova import api
 from nova import datasets as ds
 from nova.core.nova import Nova
 from nova.datasets import DatasetError, DatasetNotFoundError, LoadLocalDatasetRequest
+from nova.types import Pose
 
 _TIMESTAMP = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
 
@@ -97,6 +98,7 @@ class TestReadDataset:
 
         assert result.dataset == "source-set"
         assert [pose.dataset for pose in result.poses.values()] == ["source-set"]
+        assert result.poses["pick"].pose == Pose((1, 2, 3, 0, 0, 0))
 
     async def test_resolves_a_relative_path_against_base_path(self, tmp_path: Path):
         path = tmp_path / "dataset.json"

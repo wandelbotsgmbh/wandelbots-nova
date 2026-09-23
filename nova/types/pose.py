@@ -377,10 +377,22 @@ class Pose(pydantic.BaseModel, Sized):
         >>> dp = api.models.DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), kinematic_configuration=None)
         >>> Pose.from_dataset_pose(dp)
         Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
+
+        A pose that is taught relative to a dataset frame is not a world pose, so it cannot be
+        used as a motion target without resolving the frame first:
+        >>> dp = api.models.DatasetPose(dataset_pose='p1', dataset='d1', frame='fixture', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]))
+        >>> Pose.from_dataset_pose(dp)
+        Traceback (most recent call last):
+        ValueError: Pose 'p1' is expressed in frame 'fixture', not in world. Call as_world() on the dataset pose to resolve it.
         """
-        return cls.from_api_model(
-            dataset_pose.pose, kinematic_configuration=dataset_pose.kinematic_configuration
-        )
+        if dataset_pose.frame is not None:
+            name = getattr(dataset_pose, "dataset_pose", None)
+            subject = f"Pose '{name}'" if name else "Pose"
+            raise ValueError(
+                f"{subject} is expressed in frame '{dataset_pose.frame}', not in world. "
+                "Call as_world() on the dataset pose to resolve it."
+            )
+        return cls(dataset_pose.pose, kinematic_configuration=dataset_pose.kinematic_configuration)
 
     @classmethod
     def from_euler(
