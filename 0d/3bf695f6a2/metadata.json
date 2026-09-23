@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "0d3bf695f6a2",
+  "strategy": "manual-commit",
+  "branch": "feat/zone-interlock-nats",
+  "checkpoints_count": 2,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/0d/3bf695f6a2/0/metadata.json",
+      "transcript": "/0d/3bf695f6a2/0/full.jsonl",
+      "compact_transcript": "/0d/3bf695f6a2/0/transcript.jsonl",
+      "content_hash": "/0d/3bf695f6a2/0/content_hash.txt",
+      "prompt": "/0d/3bf695f6a2/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 52,
+    "cache_creation_tokens": 99191,
+    "cache_read_tokens": 1476780,
+    "output_tokens": 20260,
+    "api_call_count": 26
+  }
+}

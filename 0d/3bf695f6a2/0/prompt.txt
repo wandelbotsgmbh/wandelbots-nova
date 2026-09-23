@@ -1,0 +1,1 @@
+Have a look at https://code.wabo.run/customer-projects/audi/cell-plc-simulation/-/blob/main/nova/sdk_fix/interlock_release_fix.py?ref_type=heads which is a wrapper some user build to fix an issue with the interlocks can you verify and compare this to the current state
