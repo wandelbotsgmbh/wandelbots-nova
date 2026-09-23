@@ -15,7 +15,7 @@ import numpy as np
 import nova
 from nova import api, run_program
 from nova import datasets as ds
-from nova.actions import cartesian_ptp, joint_ptp, linear
+from nova.actions import Action, cartesian_ptp, joint_ptp, linear
 from nova.cell import virtual_controller
 from nova.types import MotionSettings, Pose
 
@@ -86,7 +86,7 @@ async def palletize(ctx: nova.ProgramContext):
     pallet = rebind_pallet_frame(ctx.dataset)
     slots = [pallet @ slot for slot in pallet_grid()]
 
-    actions = [joint_ptp(home, settings=fast)]
+    actions: list[Action] = [joint_ptp(home, settings=fast)]
     for place in slots:
         above = place @ RETREAT
         actions += [
