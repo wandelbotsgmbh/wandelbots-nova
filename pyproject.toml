@@ -1,21 +1,20 @@
 [project]
 name = "wandelbots-nova"
-version = "5.11.0"
+version = "6.0.0"
 description = "Official Python SDK for the Wandelbots Nova"
 authors = [
     { name = "Wandelbots GmbH" },
     { name = "Christoph Biering", email = "christoph.biering@wandelbots.com" },
     { name = "Mahsum Demir", email = "mahsum.demir@wandelbots.com" },
     { name = "Dirk Sonnemann", email = "dirk.sonnemann@wandelbots.com" },
-    { name = "Andreas Langenhagen", email = "andreas.langenhagen@wandelbots.com" },
     { name = "Stefan Wagner", email = "stefan.wagner@wandelbots.com" },
     { name = "André Kühnert", email = "andre.kuhnert@wandelbots.com" },
 ]
-requires-python = ">=3.11, <3.13"
+requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
-    "wandelbots_api_client==26.7.0.dev24",
+    "wandelbots_api_client==26.7.0",
     "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",
@@ -63,7 +62,7 @@ novapolicy-gr00t = [
     "aiortc>=1.14.0",
     "msgpack>=1.1.0,<2",
     "Pillow>=10.0.0",
-    "pyzmq>=26.0.0,<27",
+    "pyzmq>=27.0.0,<28",
     "requests>=2.33.1",
 ]
 novapolicy-lerobot = [
@@ -96,27 +95,6 @@ create-motion-group-models = "nova.helper_scripts.create_motion_group_models:upd
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
 dev-wheel = "nova.helper_scripts.trigger_dev_wheel:main"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 [dependency-groups]
 dev = [
@@ -174,7 +152,7 @@ markers = """
 
 
 [tool.ty.environment]
-python-version = "3.11"
+python-version = "3.12"
 
 [tool.ty.src]
 include = ["nova", "examples", "tests", "wandelscript", "novax", "nova_rerun_bridge", "novapolicy"]

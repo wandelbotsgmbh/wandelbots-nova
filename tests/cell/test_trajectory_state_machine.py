@@ -41,6 +41,7 @@ def _make_execute(
         api.models.TrajectoryRunning
         | api.models.TrajectoryEnded
         | api.models.TrajectoryPausedByUser
+        | api.models.TrajectoryWaitForIO
     ),
     location: float = 1.0,
 ) -> api.models.Execute:
@@ -297,6 +298,152 @@ class TestResumeFromPaused:
         # Restart
         machine.send("start")
         assert machine.is_executing
+
+
+class TestStaleTerminalFramesAfterResume:
+    """Level-based publishing (robotics/wbr!2262) keeps re-publishing the
+    previous stop's terminal state until the controller takes up the new
+    command. A ``start`` out of ``ended``/``paused`` must not conclude from
+    those frames — the virtual controller reproduced ``forward_to(1.0)`` then
+    ``forward()`` resolving at 1.0 while the robot ran on to the end."""
+
+    @staticmethod
+    def _ended_at(machine: TrajectoryExecutionMachine, location: float) -> None:
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), location)
+            )
+        )
+        assert machine.is_ended
+
+    def test_re_published_end_of_previous_stop_is_ignored_after_start(self):
+        machine = TrajectoryExecutionMachine()
+        self._ended_at(machine, 1.0)
+
+        machine.send("start")
+        for _ in range(3):
+            result = machine.process_motion_state(
+                _make_motion_group_state(
+                    standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 1.0)
+                )
+            )
+            assert machine.is_executing
+            assert not result.state_changed
+            assert result.location == 1.0
+
+    def test_different_frame_lifts_the_filter_and_the_new_end_completes(self):
+        machine = TrajectoryExecutionMachine()
+        self._ended_at(machine, 1.0)
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 1.0)
+            )
+        )
+
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryWaitForIO(), 1.0)
+            )
+        )
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=False,
+                execute=_make_execute(api.models.TrajectoryRunning(time_to_end=500), 1.5),
+            )
+        )
+        assert machine.is_executing
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 2.0)
+            )
+        )
+        assert machine.is_ended
+        assert machine.location == 2.0
+
+    def test_start_at_the_end_completes_on_the_end_republished_after_wait_for_io(self):
+        """A start issued at the very end: the controller answers WAIT_FOR_IO
+        and then END_OF_TRAJECTORY at the same location again, with no RUNNING
+        frame in between (observed on the virtual controller). The WAIT_FOR_IO
+        frame lifts the filter, so the second END is a genuine completion."""
+        machine = TrajectoryExecutionMachine()
+        self._ended_at(machine, 2.0)
+        machine.send("start")
+
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 2.0)
+            )
+        )
+        assert machine.is_executing
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryWaitForIO(), 2.0)
+            )
+        )
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 2.0)
+            )
+        )
+        assert machine.is_ended
+
+    def test_end_of_previous_stop_while_decelerating_is_ignored_too(self):
+        """The stale frame is identified by kind and location, not standstill."""
+        machine = TrajectoryExecutionMachine()
+        self._ended_at(machine, 1.0)
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=False, execute=_make_execute(api.models.TrajectoryEnded(), 1.0)
+            )
+        )
+        assert machine.is_executing
+
+    def test_re_published_pause_of_previous_stop_is_ignored_after_resume(self):
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedByUser(), 0.8)
+            )
+        )
+        assert machine.is_paused
+
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedByUser(), 0.8)
+            )
+        )
+        assert machine.is_executing
+
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=False,
+                execute=_make_execute(api.models.TrajectoryRunning(time_to_end=500), 1.0),
+            )
+        )
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryPausedByUser(), 1.2)
+            )
+        )
+        assert machine.is_paused
+        assert machine.location == 1.2
+
+    def test_first_start_has_nothing_stale(self):
+        """From idle a terminal frame is genuine — a resume filter must not
+        appear where nothing was left behind."""
+        machine = TrajectoryExecutionMachine()
+        machine.send("start")
+        machine.process_motion_state(
+            _make_motion_group_state(
+                standstill=True, execute=_make_execute(api.models.TrajectoryEnded(), 0.0)
+            )
+        )
+        assert machine.is_ended
 
 
 # ---------------------------------------------------------------------------

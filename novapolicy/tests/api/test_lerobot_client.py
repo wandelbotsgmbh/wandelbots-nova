@@ -862,7 +862,8 @@ async def test_a_units_mismatch_is_caught_against_the_checkpoints_statistics(
     import math
 
     import numpy as np
-    from safetensors.numpy import save_file
+
+    save_file = pytest.importorskip("safetensors.numpy").save_file
 
     from novapolicy.ops import Rad2Deg
 

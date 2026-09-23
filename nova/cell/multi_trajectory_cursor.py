@@ -3,13 +3,20 @@
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncGenerator, AsyncIterable, Mapping
+from collections.abc import AsyncGenerator, AsyncIterable, Mapping, Sequence
 from dataclasses import dataclass
+from math import ceil
 from typing import Protocol
 
 from nova import api
+from nova.actions.base import Action
 from nova.actions.io import WriteAction
-from nova.cell.movement_controller.trajectory_cursor import OperationResult, TrajectoryCursor
+from nova.cell.movement_controller.trajectory_cursor import (
+    OperationResult,
+    OperationType,
+    TrajectoryCursor,
+    action_index_for_location,
+)
 from nova.cell.state_stream import StreamBroadcaster
 from nova.core.gateway import ApiGateway
 
@@ -19,6 +26,10 @@ logger = logging.getLogger(__name__)
 # the barrier gives up rather than waiting for a controller that never answers.
 _TRIGGER_CONFIRM_TIMEOUT = 5.0
 _IO_POLL_INTERVAL = 0.05
+# Bus IO has no server-side wait, so its release is confirmed by re-reading. That
+# read is deferred by this much and run once, off the arm→move window, since it
+# only guards against a dropped write rather than gating the (already-started) run.
+_RELEASE_VERIFY_DELAY = 0.25
 
 
 class SyncDriver(Protocol):
@@ -60,7 +71,7 @@ class IOSyncDriver:
 
     - **Same controller / cell-wide bus IO**: one boolean trigger; every group
       watches it, clearing writes its inverse — derived by the builder's
-      :meth:`TrajectoryExecutorBuilder.sync_on_io`.
+      :meth:`MultiMotionGroupBuilder.sync_on_io`.
     - **Physically wired controllers**: the writes go to one controller's
       output; each group watches its own input the wire lands on. Spelled out
       explicitly — the executor cannot know how a cell is wired.
@@ -102,44 +113,72 @@ class IOSyncDriver:
         return self._watch
 
     async def clear(self) -> None:
-        await self._write(self._clear)
+        """Confirmed before the groups arm: arming against a stale *released*
+        value would start a group early and desynchronize the run. Bus IO has no
+        server-side wait, so its confirmation polls the read-back."""
+        async with asyncio.timeout(_TRIGGER_CONFIRM_TIMEOUT):
+            await self._set(self._clear)
+            match self._clear.origin:
+                case api.models.IOOrigin.BUS_IO:
+                    while not await self._bus_reads_back(self._clear):
+                        await asyncio.sleep(_IO_POLL_INTERVAL)
+                case api.models.IOOrigin.CONTROLLER:
+                    await self._await_controller_event(self._clear)
+                case origin:
+                    raise ValueError(f"Unsupported sync IO origin: {origin}")
 
     async def release(self) -> None:
-        await self._write(self._release)
-
-    async def _write(self, action: WriteAction) -> None:
-        """Write the IO and wait until the write is observable.
-
-        Without the confirmation a group could arm its start condition while the
-        IO image still carries the previous barrier's value and start immediately,
-        desynchronizing the run.
-        """
-        io_value = action.to_api_model()
+        """Confirmation is off the critical path — the groups are already armed —
+        so bus IO is re-read once after a delay, only to catch a dropped write."""
         async with asyncio.timeout(_TRIGGER_CONFIRM_TIMEOUT):
-            if action.origin is api.models.IOOrigin.BUS_IO:
+            await self._set(self._release)
+            match self._release.origin:
+                case api.models.IOOrigin.BUS_IO:
+                    await asyncio.sleep(_RELEASE_VERIFY_DELAY)
+                    if not await self._bus_reads_back(self._release):
+                        raise RuntimeError(
+                            f"Sync IO '{self._release.key}' did not take the release value; "
+                            "the write may have been dropped"
+                        )
+                case api.models.IOOrigin.CONTROLLER:
+                    await self._await_controller_event(self._release)
+                case origin:
+                    raise ValueError(f"Unsupported sync IO origin: {origin}")
+
+    async def _set(self, action: WriteAction) -> None:
+        """Write the IO, without waiting for it to become observable."""
+        io_value = action.to_api_model()
+        match action.origin:
+            case api.models.IOOrigin.BUS_IO:
                 await self._api_client.bus_ios_api.set_bus_io_values(
                     cell=self._cell, io_value=[io_value]
                 )
-                while True:
-                    values = await self._api_client.bus_ios_api.get_bus_io_values(
-                        cell=self._cell, ios=[action.key]
-                    )
-                    if values and values[0] == io_value:
-                        break
-                    await asyncio.sleep(_IO_POLL_INTERVAL)
-            else:
+            case api.models.IOOrigin.CONTROLLER:
                 assert action.device_id is not None
                 await self._api_client.controller_ios_api.set_output_values(
                     cell=self._cell, controller=action.device_id, io_value=[io_value]
                 )
-                await self._api_client.controller_ios_api.wait_for_io_event(
-                    cell=self._cell,
-                    controller=action.device_id,
-                    wait_for_io_event_request=api.models.WaitForIOEventRequest(
-                        io=io_value, comparator=api.models.Comparator.COMPARATOR_EQUALS
-                    ),
-                )
+            case origin:
+                raise ValueError(f"Unsupported sync IO origin: {origin}")
         logger.debug(f"Sync IO '{action.key}' set to {action.value}")
+
+    async def _bus_reads_back(self, action: WriteAction) -> bool:
+        """Whether the bus IO currently reads back the written value."""
+        values = await self._api_client.bus_ios_api.get_bus_io_values(
+            cell=self._cell, ios=[action.key]
+        )
+        return bool(values) and values[0] == action.to_api_model()
+
+    async def _await_controller_event(self, action: WriteAction) -> None:
+        """A controller output is waited on with the server-held ``wait_for_io_event``."""
+        assert action.device_id is not None
+        await self._api_client.controller_ios_api.wait_for_io_event(
+            cell=self._cell,
+            controller=action.device_id,
+            wait_for_io_event_request=api.models.WaitForIOEventRequest(
+                io=action.to_api_model(), comparator=api.models.Comparator.COMPARATOR_EQUALS
+            ),
+        )
 
 
 async def _wait_until_waiting_for_io(states: AsyncIterable[api.models.MotionGroupState]) -> None:
@@ -180,16 +219,36 @@ class MultiTrajectoryCursor:
 
     Obtained from :meth:`TrajectoryExecutor.attach`; drives all groups together
     through the start barrier with the single cursor's interactive contract —
-    ``forward`` / ``forward_to`` / ``pause``, ``current_location`` and
-    ``stream_state``.
+    ``forward`` / ``forward_to`` / ``forward_to_next_action`` / ``pause``,
+    ``current_location`` / ``current_action`` and ``stream_state``.
+
+    ``actions`` is the ensemble action list: its motions map location to action
+    for ``current_action`` and action stepping, exactly as on the single cursor.
+    All groups share one parameterization, so a location — and thus an action
+    boundary — means the same instant on every path.
 
     Backward movement is not exposed: driving the barrier in reverse is
     mechanically symmetric but unverified against real controllers.
     """
 
-    def __init__(self, cursors: dict[str, TrajectoryCursor], sync: SyncDriver):
+    def __init__(
+        self, cursors: dict[str, TrajectoryCursor], sync: SyncDriver, actions: Sequence[Action] = ()
+    ):
         self._cursors = cursors
         self._sync = sync
+        # Only motion actions carry a location boundary — the same mapping the
+        # single cursor builds from CombinedActions.motions.
+        self._actions = [action for action in actions if action.is_motion()]
+        if self._actions:
+            # IO overlay and action stepping anchor on integer motion indices, so
+            # every motion must span one location unit — the same contract the
+            # single cursor checks.
+            end = self.end_location
+            if abs(end - len(self._actions)) > 0.01:
+                raise ValueError(
+                    f"Trajectory end location ({end}) does not match the number of motion "
+                    f"actions ({len(self._actions)}); each motion must span one location unit."
+                )
         # One fan-out per group: a cursor tees its states into a single queue, but
         # the session has several consumers (barrier arm-wait, drift monitors,
         # user streams).
@@ -308,6 +367,32 @@ class MultiTrajectoryCursor:
             target_location=location, playback_speed_in_percent=playback_speed_in_percent
         )
 
+    def forward_to_next_action(
+        self, playback_speed_in_percent: int | None = None
+    ) -> asyncio.Future[dict[str, OperationResult]]:
+        """Move all groups forward to the start of the next action.
+
+        Steps the ensemble one action boundary (integer location) at a time; at
+        the end of the trajectory it returns immediately without commanding a
+        move, mirroring the single cursor's ``forward_to_next_action``.
+        """
+        target = float(ceil(self.current_location))
+        if target <= self.current_location:
+            target += 1.0
+        if target > self.end_location:
+            future: asyncio.Future[dict[str, OperationResult]] = asyncio.Future()
+            future.set_result(
+                {
+                    name: OperationResult(
+                        operation_type=OperationType.FORWARD_TO_NEXT_ACTION,
+                        final_location=cursor.current_location,
+                    )
+                    for name, cursor in self._cursors.items()
+                }
+            )
+            return future
+        return self.forward_to(target, playback_speed_in_percent=playback_speed_in_percent)
+
     async def _run_barrier(self, intent: _ForwardIntent) -> None:
         """Run one barrier and resolve the caller's future with its outcome.
 
@@ -400,6 +485,26 @@ class MultiTrajectoryCursor:
         """Location of the first motion group; with the shared parameterization
         all groups are at (drift-bounded) the same location."""
         return next(iter(self._cursors.values())).current_location
+
+    @property
+    def end_location(self) -> float:
+        """The location at the end of the shared trajectory."""
+        return next(iter(self._cursors.values())).end_location
+
+    @property
+    def current_action_index(self) -> int | None:
+        """Zero-based index of the action at the current location, or None when
+        the session carries no action metadata."""
+        if not self._actions:
+            return None
+        return action_index_for_location(self.current_location, len(self._actions))
+
+    @property
+    def current_action(self) -> Action | None:
+        """The ensemble action at the current location, or None when the session
+        carries no action metadata."""
+        index = self.current_action_index
+        return self._actions[index] if index is not None else None
 
     def stream_state(
         self, group: str | None = None

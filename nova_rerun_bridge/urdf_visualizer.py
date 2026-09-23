@@ -11,18 +11,18 @@ Lengths are millimetres, like everything else the bridge logs.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from loguru import logger
 import numpy as np
 import rerun as rr
+from loguru import logger
 from scipy.spatial.transform import Rotation
 
 from nova_rerun_bridge import collider_shapes, scene_colors

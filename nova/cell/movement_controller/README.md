@@ -67,12 +67,23 @@ conclude.
 The cursor derives *operation* completion from the machine, with two guards for level-based
 publishing:
 
+- `pause()` always queues a pause command while the cursor is attached, even when the local
+  operation has already completed. Local operation state cannot prove that the controller has
+  stopped, so it must not suppress a stop request. The returned future reports completion or a
+  controller error; calling `pause()` after detaching returns a failed future.
 - An operation is only marked running on **evidence of motion** (`standstill` false or a
   `RUNNING` detail) — never on the mere presence of an `execute` block, which exists from
   initialization on.
 - A `paused` machine state concludes only a PAUSE operation, or a movement operation that was
   seen running. This keeps the persistent pre-start `PAUSED_BY_USER` frames from resolving a
   movement that never moved.
+- A `start` out of `ended`/`paused` (a resume, or stepping on after `forward_to`) ignores frames that
+  repeat the terminal state it leaves — same kind at the same location — until any different frame
+  arrives. The controller keeps re-publishing the previous stop until it has taken up the new command;
+  concluding the new operation from those frames reported it finished at its own start location
+  (observed on the virtual controller: `forward_to(1.0)` then `forward()` resolved at 1.0 while the
+  robot ran on to the end). A genuine new terminal state is always preceded by `WAIT_FOR_IO` or
+  `RUNNING`, which lifts the filter — including a start issued at the very end of the trajectory.
 - `ended` concludes any commanded operation; in one-shot mode (`move_forward`) it also detaches
   the cursor, which closes the execution websocket — the client's teardown acknowledges the
   persistent terminal state.

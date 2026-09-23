@@ -22,6 +22,7 @@ The SDK will help you to build your own apps and services using Python on top of
   - [Quickstart](#quickstart)
   - [Installation](#installation)
     - [Install with pip](#install-with-pip)
+    - [Install a nightly build](#install-a-nightly-build)
     - [Install with uv and rerun visualization](#install-with-uv-and-rerun-visualization)
     - [Configure Environment Variables](#configure-environment-variables)
   - [Using the SDK](#using-the-sdk)
@@ -36,6 +37,7 @@ The SDK will help you to build your own apps and services using Python on top of
   - [Release process](#release-process)
     - [Branch behaviour overview](#branch-behaviour-overview)
     - [Stable releases from `main`](#stable-releases-from-main)
+    - [Nightly builds from `main`](#nightly-builds-from-main)
     - [LTS releases from `release/\*`](#lts-releases-from-release)
     - [Create a dev build (manual)](#create-a-dev-build-manual)
   - [Additional resources](#additional-resources)
@@ -48,7 +50,7 @@ The SDK will help you to build your own apps and services using Python on top of
 
 - A running NOVA instance (Get a Wandelbots NOVA account on [wandelbots.com](https://www.wandelbots.com/contact))
 - Valid NOVA API credentials
-- Python >=3.11
+- Python >=3.12
 
 ## Quickstart
 
@@ -65,6 +67,24 @@ Install the library using pip:
 ```bash
 pip install wandelbots-nova
 ```
+
+### Install a nightly build
+
+Every commit on `main` is published as a prerelease package. Install the newest nightly build:
+
+```bash
+pip install --pre --upgrade wandelbots-nova
+```
+
+Nightly versions use the format `5.11.0.post20260914.dev123`. Pin a specific build when you need
+reproducible results:
+
+```bash
+pip install wandelbots-nova==5.11.0.post20260914.dev123
+```
+
+Browse all available versions on the [PyPI release history](https://pypi.org/project/wandelbots-nova/#history)
+or download wheel and source-distribution files from the [GitHub Releases page](https://github.com/wandelbotsgmbh/wandelbots-nova/releases).
 
 ### Install with uv and rerun visualization
 
@@ -236,11 +256,11 @@ wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/
 
 ### Branch behaviour overview
 
-| Branch      | Purpose                                                | Published to                           | Example version      |
-| ----------- | ------------------------------------------------------ | -------------------------------------- | -------------------- |
-| `main`      | Stable releases (semantic versioning vX.Y.Z)           | PyPI (`pip install wandelbots-nova`)   | `v1.13.0`            |
-| `release/*` | LTS-releases, pre-releases or hotfixes for older lines | PyPI (labeled with release suffix)     | `v1.8.7-release-1.x` |
-| any other   | Development builds                                     | GitHub actions (not published to PyPI) | `e4c8af0647839...`   |
+| Branch      | Purpose                                                | Published to                       | Example version                |
+| ----------- | ------------------------------------------------------ | ---------------------------------- | ------------------------------ |
+| `main`      | Stable releases and a nightly for every commit         | PyPI and GitHub Releases           | `5.11.0.post20260914.dev123`   |
+| `release/*` | LTS-releases, pre-releases or hotfixes for older lines | PyPI (labeled with release suffix) | `v1.8.7-release-1.x`           |
+| any other   | Development builds                                     | GitHub Actions                     | `e4c8af0647839...`             |
 
 ### Stable releases from `main`
 
@@ -249,6 +269,16 @@ Releases are managed by [release-please](https://github.com/googleapis/release-p
 1. On every push to `main`, release-please opens/updates a **release PR** that bumps the version (derived from Conventional Commits) and updates the changelog.
 2. Merging that release PR tags the release, then a source distribution and wheel are built and uploaded to PyPI.
 3. A GitHub release is created with the release assets.
+
+### Nightly builds from `main`
+
+Every commit pushed to `main` also produces a uniquely versioned nightly package. The nightly
+workflow publishes the wheel and source distribution to PyPI, stores them as a GitHub Actions
+artifact for 30 days, and creates an immutable GitHub prerelease linked to the source commit.
+
+Use the [GitHub Releases page](https://github.com/wandelbotsgmbh/wandelbots-nova/releases) to list
+nightly builds and download their files, or use the [PyPI release history](https://pypi.org/project/wandelbots-nova/#history)
+to see stable and nightly package versions together.
 
 ### LTS releases from `release/\*`
 

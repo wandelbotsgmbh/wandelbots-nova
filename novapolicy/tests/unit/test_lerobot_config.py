@@ -218,7 +218,8 @@ def test_a_policy_without_an_action_chunk_derives_none(tmp_path) -> None:
 def _write_stats(tmp_path, **stats) -> None:
     """Write a checkpoint's normalizer state the way LeRobot's pipeline saves it."""
     import numpy as np
-    from safetensors.numpy import save_file
+
+    save_file = pytest.importorskip("safetensors.numpy").save_file
 
     state = "normalizer_processor.safetensors"
     (tmp_path / "policy_preprocessor.json").write_text(
@@ -289,7 +290,8 @@ def test_statistics_are_fetched_for_a_hub_checkpoint(tmp_path, monkeypatch) -> N
     checkpoints are normally distributed.
     """
     import numpy as np
-    from safetensors.numpy import save_file
+
+    save_file = pytest.importorskip("safetensors.numpy").save_file
 
     state = "policy_preprocessor_step_3_normalizer_processor.safetensors"
     (tmp_path / "policy_preprocessor.json").write_text(

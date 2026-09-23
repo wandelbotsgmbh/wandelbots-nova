@@ -1,14 +1,40 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Annotated, AsyncIterator, Callable
 
 import pydantic
 
 from nova import api
+from nova.actions.base import Action
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.actions.motions import CollisionFreeMotion, Motion
 from nova.types import MotionSettings, MovementControllerFunction, Pose
+
+
+def located_writes(actions: Iterable[Action]) -> list[tuple[int, WriteAction]]:
+    """Pair each :class:`WriteAction` with its motion index along the path.
+
+    The index is the number of motions preceding the write; waits are skipped
+    and do not advance it. This is the location convention IO rides on — an
+    integer location marks a motion-command boundary — and it is shared by both
+    the single-motion-group (:meth:`CombinedActions.to_set_io`) and the
+    synchronized multi-motion-group IO overlays.
+    """
+    out: list[tuple[int, WriteAction]] = []
+    motion_index = 0
+    for action in actions:
+        if action.is_motion():
+            motion_index += 1
+        elif isinstance(action, WriteAction):
+            out.append((motion_index, action))
+    return out
+
+
+def write_to_set_io(write: WriteAction, location: float) -> api.models.SetIO:
+    """Build the :class:`api.models.SetIO` overlay entry for a write at ``location``."""
+    return api.models.SetIO(io=write.to_api_model(), location=location, io_origin=write.origin)
 
 
 class ActionLocation(pydantic.BaseModel):
@@ -147,15 +173,7 @@ class CombinedActions(pydantic.BaseModel):
         return motion_commands
 
     def to_set_io(self) -> list[api.models.SetIO]:
-        return [
-            api.models.SetIO(
-                io=action.action.to_api_model(),
-                location=action.path_parameter,
-                io_origin=action.action.origin,
-            )
-            for action in self.actions
-            if isinstance(action.action, WriteAction)
-        ]
+        return [write_to_set_io(write, location) for location, write in located_writes(self.items)]
 
 
 # TODO: should not be located here
@@ -168,6 +186,11 @@ class MovementControllerContext(pydantic.BaseModel):
     # The planned trajectory being executed. Optional: only location-bounded
     # cursor operations need it, one-shot execution does not.
     joint_trajectory: api.models.JointTrajectory | None = None
+    # The resolved server-side IO overlay (``StartMovementRequest.set_outputs``).
+    # Set when write actions carry path triggers, which are resolved against the
+    # planned trajectory (see nova.actions.path_trigger_resolver). When ``None``
+    # controllers fall back to ``combined_actions.to_set_io()``.
+    set_outputs: list[api.models.SetIO] | None = None
 
 
 MovementController = Callable[[MovementControllerContext], MovementControllerFunction]

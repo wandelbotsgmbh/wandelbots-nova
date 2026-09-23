@@ -1,5 +1,6 @@
 import pytest
 
+from nova import api
 from nova.actions import cartesian_ptp
 from nova.actions.container import CombinedActions
 from nova.types import Pose
@@ -139,6 +140,88 @@ def test_zero_blending_radius_still_conflicts_with_blending_auto():
     """Zero blending radius still conflicts with blending_auto during validation."""
     with pytest.raises(ValueError, match="Can't set both blending_radius and blending_auto"):
         MotionSettings(blending_radius=0.0, blending_auto=50)
+
+
+def test_no_blending_settings_by_default():
+    settings = MotionSettings()
+    assert settings.has_blending_settings() is False
+    with pytest.raises(ValueError, match="No blending settings set"):
+        settings.as_blending_setting()
+
+
+def test_blending_position_exposes_all_api_options():
+    """All BlendingPosition options of the API must survive the conversion untouched."""
+    blending = api.models.BlendingPosition(
+        position_zone_radius=10.0,
+        position_zone_percentage=5.0,
+        orientation_zone_radius=0.1,
+        orientation_zone_percentage=15.0,
+        joints_zone_radius=0.2,
+        joints_zone_percentage=25.0,
+        space=api.models.BlendingSpace.CARTESIAN,
+    )
+    settings = MotionSettings(blending=blending)
+
+    assert settings.has_blending_settings() is True
+    assert settings.as_blending_setting() == blending
+
+
+def test_blending_auto_via_api_model():
+    blending = api.models.BlendingAuto(min_velocity_in_percent=50)
+    settings = MotionSettings(blending=blending)
+
+    assert settings.has_blending_settings() is True
+    assert settings.as_blending_setting() == blending
+
+
+@pytest.mark.parametrize(
+    "deprecated_kwargs",
+    [
+        {"blending_radius": 10.0},
+        {"blending_auto": 50},
+        {"position_zone_radius": 10.0},
+        {"min_blending_velocity": 50},
+    ],
+)
+def test_blending_conflicts_with_deprecated_settings(deprecated_kwargs):
+    with pytest.raises(
+        ValueError, match="Can't set both blending and the deprecated blending settings"
+    ):
+        MotionSettings(
+            blending=api.models.BlendingPosition(position_zone_radius=1.0), **deprecated_kwargs
+        )
+
+
+def test_blending_survives_json_round_trip():
+    blending = api.models.BlendingPosition(
+        position_zone_percentage=5.0, space=api.models.BlendingSpace.JOINT
+    )
+    settings = MotionSettings(blending=blending)
+
+    restored = MotionSettings.model_validate_json(settings.model_dump_json())
+    assert restored.blending == blending
+
+
+def test_to_motion_command_forwards_full_blending():
+    """The complete blending message must reach the API MotionCommand."""
+    blending = api.models.BlendingPosition(
+        position_zone_radius=10.0,
+        orientation_zone_percentage=15.0,
+        joints_zone_radius=0.2,
+        space=api.models.BlendingSpace.JOINT,
+    )
+    combined_actions = CombinedActions(
+        items=(
+            cartesian_ptp(
+                Pose((1.0, 2.0, 3.0, 0.0, 0.0, 0.0)), settings=MotionSettings(blending=blending)
+            ),
+        )
+    )
+
+    motion_commands = combined_actions.to_motion_command()
+
+    assert len(motion_commands) == 1
+    assert motion_commands[0].blending == blending
 
 
 def test_zero_scalar_limits_are_treated_as_overrides():

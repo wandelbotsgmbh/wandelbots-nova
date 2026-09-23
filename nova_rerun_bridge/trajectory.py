@@ -156,7 +156,11 @@ async def log_motion(
     mounting = motion_group_setup.mounting or api.models.Pose(
         position=(0, 0, 0), orientation=(0, 0, 0)
     )
-    robot = DHRobot(dh_parameters=motion_group_description.dh_parameters, mounting=mounting)
+    robot = DHRobot(
+        dh_parameters=motion_group_description.dh_parameters,
+        mounting=mounting,
+        kinematic_chain_offset=motion_group_description.kinematic_chain_offset,
+    )
 
     rr.reset_time()
     rr.set_time(TIME_INTERVAL_NAME, duration=time_offset)

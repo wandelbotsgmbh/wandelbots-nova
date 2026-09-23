@@ -12,8 +12,8 @@ exported URDF; they are drawn from the same link frames the robot uses, which is
 what keeps a zone sitting on the arm it belongs to.
 """
 
-from dataclasses import dataclass
 import warnings
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
@@ -160,6 +160,7 @@ class RobotVisualizer:
             return []
         accumulated = self.robot.pose_to_matrix(self.robot.mounting)
         transforms = [accumulated.copy()]
+        accumulated = accumulated @ self.robot.pose_to_matrix(self.robot.kinematic_chain_offset)
         for dh_param, joint_position in zip(
             self.robot.dh_parameters, joint_positions, strict=False
         ):

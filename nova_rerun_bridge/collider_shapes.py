@@ -13,8 +13,8 @@ from typing import Any
 
 import numpy as np
 import rerun as rr
-from scipy.spatial.transform import Rotation
 import trimesh
+from scipy.spatial.transform import Rotation
 
 from nova import api
 from nova_rerun_bridge import scene_colors
