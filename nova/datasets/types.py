@@ -1,22 +1,13 @@
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BeforeValidator, ConfigDict, Field, PrivateAttr
+from pydantic import ConfigDict, Field, PrivateAttr
 from pydantic.dataclasses import dataclass
 
 from nova import api
 from nova.datasets.exceptions import FrameResolutionError
 from nova.datasets.frames import FrameTree
 from nova.types import Pose
-
-
-def _to_sdk_pose(value: object) -> object:
-    return Pose.from_api_model(value) if isinstance(value, api.models.Pose) else value
-
-
-#: The API's wire `Pose` narrowed to the SDK's `Pose`, so dataset entries expose
-#: a pose that can be used directly as a motion target.
-SdkPose = Annotated[Pose, BeforeValidator(_to_sdk_pose)]
 
 
 def _detached(entry: str, frame: str) -> FrameResolutionError:
@@ -38,7 +29,7 @@ class DatasetPose(api.models.DatasetPose):
     # `from_attributes` lets an `api.models.DatasetPose` be validated into this type as-is.
     model_config = ConfigDict(from_attributes=True)
 
-    pose: SdkPose
+    pose: Pose
 
     _tree: FrameTree | None = PrivateAttr(default=None)
 
@@ -64,7 +55,7 @@ class DatasetFrame(api.models.DatasetFrame):
 
     model_config = ConfigDict(from_attributes=True)
 
-    pose: SdkPose
+    pose: Pose
 
     _tree: FrameTree | None = PrivateAttr(default=None)
 

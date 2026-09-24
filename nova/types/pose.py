@@ -278,8 +278,24 @@ class Pose(pydantic.BaseModel, Sized):
     def model_validator(cls, data):
         """Transform the data that is passed into model validator to match what we return in the model_dump.
 
+        Accepts a `Pose` or an `api.models.Pose` as well, so a `Pose` field can be populated
+        straight from the wire model - see `nova.datasets.DatasetPose`.
+
         Handles optional kinematic_configuration for roundtrip serialization.
+
+        Examples:
+        >>> Pose.model_validate(api.models.Pose(position=(1, 2, 3), orientation=(4, 5, 6)))
+        Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
+        >>> Pose.model_validate(api.models.Pose(position=None, orientation=None))
+        Pose(position=Vector3d(x=0.0, y=0.0, z=0.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
         """
+        if isinstance(data, (Pose, api.models.Pose)):
+            pose = Pose(data)
+            return {
+                "position": pose.position,
+                "orientation": pose.orientation,
+                "kinematic_configuration": pose.kinematic_configuration,
+            }
         if not isinstance(data, dict):
             raise ValueError("model_validator only accepts dicts")
         pos = data["position"]
