@@ -118,3 +118,40 @@ class TestReadDataset:
 
         with pytest.raises(DatasetError):
             await ds.read(LoadLocalDatasetRequest(path=path).path, base_dir=None)
+
+
+class TestDeprecatedTransforms:
+    """Kept working so the release stays non-breaking; superseded by `as_world()`."""
+
+    _WIRE_POSE = api.models.Pose(position=(1, 2, 3), orientation=(0, 0, 0))
+
+    async def test_to_frame_still_calls_the_api(self):
+        nova_mock = _nova_mock(localize_dataset_frame_pose=[self._WIRE_POSE])
+
+        with pytest.warns(DeprecationWarning, match="as_world"):
+            result = await ds.transform_to_frame(
+                nova_mock, "default", [self._WIRE_POSE], frame="fixture"
+            )
+
+        assert result == [self._WIRE_POSE]
+        nova_mock.api.datasets_api.localize_dataset_frame_pose.assert_awaited_once_with(
+            cell="cell", dataset="default", revision=None, frame="fixture", poses=[self._WIRE_POSE]
+        )
+
+    async def test_to_world_still_calls_the_api(self):
+        nova_mock = _nova_mock(resolve_dataset_frame_pose=[self._WIRE_POSE])
+
+        with pytest.warns(DeprecationWarning, match="as_world"):
+            result = await ds.transform_to_world(
+                nova_mock, "default", [self._WIRE_POSE], frame="fixture"
+            )
+
+        assert result == [self._WIRE_POSE]
+
+    async def test_empty_input_short_circuits(self):
+        nova_mock = _nova_mock()
+
+        with pytest.warns(DeprecationWarning):
+            assert await ds.transform_to_frame(nova_mock, "default", [], frame="fixture") == []
+
+        nova_mock.api.datasets_api.localize_dataset_frame_pose.assert_not_called()
