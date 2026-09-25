@@ -6,16 +6,28 @@
     Do not depend on it for stable deployments.
 
 This package enables AI policies to stream joint position targets (+ optional IO commands)
-to one or more motion groups. Timestamped waypoints are sent via the NOVA Jogging API;
-the server handles velocity profiling, interpolation, and IK internally.
+to one or more motion groups. Timestamped waypoints are sent via NOVA action chunk
+streaming; the server handles velocity profiling, interpolation, and IK internally.
 """
 
 from __future__ import annotations
 
+import importlib
+from typing import TYPE_CHECKING
+
 from novapolicy.cameras import CameraSource, WebRTCCameras
+from novapolicy.chunking import (
+    ConnectedActionChunk,
+    InterpolatedActionChunk,
+    connect_action_chunk,
+    create_bridge_chunk,
+    interpolate_action_chunk_ramps,
+    smooth_action_chunk,
+)
 from novapolicy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
 from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
 from novapolicy.jogging import JointJogger, TcpJogger, jog_joints, jog_tcp
+from novapolicy.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.schema import (
     Action,
@@ -27,14 +39,47 @@ from novapolicy.schema import (
 from novapolicy.types import (
     ActionChunk,
     ActionMode,
+    ContinuousExecution,
     EmergencyStopError,
+    EndpointRamp,
+    ExecutionMode,
     JoggingMode,
     JoggingNotSupportedError,
     MotionError,
+    OnStale,
+    SequentialExecution,
     StopCondition,
     StopContext,
     WaypointConfig,
 )
+
+if TYPE_CHECKING:
+    from novapolicy.lerobot import LeRobotPolicyClient
+    from novapolicy.nats import NatsPolicyClient
+
+
+def __getattr__(name: str) -> object:
+    """Load backend-specific clients only when requested."""
+    if name == "LeRobotPolicyClient":
+        try:
+            return importlib.import_module("novapolicy.lerobot").LeRobotPolicyClient
+        except ModuleNotFoundError as exc:
+            msg = (
+                "LeRobotPolicyClient requires the LeRobot policy extra. "
+                "Install with `python -m pip install 'wandelbots-nova[novapolicy-lerobot]'`."
+            )
+            raise ModuleNotFoundError(msg) from exc
+    if name == "NatsPolicyClient":
+        try:
+            return importlib.import_module("novapolicy.nats").NatsPolicyClient
+        except ModuleNotFoundError as exc:
+            msg = (
+                "NatsPolicyClient requires the NATS policy extra. "
+                "Install with `python -m pip install 'wandelbots-nova[novapolicy-nats]'`."
+            )
+            raise ModuleNotFoundError(msg) from exc
+    raise AttributeError(name)
+
 
 __all__ = [
     "Action",
@@ -43,25 +88,43 @@ __all__ = [
     "BoolMapping",
     "CallbackPolicyClient",
     "CameraSource",
+    "Clamp",
+    "ConnectedActionChunk",
+    "ContinuousExecution",
     "EmergencyStopError",
+    "EndpointRamp",
+    "ExecutionMode",
     "ExecutionResult",
     "ExecutorStatus",
     "Gr00tPolicyClient",
+    "InterpolatedActionChunk",
     "JoggingNotSupportedError",
     "JointJogger",
+    "LeRobotPolicyClient",
     "Mapping",
     "MotionError",
+    "NatsPolicyClient",
     "Observation",
+    "OnStale",
+    "OpDirection",
     "Phase",
     "PolicyClient",
     "PolicyExecutor",
     "PolicySchema",
     "RTCConfig",
+    "Rad2Deg",
+    "Scale",
+    "SequentialExecution",
     "StopCondition",
     "StopContext",
     "TcpJogger",
+    "ValueOp",
     "WaypointConfig",
     "WebRTCCameras",
+    "connect_action_chunk",
+    "create_bridge_chunk",
+    "interpolate_action_chunk_ramps",
     "jog_joints",
     "jog_tcp",
+    "smooth_action_chunk",
 ]

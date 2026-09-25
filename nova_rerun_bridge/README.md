@@ -4,6 +4,8 @@ A visualization extension for [wandelbots-nova](https://github.com/wandelbotsgmb
 
 [402951223-ab527bc4-720a-41f2-9499-54d6ed027163.webm](https://github.com/user-attachments/assets/b75f54d5-ce39-42ad-96b5-2fdefc780fa1)
 
+Upgrading from an older version? See [MIGRATION.md](MIGRATION.md).
+
 ## Prerequisites
 
 - A running Nova instance (get access at [wandelbots.com](https://www.wandelbots.com/))
@@ -17,11 +19,6 @@ Check out the [minimal example](https://github.com/wandelbotsgmbh/nova-rerun-bri
 ```bash
 # Add the package to your pyproject.toml
 wandelbots-nova = { version = ">=0.12", extras = ["nova-rerun-bridge"] }
-```
-
-```bash
-# Download required robot models
-uv run download-models
 ```
 
 ```bash
@@ -54,6 +51,38 @@ await bridge.log_trajectory(joint_trajectory, tcp, motion_group)
 - 💥 Collision scene visualization
 - ⏱️ Motion timing analysis
 - 🔄 Continuous monitoring mode
+
+## 🦾 How a robot is rendered
+
+The bridge ships no robot meshes. For every controller it renders, it asks the
+Nova API what that robot is and lets `nova2urdf` turn the answer into a URDF
+package:
+
+```text
+Nova API                    URDF package (cached per robot)
+  DH parameters      ──►      <controller>.urdf      links, joints, joint limits
+  mounting                    visual/                the model's meshes
+  every TCP                   collision/             collision hulls and volumes
+  collision model             motion_groups.json     joint names per motion group
+```
+
+Rerun reads URDF natively, so the geometry and the link tree are logged once and
+a pose after that costs one transform per joint. `motion_groups.json` is what
+lets the bridge drive the right joints when the API splits one robot across
+several motion groups.
+
+The export is cached, keyed by everything it bakes in: the motion group
+descriptions, the cell's stored tool colliders, any `tcp_tools` mesh and the
+`nova2urdf` version. Change one of those and the next run exports again instead
+of rendering a stale robot. To use an export of your own, point
+`NOVA_URDF_EXPORT_DIR` at the directory that holds it.
+
+The URDF also carries a frame per TCP, which is how a mesh passed to
+`Rerun(tcp_tools=...)` rides the arm, and a `<collision>` element for each of
+the model's own hulls, the cell's tool colliders and the safety controller's
+volumes. The bridge draws those itself, see-through and one colour per kind, so
+the robot's own material stays as the model made it. See `scene_colors.py` for
+the colours and [MIGRATION.md](MIGRATION.md) for the switches.
 
 ## 💻 Usage Examples
 
@@ -103,20 +132,8 @@ Check out our [example repository](https://github.com/wandelbotsgmbh/nova-rerun-
 The bridge can be configured through environment variables:
 
 - RECORDING_INTERVAL: Set visualization update interval (default: 0.1s)
-
-## Download Robot Models
-
-After installing the library, you need to download the robot models:
-
-```bash
-# If installed via uv
-uv run download-models
-
-# If installed via pip
-python -m nova_rerun_bridge.models.download_models
-```
-
-This will download the robot models into your project folder. You can use the library without downloading the models, but you will not be able to visualize the robot models in the rerun viewer.
+- NOVA_URDF_EXPORT_DIR: Render robots from a URDF export of your own instead of
+  exporting on demand (see [How a robot is rendered](#-how-a-robot-is-rendered))
 
 ### Tools
 

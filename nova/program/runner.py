@@ -190,6 +190,7 @@ class ProgramRunner(ABC):
         """
         program_id = program.program_id
 
+        self._program = program
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
         self._preconditions = program.preconditions
@@ -460,8 +461,20 @@ class ProgramRunner(ABC):
         sink_id = logger.add(log_capture)
         created_controller_ids: list[str] = []
         robot_cell: RobotCell | None = None
+        active_viewer = None
+        operator_token = is_operator_execution_var.set(self._app_name is not None)
 
         try:
+            active_viewer = (
+                self._program._create_viewer() if isinstance(self._program, Program) else None
+            )
+            if active_viewer is not None:
+                from nova.viewers import get_viewer_manager
+
+                viewer_manager = get_viewer_manager()
+                viewer_manager.unregister_viewer(active_viewer)
+                viewer_manager.activate_viewer(active_viewer)
+
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
                 # Even in tests/simulation we provide a Nova instance so program wrappers
@@ -484,9 +497,6 @@ class ProgramRunner(ABC):
                     cycle=None,
                     # **{controller.id: controller for controller in controllers},
                 )
-
-            # Set context variable to indicate if running via operator (for viewer optimization)
-            is_operator_execution_var.set(self._app_name is not None)
 
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event, nova=self._nova
@@ -578,13 +588,20 @@ class ProgramRunner(ABC):
                 api.models.ProgramRunState.FAILED, on_state_change, self._nova
             )
         finally:
-            if self._nova is not None:
-                await _cleanup_preconditions(
-                    nova=self._nova,
-                    preconditions=self._preconditions,
-                    controller_ids=created_controller_ids,
-                )
-                await self._nova.close()
+            try:
+                if self._nova is not None:
+                    await _cleanup_preconditions(
+                        nova=self._nova,
+                        preconditions=self._preconditions,
+                        controller_ids=created_controller_ids,
+                    )
+                    await self._nova.close()
+            finally:
+                if active_viewer is not None:
+                    from nova.viewers import get_viewer_manager
+
+                    get_viewer_manager().cleanup_viewer(active_viewer)
+                is_operator_execution_var.reset(operator_token)
 
     @abstractmethod
     async def _run(self, execution_context: ExecutionContext):

@@ -1,26 +1,51 @@
 #!/usr/bin/env bash
-# Setup a Nova instance for the dual-arm policy examples.
+# Setup a Nova instance for the policy examples.
 #
-# Imports the cell configuration (two UR5e arms with mounting + gripper TCP)
-# from cell-setup.tar.gz using the Nova REST API.
+# Imports a cell configuration through the Nova REST API. Two cells ship here:
+#
+#   dual-arm (default)  two UR5e arms, for the dual-arm policy examples
+#     - ur5e-left:  mounted at [0, 245, 0] mm, rotateX(-135°) → rotateZ(90°)
+#     - ur5e-right: mounted at [0, -245, 0] mm, rotateX(135°) → rotateZ(90°)
+#     - both carry a "gripper" TCP at [0, -60.05, 1.7] mm, rz=90°
+#
+#   umi                 one UR10e with the UMI gripper, for the LeRobot
+#                       examples and pick_and_place_umi_ur10e.py
+#     - ur10e mounted at the origin
+#     - "umi_corrected" TCP at [-7.19, 0, 221.7] mm — the frame the choreo3
+#       demonstrations were recorded in, NOT the cell's Flange. Fed the wrong
+#       frame a policy does not fail, it stalls in a hover.
 #
 # Usage:
-#   ./setup_cell.sh                          # uses NOVA_API env var
-#   ./setup_cell.sh http://172.31.11.129     # explicit host
-#
-# The cell export contains:
-#   - ur5e-left:  mounted at [0, 245, 0] mm, rotateX(-135°) → rotateZ(90°)
-#   - ur5e-right: mounted at [0, -245, 0] mm, rotateX(135°) → rotateZ(90°)
-#   - Both have a "gripper" TCP at [0, -60.05, 1.7] mm, rz=90°
+#   ./setup_cell.sh                              # dual-arm, NOVA_API env var
+#   ./setup_cell.sh http://172.31.11.129         # dual-arm, explicit host
+#   ./setup_cell.sh http://172.31.12.5 umi       # UMI gripper cell
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BACKUP_FILE="$SCRIPT_DIR/cell-setup.tar.gz"
 
 HOST="${1:-${NOVA_API:-}}"
+CELL_KIND="${2:-dual-arm}"
+
+case "$CELL_KIND" in
+    dual-arm)
+        BACKUP_FILE="$SCRIPT_DIR/cell-setup.tar.gz"
+        CONTROLLERS="ur5e-left ur5e-right"
+        EXPECTED_TCP="gripper"
+        ;;
+    umi)
+        BACKUP_FILE="$SCRIPT_DIR/umi-gripper-cell-setup.tar.gz"
+        CONTROLLERS="ur10e"
+        EXPECTED_TCP="umi_corrected"
+        ;;
+    *)
+        echo "Unknown cell '$CELL_KIND'. Use 'dual-arm' or 'umi'."
+        exit 1
+        ;;
+esac
+
 if [ -z "$HOST" ]; then
-    echo "Usage: $0 <nova-host>  (e.g. http://172.31.11.129)"
+    echo "Usage: $0 <nova-host> [dual-arm|umi]  (e.g. http://172.31.11.129)"
     echo "   or: NOVA_API=http://172.31.11.129 $0"
     exit 1
 fi
@@ -29,7 +54,7 @@ HOST="${HOST%/}"
 API="$HOST/api/v2"
 
 restore() {
-    echo "Restoring cell configuration (pass $1)..."
+    echo "Restoring $CELL_KIND cell configuration (pass $1)..."
     curl -sS --max-time 300 -X POST "$API/system/configuration" \
         -H "Content-Type: application/gzip" \
         --data-binary "@$BACKUP_FILE" -o /dev/null 2>/dev/null &
@@ -53,10 +78,10 @@ wait_for_api() {
 
 verify() {
     OK=true
-    for ctrl in ur5e-left ur5e-right; do
-        TCPS=$(curl -fsS "$API/virtual-controllers/$ctrl/motion-groups/0@$ctrl/tcps" 2>/dev/null || echo '[]')
-        HAS_GRIPPER=$(echo "$TCPS" | python3 -c "import json,sys; print(any(t['id']=='gripper' for t in json.load(sys.stdin)))" 2>/dev/null)
-        if [ "$HAS_GRIPPER" != "True" ]; then
+    for ctrl in $CONTROLLERS; do
+        TCPS=$(curl -fsS "$API/cells/cell/virtual-controllers/$ctrl/motion-groups/0@$ctrl/tcps" 2>/dev/null || echo '[]')
+        HAS_TCP=$(echo "$TCPS" | TCP="$EXPECTED_TCP" python3 -c "import json,os,sys; print(any(t['id']==os.environ['TCP'] for t in json.load(sys.stdin)))" 2>/dev/null)
+        if [ "$HAS_TCP" != "True" ]; then
             OK=false
         fi
     done
@@ -85,10 +110,10 @@ sleep 10
 CONTROLLERS=$(curl -fsS "$API/cells/cell/controllers")
 echo "Controllers: $CONTROLLERS"
 
-for ctrl in ur5e-left ur5e-right; do
-    POS=$(curl -fsS "$API/virtual-controllers/$ctrl/motion-groups/0@$ctrl/mounting" 2>/dev/null \
+for ctrl in $CONTROLLERS; do
+    POS=$(curl -fsS "$API/cells/cell/virtual-controllers/$ctrl/motion-groups/0@$ctrl/mounting" 2>/dev/null \
         | python3 -c "import json,sys; print(json.load(sys.stdin).get('position','?'))" 2>/dev/null)
-    TCPS=$(curl -fsS "$API/virtual-controllers/$ctrl/motion-groups/0@$ctrl/tcps" 2>/dev/null \
+    TCPS=$(curl -fsS "$API/cells/cell/virtual-controllers/$ctrl/motion-groups/0@$ctrl/tcps" 2>/dev/null \
         | python3 -c "import json,sys; [print(f'    {t[\"id\"]}: pos={t[\"position\"]}') for t in json.load(sys.stdin)]" 2>/dev/null)
     echo "  $ctrl: mounting=$POS"
     echo "$TCPS"
@@ -96,7 +121,7 @@ done
 
 if [ "$(verify)" = "true" ]; then
     echo ""
-    echo "✓ Cell setup complete. Ready for dual-arm examples."
+    echo "✓ Cell setup complete ($CELL_KIND). Ready for the examples."
 else
     echo ""
     echo "⚠ Setup incomplete. Check the instance manually."

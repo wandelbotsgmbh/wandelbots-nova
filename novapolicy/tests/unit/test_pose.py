@@ -30,7 +30,7 @@ _RV = st.floats(min_value=-math.pi, max_value=math.pi, allow_nan=False, allow_in
 _FORMATS = st.sampled_from(list(TcpFormat))
 
 
-def _pose(x: float, y: float, z: float, rx: float, ry: float, rz: float) -> object:  # noqa: PLR0917
+def _pose(x: float, y: float, z: float, rx: float, ry: float, rz: float) -> object:
     """A Nova-Pose-shaped object: position in mm, orientation as a rotation vector."""
     return SimpleNamespace(
         position=SimpleNamespace(x=x, y=y, z=z),
@@ -43,7 +43,7 @@ def _pose(x: float, y: float, z: float, rx: float, ry: float, rz: float) -> obje
 
 @given(x=_MM, y=_MM, z=_MM, rx=_RV, ry=_RV, rz=_RV, fmt=_FORMATS)
 @settings(max_examples=200, deadline=None)
-def test_position_is_always_scaled_from_mm_to_meters(x, y, z, rx, ry, rz, fmt):  # noqa: PLR0917
+def test_position_is_always_scaled_from_mm_to_meters(x, y, z, rx, ry, rz, fmt):
     """The first three outputs are the position in metres, whatever the format."""
     result = pose_to_eef(_pose(x, y, z, rx, ry, rz), fmt)
     assert result[0] == pytest.approx(x * 0.001)
@@ -64,7 +64,7 @@ def test_position_scale_of_one_keeps_millimetres(x, y, z):
 
 @given(x=_MM, y=_MM, z=_MM, rx=_RV, ry=_RV, rz=_RV)
 @settings(max_examples=200, deadline=None)
-def test_rotation_vector_passes_orientation_through_unchanged(x, y, z, rx, ry, rz):  # noqa: PLR0917
+def test_rotation_vector_passes_orientation_through_unchanged(x, y, z, rx, ry, rz):
     """ROTATION_VECTOR returns six values and never touches the orientation."""
     result = pose_to_eef(_pose(x, y, z, rx, ry, rz), TcpFormat.ROTATION_VECTOR)
     assert len(result) == 6

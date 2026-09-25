@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from enum import StrEnum
+import math
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
 import pydantic
 
@@ -19,6 +21,8 @@ ValueType = int | str | bool | float | Pose
 # Mode literals used across the package
 ActionMode = Literal["absolute", "relative"]
 JoggingMode = Literal["joint", "cartesian"]
+
+_MIN_ENDPOINT_RAMP_STEPS = 2
 
 
 class ActionChunk(pydantic.BaseModel, frozen=True):
@@ -47,7 +51,18 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     """Motion group id → sequence of TCP targets [x, y, z, rx, ry, rz]."""
 
     ios: dict[str, dict[str, bool | int | float | str]] | None = None
-    """Motion group id → {io_key: value}. Fired once on send()."""
+    """Motion group id → {io_key: value}, in **hardware** units. Fired once on send().
+
+    Unlike joint and TCP targets, IO values arrive already converted: a policy
+    client applies the schema's ``Mapping`` when it decodes its own wire format,
+    because only the client knows where in that format the value sits. A chunk
+    built by hand therefore carries hardware values directly — ``True``, or
+    ``100.0`` for an analogue output — and nothing converts them again.
+
+    Joint and TCP targets are the other way round: they arrive in the policy's
+    units and the executor inverts them through
+    :meth:`PolicySchema.apply_inverse_ops` before they reach the robot.
+    """
 
     dt_ms: float = 0.0
     """Time spacing between steps in milliseconds. 0 = single-step."""
@@ -73,6 +88,14 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
 
     Rule of thumb: overlapping/RTC ⇒ absolute; plain sequential ⇒ relative."""
 
+    action_timestep: int = -1
+    """Absolute policy-queue timestep of the first action, or ``-1`` if absent.
+
+    Fixed-rate queue clients use this to preserve one action timeline across
+    NOVA chunk replacements. The executor maps timestep zero to the initial
+    bridge boundary, then places later lookaheads at the corresponding absolute
+    session timestamps instead of re-anchoring each replacement to ``now``."""
+
     seam_backdate_steps: int = 0
     """RTC seam backdate, in steps, for connecting overlapping chunks.
 
@@ -86,7 +109,73 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     0 = no RTC / no backdate."""
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
+class EndpointRamp:
+    """Endpoint interpolation applied to each settled sequential chunk."""
+
+    interpolation_steps: int = 3
+    """Intervals replacing each endpoint interval. Must be at least two."""
+
+    def __post_init__(self) -> None:
+        if self.interpolation_steps < _MIN_ENDPOINT_RAMP_STEPS:
+            raise ValueError("interpolation_steps must be at least 2")
+
+
+@dataclass(frozen=True, slots=True)
+class SequentialExecution:
+    """Execute one complete chunk, reach standstill, then infer again."""
+
+    endpoint_ramp: EndpointRamp | None = EndpointRamp()
+    """Per-chunk acceleration/braking interpolation, or ``None`` to disable."""
+
+
+@dataclass(frozen=True, slots=True)
+class ContinuousExecution:
+    """Continuously replace the active lookahead without per-chunk braking."""
+
+    rate_hz: float | None = None
+    """Fixed inference rate, or ``None`` to run as fast as inference allows."""
+
+    def __post_init__(self) -> None:
+        if self.rate_hz is not None and (not math.isfinite(self.rate_hz) or self.rate_hz <= 0):
+            raise ValueError("rate_hz must be a positive finite value or None")
+
+
+ExecutionMode: TypeAlias = SequentialExecution | ContinuousExecution
+
+
+class OnStale(StrEnum):
+    """What the executor does when data does not arrive in time.
+
+    The trigger is per channel — one camera can go stale on its own — but the
+    response is not: one policy drives the whole cell, so holding one arm while
+    aborting another is incoherent. This is therefore an executor-wide setting.
+
+    ``zeros``, the third option in ROS-side equivalents, is deliberately absent.
+    It suits velocity and effort channels; NOVA streams absolute joint
+    positions, where zero commands the arm to its zero pose.
+    """
+
+    HOLD = "hold"
+    """Skip the tick and retry. The jogging session holds its last target while
+    the robot decelerates. Escalates to ``CONTROLLED_STOP`` once the data has
+    been stale for longer than the executor's hold budget.
+
+    Honoured for observation staleness only. An inference deadline always ends
+    the run: the timed-out call is still in flight on a worker thread, and
+    re-entering the client while it may still complete would corrupt the
+    policy's timestep sequence.
+    """
+
+    CONTROLLED_STOP = "controlled_stop"
+    """Run out the waypoints already accepted, then end the run normally with a
+    ``stale: ...`` reason."""
+
+    ABORT = "abort"
+    """Raise. The default, and what the executor did before this was declared."""
+
+
+@dataclass(frozen=True, slots=True)
 class WaypointConfig:
     """Configuration for NOVA waypoint jogging.
 
@@ -99,6 +188,52 @@ class WaypointConfig:
 
     state_rate_ms: int = 10
     """State stream update rate."""
+
+    min_chunk_horizon_ms: float = 500.0
+    """Shortest waypoint horizon a *chunk* may be sent with.
+
+    Chunks shorter than this are extended by repeating their final target. Set
+    to ``0`` to disable the extension.
+
+    The chunk counterpart to the jogger's ``buffer_window_ms``: both give the
+    server a horizon it can brake within, but they do it for different inputs and
+    only one applies to any given push. A chunk already contains future waypoints,
+    so this only tops it up when it is too short. A live target contains none, so
+    the jogger replays a ring buffer of measured targets instead — and opts out of
+    this padding entirely, because holding one pose is not the same as replaying
+    where the target actually went.
+
+    Why a horizon is needed at all: a lone waypoint is a *terminal* target, and
+    with no successor the server plans an accelerate/decelerate-to-standstill
+    profile. It also has to be *long*, because the server has to be able to brake
+    to a stop by the end of whatever it has been given, so a short horizon caps
+    the speed it will run at. On the UR10e this was tuned against, a 150ms horizon
+    stalled a fifth of all samples and 450ms still stalled occasionally — the safe
+    horizon is a property of the controller, so expect to re-tune per robot.
+
+    The padding is a braking horizon, not commanded motion, so it is excluded
+    from :attr:`WaypointJoggingSession.scheduled_until_server_ms` — otherwise
+    every caller waiting for a chunk to finish would first sit at its final
+    target for the rest of the buffer.
+    """
+
+    single_step_dt_ms: float = 50.0
+    """Spacing used when a live jog target is sent as a single point.
+
+    Which spacing executes most smoothly is a property of the controller rather
+    than a universal constant, which is why this is config and not hardcoded.
+
+    Must be positive: it is the divisor that turns the horizon length into a
+    waypoint count, and it is the fallback spacing whenever a caller passes
+    ``dt_ms=0``. ``0`` here has no "single step" meaning — it just leaves the
+    live path with no timeline to lay waypoints on.
+    """
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.single_step_dt_ms) or self.single_step_dt_ms <= 0:
+            raise ValueError("single_step_dt_ms must be a positive finite value")
+        if not math.isfinite(self.min_chunk_horizon_ms) or self.min_chunk_horizon_ms < 0:
+            raise ValueError("min_chunk_horizon_ms must be a non-negative finite value")
 
 
 @dataclass(slots=True)
@@ -160,19 +295,20 @@ class MotionError(Exception):
 
 
 class JoggingNotSupportedError(Exception):
-    """Raised when the NOVA instance does not expose waypoint jogging.
+    """Raised when the NOVA instance does not expose action chunk streaming.
 
-    The waypoint jogging websocket endpoint (``executeWaypointJogging``) only
-    exists on api-gateway ``>= 26.5``. Older gateways reject the upgrade with
-    HTTP 404; we surface that as this actionable error instead of a generic
-    connection failure, so callers know to upgrade NOVA rather than chase a
-    network problem.
+    The action chunk streaming websocket endpoint (``executeActionChunks``) only
+    exists on api-gateway ``>= 26.6``; on ``26.5`` the same feature was reached
+    through ``executeWaypointJogging``, which 26.6 removed. Gateways without the
+    endpoint reject the upgrade with HTTP 404; we surface that as this actionable
+    error instead of a generic connection failure, so callers know to upgrade
+    NOVA rather than chase a network problem.
     """
 
     def __init__(self, motion_group_id: str) -> None:
         self.motion_group_id = motion_group_id
         super().__init__(
-            f"Waypoint jogging is not available for '{motion_group_id}' on this "
-            "NOVA instance (the executeWaypointJogging endpoint returned HTTP 404). "
-            "It requires api-gateway >= 26.5."
+            f"Action chunk streaming is not available for '{motion_group_id}' on this "
+            "NOVA instance (the executeActionChunks endpoint returned HTTP 404). "
+            "It requires api-gateway >= 26.6."
         )

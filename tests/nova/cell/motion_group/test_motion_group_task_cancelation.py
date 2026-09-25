@@ -90,7 +90,15 @@ async def test_movement_stops_when_canceling_task_with_execute(ur_mg):
 
     movement_task = asyncio.create_task(ur_mg.execute(trajectory, actions=actions, tcp="Flange"))
 
-    await asyncio.sleep(2)
+    # Controller startup can exceed the old fixed 2 s delay on a loaded CI
+    # instance. Wait until motion is actually observed before testing cancellation.
+    pose = initial_pose
+    for _ in range(20):
+        await asyncio.sleep(0.5)
+        pose = await ur_mg.tcp_pose()
+        if pose.position.x > initial_pose.position.x:
+            break
+    assert pose.position.x > initial_pose.position.x, "Robot did not start moving within 10 s."
 
     try:
         result = movement_task.cancel()
@@ -102,7 +110,6 @@ async def test_movement_stops_when_canceling_task_with_execute(ur_mg):
     # time for deceleration
     await asyncio.sleep(1)
     pose = await ur_mg.tcp_pose()
-    assert pose.position.x > initial_pose.position.x, "Robot did not move at all."
     assert pose.position.x < final_pose.position.x, (
         "Robot completed the full movement despite cancelation."
     )
