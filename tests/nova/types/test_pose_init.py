@@ -137,6 +137,18 @@ class TestPoseInitAllowed:
         assert p.to_tuple() == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
         assert p.kinematic_configuration is None
 
+    def test_frame_relative_dataset_pose_is_rejected(self):
+        """A pose taught in a frame is not a world pose, so it must not become one silently."""
+        dataset_pose = api.models.DatasetPose(
+            dataset_pose="p3",
+            dataset="d1",
+            frame="fixture",
+            pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
+        )
+
+        with pytest.raises(ValueError, match="expressed in frame 'fixture'"):
+            Pose(dataset_pose)
+
     def test_from_configured_pose(self, kinematic_config):
         configured_pose = api.models.ConfiguredPose(
             pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
