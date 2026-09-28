@@ -7,7 +7,6 @@ Prerequisites:
 """
 
 import nova
-from nova import api, run_program
 from nova.actions import jnt
 from nova.cell import virtual_controller
 
@@ -18,7 +17,7 @@ from nova.cell import virtual_controller
         controllers=[
             virtual_controller(
                 name="ur10e",
-                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                manufacturer=nova.api.models.Manufacturer.UNIVERSALROBOTS,
                 type="universalrobots-ur10e",
             )
         ],
@@ -56,4 +55,4 @@ async def trajectory_cache(ctx: nova.ProgramContext):
 
 
 if __name__ == "__main__":
-    run_program(trajectory_cache)
+    nova.run_program(trajectory_cache)
