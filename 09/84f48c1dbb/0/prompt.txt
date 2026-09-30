@@ -148,3 +148,27 @@ INFO:     10.42.0.178:43252 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
 All of these issues currently seem to be based on the fact that the standstill flag is not reliable. It jitters when the robot is actually in standstill. This is something that will be addressed upstream later on but for now we need a way to safely execute without getting stuck in states or throwing unexpected error in cases we identify unexpected states in the stream. 
 i have a few vague ideas on how to approach this but don't want to prime you on these yet. 
 What options would you see to proceed here?
+
+---
+
+go
+
+---
+
+<task-notification>
+<task-id>bfk79r6pq</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/31df4e11-03a2-4e04-84d1-7d8dbd8850e2/tasks/bfk79r6pq.output</output-file>
+<status>failed</status>
+<summary>Background command "Rewrite machine processing; run machine tests" failed with exit code 144</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bl5zbcby3</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/31df4e11-03a2-4e04-84d1-7d8dbd8850e2/tasks/bl5zbcby3.output</output-file>
+<status>failed</status>
+<summary>Background command "Test import speed directly" failed with exit code 144</summary>
+</task-notification>
