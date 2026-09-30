@@ -1,0 +1,534 @@
+In a previous session we tried to make the TrajectoryExecutionMachine more robust. This was ported? to this branch as the armed machine part. This branch is now used in different apps, showing different problems.
+look at this document @/Users/q/1prj/audi/arg3-longterm-tests/docs/sdk-vs-api-execution-state.md and the two apps it comparend @/Users/q/1prj/audi/arg3-longterm-tests/pause/ and @/Users/q/1prj/audi/arg3-longterm-tests/pause-api/ 
+
+Also see this analysis 
+
+<pasted_content id="e3be">
+This error is raised by the SDK's per-group trajectory state machine, not by our code. It isn't a torque or controller fault, and it happens before the robot moves.
+
+Where it fires
+
+The error text comes from _fail_on_frame in trajectory_state_machine.py.
+It is raised from the cursor's _motion_group_state_monitor (trajectory_cursor.py:1421).
+The rule it enforces: the machine is at rest in paused (reason USER), and a TrajectoryRunning frame arrives that this cursor never started. Only this cursor may resume a user pause, so it treats that as a contradiction and tears the session down.
+How the machine gets into paused before anything moved
+The failing frame says location 0.0, standstill=True, so the machine was already in paused before the trajectory started. From armed, only one path leads there (_handle_armed):
+
+A parked PAUSED_BY_USER frame with standstill=False arrives. The SDK reads this as "the robot is leaving standstill; RUNNING follows one cycle later" and sets _moved = True.
+The next PAUSED_BY_USER frame has standstill=True. Because _moved is set, the SDK concludes a real user pause has settled and moves to paused(USER).
+The IO barrier releases the trajectory, and the controller reports TrajectoryRunning at location 0.0, standstill=True. From paused(USER) that is an error.
+When that happens in our flow (inferred from the SDK code; I haven't confirmed it on the robot)
+The trigger is a single standstill=False frame while the robot is actually at rest, i.e. the standstill flag flickering. The most likely moment is right at the start of each linear leg:
+
+Each leg starts immediately after a previous motion: the slow lead-in to the stroke start before leg 1, or leg 1's own session before leg 2. The only gap is the two plan calls.
+The new session then attaches, and the cursor holds back state frames until its start command has gone out (_held_at_first_dispatch). That means frames from just after the previous motion can be processed while the machine is already armed, inside the window where a standstill flicker counts as "starting to move".
+A physical robot still settling after a move plausibly flickers its standstill flag. The virtual clone never does, which fits this only showing up on the real cell.
+This isn't specific to the linear motion. folge11_rrt uses the same synchronized executor (execute_planned_multi), so it can hit the same thing.
+
+To confirm it:
+
+Set LOG_LEVEL to debug in k8s/app.yaml. The cursor then logs every frame as frame standstill=… execute=… location=… | <state> → <state>.
+Before the error, look for armed → paused on a TrajectoryPausedByUser frame, preceded by one with standstill=False.
+The same log shows which group failed (arm or rail) and on which leg. The traceback alone doesn't say.
+Possible fixes:
+
+In our code, quick: wait until the robot has been at standstill for a while (a short fixed settle time, or N consecutive standstill frames) before each synchronized leg. This closes the window without touching the SDK. I'd add it as a LINEAR_SETTLE_S knob.
+Upstream in the SDK: _handle_armed shouldn't treat one PAUSED_BY_USER, standstill=False frame as the robot leaving standstill when the controller hasn't taken up the start yet, and standstill jitter at rest can trigger it. That's worth reporting with the debug log from step 1.
+Should I add the settle wait? It's a few lines, and the debug log would then show whether it's enough.
+</pasted_content id="e3be">
+
+ of this error 
+
+<pasted_content id="e3be">
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     ) as cursor:
+    |     ^
+    |   File "/usr/local/lib/python3.13/contextlib.py", line 235, in __aexit__
+    |     await self.gen.athrow(value)
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 254, in attach
+    |     raise error_group.exceptions[0] from error_group
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 333, in _run_execute_trajectory
+    |     await motion_group._api_client.trajectory_execution_api.execute_trajectory(
+    |     ...<3 lines>...
+    |     )
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 41, in async_wrapper
+    |     raise e
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 37, in async_wrapper
+    |     return await original_attr(*args, **kwargs)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/app/.venv/lib/python3.13/site-packages/pydantic/_internal/_validate_call.py", line 35, in wrapper_function
+    |     return await wrapper(*args, **kwargs)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/app/.venv/lib/python3.13/site-packages/wandelbots_api_client/v2_pydantic/api/trajectory_execution_api.py", line 136, in execute_trajectory
+    |     async for request in client_request_generator(iterate_responses(websocket)):
+    |         await websocket.send(request.model_dump_json(exclude_none=True))
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1277, in cntrl
+    |     raise eg.exceptions[0] from eg
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1427, in _motion_group_state_monitor
+    |     raise error
+    | nova.exceptions.UnexpectedTrajectoryState: Error during movement: controller reports TrajectoryRunning at location 0.0 (standstill=True) while the execution is 'paused' and no start was issued
+    +------------------------------------
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/.venv/lib/python3.13/site-packages/nova/program/runner.py", line 511, in _run_program
+    await self._run(execution_context)
+  File "/app/.venv/lib/python3.13/site-packages/nova/program/runner.py", line 619, in _run
+    return await self.program(nova=execution_context.nova, **(self._inputs or {}))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/.venv/lib/python3.13/site-packages/nova/program/function.py", line 183, in __call__
+    return await self._wrapped(ctx, **validated_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/ir999r01/lab/combined_loop.py", line 897, in main
+    await run_linear_leg(
+    ...<3 lines>...
+    )
+  File "/app/ir999r01/lab/combined_loop.py", line 636, in run_linear_leg
+    await execute_planned_multi(
+    ...<2 lines>...
+    )
+  File "/app/helpers/motion/collision_free.py", line 818, in execute_planned_multi
+    async with ensemble.attach(
+               ~~~~~~~~~~~~~~~^
+        trajectory,
+        ^^^^^^^^^^^
+        tcp={motion_group.id: tcp, linear.id: "0"},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as cursor:
+    ^
+  File "/usr/local/lib/python3.13/contextlib.py", line 235, in __aexit__
+    await self.gen.athrow(value)
+  File "/app/.venv/lib/python3.13/site-packages/nova/cell/multi_motion_group.py", line 117, in attach
+    async with self._executor.attach(
+               ~~~~~~~~~~~~~~~~~~~~~^
+        trajectory, tcp=tcp, actions=actions, groups=groups
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as cursor:
+    ^
+  File "/usr/local/lib/python3.13/contextlib.py", line 235, in __aexit__
+    await self.gen.athrow(value)
+  File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 254, in attach
+    raise error_group.exceptions[0] from error_group
+  File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 333, in _run_execute_trajectory
+    await motion_group._api_client.trajectory_execution_api.execute_trajectory(
+    ...<3 lines>...
+    )
+  File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 41, in async_wrapper
+    raise e
+  File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 37, in async_wrapper
+    return await original_attr(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/.venv/lib/python3.13/site-packages/pydantic/_internal/_validate_call.py", line 35, in wrapper_function
+    return await wrapper(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/.venv/lib/python3.13/site-packages/wandelbots_api_client/v2_pydantic/api/trajectory_execution_api.py", line 136, in execute_trajectory
+    async for request in client_request_generator(iterate_responses(websocket)):
+        await websocket.send(request.model_dump_json(exclude_none=True))
+  File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1277, in cntrl
+    raise eg.exceptions[0] from eg
+  File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1427, in _motion_group_state_monitor
+    raise error
+nova.exceptions.UnexpectedTrajectoryState: Error during movement: controller reports TrajectoryRunning at location 0.0 (standstill=True) while the execution is 'paused' and no start was issued
+
+2026-09-30 08:25:39.645 | ERROR    | nova.program.runner:_handle_general_exception:415 - <class 'nova.exceptions.UnexpectedTrajectoryState'>: Error during movement: controller reports TrajectoryRunning at location 0.0 (standstill=True) while the execution is 'paused' and no start was issued
+2026-09-30 08:25:39.645 | INFO     | nova.program.runner:_set_program_state:425 - Set state of program combined_loop run 529ed31c-b1d3-477e-a06c-cf5abbdfcda4 to ProgramRunState.FAILED
+2026-09-30 08:25:39.645 | INFO     | nova.program.runner:_run_program:565 - Program combined_loop run 529ed31c-b1d3-477e-a06c-cf5abbdfcda4 finished. Run teardown routine...
+INFO:     10.42.0.178:50030 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:54086 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:54100 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:49974 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45346 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:57420 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:43244 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:43252 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+</pasted_content id="e3be">
+
+ 
+All of these issues currently seem to be based on the fact that the standstill flag is not reliable. It jitters when the robot is actually in standstill. This is something that will be addressed upstream later on but for now we need a way to safely execute without getting stuck in states or throwing unexpected error in cases we identify unexpected states in the stream. 
+i have a few vague ideas on how to approach this but don't want to prime you on these yet. 
+What options would you see to proceed here?
+
+---
+
+go
+
+---
+
+<task-notification>
+<task-id>bfk79r6pq</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/31df4e11-03a2-4e04-84d1-7d8dbd8850e2/tasks/bfk79r6pq.output</output-file>
+<status>failed</status>
+<summary>Background command "Rewrite machine processing; run machine tests" failed with exit code 144</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bl5zbcby3</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/31df4e11-03a2-4e04-84d1-7d8dbd8850e2/tasks/bl5zbcby3.output</output-file>
+<status>failed</status>
+<summary>Background command "Test import speed directly" failed with exit code 144</summary>
+</task-notification>
+
+---
+
+push it and update the pause app to the branch
+
+---
+
+commit the pause app changes
+
+---
+
+I ran the @/Users/q/2lab/cell-plc-simulation/nova/ir999r01/lab/combined_loop.py through the app @/Users/q/2lab/cell-plc-simulation/nova/lab_app/ and with higher than around 85% playback speed get the following error:
+
+
+<pasted_content id="e3be">
+square_half_edge_mm=150.0, square_blending_radius_mm=50.0, square_1_direction=1, square_2_direction=-1, square_keeps_home_config=True, motion='linear', linear_half_stroke_mm=150.0, linear_sync_offset_s=0.0, linear_direction='same', linear_arm_profile=None)
+[app]: 2026-09-30 13:37:16 [INFO] helpers.gaps.default_mode: controller 'ir999r01' in MODE_CONTROL (operation_mode=OperationMode.OPERATION_MODE_AUTO, safety_state=SafetyStateType.SAFETY_STATE_NORMAL)
+[app]: 2026-09-30 13:37:16 [INFO] ir999r01.lab.combined_loop: Combined-loop probe initialized.
+[app]: 2026-09-30 13:37:16 [INFO] ir999r01.lab.combined_loop: Homing: arm -> P0, rail -> -1500.0 mm
+[app]: 2026-09-30 13:37:16 [INFO] ir999r01.lab.combined_loop: Rail -> -1500.0 mm at slow/medium (250 mm/s, 400 mm/s2)
+[app]: 2026-09-30 13:37:16 [INFO] helpers.motion.playback_speed: Trajectory: 0960b0e9-b54a-4a5c-bba9-a20b438b21f1 sending PlaybackSpeedRequest (100%)
+[app]: 2026-09-30 13:37:16 [INFO] helpers.motion.playback_speed: Trajectory: d267686a-d9ca-47e5-a924-a81699d4ecfc sending PlaybackSpeedRequest (100%)
+[app]: 2026-09-30 13:37:16 [INFO] ir999r01.lab.combined_loop: Rail at -1500.0 mm
+[app]: 2026-09-30 13:37:16 [INFO] ir999r01.lab.combined_loop: At home
+[app]: 2026-09-30 13:37:16 [INFO] ir999r01.lab.combined_loop: === iteration 1 ===
+[app]: 2026-09-30 13:37:16 [INFO] ir999r01.lab.combined_loop: linear: arm to the stroke start at slow/medium (250 mm/s, 400 mm/s2)
+[app]: 2026-09-30 13:37:16 [INFO] helpers.motion.playback_speed: Trajectory: 98bdc7f6-41c7-4b66-94f3-f459306e4b27 sending PlaybackSpeedRequest (100%)
+[app]: INFO:     10.42.0.178:39194 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+[app]: 2026-09-30 13:37:18 [INFO] ir999r01.lab.combined_loop: linear stroke with the rail travelling to -3350.0 mm; rail at maximum (motion-group limit, motion-group limit), arm at maximum (motion-group limit, motion-group limit)
+[app]: 2026-09-30 13:37:18 [INFO] ir999r01.lab.combined_loop: timing (planned s, before playback scaling): rail decelerates 1.168-1.960; arm starts 1.168, accelerates until 1.432, ends 1.724; overlap 0.264 s
+[app]: 2026-09-30 13:37:18 [WARNING] nova.cell.movement_controller.trajectory_state_machine: controller reports TrajectoryRunning at location 0.0 (standstill=True) while the execution is 'paused' and no start was issued; following the controller
+[app]: 2026-09-30 13:37:20 [INFO] helpers.motion.collision_free: synchronized execution finished at location 1.960: {'0@ir999r01': 'OperationResult(operation_type=<OperationType.FORWARD: 1>, target_location=None, start_location=0.0, final_location=1.96, error=None, paused_on_io=False, resume_not_taken_up=False)', '1@ir999r01': 'OperationResult(operation_type=<OperationType.FORWARD: 1>, target_location=None, start_location=0.0, final_location=0.0, error=None, paused_on_io=False, resume_not_taken_up=False)'}
+[app]: 2026-09-30 13:37:20 [INFO] ir999r01.lab.combined_loop: leg done in 2.64 s
+[app]: 2026-09-30 13:37:20 [INFO] ir999r01.lab.combined_loop: linear stroke with the rail travelling to -1500.0 mm; rail at maximum (motion-group limit, motion-group limit), arm at maximum (motion-group limit, motion-group limit)
+[app]: 2026-09-30 13:37:21 [INFO] ir999r01.lab.combined_loop: timing (planned s, before playback scaling): rail decelerates 1.168-1.960; arm starts 1.168, accelerates until 1.436, ends 1.724; overlap 0.268 s
+[app]: 2026-09-30 13:37:21 [ERROR] nova.core.gateway: API CALL: execute_trajectory failed with error: Initial movement failed: {
+[app]:   "message": "Movement not started. Motion group is not at expected location on trajectory.\nExpected location: '0'\nCurrent joint position: '[-3349.857666]' vs. \nexpected joint position: '[-3350]'\nPlease move to the trajectory!",
+[app]:   "add_trajectory_error": null,
+[app]:   "kind": "INITIALIZE_RECEIVED"
+[app]: }
+[app]: 2026-09-30 13:37:21.280 | ERROR    | nova.program.runner:_handle_general_exception:407 - Program combined_loop run 0f1227d1-50eb-4fed-85d8-ee19bb1243bd failed
+[app]: 2026-09-30 13:37:21.280 | ERROR    | nova.program.runner:_handle_general_exception:413 -   + Exception Group Traceback (most recent call last):
+[app]:   |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 227, in attach
+[app]:   |     async with asyncio.TaskGroup() as task_group:
+[app]:   |                ~~~~~~~~~~~~~~~~~^^
+[app]:   |   File "/usr/local/lib/python3.13/asyncio/taskgroups.py", line 71, in __aexit__
+[app]:   |     return await self._aexit(et, exc)
+[app]:   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:   |   File "/usr/local/lib/python3.13/asyncio/taskgroups.py", line 173, in _aexit
+[app]:   |     raise BaseExceptionGroup(
+[app]:   |     ...<2 lines>...
+[app]:   |     ) from None
+[app]:   | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+[app]:   +-+---------------- 1 ----------------
+[app]:     | Traceback (most recent call last):
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/nova/program/runner.py", line 511, in _run_program
+[app]:     |     await self._run(execution_context)
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/nova/program/runner.py", line 619, in _run
+[app]:     |     return await self.program(nova=execution_context.nova, **(self._inputs or {}))
+[app]:     |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/nova/program/function.py", line 183, in __call__
+[app]:     |     return await self._wrapped(ctx, **validated_kwargs)
+[app]:     |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:     |   File "/app/ir999r01/lab/combined_loop.py", line 897, in main
+[app]:     |     await run_linear_leg(
+[app]:     |     ...<3 lines>...
+[app]:     |     )
+[app]:     |   File "/app/ir999r01/lab/combined_loop.py", line 636, in run_linear_leg
+[app]:     |     await execute_planned_multi(
+[app]:     |     ...<2 lines>...
+[app]:     |     )
+[app]:     |   File "/app/helpers/motion/collision_free.py", line 818, in execute_planned_multi
+[app]:     |     async with ensemble.attach(
+[app]:     |                ~~~~~~~~~~~~~~~^
+[app]:     |         trajectory,
+[app]:     |         ^^^^^^^^^^^
+[app]:     |         tcp={motion_group.id: tcp, linear.id: "0"},
+[app]:     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:     |     ) as cursor:
+[app]:     |     ^
+[app]:     |   File "/usr/local/lib/python3.13/contextlib.py", line 235, in __aexit__
+[app]:     |     await self.gen.athrow(value)
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/multi_motion_group.py", line 117, in attach
+[app]:     |     async with self._executor.attach(
+[app]:     |                ~~~~~~~~~~~~~~~~~~~~~^
+[app]:     |         trajectory, tcp=tcp, actions=actions, groups=groups
+[app]:     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:     |     ) as cursor:
+[app]:     |     ^
+[app]:     |   File "/usr/local/lib/python3.13/contextlib.py", line 235, in __aexit__
+[app]:     |     await self.gen.athrow(value)
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 254, in attach
+[app]:     |     raise error_group.exceptions[0] from error_group
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 333, in _run_execute_trajectory
+[app]:     |     await motion_group._api_client.trajectory_execution_api.execute_trajectory(
+[app]:     |     ...<3 lines>...
+[app]:     |     )
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 41, in async_wrapper
+[app]:     |     raise e
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 37, in async_wrapper
+[app]:     |     return await original_attr(*args, **kwargs)
+[app]:     |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/pydantic/_internal/_validate_call.py", line 35, in wrapper_function
+[app]:     |     return await wrapper(*args, **kwargs)
+[app]:     |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/wandelbots_api_client/v2_pydantic/api/trajectory_execution_api.py", line 136, in execute_trajectory
+[app]:     |     async for request in client_request_generator(iterate_responses(websocket)):
+[app]:     |         await websocket.send(request.model_dump_json(exclude_none=True))
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1265, in cntrl
+[app]:     |     async for request in init_movement_gen(
+[app]:     |     ...<5 lines>...
+[app]:     |         yield request
+[app]:     |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1833, in init_movement_gen
+[app]:     |     raise InitMovementFailed(initialize_movement_response)
+[app]:     | nova.exceptions.InitMovementFailed: Initial movement failed: {
+[app]:     |   "message": "Movement not started. Motion group is not at expected location on trajectory.\nExpected location: '0'\nCurrent joint position: '[-3349.857666]' vs. \nexpected joint position: '[-3350]'\nPlease move to the trajectory!",
+[app]:     |   "add_trajectory_error": null,
+[app]:     |   "kind": "INITIALIZE_RECEIVED"
+[app]:     | }
+[app]:     +------------------------------------
+[app]: 
+[app]: The above exception was the direct cause of the following exception:
+[app]: 
+[app]: Traceback (most recent call last):
+[app]:   File "/app/.venv/lib/python3.13/site-packages/nova/program/runner.py", line 511, in _run_program
+[app]:     await self._run(execution_context)
+[app]:   File "/app/.venv/lib/python3.13/site-packages/nova/program/runner.py", line 619, in _run
+[app]:     return await self.program(nova=execution_context.nova, **(self._inputs or {}))
+[app]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:   File "/app/.venv/lib/python3.13/site-packages/nova/program/function.py", line 183, in __call__
+[app]:     return await self._wrapped(ctx, **validated_kwargs)
+[app]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:   File "/app/ir999r01/lab/combined_loop.py", line 897, in main
+[app]:     await run_linear_leg(
+[app]:     ...<3 lines>...
+[app]:     )
+[app]:   File "/app/ir999r01/lab/combined_loop.py", line 636, in run_linear_leg
+[app]:     await execute_planned_multi(
+[app]:     ...<2 lines>...
+[app]:     )
+[app]:   File "/app/helpers/motion/collision_free.py", line 818, in execute_planned_multi
+[app]:     async with ensemble.attach(
+[app]:                ~~~~~~~~~~~~~~~^
+[app]:         trajectory,
+[app]:         ^^^^^^^^^^^
+[app]:         tcp={motion_group.id: tcp, linear.id: "0"},
+[app]:         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:     ) as cursor:
+[app]:     ^
+[app]:   File "/usr/local/lib/python3.13/contextlib.py", line 235, in __aexit__
+[app]:     await self.gen.athrow(value)
+[app]:   File "/app/.venv/lib/python3.13/site-packages/nova/cell/multi_motion_group.py", line 117, in attach
+[app]:     async with self._executor.attach(
+[app]:                ~~~~~~~~~~~~~~~~~~~~~^
+[app]:         trajectory, tcp=tcp, actions=actions, groups=groups
+[app]:         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:     ) as cursor:
+[app]:     ^
+[app]:   File "/usr/local/lib/python3.13/contextlib.py", line 235, in __aexit__
+[app]:     await self.gen.athrow(value)
+[app]:   File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 254, in attach
+[app]:     raise error_group.exceptions[0] from error_group
+[app]:   File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 333, in _run_execute_trajectory
+[app]:     await motion_group._api_client.trajectory_execution_api.execute_trajectory(
+[app]:     ...<3 lines>...
+[app]:     )
+[app]:   File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 41, in async_wrapper
+[app]:     raise e
+[app]:   File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 37, in async_wrapper
+[app]:     return await original_attr(*args, **kwargs)
+[app]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:   File "/app/.venv/lib/python3.13/site-packages/pydantic/_internal/_validate_call.py", line 35, in wrapper_function
+[app]:     return await wrapper(*args, **kwargs)
+[app]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]:   File "/app/.venv/lib/python3.13/site-packages/wandelbots_api_client/v2_pydantic/api/trajectory_execution_api.py", line 136, in execute_trajectory
+[app]:     async for request in client_request_generator(iterate_responses(websocket)):
+[app]:         await websocket.send(request.model_dump_json(exclude_none=True))
+[app]:   File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1265, in cntrl
+[app]:     async for request in init_movement_gen(
+[app]:     ...<5 lines>...
+[app]:         yield request
+[app]:   File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1833, in init_movement_gen
+[app]:     raise InitMovementFailed(initialize_movement_response)
+[app]: nova.exceptions.InitMovementFailed: Initial movement failed: {
+[app]:   "message": "Movement not started. Motion group is not at expected location on trajectory.\nExpected location: '0'\nCurrent joint position: '[-3349.857666]' vs. \nexpected joint position: '[-3350]'\nPlease move to the trajectory!",
+[app]:   "add_trajectory_error": null,
+[app]:   "kind": "INITIALIZE_RECEIVED"
+[app]: }
+[app]: 
+[app]: 2026-09-30 13:37:21.280 | ERROR    | nova.program.runner:_handle_general_exception:415 - <class 'nova.exceptions.InitMovementFailed'>: Initial movement failed: {
+[app]:   "message": "Movement not started. Motion group is not at expected location on trajectory.\nExpected location: '0'\nCurrent joint position: '[-3349.857666]' vs. \nexpected joint position: '[-3350]'\nPlease move to the trajectory!",
+[app]:   "add_trajectory_error": null,
+[app]:   "kind": "INITIALIZE_RECEIVED"
+[app]: }
+[app]: 2026-09-30 13:37:21.280 | INFO     | nova.program.runner:_set_program_state:425 - Set state of program combined_loop run 0f1227d1-50eb-4fed-85d8-ee19bb1243bd to ProgramRunState.FAILED
+[app]: 2026-09-30 13:37:21.280 | INFO     | nova.program.runner:_run_program:565 - Program combined_loop run 0f1227d1-50eb-4fed-85d8-ee19bb1243bd finished. Run teardown routine...
+</pasted_content id="e3be">
+
+ after the outbound motion, right when trying to start the return motion. My suspicion is, that we detect standstill now to early maybe and try to start the return motion to soon. The reported axis postion indicates that it did not reach 3350 at that point in time but if I check after the execution exited with the error using api call get_motion_group_state. the axis position is basically 3350 (actuall something like 3349.999.. something) 
+How can this happen with the new implementation?
+
+---
+
+NOVA_STANDSTILL_JOINT_EPSILON=none  is not yaml what would it look like in the app.yaml
+
+---
+
+I ran it with this setting and log level debug. here's the log snipped 
+
+<pasted_content id="e3be">
+2026-09-30 14:28:35 [DEBUG] nova.cell.movement_controller.trajectory_cursor: frame standstill=False at_rest=False execute=TrajectoryEnded location=1.0 | ending → ending changed=False
+2026-09-30 14:28:35 [DEBUG[] websockets.client: < TEXT '{"result":{"timestamp":"2026-09-30T14:28:35.920...0003014164920242056]}}}' [1497 bytes]
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] New event '_keep_ending' put on the 'external' queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Processing loop started: ending
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 324: eventless/internal queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 324: external queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] macrostep 325: event=_keep_ending
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Enabled transitions: {transition _keep_ending from Ending to Ending}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] macro:325 micro:1 transitions: [Transition('Ending', 'Ending', event=[Event('_keep_ending', delay=0, internal=False)], internal=True, initial=False)]
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] States to exit: {}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] States to enter: {}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 325: eventless/internal queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 325: external queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Processing loop ended
+2026-09-30 14:28:35 [DEBUG] nova.cell.movement_controller.trajectory_cursor: frame standstill=False at_rest=False execute=TrajectoryEnded location=1.0 | ending → ending changed=False
+2026-09-30 14:28:35 [DEBUG[] websockets.client: < TEXT '{"result":{"timestamp":"2026-09-30T14:28:35.924...0006002685024005897]}}}' [1501 bytes]
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] New event '_keep_ending' put on the 'external' queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Processing loop started: ending
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 325: eventless/internal queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 325: external queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] macrostep 326: event=_keep_ending
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Enabled transitions: {transition _keep_ending from Ending to Ending}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] macro:326 micro:1 transitions: [Transition('Ending', 'Ending', event=[Event('_keep_ending', delay=0, internal=False)], internal=True, initial=False)]
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] States to exit: {}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] States to enter: {}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 326: eventless/internal queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 326: external queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Processing loop ended
+2026-09-30 14:28:35 [DEBUG] nova.cell.movement_controller.trajectory_cursor: frame standstill=False at_rest=False execute=TrajectoryEnded location=1.0 | ending → ending changed=False
+2026-09-30 14:28:35 [DEBUG[] websockets.client: < TEXT '{"result":{"timestamp":"2026-09-30T14:28:35.928...0003597878514650463]}}}' [1502 bytes]
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] New event '_keep_ending' put on the 'external' queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Processing loop started: ending
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 326: eventless/internal queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 326: external queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] macrostep 327: event=_keep_ending
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Enabled transitions: {transition _keep_ending from Ending to Ending}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] macro:327 micro:1 transitions: [Transition('Ending', 'Ending', event=[Event('_keep_ending', delay=0, internal=False)], internal=True, initial=False)]
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] States to exit: {}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] States to enter: {}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 327: eventless/internal queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 327: external queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Processing loop ended
+2026-09-30 14:28:35 [DEBUG] nova.cell.movement_controller.trajectory_cursor: frame standstill=False at_rest=False execute=TrajectoryEnded location=1.0 | ending → ending changed=False
+2026-09-30 14:28:35 [DEBUG[] websockets.client: < TEXT '{"result":{"timestamp":"2026-09-30T14:28:35.932...0003996301471000568]}}}' [1500 bytes]
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] New event '_keep_ending' put on the 'external' queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Processing loop started: ending
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 327: eventless/internal queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 327: external queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] macrostep 328: event=_keep_ending
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Enabled transitions: {transition _keep_ending from Ending to Ending}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] macro:328 micro:1 transitions: [Transition('Ending', 'Ending', event=[Event('_keep_ending', delay=0, internal=False)], internal=True, initial=False)]
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] States to exit: {}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] States to enter: {}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 328: eventless/internal queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 328: external queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Processing loop ended
+2026-09-30 14:28:35 [DEBUG] nova.cell.movement_controller.trajectory_cursor: frame standstill=True at_rest=False execute=TrajectoryEnded location=1.0 | ending → ending changed=False
+2026-09-30 14:28:35 [DEBUG[] websockets.client: < TEXT '{"result":{"timestamp":"2026-09-30T14:28:35.936...0002377830199264124]}}}' [1505 bytes]
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] New event '_end_after_standstill' put on the 'external' queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Processing loop started: ending
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 328: eventless/internal queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 328: external queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] macrostep 329: event=_end_after_standstill
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Enabled transitions: {transition _end_after_standstill from Ending to Ended}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] macro:329 micro:1 transitions: [Transition('Ending', 'Ended', event=[Event('_end_after_standstill', delay=0, internal=False)], internal=False, initial=False)]
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] States to exit: {Ending}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] invoke cancel_for_state: ending
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Exiting state: Ending
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] States to enter: {Ended}
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Entering state: Ended
+2026-09-30 14:28:35 [DEBUG] nova.cell.movement_controller.trajectory_state_machine: Trajectory state machine → ended
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 329: eventless/internal queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Macrostep 329: external queue
+2026-09-30 14:28:35 [DEBUG[] statemachine.engines.base: [TrajectoryExecutionMachine] Processing loop ended
+2026-09-30 14:28:35 [DEBUG] nova.cell.movement_controller.trajectory_cursor: frame standstill=True at_rest=True execute=TrajectoryEnded location=1.0 | ending → ended changed=True
+2026-09-30 14:28:35 [DEBUG] nova.cell.movement_controller.trajectory_cursor: Operation completed with result: OperationResult(operation_type=<OperationType.FORWARD: 1>, target_location=None, start_location=0.0, final_location=1.0, error=None, paused_on_io=False, resume_not_taken_up=False)
+2026-09-30 14:28:35 [DEBUG] nova.cell.movement_controller.trajectory_cursor: Detaching on standstill
+2026-09-30 14:28:35 [DEBUG] nova.cell.movement_controller.trajectory_cursor: TrajectoryCursor response consumer was cancelled
+2026-09-30 14:28:35 [DEBUG[] websockets.client: > CLOSE 1000 (OK) [2 bytes]
+2026-09-30 14:28:35 [DEBUG] websockets.client: = connection is CLOSING
+2026-09-30 14:28:35 [DEBUG[] websockets.client: < CLOSE 1000 (OK) [2 bytes]
+2026-09-30 14:28:35 [DEBUG] websockets.client: < EOF
+2026-09-30 14:28:35 [DEBUG] websockets.client: > EOF
+2026-09-30 14:28:35 [DEBUG] websockets.client: = connection is CLOSED
+2026-09-30 14:28:35 [DEBUG] websockets.client: x half-closing TCP connection
+2026-09-30 14:28:35 [DEBUG] nova.core.gateway: API CALL: execute_trajectory took 1.28 seconds
+2026-09-30 14:28:35 [DEBUG] nova.core.gateway: API CALL: execute_trajectory with args=(), kwargs={'cell': 'cell', 'controller': 'ir999r01', 'client_request_generator': <function move_forward_with_playback_speed.<locals>.movement_controller_factory.<locals>.movement_controller at 0x7f3711699580>}
+2026-09-30 14:28:35 [INFO] ir999r01.lab.combined_loop: Combined-loop probe finished after 1 iteration(s).
+2026-09-30 14:28:35.942 | INFO     | nova.program.runner:_set_program_state:425 - Set state of program combined_loop run 184bbd4a-889f-4544-b417-7942149a9451 to ProgramRunState.COMPLETED
+2026-09-30 14:28:35.942 | INFO     | nova.program.runner:_run_program:565 - Program combined_loop run 184bbd4a-889f-4544-b417-7942149a9451 finished. Run teardown routine...
+2026-09-30 14:28:35 [DEBUG[] websockets.client: > CLOSE 1000 (OK) [2 bytes]
+2026-09-30 14:28:35 [DEBUG] websockets.client: = connection is CLOSING
+2026-09-30 14:28:35 [DEBUG[] websockets.client: < CLOSE 1000 (OK) [2 bytes]
+2026-09-30 14:28:35 [DEBUG] websockets.client: < EOF
+2026-09-30 14:28:35 [DEBUG] websockets.client: > EOF
+2026-09-30 14:28:35 [DEBUG] websockets.client: = connection is CLOSED
+2026-09-30 14:28:35 [DEBUG] websockets.client: x half-closing TCP connection
+INFO:     10.42.0.178:45920 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:59694 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:46102 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:46112 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+</pasted_content id="e3be">
+
+ I can get a longer one if you need. pls verify
+
+---
+
+can you grab the log yourself using the @/Users/q/5kubes/audi-1 kubeconfig?
+
+---
+
+Okay I will start a run and tell you when it's finished
+
+---
+
+run finished, grab the log
+
+---
+
+I got the full log hopefully here @/Users/q/Downloads/diagnosis-2026-09-30T14_51_32.708Z/logs/cell/app-ir999r01-lab.log you know the timestamps already
+
+---
+
+yes, let's stream it
+
+---
+
+run finished, check the log
+
+---
+
+<task-notification>
+<task-id>b3eiuhrvj</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/31df4e11-03a2-4e04-84d1-7d8dbd8850e2/tasks/b3eiuhrvj.output</output-file>
+<status>failed</status>
+<summary>Background command "Stream lab pod log to a local file" failed with exit code 1</summary>
+</task-notification>
+
+---
+
+yes, implement it on the branch
+
+---
+
+<task-notification>
+<task-id>b4kzly37q</task-id>
+<summary>Monitor event: "full unit suite progress (test count every 20s, stall/finish)"</summary>
+<event>progress 110</event>
+</task-notification>

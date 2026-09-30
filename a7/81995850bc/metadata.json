@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "a781995850bc",
+  "strategy": "manual-commit",
+  "branch": "lab/robust-standstill",
+  "checkpoints_count": 13,
+  "files_touched": [
+    "nova/actions/container.py",
+    "nova/cell/motion_group.py",
+    "nova/cell/movement_controller/README.md",
+    "nova/cell/movement_controller/move_forward.py",
+    "nova/cell/movement_controller/policy.py",
+    "nova/cell/movement_controller/standstill.py",
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "nova/cell/movement_controller/trajectory_state_machine.py",
+    "nova/cell/trajectory_executor.py",
+    "tests/cell/test_robust_execution.py",
+    "tests/cell/test_standstill_estimator.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a7/81995850bc/0/metadata.json",
+      "transcript": "/a7/81995850bc/0/full.jsonl",
+      "compact_transcript": "/a7/81995850bc/0/transcript.jsonl",
+      "content_hash": "/a7/81995850bc/0/content_hash.txt",
+      "prompt": "/a7/81995850bc/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 292,
+    "cache_creation_tokens": 422061,
+    "cache_read_tokens": 36368345,
+    "output_tokens": 146173,
+    "api_call_count": 146
+  }
+}
