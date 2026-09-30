@@ -118,5 +118,7 @@ async def test_execute_blocks_through_an_io_pause_and_completes_after_the_signal
 
     assert len(fake.starts) == 2, "one start, then one resume after the signal cleared"
     assert all(s.pause_on_io == _pause_condition() for s in fake.starts)
-    assert gateway.bus_ios_api.get_bus_io_values.await_count == 1, "one initial read, no polling"
+    # One initial read per wait, no polling: the release wait, then the watch that
+    # tells an ignored resume from a condition that holds again.
+    assert gateway.bus_ios_api.get_bus_io_values.await_count == 2, "one read per wait, no polling"
     await asyncio.wait_for(upstream.closed.wait(), 1.0)

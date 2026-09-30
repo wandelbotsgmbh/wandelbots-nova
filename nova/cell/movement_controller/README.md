@@ -41,11 +41,50 @@ the control loop and a client may drop frames, the machine treats a bare standst
 completion of an already-observed `ending`/`pausing` — the discriminator was seen on the way in,
 the standstill concludes it.
 
+## Standstill estimation and the execution policy
+
+`standstill` is an **observed** property ("NOVA treats measured joint velocities as 0"), and its
+threshold is currently unreliable: the flag drops to `false` for single frames while the robot is
+at rest (seen on the real cell 2026-09-29/30; the virtual controller never does it). A flicker on
+the parked frame before the controller took up a start made the machine conclude a user pause, and
+the `RUNNING` that followed failed the execution. The location in `execute.details` is
+**commanded**, not observed: it proves the controller executes a command, not that the robot moved.
+
+Every rule below that says "standstill" therefore reads the decision of `StandstillEstimator`
+(`standstill.py`), not the raw flag. It combines:
+
+- consecutive raw flags: `motion_votes` frames of `standstill=false`, `rest_votes` of `true`;
+- the commanded location moving between two frames of the same trajectory — corroborates a
+  `standstill=false` frame at once;
+- the measured joints moving more than `joint_epsilon` — corroborates `standstill=false` and
+  vetoes a rest vote.
+
+`StandstillConfig.passthrough()` (one vote each, no corroboration) returns the raw flag on the same
+frame: the behaviour before the estimator, for when upstream fixes the flag. A flicker the
+estimator ignored is reported as `jitter` on the reading and logged (or fails the execution when
+`StandstillConfig.strict`). The cursor's DEBUG frame line shows `standstill=` (raw) next to
+`at_rest=` (decision), `evidence=` and `jitter=`.
+
+`ExecutionPolicy` (`policy.py`) bundles this with the other knobs, set process-wide from the
+environment or per cursor / `MovementControllerContext.execution_policy`:
+
+| preset (`NOVA_EXECUTION_POLICY`) | standstill | contradictions | ignored resume |
+|---|---|---|---|
+| `robust` (default) | debounced (`motion_votes=3`, `rest_votes=2`, location, joints `1e-3`) | warn, follow the controller | one more start within the window, then wait for a new edge |
+| `strict` | raw flag | `UnexpectedTrajectoryState` | `ResumeNotTakenUp` |
+| `diagnose` | debounced, every jitter fails | `UnexpectedTrajectoryState` | `ResumeNotTakenUp` |
+
+Each knob can be overridden: `NOVA_STANDSTILL_MOTION_VOTES`, `NOVA_STANDSTILL_REST_VOTES`,
+`NOVA_STANDSTILL_LOCATION_EPSILON`, `NOVA_STANDSTILL_JOINT_EPSILON` (`none` disables),
+`NOVA_RESUME_DETECT_MS`, `NOVA_RESUME_WINDOW_MS`. The unit tests run under `strict`
+(`tests/conftest.py`), which pins that the policy changes nothing for the old rules.
+
 ## States
 
 | State | Description |
 |-------|-------------|
 | `idle` | Initial state — no trajectory active, waiting for `start` |
+| `pending` | An operation is queued but its command is not on the wire yet (`expect_start()`). Frames only update the location; nothing concludes. `RUNNING` is followed to `executing` with a warning |
 | `armed` | `start` issued, robot not yet moving. The parked `PAUSED_BY_USER` and the re-published terminal state of the stop a resume leaves (same kind, same location) change nothing here |
 | `executing` | Robot is moving (`TrajectoryRunning`) |
 | `ending` | `TrajectoryEnded` received but robot not yet at standstill |
@@ -60,11 +99,14 @@ Three regimes decide how a frame is read (ADR 003):
 - **transient** (`ending`, `pausing`) follows the discriminator — the robot is still moving, so a
   `RUNNING` frame returns to `executing` rather than waiting for a standstill that may be jitter;
 - **rest** (`paused`, `ended`) enforces it — `RUNNING` without a `start` from this machine is an
-  error for a user pause or a finished trajectory, and an observed resume for an IO pause.
+  error for a user pause or a finished trajectory (strict), or a warning after which the machine
+  follows the controller to `executing` (not strict); for an IO pause it is an observed resume.
 
 ## Transitions
 
 ### External Commands
+- `expect_start()` (event `queue_start`) — an operation is queued; → `pending` until its command
+  was sent. Takes the same context as `arm()`; a later `arm()` keeps it.
 - `arm()` (event `start`) — begin or resume execution (from `idle`, `paused`, or `ended`) →
   `armed`. A start out of `ended`/`paused` (a resume, or stepping on after `forward_to`) ignores
   frames that repeat the terminal state it leaves — same kind at the same location — until any
@@ -79,6 +121,11 @@ Three regimes decide how a frame is read (ADR 003):
   to the current location) it arms with `accept_repeated_terminal=True` and the repeated stop
   concludes the operation at once, without waiting for the controller's `WAIT_FOR_IO`; with an
   unknown trajectory length the cursor makes no such claim.
+- `arm(pause_on_io_armed=...)` — whether the start carries a `pause_on_io` condition. With `False`,
+  a `PAUSED_ON_IO` frame is a contradiction (strict: `error`, otherwise followed with a warning);
+  `None` (unknown) accepts it.
+- `abandon_start()` — a resume out of an IO pause that is still `armed` on the old `PAUSED_ON_IO`
+  frames returns to `paused` (`IO`); the next `arm()` filters them again.
 - `request_pause()` — the owner sent a `PauseMovementRequest`; the next `PAUSED_BY_USER` at
   standstill is a real pause even while `armed`.
 - `fail` — signal an error from any non-error state
@@ -92,7 +139,8 @@ follow it; the rest-state rules rely on it.
 - `TrajectoryRunning` → `executing`
 - `TrajectoryPausedByUser` + standstill → stay (parked); → `paused` (`USER`) if the robot was
   seen leaving standstill before, or `request_pause()` was called
-- `TrajectoryPausedByUser` (no standstill) → stay, remember that the robot moved
+- `TrajectoryPausedByUser` (no standstill) → stay, remember that the robot moved. "No
+  standstill" is the estimator's decision: one flickering frame at rest is not motion
 - `TrajectoryPausedOnIO` → `paused` / `pausing` (`IO`)
 - `TrajectoryEnded` + standstill → `ended` (a zero-length trajectory may never show motion);
   (no standstill) → `ending`
@@ -125,8 +173,9 @@ nothing to conclude.
 
 The cursor derives *operation* completion from the machine:
 
-- The cursor arms the machine on the first frame after a movement command was issued, before
-  that frame is processed. A pause requested before that (`pause()` right after `forward()`)
+- The cursor moves the machine to `pending` on the first frame after a movement was requested
+  and arms it on the first frame after the command was handed to the wire, both before that frame
+  is processed. A pause requested before that (`pause()` right after `forward()`)
   arms the machine for the pause, so the parked frame concludes it.
 - An operation is only marked running on **evidence of motion** (`standstill` false or a
   `RUNNING` detail) — never on the mere presence of an `execute` block.
@@ -141,6 +190,15 @@ The cursor derives *operation* completion from the machine:
   `UnexpectedTrajectoryState` — there is no resume path, and waiting would never end.
 - A machine in `error` fails the current operation and raises `UnexpectedTrajectoryState`
   (`nova.exceptions`) from the protocol loop, so `execute()` raises instead of hanging.
+- A resume out of an IO pause that shows nothing but the old `PAUSED_ON_IO` for
+  `ExecutionPolicy.resume_detect_s` (0.5 s) after its start went out completes with
+  `OperationResult.resume_not_taken_up` (and `paused_on_io`); the machine returns to `paused(IO)`.
+  The check runs on each frame (the pause is re-published level-based), not on a timer task.
+- `move_forward` on `resume_not_taken_up`: if the condition holds again (pushed, since the release
+  edge) it is an ordinary pause. Otherwise strict mode raises `ResumeNotTakenUp`; else it sends
+  one more start if still within `resume_window_s` (1 s) of the release edge, and after that waits
+  for a new edge (signal pausing, then released) — it never starts a robot later than the window
+  after the operator released the signal. A late take-up by the controller itself is followed.
 
 ---
 
@@ -161,6 +219,12 @@ state error <<final>>
 idle --> armed : start
 paused --> armed : start / resume
 ended --> armed : start
+idle --> pending : queue_start
+paused --> pending : queue_start
+ended --> pending : queue_start
+pending --> armed : start (command sent)
+pending --> executing : TrajectoryRunning
+armed --> paused : abandon_start\n(resume not taken up)
 
 armed --> armed : PAUSED_BY_USER (parked)\nre-published previous stop\nWAIT_FOR_IO
 armed --> executing : TrajectoryRunning
@@ -186,8 +250,10 @@ pausing --> ended : TrajectoryEnded [standstill]
 pausing --> ending : TrajectoryEnded [!standstill]
 
 paused --> executing : TrajectoryRunning\n[reason = IO] (observed resume)
-paused --> error : TrajectoryRunning\n[reason = USER]
-ended --> error : TrajectoryRunning
+paused --> error : TrajectoryRunning\n[reason = USER, strict]
+paused --> executing : TrajectoryRunning\n[reason = USER, !strict]
+ended --> error : TrajectoryRunning [strict]
+ended --> executing : TrajectoryRunning [!strict]
 
 idle --> error : fail
 armed --> error : fail
@@ -213,6 +279,12 @@ stateDiagram-v2
     idle --> armed : start
     paused --> armed : start (resume)
     ended --> armed : start
+    idle --> pending : queue_start
+    paused --> pending : queue_start
+    ended --> pending : queue_start
+    pending --> armed : start (command sent)
+    pending --> executing : TrajectoryRunning
+    armed --> paused : abandon_start (resume not taken up)
 
     armed --> armed : PAUSED_BY_USER (parked) / re-published previous stop / WAIT_FOR_IO
     armed --> executing : TrajectoryRunning
@@ -238,8 +310,10 @@ stateDiagram-v2
     pausing --> ending : TrajectoryEnded [!standstill]
 
     paused --> executing : TrajectoryRunning [reason = IO] (observed resume)
-    paused --> error : TrajectoryRunning [reason = USER]
-    ended --> error : TrajectoryRunning
+    paused --> error : TrajectoryRunning [reason = USER, strict]
+    paused --> executing : TrajectoryRunning [reason = USER, not strict]
+    ended --> error : TrajectoryRunning [strict]
+    ended --> executing : TrajectoryRunning [not strict]
 
     idle --> error : fail
     armed --> error : fail

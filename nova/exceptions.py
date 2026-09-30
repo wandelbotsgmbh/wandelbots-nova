@@ -84,6 +84,15 @@ class UnexpectedTrajectoryState(ErrorDuringMovement):
         super().__init__(message)
 
 
+class ResumeNotTakenUp(UnexpectedTrajectoryState):
+    """The controller did not take up a resume out of an IO pause.
+
+    Raised by one-shot execution in strict mode (``ExecutionPolicy.strict``) when the
+    pause signal allowed motion, a resume start was sent, and the controller kept
+    reporting the old ``PAUSED_ON_IO`` instead of moving.
+    """
+
+
 class LoadPlanFailed(Exception):
     def __init__(self, error: api.models.AddTrajectoryError):
         self._error = error
