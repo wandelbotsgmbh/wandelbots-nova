@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Annotated, AsyncIterator, Awaitable, Callable
+from typing import Annotated, Any, AsyncIterator, Awaitable, Callable
 
 import pydantic
 
@@ -192,6 +192,13 @@ class MovementControllerContext(pydantic.BaseModel):
     # that case and would keep moving; the one-shot movement controller pauses the
     # robot itself instead and resumes through ``wait_for_pause_on_io_release``.
     wait_for_pause_signal_loss: Callable[[], Awaitable[None]] | None = None
+    # Awaits until the ``pause_on_io`` condition holds (again). Lets the one-shot
+    # movement controller tell a resume the controller ignored from a condition
+    # that came back, and wait for a new edge after an ignored resume.
+    wait_for_pause_on_io_hold: Callable[[], Awaitable[None]] | None = None
+    # How strictly the state stream is read (nova.cell.movement_controller.policy).
+    # ``None`` uses the process-wide default.
+    execution_policy: Any = None
     motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
     # The planned trajectory being executed. Optional: only location-bounded
     # cursor operations need it, one-shot execution does not.

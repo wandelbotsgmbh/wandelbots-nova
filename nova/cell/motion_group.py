@@ -1129,11 +1129,13 @@ class MotionGroup(AbstractRobot):
         # would keep moving (measured), so the SDK pauses in its place.
         wait_for_pause_on_io_release = None
         wait_for_pause_signal_loss = None
+        wait_for_pause_on_io_hold = None
         if pause_on_io is not None:
             watcher = IOConditionWatcher(
                 self._api_client, self._cell, self._controller_id, nats_client=self._nats_client
             )
             wait_for_pause_on_io_release = partial(watcher.wait_until_released, pause_on_io)
+            wait_for_pause_on_io_hold = partial(watcher.wait_until, pause_on_io, holds=True)
             if pause_on_io.io_origin == api.models.IOOrigin.BUS_IO:
                 wait_for_pause_signal_loss = watcher.wait_until_bus_io_lost
 
@@ -1146,6 +1148,7 @@ class MotionGroup(AbstractRobot):
                 pause_on_io=pause_on_io,
                 wait_for_pause_on_io_release=wait_for_pause_on_io_release,
                 wait_for_pause_signal_loss=wait_for_pause_signal_loss,
+                wait_for_pause_on_io_hold=wait_for_pause_on_io_hold,
                 # The cursor subscribes to the same shared stream this relay
                 # reads from: one state websocket per motion group, however many
                 # consumers an execution has.

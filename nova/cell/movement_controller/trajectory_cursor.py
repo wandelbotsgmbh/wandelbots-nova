@@ -47,6 +47,7 @@ Example usage:
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import AsyncIterator as AsyncIteratorABC
 from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
@@ -59,7 +60,11 @@ from blinker import signal
 from nova import api
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
-from nova.cell.movement_controller.trajectory_state_machine import TrajectoryExecutionMachine
+from nova.cell.movement_controller.policy import ExecutionPolicy, default_execution_policy
+from nova.cell.movement_controller.trajectory_state_machine import (
+    PauseReason,
+    TrajectoryExecutionMachine,
+)
 from nova.exceptions import ErrorDuringMovement, InitMovementFailed, UnexpectedTrajectoryState
 from nova.types import ExecuteTrajectoryRequestStream, ExecuteTrajectoryResponseStream
 from nova.utils import SourceLocation
@@ -176,6 +181,11 @@ class OperationResult:
             is still attached and resumable with another movement call once the
             condition clears; ``final_location`` is the pause location, not the
             target.
+        resume_not_taken_up: The operation was a resume out of an IO pause and the
+            controller kept reporting the old pause for
+            :attr:`ExecutionPolicy.resume_detect_s` — it did not take up the start
+            (or the condition held again when it arrived). The execution is still
+            attached and paused on IO (``paused_on_io`` is also set).
     """
 
     operation_type: OperationType
@@ -184,6 +194,7 @@ class OperationResult:
     final_location: Optional[float] = None
     error: Optional[Exception] = None
     paused_on_io: bool = False
+    resume_not_taken_up: bool = False
 
 
 # Type alias for expected response types in _response_consumer
@@ -324,6 +335,7 @@ class OperationHandler:
         final_location: float,
         error: Optional[Exception] = None,
         paused_on_io: bool = False,
+        resume_not_taken_up: bool = False,
     ) -> None:
         """Complete the current operation and resolve its future.
 
@@ -332,6 +344,7 @@ class OperationHandler:
             error: Optional exception if the operation failed.
             paused_on_io: Whether the controller suspended the movement on its
                 ``pause_on_io`` condition (see :class:`OperationResult`).
+            resume_not_taken_up: See :class:`OperationResult`.
         """
         if not self._operation or self._operation.future.done():
             return
@@ -343,6 +356,7 @@ class OperationHandler:
             final_location=final_location,
             error=error,
             paused_on_io=paused_on_io,
+            resume_not_taken_up=resume_not_taken_up,
         )
         if error:
             self._operation.future.set_exception(error)
@@ -579,6 +593,8 @@ class TrajectoryCursor:
         emit_motion_events: bool = True,
         max_queued_states: int = _DEFAULT_MAX_QUEUED_STATES,
         ignore_controller_limits: bool = False,
+        policy: ExecutionPolicy | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ):
         """Initialize a trajectory cursor.
 
@@ -612,6 +628,10 @@ class TrajectoryCursor:
                 iterator is never consumed cannot grow without limit.
             ignore_controller_limits: Skip the controller's own limit check when
                 initializing the movement.
+            policy: How strictly the state stream is read (standstill debouncing,
+                contradicting frames, ignored resumes). Defaults to
+                :func:`~nova.cell.movement_controller.policy.default_execution_policy`.
+            clock: Monotonic clock for the resume supervision (tests inject one).
         """
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
@@ -676,7 +696,17 @@ class TrajectoryCursor:
         self._target_location = self._current_location
         self._detach_on_standstill = detach_on_standstill
 
-        self._state_machine = TrajectoryExecutionMachine()
+        self._policy = policy if policy is not None else default_execution_policy()
+        self._clock = clock
+        # When the last StartMovementRequest was handed to the wire.
+        self._start_sent_at: float | None = None
+        # Whether the latest movement intent carries a pause_on_io condition.
+        self._movement_pause_on_io: bool | None = None
+        # The operation the machine was last told to expect (see the state monitor).
+        self._expected_op: Operation | None = None
+        self._state_machine = TrajectoryExecutionMachine(
+            self._policy.standstill, strict=self._policy.strict
+        )
         self._operation_handler = OperationHandler()
 
         self._initialize_task = asyncio.create_task(self.ainitialize())
@@ -730,6 +760,16 @@ class TrajectoryCursor:
             )
         assert self.joint_trajectory is not None
         return self.joint_trajectory.locations[-1]
+
+    @property
+    def policy(self) -> ExecutionPolicy:
+        """How this cursor reads the state stream."""
+        return self._policy
+
+    @property
+    def clock(self) -> Callable[[], float]:
+        """The monotonic clock the resume supervision measures with."""
+        return self._clock
 
     @property
     def current_location(self) -> float:
@@ -825,6 +865,8 @@ class TrajectoryCursor:
         Calling this from another thread can lose intents.
         """
         self._pending_intent = intent
+        if intent.operation_type is not OperationType.PAUSE:
+            self._movement_pause_on_io = intent.pause_on_io is not None
         self._intent_event.set()
 
     def forward(
@@ -1179,10 +1221,19 @@ class TrajectoryCursor:
                     return True
                 return location < self.joint_trajectory.locations[-1]
 
-    def _complete_operation(self, error: Optional[Exception] = None, *, paused_on_io: bool = False):
+    def _complete_operation(
+        self,
+        error: Optional[Exception] = None,
+        *,
+        paused_on_io: bool = False,
+        resume_not_taken_up: bool = False,
+    ):
         """Complete the current operation with the given status."""
         self._operation_handler.complete(
-            final_location=self._current_location, error=error, paused_on_io=paused_on_io
+            final_location=self._current_location,
+            error=error,
+            paused_on_io=paused_on_io,
+            resume_not_taken_up=resume_not_taken_up,
         )
 
     def _is_operation_in_progress(self) -> bool:
@@ -1343,6 +1394,9 @@ class TrajectoryCursor:
                     # on its way out.
                     self._signal_first_dispatch()
 
+                if isinstance(command, api.models.StartMovementRequest):
+                    self._start_sent_at = self._clock()
+
                 yield command
 
                 if isinstance(command, api.models.StartMovementRequest):
@@ -1368,30 +1422,41 @@ class TrajectoryCursor:
             ):
                 ready_event.set()
 
-                # Arm the state machine when an operation is active and the machine
-                # is at rest. This happens *before* the frame is processed, which is
-                # the contract the machine's rest-state rules rely on: a RUNNING
-                # frame reaching a machine still at rest means no start was issued.
+                # Prepare the state machine when an operation is active and the machine
+                # is at rest, and arm it once the operation's command is on the wire.
+                # Both happen *before* the frame is processed, which is the contract
+                # the machine's rest-state rules rely on: a RUNNING frame reaching a
+                # machine still at rest means no start was issued, and frames seen
+                # while `pending` cannot belong to a start that was not sent.
                 pending_op = self._operation_handler.current_operation
-                if (
-                    pending_op is not None
-                    and not pending_op.future.done()
-                    and not self._state_machine.is_armed
-                    and not self._state_machine.is_executing
-                    and not self._state_machine.is_ending
-                    and not self._state_machine.is_pausing
-                ):
-                    self._state_machine.arm(
-                        # A pause issued before any frame armed the machine replaces
-                        # the movement it was meant to pause; the parked frame must
-                        # still conclude it.
-                        pause_requested=pending_op.operation_type is OperationType.PAUSE,
-                        # A command with nowhere to go is answered by the stop it
-                        # leaves; only claim that when it is certain.
-                        accept_repeated_terminal=not self._movement_has_room(
-                            pending_op.operation_type, pending_op.target_location
-                        ),
+                if pending_op is not None and not pending_op.future.done():
+                    machine = self._state_machine
+                    at_rest = not (
+                        machine.is_pending
+                        or machine.is_armed
+                        or machine.is_executing
+                        or machine.is_ending
+                        or machine.is_pausing
                     )
+                    # A pending machine whose operation was superseded before its
+                    # command went out records the new operation's context instead.
+                    superseded = machine.is_pending and pending_op is not self._expected_op
+                    if at_rest or superseded:
+                        self._expected_op = pending_op
+                        machine.expect_start(
+                            # A pause issued before any frame armed the machine replaces
+                            # the movement it was meant to pause; the parked frame must
+                            # still conclude it.
+                            pause_requested=pending_op.operation_type is OperationType.PAUSE,
+                            # A command with nowhere to go is answered by the stop it
+                            # leaves; only claim that when it is certain.
+                            accept_repeated_terminal=not self._movement_has_room(
+                                pending_op.operation_type, pending_op.target_location
+                            ),
+                            pause_on_io_armed=self._pause_on_io_armed(pending_op),
+                        )
+                    if machine.is_pending and self._operation_handler.is_commanded():
+                        machine.arm()
 
                 # Tee every state to consumers of __aiter__ regardless of whether an
                 # operation is active: observers (guards, overlays, UIs) need states
@@ -1400,9 +1465,14 @@ class TrajectoryCursor:
                 if logger.isEnabledFor(logging.DEBUG):
                     frame_state = _frame_execute_state(motion_group_state)
                     exec_state = type(frame_state).__name__ if frame_state is not None else None
+                    reading = self._state_machine.last_reading
                     logger.debug(
-                        "frame standstill=%s execute=%s location=%s | %s → %s changed=%s",
+                        "frame standstill=%s at_rest=%s%s%s execute=%s location=%s "
+                        "| %s → %s changed=%s",
                         motion_group_state.standstill,
+                        reading.at_rest if reading is not None else None,
+                        f" evidence={reading.evidence}" if reading and reading.evidence else "",
+                        f" jitter={reading.jitter}" if reading and reading.jitter else "",
                         exec_state,
                         result.location,
                         result.previous_state_id or "-",
@@ -1430,10 +1500,25 @@ class TrajectoryCursor:
                 if current_op is None or current_op.future.done():
                     continue
 
-                if result.skip and not _frame_shows_motion(motion_group_state):
+                if self._resume_not_taken_up():
+                    # Only the old IO pause since the resume start went out: the
+                    # controller did not take it up. Give the operation back to its
+                    # owner instead of waiting on a frame that may never change.
+                    self._state_machine.abandon_start()
+                    logger.warning(
+                        "Resume at location %s not taken up: the controller still reports "
+                        "the IO pause %.0f ms after the start",
+                        self._current_location,
+                        (self._clock() - (self._start_sent_at or 0.0)) * 1000,
+                    )
+                    self._complete_operation(paused_on_io=True, resume_not_taken_up=True)
                     continue
 
-                if _frame_shows_motion(motion_group_state):
+                shows_motion = self._frame_shows_motion(motion_group_state)
+                if result.skip and not shows_motion:
+                    continue
+
+                if shows_motion:
                     self._operation_handler.set_running()  # idempotent
 
                 if self._state_machine.is_ended or self._state_machine.is_paused:
@@ -1498,6 +1583,37 @@ class TrajectoryCursor:
             if aclose is not None:
                 with contextlib.suppress(RuntimeError):
                     await aclose()
+
+    def _frame_shows_motion(self, state: api.models.MotionGroupState) -> bool:
+        """:func:`_frame_shows_motion`, read with the machine's debounced standstill."""
+        reading = self._state_machine.last_reading
+        if reading is None:
+            return _frame_shows_motion(state)
+        return not reading.at_rest or isinstance(
+            _frame_execute_state(state), api.models.TrajectoryRunning
+        )
+
+    def _pause_on_io_armed(self, operation: Operation) -> bool | None:
+        """Whether the operation's start carries a ``pause_on_io`` condition.
+
+        ``None`` for a pause: it starts nothing.
+        """
+        if operation.operation_type is OperationType.PAUSE:
+            return None
+        return self._movement_pause_on_io
+
+    def _resume_not_taken_up(self) -> bool:
+        """A resume out of an IO pause shows nothing but the old pause for too long."""
+        detect_s = self._policy.resume_detect_s
+        machine = self._state_machine
+        return (
+            detect_s is not None
+            and self._start_sent_at is not None
+            and machine.is_waiting_on_stale_terminal
+            and machine.resuming_from is PauseReason.IO
+            and self._operation_handler.is_commanded()
+            and self._clock() - self._start_sent_at >= detect_s
+        )
 
     async def _held_at_first_dispatch(
         self, stream: AsyncIterator[api.models.MotionGroupState]

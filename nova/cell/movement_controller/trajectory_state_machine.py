@@ -10,7 +10,8 @@ movement, pauses and trajectory completion — in a single, testable place.
 
 State diagram (``ss`` = standstill)::
 
-    idle ──start──→ armed ──RUNNING──→ executing
+    idle ──queue_start──→ pending ──start──→ armed ──RUNNING──→ executing
+    idle ──start──→ armed                     (expect_start + start at once)
                       │                   │
                       │ parked PAUSED_BY_USER, stale terminal: stay
                       │
@@ -47,10 +48,20 @@ Three regimes decide how a frame is read:
   conclude the wrong thing at the next standstill flicker.
 * **rest** (``paused`` / ``ended``) — the operation is resolved and standstill
   was confirmed. ``RUNNING`` here without a start from this machine is a
-  contradiction: for a user pause or a finished trajectory the machine goes to
-  ``error`` with :attr:`failure_reason` set (nobody but this cursor may resume
-  or restart), for an IO pause it follows the wire (a controller that resumes
-  an IO pause by itself is conceivable, ADR 002).
+  contradiction: for a user pause or a finished trajectory a strict machine goes
+  to ``error`` with :attr:`failure_reason` set (nobody but this cursor may resume
+  or restart), a non-strict one logs a warning and follows the wire; for an IO
+  pause it always follows the wire (a controller that resumes an IO pause by
+  itself is conceivable, ADR 002).
+
+"Standstill" in all rules is the decision of a
+:class:`~nova.cell.movement_controller.standstill.StandstillEstimator`, not the raw
+flag: the flag currently flickers at rest. With the default
+:meth:`StandstillConfig.passthrough` the two are the same.
+
+``pending`` precedes ``armed`` when the owner queues an operation before its
+command is on the wire (:meth:`expect_start`): frames seen then cannot belong to
+the start, so nothing concludes.
 
 The consumer guarantees that :meth:`arm` (``start``) is sent *before* the frame
 that follows a new movement command is processed; "still at rest when RUNNING
@@ -92,6 +103,11 @@ from enum import Enum, auto
 from statemachine import State, StateMachine
 
 from nova import api
+from nova.cell.movement_controller.standstill import (
+    StandstillConfig,
+    StandstillEstimator,
+    StandstillReading,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +220,7 @@ class TrajectoryExecutionMachine(StateMachine):
     # -- States ---------------------------------------------------------------
 
     idle = State(initial=True)
+    pending = State()
     armed = State()
     executing = State()
     ending = State()
@@ -214,10 +231,17 @@ class TrajectoryExecutionMachine(StateMachine):
 
     # -- External commands ----------------------------------------------------
 
-    start = idle.to(armed) | paused.to(armed) | ended.to(armed)
+    queue_start = (
+        idle.to(pending)
+        | paused.to(pending)
+        | ended.to(pending)
+        | pending.to(pending, internal=True)
+    )
+    start = idle.to(armed) | paused.to(armed) | ended.to(armed) | pending.to(armed)
 
     fail = (
         idle.to(error)
+        | pending.to(error)
         | armed.to(error)
         | executing.to(error)
         | ending.to(error)
@@ -227,6 +251,10 @@ class TrajectoryExecutionMachine(StateMachine):
     )
 
     # -- Internal transitions (triggered by process_motion_state) -------------
+
+    _keep_pending = pending.to(pending, internal=True)
+    # The controller moves before our start went out: follow the wire.
+    _begin_executing_while_pending = pending.to(executing)
 
     _keep_armed = armed.to(armed, internal=True)
     _begin_executing = armed.to(executing)
@@ -256,10 +284,28 @@ class TrajectoryExecutionMachine(StateMachine):
     # An IO pause the controller resumed without a start from this machine
     # (another client, or a controller that clears it by itself): follow the wire.
     _resume_observed = paused.to(executing)
+    # Non-strict only: a finished trajectory the controller runs again.
+    _restart_observed = ended.to(executing)
+    # The controller did not take up a resume start (see abandon_start).
+    _start_not_taken_up = armed.to(paused)
 
     # -- Instance state -------------------------------------------------------
 
-    def __init__(self) -> None:
+    def __init__(self, standstill: StandstillConfig | None = None, *, strict: bool = True) -> None:
+        """Create a machine.
+
+        Args:
+            standstill: How the ``standstill`` flag is debounced (see
+                :mod:`~nova.cell.movement_controller.standstill`). Defaults to
+                :meth:`StandstillConfig.passthrough` — the raw flag.
+            strict: A frame contradicting the tracked execution (``RUNNING`` in
+                ``paused(USER)`` or ``ended``, ``PAUSED_ON_IO`` without a
+                ``pause_on_io`` condition) moves the machine to ``error``. When
+                ``False`` it logs a warning and follows the controller instead.
+        """
+        self.strict = strict
+        self._estimator = StandstillEstimator(standstill)
+        self.last_reading: StandstillReading | None = None
         self.location: float | None = None
         self.pause_reason: PauseReason | None = None
         self.failure_reason: str | None = None
@@ -270,6 +316,12 @@ class TrajectoryExecutionMachine(StateMachine):
         # resume must ignore while the controller still re-publishes it.
         self._last_terminal: tuple[type, float] | None = None
         self._stale_terminal: tuple[type, float] | None = None
+        # Execution context of the operation being prepared / armed.
+        self._pause_on_io_armed: bool | None = None
+        self._accept_repeated_terminal = False
+        # The rest state a start left (PauseReason.IO for a resume out of an IO pause).
+        self.resuming_from: PauseReason | str | None = None
+        self._prepared_from: State | None = None
         super().__init__()
 
     def _active_configuration_id(self) -> str:
@@ -283,8 +335,35 @@ class TrajectoryExecutionMachine(StateMachine):
 
     # -- Public API -----------------------------------------------------------
 
-    def arm(self, *, pause_requested: bool = False, accept_repeated_terminal: bool = False) -> None:
+    def expect_start(
+        self,
+        *,
+        pause_requested: bool = False,
+        accept_repeated_terminal: bool = False,
+        pause_on_io_armed: bool | None = None,
+    ) -> None:
+        """Record the operation the owner is about to command (event ``queue_start``).
+
+        ``pending`` interprets nothing: the start has not been sent, so no frame can
+        belong to it. :meth:`start` (or :meth:`arm`) follows once it is on the wire.
+        Arguments as for :meth:`arm`.
+        """
+        self.send("queue_start")
+        self._pause_requested = self._pause_requested or pause_requested
+        self._accept_repeated_terminal = accept_repeated_terminal
+        self._pause_on_io_armed = pause_on_io_armed
+
+    def arm(
+        self,
+        *,
+        pause_requested: bool = False,
+        accept_repeated_terminal: bool = False,
+        pause_on_io_armed: bool | None = None,
+    ) -> None:
         """Begin or resume execution (sends ``start``).
+
+        From ``pending`` the context recorded by :meth:`expect_start` is kept and the
+        arguments are added to it; from rest this is ``expect_start`` + ``start`` at once.
 
         A start out of ``ended``/``paused`` ignores frames that repeat the terminal
         state it leaves — same kind at the same location — until any different
@@ -303,11 +382,33 @@ class TrajectoryExecutionMachine(StateMachine):
                 to the current location): the repeated terminal state *is* the
                 genuine outcome, so it concludes the operation at once instead of
                 waiting for the controller's ``WAIT_FOR_IO`` to lift the filter.
+            pause_on_io_armed: Whether the start carries a ``pause_on_io``
+                condition. ``False`` makes a ``PAUSED_ON_IO`` frame a contradiction;
+                ``None`` (unknown) accepts it.
         """
+        from_pending = self.current_state == self.pending
+        pending_pause = self._pause_requested if from_pending else False
         self.send("start")
-        self._pause_requested = pause_requested
+        self._pause_requested = pending_pause or pause_requested
+        if from_pending:
+            accept_repeated_terminal = accept_repeated_terminal or self._accept_repeated_terminal
+            if pause_on_io_armed is None:
+                pause_on_io_armed = self._pause_on_io_armed
+        self._pause_on_io_armed = pause_on_io_armed
+        self._accept_repeated_terminal = False
         if accept_repeated_terminal:
             self._stale_terminal = None
+
+    def abandon_start(self) -> None:
+        """The controller did not take up the start: return to the rest state it left.
+
+        Only for a resume out of an IO pause that is still ``armed`` on the old
+        ``PAUSED_ON_IO`` frames; the next :meth:`arm` filters them again.
+        """
+        if not self.is_waiting_on_stale_terminal or self.resuming_from is not PauseReason.IO:
+            raise RuntimeError("abandon_start() needs a resume armed on the old IO pause")
+        self.pause_reason = PauseReason.IO
+        self._start_not_taken_up()
 
     def request_pause(self) -> None:
         """Record that the owner sent a pause request.
@@ -325,6 +426,9 @@ class TrajectoryExecutionMachine(StateMachine):
         transition and returns a :class:`StateUpdate` describing what
         happened.
 
+        Every rule that reads "standstill" reads the estimator's debounced
+        decision (:attr:`last_reading`), not the raw flag.
+
         Args:
             state: The latest motion-group state from the API stream.
 
@@ -336,6 +440,12 @@ class TrajectoryExecutionMachine(StateMachine):
         has_execute = state.execute is not None
         location: float | None = None
 
+        reading = self._estimator.update(state)
+        self.last_reading = reading
+        at_rest = reading.at_rest
+        if reading.jitter is not None and self._on_jitter(state, reading):
+            return self._update(None, has_execute, previous_state_id)
+
         if not has_execute:
             # No execute details on this frame. Current controllers drop the
             # trajectory `execute` block the instant the robot settles
@@ -346,18 +456,12 @@ class TrajectoryExecutionMachine(StateMachine):
             # for standstill (`ending` / `pausing`), honour it: the
             # discriminator was already seen on the transition into that
             # state. Otherwise there is nothing to conclude from the frame.
-            if state.standstill:
+            if at_rest:
                 if self.current_state == self.ending:
                     self._end_after_standstill()
                 elif self.current_state == self.pausing:
                     self._pause_after_standstill()
-            current_id = self._active_configuration_id()
-            return StateUpdate(
-                has_execute=False,
-                state_changed=current_id != previous_state_id,
-                previous_state_id=previous_state_id,
-                current_state_id=current_id,
-            )
+            return self._update(None, False, previous_state_id)
 
         # Execute *is* present ------------------------------------------------
         assert state.execute is not None  # mypy
@@ -371,6 +475,23 @@ class TrajectoryExecutionMachine(StateMachine):
                 if isinstance(trajectory_state, _TERMINAL_STATES)
                 else None
             )
+
+            if self.current_state == self.pending:
+                # The start is not on the wire yet: every frame still belongs to
+                # the previous operation (or the parked trajectory).
+                if terminal is not None:
+                    self._last_terminal = terminal
+                if isinstance(trajectory_state, api.models.TrajectoryRunning):
+                    logger.warning(
+                        "Controller reports RUNNING at location %s before the start was sent; "
+                        "following it",
+                        location,
+                    )
+                    self._begin_executing_while_pending()
+                else:
+                    self._keep_pending()
+                return self._update(location, True, previous_state_id)
+
             if self._stale_terminal is not None:
                 # A pause the owner requested is concluded by the very frame a
                 # resume would otherwise ignore.
@@ -380,39 +501,79 @@ class TrajectoryExecutionMachine(StateMachine):
                 if terminal == self._stale_terminal and not requested_pause:
                     if self.current_state == self.armed:
                         self._keep_armed()
-                    current_id = self._active_configuration_id()
-                    return StateUpdate(
-                        location=location,
-                        has_execute=True,
-                        state_changed=current_id != previous_state_id,
-                        previous_state_id=previous_state_id,
-                        current_state_id=current_id,
-                    )
+                    return self._update(location, True, previous_state_id)
                 # Anything else proves the controller has moved on from the
                 # terminal state the current start was issued out of.
                 self._stale_terminal = None
             if terminal is not None:
                 self._last_terminal = terminal
 
+            if isinstance(
+                trajectory_state, api.models.TrajectoryPausedOnIO
+            ) and self.current_state in (self.armed, self.executing, self.pausing):
+                if self._pause_on_io_armed is False and self._unexpected_io_pause(state):
+                    return self._update(location, True, previous_state_id)
+
             if self.current_state == self.armed:
-                self._handle_armed(trajectory_state, state)
+                self._handle_armed(trajectory_state, state, at_rest=at_rest)
             elif self.current_state == self.executing:
-                self._handle_executing(trajectory_state, standstill=state.standstill)
+                self._handle_executing(trajectory_state, standstill=at_rest)
             elif self.current_state == self.ending:
-                self._handle_ending(trajectory_state, standstill=state.standstill)
+                self._handle_ending(trajectory_state, standstill=at_rest)
             elif self.current_state == self.pausing:
-                self._handle_pausing(trajectory_state, standstill=state.standstill)
+                self._handle_pausing(trajectory_state, standstill=at_rest)
             elif self.current_state in (self.paused, self.ended):
                 self._handle_at_rest(trajectory_state, state)
 
+        return self._update(location, True, previous_state_id)
+
+    def _update(
+        self, location: float | None, has_execute: bool, previous_state_id: str
+    ) -> StateUpdate:
         current_id = self._active_configuration_id()
         return StateUpdate(
             location=location,
-            has_execute=True,
+            has_execute=has_execute,
             state_changed=current_id != previous_state_id,
             previous_state_id=previous_state_id,
             current_state_id=current_id,
         )
+
+    def _on_jitter(self, state: api.models.MotionGroupState, reading: StandstillReading) -> bool:
+        """Report a debounced flicker; returns ``True`` when it failed the machine."""
+        if self.current_state in (self.idle, self.error):
+            return False
+        description = (
+            f"standstill flag flickered ({reading.jitter} run ignored, decision "
+            f"at_rest={reading.at_rest}) at location {self.location} while "
+            f"'{self._active_configuration_id()}'"
+        )
+        if self._estimator.config.strict:
+            self.failure_reason = description
+            self.failed_frame = state
+            self.fail()
+            return True
+        logger.info("Ignored %s", description)
+        return False
+
+    def _unexpected_io_pause(self, state: api.models.MotionGroupState) -> bool:
+        """``PAUSED_ON_IO`` although the start carried no ``pause_on_io``.
+
+        Returns ``True`` when it failed the machine; otherwise the frame is
+        followed as an IO pause (the controller holds the robot either way).
+        """
+        description = (
+            f"controller reports TrajectoryPausedOnIO at location {self.location} but the "
+            f"start carried no pause_on_io condition (execution "
+            f"'{self._active_configuration_id()}')"
+        )
+        if self.strict:
+            self.failure_reason = description
+            self.failed_frame = state
+            self.fail()
+            return True
+        logger.warning("%s; following the controller", description)
+        return False
 
     # -- Convenience properties -----------------------------------------------
 
@@ -421,8 +582,17 @@ class TrajectoryExecutionMachine(StateMachine):
         return self.current_state == self.idle
 
     @property
+    def is_pending(self) -> bool:
+        return self.current_state == self.pending
+
+    @property
     def is_armed(self) -> bool:
         return self.current_state == self.armed
+
+    @property
+    def is_waiting_on_stale_terminal(self) -> bool:
+        """``armed`` and so far only the stop the start left was reported."""
+        return self.current_state == self.armed and self._stale_terminal is not None
 
     @property
     def is_executing(self) -> bool:
@@ -468,6 +638,13 @@ class TrajectoryExecutionMachine(StateMachine):
 
     # -- Logging callbacks (python-statemachine hooks) ------------------------
 
+    def on_queue_start(self, source: State) -> None:
+        if source != self.pending:
+            self._prepared_from = source
+            self._pause_requested = False
+            self._accept_repeated_terminal = False
+            self._pause_on_io_armed = None
+
     def on_start(self, source: State) -> None:
         # Level-based publishing (robotics/wbr!2262) keeps re-publishing the
         # terminal state of the previous stop until the controller has taken up
@@ -475,12 +652,24 @@ class TrajectoryExecutionMachine(StateMachine):
         # the old END_OF_TRAJECTORY / PAUSED_* frames again; concluding the new
         # operation from them would report it finished at its start. They are
         # told apart from a genuine new terminal state by identity: same kind at
-        # the same location as the state we are leaving.
-        self._stale_terminal = self._last_terminal if source in (self.ended, self.paused) else None
+        # the same location as the state we are leaving. A start out of
+        # `pending` leaves the rest state `expect_start` left.
+        left = self._prepared_from if source == self.pending else source
+        self._prepared_from = None
+        from_rest = left in (self.ended, self.paused)
+        self._stale_terminal = self._last_terminal if from_rest else None
+        if left == self.paused:
+            self.resuming_from = self.pause_reason
+        elif left == self.ended:
+            self.resuming_from = "ended"
+        else:
+            self.resuming_from = None
+
+    def on_enter_pending(self) -> None:
+        logger.debug("Trajectory state machine → pending (start not sent yet)")
 
     def on_enter_armed(self) -> None:
         self._moved = False
-        self._pause_requested = False
         self.pause_reason = None
         logger.debug("Trajectory state machine → armed (waiting for motion)")
 
@@ -506,16 +695,19 @@ class TrajectoryExecutionMachine(StateMachine):
     # -- Private helpers ------------------------------------------------------
 
     def _handle_armed(
-        self, trajectory_state: TrajectoryState, state: api.models.MotionGroupState
+        self,
+        trajectory_state: TrajectoryState,
+        state: api.models.MotionGroupState,
+        *,
+        at_rest: bool,
     ) -> None:
         """Wait for motion; the parked shape is a no-op (stale terminals never get here)."""
-        standstill = state.standstill
         match trajectory_state:
             case api.models.TrajectoryRunning():
                 self._begin_executing()
 
             case api.models.TrajectoryEnded():
-                if standstill:
+                if at_rest:
                     self._end_while_armed()
                 else:
                     self._begin_ending_while_armed()
@@ -525,15 +717,16 @@ class TrajectoryExecutionMachine(StateMachine):
                 # reports it after a start armed with pause_on_io, also when the
                 # condition already held at the start and the robot never moved.
                 self.pause_reason = PauseReason.IO
-                if standstill:
+                if at_rest:
                     self._pause_while_armed()
                 else:
                     self._begin_pausing_while_armed()
 
             case api.models.TrajectoryPausedByUser():
-                if not standstill:
+                if not at_rest:
                     # The robot is leaving standstill; the discriminator flips to
-                    # RUNNING one cycle later (measured 2026-09-16).
+                    # RUNNING one cycle later (measured 2026-09-16). "Leaving" is the
+                    # estimator's decision: a single flickering frame at rest is not.
                     self._moved = True
                     self._keep_armed()
                 elif self._moved or self._pause_requested:
@@ -620,8 +813,8 @@ class TrajectoryExecutionMachine(StateMachine):
                 case api.models.TrajectoryRunning():
                     if self.pause_reason is PauseReason.IO:
                         self._resume_observed()
-                    else:
-                        self._fail_on_frame(state, trajectory_state)
+                    elif not self._contradiction(state, trajectory_state):
+                        self._resume_observed()
                 case api.models.TrajectoryPausedByUser() | api.models.TrajectoryPausedOnIO():
                     # A user pause turns into an IO pause when the condition
                     # (re)starts being evaluated while the robot stands, e.g.
@@ -635,24 +828,35 @@ class TrajectoryExecutionMachine(StateMachine):
         else:
             match trajectory_state:
                 case api.models.TrajectoryRunning():
-                    self._fail_on_frame(state, trajectory_state)
+                    if not self._contradiction(state, trajectory_state):
+                        self._restart_observed()
                 case api.models.TrajectoryPausedOnIO():
                     logger.warning(
                         "Controller reports PAUSED_ON_IO at location %s after the trajectory ended",
                         self.location,
                     )
 
-    def _fail_on_frame(
+    def _contradiction(
         self, state: api.models.MotionGroupState, trajectory_state: TrajectoryState
-    ) -> None:
+    ) -> bool:
+        """A frame the machine cannot reconcile; ``True`` when it failed the machine.
+
+        Strict: ``error`` with :attr:`failure_reason`. Otherwise a warning, and the
+        caller follows the controller.
+        """
         self.failure_reason = (
             f"controller reports {type(trajectory_state).__name__} at location {self.location} "
             f"(standstill={state.standstill}) while the execution is "
             f"'{self._active_configuration_id()}' "
             "and no start was issued"
         )
-        self.failed_frame = state
-        self.fail()
+        if self.strict:
+            self.failed_frame = state
+            self.fail()
+            return True
+        logger.warning("%s; following the controller", self.failure_reason)
+        self.failure_reason = None
+        return False
 
     @staticmethod
     def _reason_of(trajectory_state: TrajectoryState) -> PauseReason:
