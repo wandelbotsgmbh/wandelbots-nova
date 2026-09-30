@@ -18,8 +18,12 @@ execution when ``RUNNING`` followed).
   says nothing about a ``standstill=true`` frame: the first frame at the end of
   a trajectory has a new location and a settled robot;
 * the **measured** joint positions (top-level ``joint_position``): a change above
-  ``joint_epsilon`` between two frames corroborates ``standstill=false`` and
-  vetoes a rest vote — measured joints that moved are not at rest.
+  the joint's threshold between two frames corroborates ``standstill=false`` and
+  vetoes a rest vote — measured joints that moved are not at rest. The unit is
+  the joint's: rad for revolute joints (``joint_epsilon``), mm for prismatic ones
+  (``prismatic_joint_epsilon``) — one threshold for both made encoder noise on a
+  rail (1e-3 mm) count as motion. The estimator therefore needs the motion
+  group's joint types; without them joint evidence is off.
 
 Corroborated motion switches immediately; an uncorroborated ``standstill=false``
 must repeat ``motion_votes`` times. Rest needs ``rest_votes`` consecutive standstill
@@ -35,6 +39,7 @@ logged — or, with :attr:`StandstillConfig.strict`, fail the execution.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from nova import api
@@ -53,9 +58,11 @@ class StandstillConfig:
             evidence) that prove rest. ``1`` trusts a single frame.
         location_epsilon: Change of the commanded trajectory location between two
             frames of the same trajectory that proves motion; ``None`` disables it.
-        joint_epsilon: Largest change of any measured joint between two frames
-            (rad for revolute, mm for prismatic joints) that still counts as rest;
-            a larger change proves motion. ``None`` disables it.
+        joint_epsilon: Largest change of a measured **revolute** joint between two
+            frames, in rad, that still counts as rest; a larger change proves
+            motion. ``None`` disables it for revolute joints.
+        prismatic_joint_epsilon: The same for **prismatic** joints, in mm.
+            ``None`` disables it for prismatic joints.
         strict: A detected jitter fails the execution instead of being logged.
     """
 
@@ -63,6 +70,7 @@ class StandstillConfig:
     rest_votes: int = 1
     location_epsilon: float | None = None
     joint_epsilon: float | None = None
+    prismatic_joint_epsilon: float | None = None
     strict: bool = False
 
     def __post_init__(self) -> None:
@@ -77,7 +85,13 @@ class StandstillConfig:
     @classmethod
     def robust(cls) -> StandstillConfig:
         """Debounced defaults for controllers whose flag flickers at rest."""
-        return cls(motion_votes=3, rest_votes=2, location_epsilon=1e-6, joint_epsilon=1e-3)
+        return cls(
+            motion_votes=3,
+            rest_votes=2,
+            location_epsilon=1e-6,
+            joint_epsilon=1e-3,
+            prismatic_joint_epsilon=0.1,
+        )
 
     @property
     def is_passthrough(self) -> bool:
@@ -86,6 +100,7 @@ class StandstillConfig:
             and self.rest_votes == 1
             and self.location_epsilon is None
             and self.joint_epsilon is None
+            and self.prismatic_joint_epsilon is None
         )
 
     def with_strict(self, strict: bool) -> StandstillConfig:
@@ -139,8 +154,27 @@ class StandstillEstimator:
     its decision across starts and pauses.
     """
 
-    def __init__(self, config: StandstillConfig | None = None) -> None:
+    def __init__(
+        self, config: StandstillConfig | None = None, prismatic_joints: Sequence[bool] | None = None
+    ) -> None:
+        """Create an estimator.
+
+        Args:
+            config: Tuning; defaults to :meth:`StandstillConfig.passthrough`.
+            prismatic_joints: Per joint, whether it is prismatic (mm) rather than
+                revolute (rad), e.g. from the motion group's DH parameters. ``None``
+                (unknown) disables joint evidence: a threshold in the wrong unit
+                either never fires or fires on noise.
+        """
         self.config = config or StandstillConfig.passthrough()
+        self._joint_epsilons: list[float | None] | None = (
+            None
+            if prismatic_joints is None
+            else [
+                self.config.prismatic_joint_epsilon if prismatic else self.config.joint_epsilon
+                for prismatic in prismatic_joints
+            ]
+        )
         self.at_rest: bool | None = None
         self._motion_streak = 0
         self._rest_streak = 0
@@ -207,13 +241,16 @@ class StandstillEstimator:
             self._last_location = location
 
         joints = _joints(state)
-        if joints is not None:
+        epsilons = self._joint_epsilons
+        if joints is not None and epsilons is not None:
             last_joints = self._last_joints
             joints_moved = (
-                config.joint_epsilon is not None
-                and last_joints is not None
-                and len(last_joints) == len(joints)
-                and max(abs(a - b) for a, b in zip(joints, last_joints)) > config.joint_epsilon
+                last_joints is not None
+                and len(last_joints) == len(joints) == len(epsilons)
+                and any(
+                    epsilon is not None and abs(now - before) > epsilon
+                    for now, before, epsilon in zip(joints, last_joints, epsilons)
+                )
             )
             self._last_joints = joints
 

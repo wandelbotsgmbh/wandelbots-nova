@@ -56,8 +56,11 @@ Every rule below that says "standstill" therefore reads the decision of `Standst
 - consecutive raw flags: `motion_votes` frames of `standstill=false`, `rest_votes` of `true`;
 - the commanded location moving between two frames of the same trajectory — corroborates a
   `standstill=false` frame at once;
-- the measured joints moving more than `joint_epsilon` — corroborates `standstill=false` and
-  vetoes a rest vote.
+- the measured joints moving more than their threshold — corroborates `standstill=false` and
+  vetoes a rest vote. Thresholds are per unit: `joint_epsilon` in rad for revolute joints,
+  `prismatic_joint_epsilon` in mm for prismatic ones (the joint types come from the motion
+  group's DH parameters, read once per `MotionGroup`; without them joint evidence is off). A single
+  `1e-3` for both made a rail's encoder noise count as motion (combined_loop, 2026-09-30).
 
 `StandstillConfig.passthrough()` (one vote each, no corroboration) returns the raw flag on the same
 frame: the behaviour before the estimator, for when upstream fixes the flag. A flicker the
@@ -70,12 +73,13 @@ environment or per cursor / `MovementControllerContext.execution_policy`:
 
 | preset (`NOVA_EXECUTION_POLICY`) | standstill | contradictions | ignored resume |
 |---|---|---|---|
-| `robust` (default) | debounced (`motion_votes=3`, `rest_votes=2`, location, joints `1e-3`) | warn, follow the controller | one more start within the window, then wait for a new edge |
+| `robust` (default) | debounced (`motion_votes=3`, `rest_votes=2`, location, joints `1e-3` rad / `0.1` mm) | warn, follow the controller | one more start within the window, then wait for a new edge |
 | `strict` | raw flag | `UnexpectedTrajectoryState` | `ResumeNotTakenUp` |
 | `diagnose` | debounced, every jitter fails | `UnexpectedTrajectoryState` | `ResumeNotTakenUp` |
 
 Each knob can be overridden: `NOVA_STANDSTILL_MOTION_VOTES`, `NOVA_STANDSTILL_REST_VOTES`,
-`NOVA_STANDSTILL_LOCATION_EPSILON`, `NOVA_STANDSTILL_JOINT_EPSILON` (`none` disables),
+`NOVA_STANDSTILL_LOCATION_EPSILON`, `NOVA_STANDSTILL_JOINT_EPSILON`,
+`NOVA_STANDSTILL_PRISMATIC_JOINT_EPSILON` (`none` disables),
 `NOVA_RESUME_DETECT_MS`, `NOVA_RESUME_WINDOW_MS`. The unit tests run under `strict`
 (`tests/conftest.py`), which pins that the policy changes nothing for the old rules.
 
@@ -137,10 +141,13 @@ follow it; the rest-state rules rely on it.
 
 `armed`:
 - `TrajectoryRunning` → `executing`
-- `TrajectoryPausedByUser` + standstill → stay (parked); → `paused` (`USER`) if the robot was
-  seen leaving standstill before, or `request_pause()` was called
-- `TrajectoryPausedByUser` (no standstill) → stay, remember that the robot moved. "No
-  standstill" is the estimator's decision: one flickering frame at rest is not motion
+- `TrajectoryPausedByUser` + standstill → stay (parked); → `paused` (`USER`) if the **commanded
+  location** has left the one the start found (same trajectory), or `request_pause()` was called.
+  The commanded location only advances once the controller executes the start, so before that
+  the frame is the parked shape whatever the standstill flag says — a flicker can no longer
+  conclude a pause here, with any standstill configuration. A frame of another trajectory (a
+  stale frame of the previous execution on a shared stream) re-anchors instead of counting.
+- `TrajectoryPausedByUser` (no standstill) → stay
 - `TrajectoryPausedOnIO` → `paused` / `pausing` (`IO`)
 - `TrajectoryEnded` + standstill → `ended` (a zero-length trajectory may never show motion);
   (no standstill) → `ending`

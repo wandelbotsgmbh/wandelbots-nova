@@ -97,6 +97,7 @@ Example::
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -304,6 +305,7 @@ class TrajectoryExecutionMachine(StateMachine):
         *,
         strict: bool = True,
         trajectory: str | None = None,
+        prismatic_joints: Sequence[bool] | None = None,
     ) -> None:
         """Create a machine.
 
@@ -311,6 +313,9 @@ class TrajectoryExecutionMachine(StateMachine):
             standstill: How the ``standstill`` flag is debounced (see
                 :mod:`~nova.cell.movement_controller.standstill`). Defaults to
                 :meth:`StandstillConfig.passthrough` — the raw flag.
+            prismatic_joints: Per joint, whether it is prismatic; lets the
+                estimator compare measured joints in their own unit. ``None``
+                (unknown) disables joint evidence.
             strict: A frame contradicting the tracked execution (``RUNNING`` in
                 ``paused(USER)`` or ``ended``, ``PAUSED_ON_IO`` without a
                 ``pause_on_io`` condition) moves the machine to ``error``. When
@@ -322,7 +327,7 @@ class TrajectoryExecutionMachine(StateMachine):
         """
         self._trajectory = trajectory
         self.strict = strict
-        self._estimator = StandstillEstimator(standstill)
+        self._estimator = StandstillEstimator(standstill, prismatic_joints)
         self.last_reading: StandstillReading | None = None
         self.location: float | None = None
         self.pause_reason: PauseReason | None = None

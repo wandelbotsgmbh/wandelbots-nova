@@ -24,7 +24,8 @@ The process-wide default comes from the environment and can be tuned per knob::
     NOVA_STANDSTILL_MOTION_VOTES=3
     NOVA_STANDSTILL_REST_VOTES=2
     NOVA_STANDSTILL_LOCATION_EPSILON=1e-6          ("none" disables)
-    NOVA_STANDSTILL_JOINT_EPSILON=1e-3             ("none" disables)
+    NOVA_STANDSTILL_JOINT_EPSILON=1e-3             (rad, revolute joints; "none" disables)
+    NOVA_STANDSTILL_PRISMATIC_JOINT_EPSILON=0.1    (mm, prismatic joints; "none" disables)
     NOVA_RESUME_DETECT_MS=500                      ("none" disables)
     NOVA_RESUME_WINDOW_MS=1000
 """
@@ -96,6 +97,13 @@ class ExecutionPolicy:
         if "NOVA_STANDSTILL_JOINT_EPSILON" in env:
             standstill = replace(
                 standstill, joint_epsilon=_optional_float(env["NOVA_STANDSTILL_JOINT_EPSILON"])
+            )
+        if "NOVA_STANDSTILL_PRISMATIC_JOINT_EPSILON" in env:
+            standstill = replace(
+                standstill,
+                prismatic_joint_epsilon=_optional_float(
+                    env["NOVA_STANDSTILL_PRISMATIC_JOINT_EPSILON"]
+                ),
             )
         policy = replace(policy, standstill=standstill)
 
