@@ -1,0 +1,150 @@
+In a previous session we tried to make the TrajectoryExecutionMachine more robust. This was ported? to this branch as the armed machine part. This branch is now used in different apps, showing different problems.
+look at this document @/Users/q/1prj/audi/arg3-longterm-tests/docs/sdk-vs-api-execution-state.md and the two apps it comparend @/Users/q/1prj/audi/arg3-longterm-tests/pause/ and @/Users/q/1prj/audi/arg3-longterm-tests/pause-api/ 
+
+Also see this analysis 
+
+<pasted_content id="e3be">
+This error is raised by the SDK's per-group trajectory state machine, not by our code. It isn't a torque or controller fault, and it happens before the robot moves.
+
+Where it fires
+
+The error text comes from _fail_on_frame in trajectory_state_machine.py.
+It is raised from the cursor's _motion_group_state_monitor (trajectory_cursor.py:1421).
+The rule it enforces: the machine is at rest in paused (reason USER), and a TrajectoryRunning frame arrives that this cursor never started. Only this cursor may resume a user pause, so it treats that as a contradiction and tears the session down.
+How the machine gets into paused before anything moved
+The failing frame says location 0.0, standstill=True, so the machine was already in paused before the trajectory started. From armed, only one path leads there (_handle_armed):
+
+A parked PAUSED_BY_USER frame with standstill=False arrives. The SDK reads this as "the robot is leaving standstill; RUNNING follows one cycle later" and sets _moved = True.
+The next PAUSED_BY_USER frame has standstill=True. Because _moved is set, the SDK concludes a real user pause has settled and moves to paused(USER).
+The IO barrier releases the trajectory, and the controller reports TrajectoryRunning at location 0.0, standstill=True. From paused(USER) that is an error.
+When that happens in our flow (inferred from the SDK code; I haven't confirmed it on the robot)
+The trigger is a single standstill=False frame while the robot is actually at rest, i.e. the standstill flag flickering. The most likely moment is right at the start of each linear leg:
+
+Each leg starts immediately after a previous motion: the slow lead-in to the stroke start before leg 1, or leg 1's own session before leg 2. The only gap is the two plan calls.
+The new session then attaches, and the cursor holds back state frames until its start command has gone out (_held_at_first_dispatch). That means frames from just after the previous motion can be processed while the machine is already armed, inside the window where a standstill flicker counts as "starting to move".
+A physical robot still settling after a move plausibly flickers its standstill flag. The virtual clone never does, which fits this only showing up on the real cell.
+This isn't specific to the linear motion. folge11_rrt uses the same synchronized executor (execute_planned_multi), so it can hit the same thing.
+
+To confirm it:
+
+Set LOG_LEVEL to debug in k8s/app.yaml. The cursor then logs every frame as frame standstill=… execute=… location=… | <state> → <state>.
+Before the error, look for armed → paused on a TrajectoryPausedByUser frame, preceded by one with standstill=False.
+The same log shows which group failed (arm or rail) and on which leg. The traceback alone doesn't say.
+Possible fixes:
+
+In our code, quick: wait until the robot has been at standstill for a while (a short fixed settle time, or N consecutive standstill frames) before each synchronized leg. This closes the window without touching the SDK. I'd add it as a LINEAR_SETTLE_S knob.
+Upstream in the SDK: _handle_armed shouldn't treat one PAUSED_BY_USER, standstill=False frame as the robot leaving standstill when the controller hasn't taken up the start yet, and standstill jitter at rest can trigger it. That's worth reporting with the debug log from step 1.
+Should I add the settle wait? It's a few lines, and the debug log would then show whether it's enough.
+</pasted_content id="e3be">
+
+ of this error 
+
+<pasted_content id="e3be">
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     ) as cursor:
+    |     ^
+    |   File "/usr/local/lib/python3.13/contextlib.py", line 235, in __aexit__
+    |     await self.gen.athrow(value)
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 254, in attach
+    |     raise error_group.exceptions[0] from error_group
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 333, in _run_execute_trajectory
+    |     await motion_group._api_client.trajectory_execution_api.execute_trajectory(
+    |     ...<3 lines>...
+    |     )
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 41, in async_wrapper
+    |     raise e
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 37, in async_wrapper
+    |     return await original_attr(*args, **kwargs)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/app/.venv/lib/python3.13/site-packages/pydantic/_internal/_validate_call.py", line 35, in wrapper_function
+    |     return await wrapper(*args, **kwargs)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/app/.venv/lib/python3.13/site-packages/wandelbots_api_client/v2_pydantic/api/trajectory_execution_api.py", line 136, in execute_trajectory
+    |     async for request in client_request_generator(iterate_responses(websocket)):
+    |         await websocket.send(request.model_dump_json(exclude_none=True))
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1277, in cntrl
+    |     raise eg.exceptions[0] from eg
+    |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1427, in _motion_group_state_monitor
+    |     raise error
+    | nova.exceptions.UnexpectedTrajectoryState: Error during movement: controller reports TrajectoryRunning at location 0.0 (standstill=True) while the execution is 'paused' and no start was issued
+    +------------------------------------
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/.venv/lib/python3.13/site-packages/nova/program/runner.py", line 511, in _run_program
+    await self._run(execution_context)
+  File "/app/.venv/lib/python3.13/site-packages/nova/program/runner.py", line 619, in _run
+    return await self.program(nova=execution_context.nova, **(self._inputs or {}))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/.venv/lib/python3.13/site-packages/nova/program/function.py", line 183, in __call__
+    return await self._wrapped(ctx, **validated_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/ir999r01/lab/combined_loop.py", line 897, in main
+    await run_linear_leg(
+    ...<3 lines>...
+    )
+  File "/app/ir999r01/lab/combined_loop.py", line 636, in run_linear_leg
+    await execute_planned_multi(
+    ...<2 lines>...
+    )
+  File "/app/helpers/motion/collision_free.py", line 818, in execute_planned_multi
+    async with ensemble.attach(
+               ~~~~~~~~~~~~~~~^
+        trajectory,
+        ^^^^^^^^^^^
+        tcp={motion_group.id: tcp, linear.id: "0"},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as cursor:
+    ^
+  File "/usr/local/lib/python3.13/contextlib.py", line 235, in __aexit__
+    await self.gen.athrow(value)
+  File "/app/.venv/lib/python3.13/site-packages/nova/cell/multi_motion_group.py", line 117, in attach
+    async with self._executor.attach(
+               ~~~~~~~~~~~~~~~~~~~~~^
+        trajectory, tcp=tcp, actions=actions, groups=groups
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as cursor:
+    ^
+  File "/usr/local/lib/python3.13/contextlib.py", line 235, in __aexit__
+    await self.gen.athrow(value)
+  File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 254, in attach
+    raise error_group.exceptions[0] from error_group
+  File "/app/.venv/lib/python3.13/site-packages/nova/cell/trajectory_executor.py", line 333, in _run_execute_trajectory
+    await motion_group._api_client.trajectory_execution_api.execute_trajectory(
+    ...<3 lines>...
+    )
+  File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 41, in async_wrapper
+    raise e
+  File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 37, in async_wrapper
+    return await original_attr(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/.venv/lib/python3.13/site-packages/pydantic/_internal/_validate_call.py", line 35, in wrapper_function
+    return await wrapper(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/.venv/lib/python3.13/site-packages/wandelbots_api_client/v2_pydantic/api/trajectory_execution_api.py", line 136, in execute_trajectory
+    async for request in client_request_generator(iterate_responses(websocket)):
+        await websocket.send(request.model_dump_json(exclude_none=True))
+  File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1277, in cntrl
+    raise eg.exceptions[0] from eg
+  File "/app/.venv/lib/python3.13/site-packages/nova/cell/movement_controller/trajectory_cursor.py", line 1427, in _motion_group_state_monitor
+    raise error
+nova.exceptions.UnexpectedTrajectoryState: Error during movement: controller reports TrajectoryRunning at location 0.0 (standstill=True) while the execution is 'paused' and no start was issued
+
+2026-09-30 08:25:39.645 | ERROR    | nova.program.runner:_handle_general_exception:415 - <class 'nova.exceptions.UnexpectedTrajectoryState'>: Error during movement: controller reports TrajectoryRunning at location 0.0 (standstill=True) while the execution is 'paused' and no start was issued
+2026-09-30 08:25:39.645 | INFO     | nova.program.runner:_set_program_state:425 - Set state of program combined_loop run 529ed31c-b1d3-477e-a06c-cf5abbdfcda4 to ProgramRunState.FAILED
+2026-09-30 08:25:39.645 | INFO     | nova.program.runner:_run_program:565 - Program combined_loop run 529ed31c-b1d3-477e-a06c-cf5abbdfcda4 finished. Run teardown routine...
+INFO:     10.42.0.178:50030 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:54086 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:54100 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:49974 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45346 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:57420 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:43244 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+INFO:     10.42.0.178:43252 - "GET /cell/ir999r01-lab/programs HTTP/1.1" 200 OK
+</pasted_content id="e3be">
+
+ 
+All of these issues currently seem to be based on the fact that the standstill flag is not reliable. It jitters when the robot is actually in standstill. This is something that will be addressed upstream later on but for now we need a way to safely execute without getting stuck in states or throwing unexpected error in cases we identify unexpected states in the stream. 
+i have a few vague ideas on how to approach this but don't want to prime you on these yet. 
+What options would you see to proceed here?

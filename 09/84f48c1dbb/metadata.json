@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "0984f48c1dbb",
+  "strategy": "manual-commit",
+  "branch": "lab/robust-standstill",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/09/84f48c1dbb/0/metadata.json",
+      "transcript": "/09/84f48c1dbb/0/full.jsonl",
+      "compact_transcript": "/09/84f48c1dbb/0/transcript.jsonl",
+      "content_hash": "/09/84f48c1dbb/0/content_hash.txt",
+      "prompt": "/09/84f48c1dbb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 162,
+    "cache_creation_tokens": 299164,
+    "cache_read_tokens": 13461374,
+    "output_tokens": 100595,
+    "api_call_count": 81
+  }
+}
