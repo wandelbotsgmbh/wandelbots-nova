@@ -97,6 +97,7 @@ Example::
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -110,6 +111,9 @@ from nova.cell.movement_controller.standstill import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Commanded-location change that proves the controller took up a start.
+_COMMANDED_PROGRESS_EPSILON = 1e-9
 
 _TERMINAL_STATES = (
     api.models.TrajectoryEnded,
@@ -291,26 +295,38 @@ class TrajectoryExecutionMachine(StateMachine):
 
     # -- Instance state -------------------------------------------------------
 
-    def __init__(self, standstill: StandstillConfig | None = None, *, strict: bool = True) -> None:
+    def __init__(
+        self,
+        standstill: StandstillConfig | None = None,
+        *,
+        strict: bool = True,
+        prismatic_joints: Sequence[bool] | None = None,
+    ) -> None:
         """Create a machine.
 
         Args:
             standstill: How the ``standstill`` flag is debounced (see
                 :mod:`~nova.cell.movement_controller.standstill`). Defaults to
                 :meth:`StandstillConfig.passthrough` — the raw flag.
+            prismatic_joints: Per joint, whether it is prismatic; lets the
+                estimator compare measured joints in their own unit. ``None``
+                (unknown) disables joint evidence.
             strict: A frame contradicting the tracked execution (``RUNNING`` in
                 ``paused(USER)`` or ``ended``, ``PAUSED_ON_IO`` without a
                 ``pause_on_io`` condition) moves the machine to ``error``. When
                 ``False`` it logs a warning and follows the controller instead.
         """
         self.strict = strict
-        self._estimator = StandstillEstimator(standstill)
+        self._estimator = StandstillEstimator(standstill, prismatic_joints)
         self.last_reading: StandstillReading | None = None
         self.location: float | None = None
         self.pause_reason: PauseReason | None = None
         self.failure_reason: str | None = None
         self.failed_frame: api.models.MotionGroupState | None = None
         self._moved = False
+        # (trajectory, commanded location) of the first frame after the start: the
+        # controller has taken the start up once the commanded location leaves it.
+        self._start_anchor: tuple[str, float] | None = None
         self._pause_requested = False
         # (state kind, location) of the last terminal frame seen, and the one a
         # resume must ignore while the controller still re-publishes it.
@@ -475,6 +491,9 @@ class TrajectoryExecutionMachine(StateMachine):
                 if isinstance(trajectory_state, _TERMINAL_STATES)
                 else None
             )
+
+            if self.current_state == self.armed:
+                self._track_commanded_progress(state.execute.details)
 
             if self.current_state == self.pending:
                 # The start is not on the wire yet: every frame still belongs to
@@ -670,6 +689,7 @@ class TrajectoryExecutionMachine(StateMachine):
 
     def on_enter_armed(self) -> None:
         self._moved = False
+        self._start_anchor = None
         self.pause_reason = None
         logger.debug("Trajectory state machine → armed (waiting for motion)")
 
@@ -723,11 +743,14 @@ class TrajectoryExecutionMachine(StateMachine):
                     self._begin_pausing_while_armed()
 
             case api.models.TrajectoryPausedByUser():
+                # Only commanded progress proves the start was taken up (see
+                # _track_commanded_progress): before it, PAUSED_BY_USER is the
+                # parked shape whatever the standstill flag says — a flicker there
+                # concluded a "pause" and failed the execution on the RUNNING that
+                # followed (combined_loop on the real cell, 2026-09-30).
                 if not at_rest:
                     # The robot is leaving standstill; the discriminator flips to
-                    # RUNNING one cycle later (measured 2026-09-16). "Leaving" is the
-                    # estimator's decision: a single flickering frame at rest is not.
-                    self._moved = True
+                    # RUNNING one cycle later (measured 2026-09-16).
                     self._keep_armed()
                 elif self._moved or self._pause_requested:
                     self.pause_reason = PauseReason.USER
@@ -739,6 +762,20 @@ class TrajectoryExecutionMachine(StateMachine):
             case _:
                 # WAIT_FOR_IO (start_on_io holding the robot) / unknown: not moving yet.
                 self._keep_armed()
+
+    def _track_commanded_progress(self, details: api.models.TrajectoryDetails) -> None:
+        """Set :attr:`_moved` once the commanded location leaves where the start found it.
+
+        The location is what the controller *commands*, not an observation: it
+        advances only once the controller executes the start. A frame of another
+        trajectory (a stale frame of the previous execution on a shared stream)
+        re-anchors instead of counting as progress.
+        """
+        anchor = self._start_anchor
+        if anchor is None or anchor[0] != details.trajectory:
+            self._start_anchor = (details.trajectory, details.location)
+        elif abs(details.location - anchor[1]) > _COMMANDED_PROGRESS_EPSILON:
+            self._moved = True
 
     def _handle_executing(self, trajectory_state: TrajectoryState, *, standstill: bool) -> None:
         """Determine the right transition while in ``executing`` state."""

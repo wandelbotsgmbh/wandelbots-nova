@@ -62,6 +62,13 @@ def _execute(trajectory_state, location: float) -> api.models.Execute:
     )
 
 
+def _rail(
+    trajectory_state, location: float, position_mm: float, *, standstill: bool = True
+) -> api.models.MotionGroupState:
+    state = _state(standstill, _execute(trajectory_state, location))
+    return state.model_copy(update={"joint_position": [position_mm]})
+
+
 def running(location: float, *, standstill: bool = False) -> api.models.MotionGroupState:
     return _state(standstill, _execute(api.models.TrajectoryRunning(time_to_end=1000), location))
 
@@ -107,15 +114,50 @@ _FLICKER_BEFORE_TAKE_UP = (
 
 
 class TestStandstillFlickerBeforeTheStart:
-    def test_the_strict_machine_still_fails_on_the_observed_sequence(self):
-        """Documents the failure: the raw flag concludes paused(USER), RUNNING then errors."""
+    def test_the_strict_machine_executes_the_observed_sequence_too(self):
+        """Commanded progress, not the flag, proves a start was taken up: even the raw
+        flag (strict preset) no longer concludes a pause from the parked flicker."""
         machine = TrajectoryExecutionMachine()
         machine.arm()
 
         _feed(machine, *_FLICKER_BEFORE_TAKE_UP)
 
-        assert machine.is_error
-        assert "while the execution is 'paused'" in (machine.failure_reason or "")
+        assert machine.is_executing
+        assert machine.failure_reason is None
+
+    def test_a_long_flicker_without_commanded_progress_is_no_pause(self):
+        machine = _robust_machine()
+        machine.arm()
+
+        _feed(
+            machine,
+            parked(0.0),
+            *[parked(0.0, standstill=False)] * 5,
+            parked(0.0),
+            parked(0.0),
+            parked(0.0),
+        )
+
+        assert machine.is_armed
+        _feed(machine, running(0.0, standstill=True))
+        assert machine.is_executing
+
+    def test_a_stale_frame_of_another_trajectory_is_no_progress(self):
+        machine = _robust_machine()
+        machine.arm()
+        other = _state(
+            True,
+            api.models.Execute(
+                joint_position=[0.0] * 6,
+                details=api.models.TrajectoryDetails(
+                    trajectory="previous", location=1.96, state=api.models.TrajectoryPausedByUser()
+                ),
+            ),
+        )
+
+        _feed(machine, other, parked(0.0), parked(0.0), parked(0.0))
+
+        assert machine.is_armed
 
     def test_the_robust_machine_ignores_the_flicker_and_executes(self):
         machine = _robust_machine()
@@ -595,3 +637,43 @@ async def test_a_pause_superseding_a_pending_start_is_concluded_by_the_parked_fr
         cursor.detach()
         async with asyncio.timeout(5):
             await consumer
+
+
+class TestRailAtRest:
+    """Replays the second failure (combined_loop, 2026-09-30, >85 % playback): the rail's
+    encoder noise at rest was larger than a 1e-3 threshold meant in rad, so a flicker
+    counted as corroborated motion, the parked frames concluded paused(USER) and the
+    rail's operation completed at location 0.0 before the rail had moved."""
+
+    _NOISY_PARKED_RAIL = (
+        _rail(api.models.TrajectoryPausedByUser(), 0.0, -1500.000),
+        _rail(api.models.TrajectoryPausedByUser(), 0.0, -1500.004, standstill=False),
+        _rail(api.models.TrajectoryPausedByUser(), 0.0, -1500.001),
+        _rail(api.models.TrajectoryPausedByUser(), 0.0, -1500.003),
+        _rail(api.models.TrajectoryPausedByUser(), 0.0, -1500.002),
+    )
+
+    def test_noise_on_a_prismatic_joint_is_no_motion(self):
+        machine = TrajectoryExecutionMachine(
+            StandstillConfig.robust(), strict=False, prismatic_joints=(True,)
+        )
+        machine.arm()
+
+        _feed(machine, *self._NOISY_PARKED_RAIL)
+
+        assert machine.is_armed
+        assert machine.last_reading is not None and machine.last_reading.at_rest
+        _feed(machine, _rail(api.models.TrajectoryRunning(time_to_end=1000), 0.0, -1500.002))
+        assert machine.is_executing
+
+    def test_a_rad_threshold_on_the_rail_would_see_motion_but_no_longer_pauses(self):
+        """The old unit mistake, forced: joint evidence fires on the noise, yet without
+        commanded progress the parked frames still conclude nothing."""
+        machine = TrajectoryExecutionMachine(
+            StandstillConfig.robust(), strict=False, prismatic_joints=(False,)
+        )
+        machine.arm()
+
+        _feed(machine, *self._NOISY_PARKED_RAIL)
+
+        assert machine.is_armed

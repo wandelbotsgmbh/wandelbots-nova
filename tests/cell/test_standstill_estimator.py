@@ -115,7 +115,7 @@ def test_a_standstill_frame_at_a_new_location_still_counts_as_rest():
 
 
 def test_moving_measured_joints_prove_motion_and_veto_rest():
-    estimator = StandstillEstimator(StandstillConfig.robust())
+    estimator = StandstillEstimator(StandstillConfig.robust(), prismatic_joints=(False,) * 6)
 
     readings = [
         estimator.update(frame)
@@ -134,7 +134,7 @@ def test_moving_measured_joints_prove_motion_and_veto_rest():
 
 
 def test_joint_noise_below_epsilon_is_rest():
-    estimator = StandstillEstimator(StandstillConfig.robust())
+    estimator = StandstillEstimator(StandstillConfig.robust(), prismatic_joints=(False,) * 6)
 
     decisions = _decisions(
         estimator, [_frame(True, joints=[0.0] * 6), _frame(False, joints=[1e-5] * 6), _frame(True)]
@@ -151,6 +151,32 @@ def test_rest_needs_rest_votes_frames_and_a_flicker_while_moving_is_reported():
 
     assert [reading.at_rest for reading in readings] == [False, False, False, False, True]
     assert readings[2].jitter == "rest"
+
+
+def test_prismatic_joints_are_compared_in_mm():
+    config = StandstillConfig.robust()
+
+    def decisions(prismatic: bool, delta: float) -> list[bool]:
+        estimator = StandstillEstimator(config, prismatic_joints=(prismatic,))
+        return _decisions(
+            estimator, [_frame(True, joints=[-1500.0]), _frame(False, joints=[-1500.0 + delta])]
+        )
+
+    # 0.01 mm of rail noise: motion in rad, rest in mm.
+    assert decisions(prismatic=False, delta=0.01) == [True, False]
+    assert decisions(prismatic=True, delta=0.01) == [True, True]
+    # A real rail move of 1 mm per frame is motion.
+    assert decisions(prismatic=True, delta=1.0) == [True, False]
+
+
+def test_unknown_joint_types_disable_joint_evidence():
+    estimator = StandstillEstimator(StandstillConfig.robust())
+
+    decisions = _decisions(
+        estimator, [_frame(True, joints=[0.0] * 6), _frame(False, joints=[1.0] * 6)]
+    )
+
+    assert decisions == [True, True]
 
 
 def test_votes_must_be_positive():
@@ -184,12 +210,17 @@ class TestPolicyFromEnvironment:
                 "NOVA_STANDSTILL_REST_VOTES": "1",
                 "NOVA_STANDSTILL_LOCATION_EPSILON": "none",
                 "NOVA_STANDSTILL_JOINT_EPSILON": "0.002",
+                "NOVA_STANDSTILL_PRISMATIC_JOINT_EPSILON": "0.5",
                 "NOVA_RESUME_DETECT_MS": "250",
                 "NOVA_RESUME_WINDOW_MS": "2000",
             }
         )
         assert policy.standstill == StandstillConfig(
-            motion_votes=5, rest_votes=1, location_epsilon=None, joint_epsilon=0.002
+            motion_votes=5,
+            rest_votes=1,
+            location_epsilon=None,
+            joint_epsilon=0.002,
+            prismatic_joint_epsilon=0.5,
         )
         assert policy.resume_detect_s == 0.25
         assert policy.resume_window_s == 2.0
@@ -201,6 +232,7 @@ class TestPolicyFromEnvironment:
                 "NOVA_STANDSTILL_REST_VOTES": "1",
                 "NOVA_STANDSTILL_LOCATION_EPSILON": "none",
                 "NOVA_STANDSTILL_JOINT_EPSILON": "none",
+                "NOVA_STANDSTILL_PRISMATIC_JOINT_EPSILON": "none",
             }
         )
         assert policy.standstill.is_passthrough

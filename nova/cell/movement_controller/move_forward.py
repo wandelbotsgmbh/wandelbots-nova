@@ -66,6 +66,7 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
         detach_on_standstill=True,
         emit_motion_events=False,
         policy=context.execution_policy,
+        prismatic_joints=context.prismatic_joints,
     )
     # Starting immediately is move_forward policy, not a cursor capability.
     driver = _OneShotDriver(cursor, cursor.forward(), context)

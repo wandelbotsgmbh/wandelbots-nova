@@ -199,6 +199,9 @@ class MovementControllerContext(pydantic.BaseModel):
     # How strictly the state stream is read (nova.cell.movement_controller.policy).
     # ``None`` uses the process-wide default.
     execution_policy: Any = None
+    # Per joint, whether it is prismatic (from the motion group's DH parameters);
+    # lets the standstill estimator compare measured joints in their own unit.
+    prismatic_joints: tuple[bool, ...] | None = None
     motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
     # The planned trajectory being executed. Optional: only location-bounded
     # cursor operations need it, one-shot execution does not.

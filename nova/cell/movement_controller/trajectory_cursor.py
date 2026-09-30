@@ -49,6 +49,7 @@ import contextlib
 import logging
 import time
 from collections.abc import AsyncIterator as AsyncIteratorABC
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
 from math import ceil, floor
@@ -595,6 +596,7 @@ class TrajectoryCursor:
         ignore_controller_limits: bool = False,
         policy: ExecutionPolicy | None = None,
         clock: Callable[[], float] = time.monotonic,
+        prismatic_joints: Sequence[bool] | None = None,
     ):
         """Initialize a trajectory cursor.
 
@@ -632,6 +634,9 @@ class TrajectoryCursor:
                 contradicting frames, ignored resumes). Defaults to
                 :func:`~nova.cell.movement_controller.policy.default_execution_policy`.
             clock: Monotonic clock for the resume supervision (tests inject one).
+            prismatic_joints: Per joint of the motion group, whether it is prismatic
+                (mm) rather than revolute (rad), so measured joints are compared in
+                their own unit. ``None`` (unknown) disables joint evidence.
         """
         self.motion_id = motion_id
         self.joint_trajectory = joint_trajectory
@@ -705,7 +710,7 @@ class TrajectoryCursor:
         # The operation the machine was last told to expect (see the state monitor).
         self._expected_op: Operation | None = None
         self._state_machine = TrajectoryExecutionMachine(
-            self._policy.standstill, strict=self._policy.strict
+            self._policy.standstill, strict=self._policy.strict, prismatic_joints=prismatic_joints
         )
         self._operation_handler = OperationHandler()
 

@@ -34,6 +34,7 @@ directly with an :class:`IOSyncDriver`. Then::
 """
 
 import asyncio
+import inspect
 import functools
 from collections.abc import AsyncGenerator, Mapping, Sequence
 from contextlib import asynccontextmanager
@@ -91,6 +92,19 @@ class GroupArgs:
     ignore_controller_limits: bool = True
     state_stream_rate_msecs: int | None = None
     pause_on_io: api.models.PauseOnIO | None = None
+
+
+async def _prismatic_joints(motion_group: MotionGroup) -> tuple[bool, ...] | None:
+    """The group's joint types, or ``None`` when they cannot be read.
+
+    Only an input for standstill estimation, so anything that is not a real motion
+    group answering the question (a test double) counts as unknown.
+    """
+    joint_types = motion_group._prismatic_joints()
+    if not inspect.isawaitable(joint_types):
+        return None
+    result = await joint_types
+    return result if isinstance(result, tuple) else None
 
 
 class TrajectoryExecutor:
@@ -220,6 +234,7 @@ class TrajectoryExecutor:
                 ignore_controller_limits=group_args.ignore_controller_limits,
                 set_outputs=overlay[name] or None,
                 pause_on_io=group_args.pause_on_io,
+                prismatic_joints=await _prismatic_joints(motion_group),
             )
 
         cursor = MultiTrajectoryCursor(cursors, self._sync, actions=action_list)

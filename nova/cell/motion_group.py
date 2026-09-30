@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from functools import partial
-from typing import AsyncGenerator
+from typing import AsyncGenerator, cast
 
 import numpy as np
 
@@ -42,6 +42,9 @@ START_LOCATION_OF_MOTION = 0.0
 
 
 logger = logging.getLogger(__name__)
+
+# Sentinel: the joint types were not read yet (``None`` means "read, unknown").
+_UNKNOWN = object()
 
 
 # TODO: when collision scene is different in different motions
@@ -169,6 +172,7 @@ class MotionGroup(AbstractRobot):
         self._motion_group_id = motion_group_id
         self._nats_client = nats_client
         self._current_motion: str | None = None
+        self._prismatic_joints_cache: object = _UNKNOWN
         super().__init__(id=motion_group_id)
 
     @property
@@ -218,6 +222,30 @@ class MotionGroup(AbstractRobot):
                     controller=self._controller_id,
                     io_value=[action.to_api_model()],
                 )
+
+    async def _prismatic_joints(self) -> tuple[bool, ...] | None:
+        """Per joint, whether it is prismatic — from the DH parameters, read once.
+
+        ``None`` when the description has no DH parameters or cannot be read: the
+        standstill estimator then leaves measured joints out rather than compare
+        them in the wrong unit.
+        """
+        if self._prismatic_joints_cache is _UNKNOWN:
+            try:
+                description = await self._fetch_motion_group_description()
+                dh_parameters = description.dh_parameters
+                self._prismatic_joints_cache = (
+                    tuple(
+                        parameter.type == api.models.JointTypeEnum.PRISMATIC_JOINT
+                        for parameter in dh_parameters
+                    )
+                    if dh_parameters
+                    else None
+                )
+            except Exception as error:  # noqa: BLE001 — an optimisation input, never fatal
+                logger.debug(f"Joint types of {self.id} unavailable: {error!r}")
+                self._prismatic_joints_cache = None
+        return cast(tuple[bool, ...] | None, self._prismatic_joints_cache)
 
     # TODO: does this needs to be cached?
     async def _fetch_motion_group_description(self) -> api.models.MotionGroupDescription:
@@ -1156,6 +1184,7 @@ class MotionGroup(AbstractRobot):
                     state_stream_rate
                 ),
                 joint_trajectory=joint_trajectory,
+                prismatic_joints=await self._prismatic_joints(),
             )
         )
 
