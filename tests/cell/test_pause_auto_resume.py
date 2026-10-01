@@ -118,7 +118,8 @@ def test_without_client_support_the_controller_strategy_fails_loudly():
 
 @pytest.mark.skipif(not supports_auto_resume(), reason="client predates PauseOnIO.auto_resume")
 async def test_only_the_controller_strategy_sends_auto_resume():
-    for policy, expected in ((CONTROLLER, True), (ExecutionPolicy(), None)):
+    # With the field in the client, the SDK strategy sends its default (false).
+    for policy, expected in ((CONTROLLER, True), (ExecutionPolicy(), False)):
         states, signal, requests = _FedStates(), _Signal(), []
         signal.set(pausing=False)
         run = asyncio.create_task(
