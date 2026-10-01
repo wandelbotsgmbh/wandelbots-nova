@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "1195e96024c7",
+  "strategy": "manual-commit",
+  "branch": "lab/pause-auto-resume",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "uv.lock"
+  ],
+  "sessions": [
+    {
+      "metadata": "/11/95e96024c7/0/metadata.json",
+      "transcript": "/11/95e96024c7/0/full.jsonl",
+      "compact_transcript": "/11/95e96024c7/0/transcript.jsonl",
+      "content_hash": "/11/95e96024c7/0/content_hash.txt",
+      "prompt": "/11/95e96024c7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 27710,
+    "cache_creation_tokens": 4542868,
+    "cache_read_tokens": 99788723,
+    "output_tokens": 376832,
+    "api_call_count": 246,
+    "subagent_tokens": {
+      "input_tokens": 12,
+      "cache_creation_tokens": 5114,
+      "cache_read_tokens": 562891,
+      "output_tokens": 6793,
+      "api_call_count": 6
+    }
+  }
+}
