@@ -835,6 +835,7 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/05/24/3f04b1479b3de75dbef18ea0f4fcbb08abe686bd7a415a4961c846a7c1b9/dracopy-2.1.0.tar.gz", hash = "sha256:677fb7008468b856fdbbb431470ce102f00b82d5991b2a5c618734fbb908d635", size = 83316307 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/b6/a117b80665b3778a9b226b8f3f4c240675f2396d77dc2b7809b550345756/dracopy-2.1.0-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:a832efa44facb2491fdd3d4661cd1f56315049b4c1c946bd67f081361326312e", size = 2803218 },
+    { url = "https://files.pythonhosted.org/packages/30/e2/412b1fd3ce63921d12b078990e3de50deddcd0e5d3a2b2e38d0a3ff9af0c/dracopy-2.1.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:de077cfc00a79c264678eac8efed016ea1293db04fa1ceb87c14897d0ef233ad", size = 2596547 },
     { url = "https://files.pythonhosted.org/packages/ee/5a/0a2639dae41fb55efdc23518a1cb396dba60403d8297e5c86dec2e8fb5c0/dracopy-2.1.0-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9ea8fce3eb50f4ec0caf874ce6cf8b3b39caaad81774a95b0497b45454af053d", size = 4852768 },
     { url = "https://files.pythonhosted.org/packages/74/e4/94692557bb5b5137b7b6b4d1cdcd5f5dae2184a3b57104012dc09fe26629/dracopy-2.1.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8246b37b35427a9c16cd1cfbc867b4f8a54c1885ad82769500823b96a1b1460d", size = 5002191 },
     { url = "https://files.pythonhosted.org/packages/16/c2/2732875a523e2ab4f07700f688c57a31d6d63389a0693775c994204eed3f/dracopy-2.1.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:6be5d3ba6e6730d4a9d52fd35eb13cddee0d501d3fa252e3187df6dbf4fde3b1", size = 5936009 },
@@ -842,6 +843,7 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/11/9e/837adccc02eac7b9918e3d3c41bad414e94aef6882964d5e5bf314534ad4/dracopy-2.1.0-cp312-cp312-win32.whl", hash = "sha256:56a0af5c7f424261e975d8c7c7981e1625b61d4e035799ea5c7534067d915f69", size = 4549532 },
     { url = "https://files.pythonhosted.org/packages/11/e9/2ec1285b0ea4b7954b5ec25a9db2244d0f3dd52044dadb43f37ee8a93351/dracopy-2.1.0-cp312-cp312-win_amd64.whl", hash = "sha256:7591724143a51b464ed701e2f1cfc90dd0fed58cd20e59082be33194b96ce6e3", size = 5231518 },
     { url = "https://files.pythonhosted.org/packages/b3/fb/bf25ab9236223d26923e00c297298f9ff0afdfbc7204e328754b992d1673/dracopy-2.1.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:18c8552ba89be40785111224a8e8ca24a02f2bfda24c8af6cb21aaf968620670", size = 2803453 },
+    { url = "https://files.pythonhosted.org/packages/89/89/a4414ab2c852f147a1aed6015a2150aedeea848ba04820711e5c9d0b6659/dracopy-2.1.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:646fa4a12d30c72c68346520860bc8f950b68c8ad0a9a905bf399d1f953ba90a", size = 2596303 },
     { url = "https://files.pythonhosted.org/packages/c0/c1/a4b0523231eb413c3672df664dc24f866ff624562e1882919e2924d2a96b/dracopy-2.1.0-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f935dc95243bfb769db4eeb50a92ce4721dcd4eaf7ad26096e64de5c4e3e2a6e", size = 4849887 },
     { url = "https://files.pythonhosted.org/packages/78/41/920c08196c738311bbfdeb1b4df67b386f29ffd4904e0b156608531ddd08/dracopy-2.1.0-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9168a4af637d6330a680b896b41a5553fbcc7809975752189d966d29c21b5d12", size = 4996956 },
     { url = "https://files.pythonhosted.org/packages/2f/c1/ad987629c0441bfc814e9bf36f765af6f1331fa611e2b4bba58c48fabcdd/dracopy-2.1.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:8e0fbc5b8b35b527cedc3e794248d78eb96ef69fd10654499ed1a3caeec6acb7", size = 5936825 },
@@ -849,6 +851,7 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/3c/b273b76ee531557bb10d456888e34584963a808d596b81bc402b6f30893a/dracopy-2.1.0-cp313-cp313-win32.whl", hash = "sha256:b1f50a27b7be6486e77caaf53868432856e32ae744f8be95d948362558fd14af", size = 4548974 },
     { url = "https://files.pythonhosted.org/packages/c5/49/d0c97d898922f3ff0b61331c7d5ccc2c70de18b2ee8e157a3eeb6ff295ab/dracopy-2.1.0-cp313-cp313-win_amd64.whl", hash = "sha256:c83236c3dc2724f4a6996dd2c6629a63d04f0648a0a622286ed3a0b030087f6c", size = 5231627 },
     { url = "https://files.pythonhosted.org/packages/93/23/ed1fb87d08e0f59fede3f288fb21d7dfcdf33a5caaf4f9e3fdcbff42031a/dracopy-2.1.0-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:7d8cb8e457735050296303436ec2d14aa43cfcb491f62b17f1b67da8d4d4ae98", size = 2804642 },
+    { url = "https://files.pythonhosted.org/packages/e5/0d/8a38b27343f82306b2f2d767889b85e28c9c4c3ebe25325b43fecb308e0c/dracopy-2.1.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:7fbcd574c3a9abc1f5297ffaa37618492adfa0203dd9f638e52e5ef8df26e5b1", size = 2597653 },
     { url = "https://files.pythonhosted.org/packages/b4/79/3a8403b8a37f88982b98f57b34dcb8e6498f5df7bf969b4d6512974631d7/dracopy-2.1.0-cp314-cp314-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e162f4cb37bbe4bc269553afae56147e655a7c7c758dda1815c324169ea2b4a0", size = 4850420 },
     { url = "https://files.pythonhosted.org/packages/49/fe/c00c78f7661b1e08a0e01533ab1eeac64d0229a1c7d51e45d4fcd5b64137/dracopy-2.1.0-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e6433a5a4ecc336cbffaa5733915bd2b4b3ac6956cef55175811a04310bf02fa", size = 4988859 },
     { url = "https://files.pythonhosted.org/packages/4f/28/b6d1aef0010c234a540922e8040af24eed4025b63bddde0128b649c8d85c/dracopy-2.1.0-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:c5efd816d498ec87574d146ee847c6ed2e80672dcaca655caff337e3f8c93b01", size = 5932747 },
@@ -856,6 +859,7 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/77/38/d50fdb44488b29ebaad340b574fc6046dd4fcc552485a9a661569a752e2a/dracopy-2.1.0-cp314-cp314-win32.whl", hash = "sha256:7b73f7154823a248f79da06c616c128ca522f9db02bd3238e13dfd73644904f6", size = 4610097 },
     { url = "https://files.pythonhosted.org/packages/df/48/6ce2c31783a47819048bbde7397d01f968c07359ef119431f88e35d9d12d/dracopy-2.1.0-cp314-cp314-win_amd64.whl", hash = "sha256:92333e63114fa6e51f43aa1434d8a7a86964cb7cc1eef614410de82074e49cde", size = 5309600 },
     { url = "https://files.pythonhosted.org/packages/7f/90/1aa694bd14ee5dbee24b6cc1ecf89bb7522e8a12c1683ec7925bd3ab7b27/dracopy-2.1.0-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:4904b0d8f12d9f0ac08f4dfa23fc7bd644749e2dc46acfca632b0308c3ef1bc8", size = 2811078 },
+    { url = "https://files.pythonhosted.org/packages/c9/39/59d1601f8cb98cef3a4e42e3292ab923fdbd585e3ee21ff8b43ae17be646/dracopy-2.1.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:95692b5a9ada49bf51e7a595b7ca1b7a0eee91eb009d09938f48e52da13707fb", size = 2604609 },
     { url = "https://files.pythonhosted.org/packages/1d/fe/8a419e44a62f36c4ad4459614e2df0ce137be4307fc8ceceb647133f0a21/dracopy-2.1.0-cp314-cp314t-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:53b504b36ad4bfd51276190b08d0ba07e6bc778524f5ed6b66fe9143c9c82e1f", size = 4852615 },
     { url = "https://files.pythonhosted.org/packages/52/b1/e89ffbd89e0cb4c2a836c7df2e8ad6eae58de189d9869bebd5546d74a170/dracopy-2.1.0-cp314-cp314t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9e28290aeb7f7ba02d71dd6d16a28fee579b0b5c3c59c5d045a47ae626753a71", size = 4951184 },
     { url = "https://files.pythonhosted.org/packages/cf/8d/f701d4df8ba637c19499f6dabc0b71aee3f3cc6efe5f1ca8f07f3e61ded7/dracopy-2.1.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:119e7240e1f6b06a4ac07b6132ced8b6d3adafebffaf415bafe85c7e1b735fb6", size = 5924828 },
@@ -863,6 +867,7 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/5a/bc35b324cf7966431bfe063168315e2d2f42c6ad484d89a6ca09e9ef1d79/dracopy-2.1.0-cp314-cp314t-win32.whl", hash = "sha256:df4e9b44c3c98de60fbedc30515c5e8a5af45e9836e3393afbba62e111b00acd", size = 4618765 },
     { url = "https://files.pythonhosted.org/packages/a3/a7/f1c879e7ce37592ce6e168d561eeed7f8d385b5424089b9b720b375cb3f8/dracopy-2.1.0-cp314-cp314t-win_amd64.whl", hash = "sha256:bc4fd54bfe14ad0ea8dbbdd10f78c83c159f08f1593786b3637a97c8570b76ad", size = 5317561 },
     { url = "https://files.pythonhosted.org/packages/03/05/bc5fd7b046ec0c088f8d9d3e86e4c3e04ca6dd213faf528ba752d2668f34/dracopy-2.1.0-cp315-cp315-macosx_10_15_x86_64.whl", hash = "sha256:b8536bec7fd32db3400ee127ad33bae15176f70dfb99ce948052f2c1b24bf1d1", size = 2804063 },
+    { url = "https://files.pythonhosted.org/packages/07/ec/347f7171e8dc9f11728820471f1f8e65fd2de6f647eab7ea2b533ee73bfb/dracopy-2.1.0-cp315-cp315-macosx_11_0_arm64.whl", hash = "sha256:14b1d4bc1517335f8ac11f5b5e58aa5e71ca9acc6fa23b3d6bcc23dbafa1e78c", size = 2596670 },
     { url = "https://files.pythonhosted.org/packages/b2/4e/e9dce06ee8481fb45cd038b724dde4ae385a5af86b70c0709c3fc3dba3ac/dracopy-2.1.0-cp315-cp315-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ae67b1f9a5a7fc90a74f6ab37cdfc28a5d7e7fe42fb4c1100e4b6398b0b2c489", size = 4847236 },
     { url = "https://files.pythonhosted.org/packages/97/81/aaaafc8a4d8fef4b2b2426cafe8f99ee9839b8a49260b276ccaff218a865/dracopy-2.1.0-cp315-cp315-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8ceb951a7e671c246dceeb2e31bc5dba5ffeae52490fc75520d02597967c933f", size = 5001195 },
     { url = "https://files.pythonhosted.org/packages/35/9e/2f209da52c8cf6f941e8038f53cdbabada5b901562ca0ff24353273baff4/dracopy-2.1.0-cp315-cp315-musllinux_1_2_aarch64.whl", hash = "sha256:589b55ff4723d37c4c725b1538975322af8c7b4127670b724171b2bef05c29d7", size = 5932005 },
@@ -3467,11 +3472,11 @@ wheels = [
 
 [[package]]
 name = "urllib3"
-version = "2.7.0"
+version = "2.8.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602 }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/05/b17359e1cefb4f909b5e40b1b90a496d987258916dbbf88e842c729f510e/urllib3-2.8.0.tar.gz", hash = "sha256:63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63", size = 458972 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087 },
+    { url = "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl", hash = "sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3", size = 135717 },
 ]
 
 [[package]]
@@ -3511,7 +3516,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-nova"
-version = "6.0.0"
+version = "6.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiostream" },
