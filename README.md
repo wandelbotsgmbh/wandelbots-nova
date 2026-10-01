@@ -30,6 +30,7 @@ The SDK will help you to build your own apps and services using Python on top of
     - [Example gallery](#example-gallery)
   - [NOVAx](#novax)
     - [Registering programs](#registering-programs)
+  - [Review your app with a coding agent](#review-your-app-with-a-coding-agent)
   - [Development](#development)
     - [Formatting](#formatting)
     - [Yaml linting](#yaml-linting)
@@ -219,6 +220,24 @@ from nova import Novax
 
 Novax(programs_dir="programs").serve(port=3000)  # scan ./programs and serve
 ```
+
+## Review your app with a coding agent
+
+The SDK ships an agent skill, `nova-app-review`. Coding agents use it to review a robot application
+for safety, motion, PLC/IO, async runtime, performance, lifecycle and NOVA SDK usage. The agent
+reports each finding in chat with a severity, file/line evidence, a concrete fix and a rule reference.
+
+Install the skill into your project:
+
+```bash
+uv run nova-agent-skills install                  # .agents/skills/ (Cursor, VS Code)
+uv run nova-agent-skills install --agent claude   # .claude/skills/ (Claude Code)
+uv run nova-agent-skills install --agent all      # .agents, .claude, .cursor, .github
+```
+
+Then ask your agent, e.g. _"Review this NOVA app for safety and performance issues"_. Re-run
+`nova-agent-skills install` after upgrading the SDK so the skill matches the installed version.
+The review is defence in depth and does not replace certified safety functions.
 
 ## Development
 
