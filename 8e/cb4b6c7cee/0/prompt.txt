@@ -1266,3 +1266,134 @@ Some notes on this setup:
 `/Users/q/0code/service-manager/robots/universalrobots/test/component/README.md:17` and `/Users/q/0code/service-manager/robots/abb/README.md:205` contain a hardcoded GitLab token, in the form `poetry config http-basic.wabo __token__ &lt;token&gt;`. I haven't repeated the value here. It should be revoked and removed.</result>
 <usage><subagent_tokens>49818</subagent_tokens><tool_uses>18</tool_uses><duration_ms>123475</duration_ms></usage>
 </task-notification>
+
+---
+
+<task-notification>
+<task-id>a774fe053dfe2e1d2</task-id>
+<tool-use-id>toolu_011ppGshigY8uqbPuUxfEfb4</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/5c37e167-9c8a-491f-a11d-382f474e7820/tasks/a774fe053dfe2e1d2.output</output-file>
+<status>completed</status>
+<summary>Agent "Analyze wbr auto-resume implementation" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I found two separate auto_resume branches. Git can't show the MR number, so which one is !2384 is my inference: almost certainly `origin/feat/add-auto-resume-flag-to-pause-on-io-message`, the newer one built on current develop. None of this work is on the default branch.
+
+## 1. Branches and commits
+
+The default branch is `origin/develop` (`origin/HEAD`, tip e7cd2471d, 2026-10-01). None of the listed commits are on develop.
+
+| Branch | Tip | Compared with develop | Commits |
+|---|---|---|---|
+| **`origin/feat/add-auto-resume-flag-to-pause-on-io-message`** (likely MR 2384) | **4a2b851fe** (2026-09-25, Torsten Knüppel) | 9 ahead, 29 behind, merge-base 95212e405 | a82d9b407 Add auto resume flag to proto spec → 6a1d60bba Implement autoresume feature → a39a983c6 Fix api spec → 69737a2ab Various fixes → a5a5c0d8f Update api spec → c537c3a35 More fixes to logic → 1e77b4ffd Revert some unnecessary changes → 209b7e2aa Cosmetic change → 4a2b851fe Fix types |
+| `origin/feature/RB-3809_Add-auto-resume-flag-to-pause-on-io` (older attempt, July) | eba568e62 | 4 ahead, 291 behind | 7fd0e71aa, ae360fe58, 6dd943495, eba568e62. Built on the old executor design (`Action{WAITING_FOR_IO, STOPPED_ON_IO}`, `requestedTarget_`/`activeTarget_`). |
+| `origin/feat/io-dnf-and-offset-on-3.274` and `origin/feature/io-dnf-and-offset` | — | — | a9ac93d61 and 6746a31e1 (March, Ronny Kaiser) add auto-resume. 7d9701032 (only on `-on-3.274`) removes it again: reviewers disliked self-restarting motion and the lifecycle was inconsistent. Re-adding it is tracked as **RB-3908**. |
+
+The MR branch's diff (18 files, +159/−82) also contains two unrelated changes:
+- The base-class order in `FanucMotionGroup.h` is swapped.
+- `motion.pb.go` was regenerated with protoc v3.21.12 instead of v5.27.0.
+
+## 2. Runtime semantics on the MR branch (4a2b851fe)
+
+**API surface**
+- `api/proto/wb/rae/v2/types/io.proto:114-132` adds a new message `PauseOnIOWithAutoResume` with fields io, comparator, io_origin and `bool auto_resume = 4` ("resumed once the condition is not satisfied anymore").
+- `motion.proto:268` points trajectory field 10 at it. The field numbers are unchanged, so this is wire-compatible. Jogging and action chunks keep plain `PauseOnIO`, which the resolver maps to `autoResume = false` (`RAEv2_Resolver.cpp:119-124`).
+- The new overload is at `RAEv2_Resolver.cpp:126-131` and is called from `MotionToRAEResolver.cpp:153-155`.
+- OpenAPI: `nova-public.openapi.yaml:12909-12912` (`auto_resume`, default false).
+- Gateway: `custom_marshaler.go:587-617`; a nil value becomes false.
+- Internal struct: `IOAction.h:28` (`bool autoResume`).
+
+**Where and how often the condition is checked**
+- `MotionPointGenerator::step` (`MotionPointGenerator.cpp:27`) calls `TrajectoryExecutor::step` on every controller cycle (`getControllerStepRate()`).
+- That calls `ioActionPlayer_.getIOActions()` (`TrajectoryExecutor.cpp:115`).
+- Controller IO values come from the IO subscription:
+  - Real-time if possible; otherwise a non-real-time poll every 200 ms (0 ms on a virtual robot).
+  - The poll interval is set at `ControllerDevice.cpp:312-314`; the fallback is chosen in `IOSubscriptor.cpp:36-40`.
+- Bus IOs are read from the `BusIOClient` NATS cache (`BusIOClient.cpp:146`, `182-199`).
+- There is no debounce or hysteresis anywhere.
+
+**How a pause is executed**
+- Whenever `pauseReason_ != NONE`, `player_-&gt;pause()` is called every cycle (`TrajectoryExecutor.cpp:143-145`). The player library is external and not in this repo; the OpenAPI text says "stop gracefully on path".
+- The reported state (`TrajectoryExecutor.cpp:31-32`) is `RUNNING` while the player is still moving, which includes the braking phase. Once stopped, it follows the pause reason.
+- Mapping to the API (`RAEv2_ProtoRobotState.cpp:173-185`):
+
+| Internal reason | API state kind |
+|---|---|
+| `WAITING_FOR_IO` | `WAIT_FOR_IO` |
+| `STOPPED_ON_IO` | `PAUSED_ON_IO` |
+| `USER_PAUSED` / `STOPPED` | `PAUSED_BY_USER` |
+| `NONE` (not running) | `END_OF_TRAJECTORY` |
+
+**Core logic: `IOActionPlayer.cpp:97-130`**
+```cpp
+if (ioActions.pauseOnIO-&gt;autoResume) {
+   if (!pauseOnIOSet.has_value() || pauseOnIOSet.value()) { ... result = Action::PAUSE; }
+   else { pauseOnIOMessageLogged_ = false; }
+} else {
+   if (pauseOnIOSet.has_value() &amp;&amp; pauseOnIOSet.value()) { ... ioActions.startOnIO.reset(); ioActions.pauseOnIO.reset(); result = Action::STOP; }
+}
+```
+
+**Executor switch: `TrajectoryExecutor.cpp:117-131`**
+- `NONE` + `motionTarget_` set + `pauseReason_ != NONE` → set `NONE` and call `player_-&gt;setTarget(*motionTarget_)`. This is the resume.
+- `PAUSE` → `WAITING_FOR_IO`.
+- `STOP` → `STOPPED_ON_IO` and `motionTarget_.reset()`.
+
+**With `auto_resume=true`**
+- **Resume trigger:** the first cycle in which the IO value is known and the condition is false. The original target or direction is re-applied.
+- **State while paused:** `RUNNING` during braking, then **`WAIT_FOR_IO`**, not `PAUSED_ON_IO`. That is the same state used for start_on_io waiting, so clients cannot tell the two apart. After resume it reports `RUNNING`.
+- **Re-armed:** yes. `pauseOnIO` is never reset in auto mode, so it applies for the whole lifetime of that StartMovementRequest.
+- **Kept across the pause:** the target or direction (`motionTarget_`), the remaining `set_outputs` (`ioRequest_` is untouched; outputs fire when the location is crossed), and playback speed.
+- **At end of trajectory:** `motionTarget_` is never cleared there. If the condition turns true after the end, the state flips from `END_OF_TRAJECTORY` to `WAIT_FOR_IO`, and back when it clears.
+- **Condition already true at start:** `setTarget` sets `WAITING_FOR_IO` (`TrajectoryExecutor.cpp:108-111`) and `PAUSE` holds it there. The robot never starts until the condition goes false, then runs. The same happens while the value is still unknown.
+
+**Interactions**
+- **New StartMovementRequest while auto-paused:**
+  - The IO request and subscription are replaced (`setIORequest`, which also resets the missing-value timer; `IOActionPlayer.cpp:56-59`).
+  - Without a pause_on_io in the new request, it resumes immediately.
+  - With one whose condition still holds, it stays in `WAIT_FOR_IO`.
+- **PauseMovementRequest, while moving or auto-paused** (`TrajectoryExecutor.cpp:103-107`): sets `USER_PAUSED`, `ioActionPlayer_.setIORequest({})` and `motionTarget_.reset()`.
+  - A user pause always wins; auto-resume cannot override it, and the robot stays paused until a new start.
+  - The pause_on_io request and any pending set_outputs are discarded, including outputs that lie within the braking distance.
+  - This changes develop's behaviour: develop only accepted a user pause when `pauseReason_ == NONE`, so a pause sent while in an IO wait was ignored.
+- **PlaybackSpeed:** independent. It is applied every cycle unless the executor is stopped (`TrajectoryExecutor.cpp:133-135`), so it works while paused and carries over after resume.
+
+**When the IO cannot be read**
+- **Controller IO missing from the subscription:**
+  - The value is treated as unknown (`IOActionPlayer.cpp:29-35`).
+  - With auto_resume: the robot pauses (`WAIT_FOR_IO`), even if it was moving.
+  - Without auto_resume: it keeps moving.
+  - Either way, after more than `IO_VALUE_TIMEOUT` = 500 ms (`IOActionPlayer.h:32`), `requireIOValueInTime` throws `InternalErrorException` (`IOActionPlayer.cpp:136-155`).
+  - `ControllerRunnable::run` catches it (`ControllerRunnable.cpp:298-307`), notifies the error listeners, switches to MONITOR and calls `stopPositionControl()`.
+  - The `ErrorHandler` writes an `Error` to the websocket (`executeTrajectory.cpp:56-58`), and the connection is uninitialized on the next request (`executeTrajectory.cpp:262-266`).
+- **Bus IO:**
+  - At start, `hasIOs` throws `NotFoundException` if the IO is missing (`executeTrajectory.cpp:207-211`, `BusIOClient.cpp:154-179`). That exits the whole executeTrajectory loop (`executeTrajectory.cpp:295-304`).
+  - During execution, `getIOValue` throws `NotFoundException` immediately, with no 500 ms grace (`BusIOClient.cpp:189-198`), giving the same controller error path as above.
+  - If the bus-IO service disappears, the cache (`ioValues_`) is never cleared and staleness is never checked. The last known value keeps being used, so the robot stays paused or keeps running indefinitely.
+
+**With `auto_resume=false` (default)**
+- The pause is terminal: `STOP` → `PAUSED_ON_IO`, and `pauseOnIO` plus any pending startOnIO are discarded until a new StartMovementRequest arrives.
+- A new start while the condition still holds is not ignored outright. The new request re-arms pause_on_io and stops again as soon as the value is known.
+- But during the first cycles after the new subscription, the value is unknown and counts as "not set". So the robot can begin moving briefly before it stops again (comment at `IOActionPlayer.cpp:116-117`).
+
+**Known limitations and races (no TODOs in the MR code)**
+- **No hysteresis:** a chattering IO causes repeated brake/start cycles.
+- **Shared missing-value timer:** start_on_io and pause_on_io share `ioValueMissingSince_`. If one IO is known and the other is not, the known one resets the timer every cycle, so the 500 ms timeout never fires and the wait can last forever (`IOActionPlayer.cpp:63-73`).
+- **Logging:** `pauseOnIOMessageLogged_` is not reset by `setIORequest`, so the pause message may not be logged again after a new start.
+- **API inconsistencies:** OpenAPI marks `io_origin` as required but the proto does not. The new message's description is the same as the old `PauseOnIO` one.
+- **Earlier objection still applies:** the review concern recorded in 7d9701032 (motion restarting without a command) is still open; it is tracked as RB-3908.
+
+## 3. Tests
+
+- **MR branch:** there are no auto_resume tests.
+  - `wbr/tests/robot/TestIOActionPlayer.cpp` only gains `.autoResume = false` (line 67) and is switched to the new `Action` enum. Its 4 existing tests check that start_on_io waits (`PAUSE`) while the value is unknown, starts (`NONE`) when it arrives, and throws if no value arrives at all; and that a non-auto pause tolerates value gaps and returns `STOP` once the value is true.
+  - `TestRAEv2_MotionService*.cpp/.h` only change the type to `PauseOnIOWithAutoResume` (ExecuteTrajectory.cpp:800, BusIO.cpp:91, MotionService.h:206, MotionService.cpp:548).
+- **Older RB-3809 branch:** `clients/openapi-gateway/test/motion_compatibility_test.go:418-563` only checks that `auto_resume=true` survives the gateway JSON→proto conversion.
+- **io-dnf branches:** a9ac93d61 added an auto-resume E2E demo, which 7d9701032 later reverted. Neither is on the MR branch.
+
+## 4. Docs
+
+There is no README or design doc on any of these branches; a grep of `*.md/*.rst/*.adoc` finds nothing. The only written descriptions are:
+- the proto and OpenAPI field descriptions cited above;
+- the commit messages of 7d9701032 and 6746a31e1. The MR branch's own commit messages have no body text.</result>
+<usage><subagent_tokens>103657</subagent_tokens><tool_uses>28</tool_uses><duration_ms>230465</duration_ms></usage>
+</task-notification>
