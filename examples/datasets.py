@@ -5,14 +5,15 @@ command routines) and use its poses inside a motion program.
 This demonstrates:
 - Loading a dataset from a local JSON file
 - Loading a dataset from the remote NOVA API (a fixed revision)
-- Reading poses from the loaded dataset and using them directly as motion targets
+- The difference between `.pose` and `.as_world()` on a dataset pose
 
-Note: This example only uses dataset poses that are defined in the world
-frame (frame=None), e.g. "home", "pick" and "place".
-Poses that are defined relative to a dataset frame (e.g.
-"table-corner" or "fixture-slot-a") first need to be resolved to world
-coordinates via `nova.datasets.transform_to_world` - that is outside the scope
-of this minimal example.
+A dataset pose carries the pose exactly as it was taught, relative to its `frame`
+(`frame=None` means it is already a world pose). A dataset frame is in turn expressed
+relative to its `reference_frame`, so frames form a chain up to `world`. `as_world()`
+walks that chain locally - no API calls - and raises if a frame along the way is missing.
+
+For what you can do with the resolved poses - offsets, inverses, re-expressing a pose in
+another frame - see examples/pose_transformations.py.
 """
 
 import asyncio
@@ -22,7 +23,34 @@ from nova import api, run_program
 from nova import datasets as ds
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
-from nova.types import MotionSettings
+from nova.types import MotionSettings, Pose
+
+APPROACH = Pose((0, 0, -100, 0, 0, 0))
+
+
+def _show_pose_vs_world_pose(dataset: ds.Dataset):
+    """`.pose` is the pose as taught, `.as_world()` resolves its frame chain."""
+    # "pick" is taught in world (frame=None), so both are the same pose.
+    pick = dataset.poses["pick"]
+    assert pick.frame is None
+    assert pick.pose == pick.as_world()
+
+    # "fixture-slot-a" is taught in the "fixture" frame, which itself sits on "table".
+    # `.pose` is the raw taught value and is NOT a world pose - moving there would send
+    # the robot to the wrong place. `.as_world()` composes table <- fixture <- slot.
+    slot = dataset.poses["fixture-slot-a"]
+    assert slot.frame == "fixture"
+    assert slot.pose != slot.as_world()
+
+    # A frame resolves to the transform that takes a pose from that frame into world.
+    fixture = dataset.frames["fixture"]
+
+    print(f"pick.pose            = {pick.pose}")
+    print(f"pick.as_world()      = {pick.as_world()}")
+    print(f"slot.pose            = {slot.pose}  (in frame '{slot.frame}')")
+    print(f"slot.as_world()      = {slot.as_world()}")
+    print(f"fixture.pose         = {fixture.pose}  (in frame '{fixture.reference_frame}')")
+    print(f"fixture.as_world()   = {fixture.as_world()}")
 
 
 async def _move_through_dataset_poses(ctx: nova.ProgramContext, count: int):
@@ -40,22 +68,18 @@ async def _move_through_dataset_poses(ctx: nova.ProgramContext, count: int):
     home_joints = await motion_group.joints()
     tcp_names = await motion_group.tcp_names()
     tcp = tcp_names[0]
-    pick_pose = ctx.dataset.poses["pick"]
 
-    # Translating a pose between world and local frame
-    pick_pose_fixture = (
-        await ds.transform_to_frame(ctx.nova, ctx.dataset.id, [pick_pose.pose], frame="fixture")
-    )[0]
-    pick_pose_world = (
-        await ds.transform_to_world(ctx.nova, ctx.dataset.id, [pick_pose_fixture], frame="fixture")
-    )[0]
+    _show_pose_vs_world_pose(ctx.dataset)
 
-    place_pose = ctx.dataset.poses["place"]
+    # Always move to `as_world()` - a motion target is a world pose.
+    pick_pose = ctx.dataset.poses["pick"].as_world()
+    place_pose = ctx.dataset.poses["place"].as_world()
 
     # Actions define the sequence of movements and other actions to be executed by the robot
     actions = [
         joint_ptp(home_joints, settings=normal),  # Move to home position
-        cartesian_ptp(pick_pose_world, settings=normal),  # Move to the dataset's "pick" pose
+        cartesian_ptp(pick_pose @ APPROACH, settings=normal),  # Approach above "pick"
+        cartesian_ptp(pick_pose, settings=normal),  # Move to the dataset's "pick" pose
         cartesian_ptp(place_pose, settings=normal),  # Move to the dataset's "place" pose
         joint_ptp(home_joints, settings=normal),  # Return to home
     ]

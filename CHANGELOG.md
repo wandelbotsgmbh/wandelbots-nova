@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## [6.1.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v6.0.0...v6.1.0) (2026-09-25)
+
+
+### Features
+
+* **datasets:** resolve dataset frames locally via as_world() ([#529](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/529)) ([a6e9941](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a6e9941b9d9541c0e460bd86ae9f972396b3a889))
+
+
+### Bug Fixes
+
+* updated example app to v6.0.0 ([#526](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/526)) ([1db359a](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/1db359add7a571ed0407768dc32a076b9c3443a0))
+
 ## [6.0.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v5.11.0...v6.0.0) (2026-09-21)
 
 

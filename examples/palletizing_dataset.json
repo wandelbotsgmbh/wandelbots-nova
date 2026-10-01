@@ -1,0 +1,48 @@
+{
+  "dataset": "palletizing",
+  "name": "Palletizing",
+  "revision": 1,
+  "description": "Pick station and a pallet frame for the palletizing example",
+  "created_at": "2026-09-23T08:00:00.000000Z",
+  "updated_at": "2026-09-23T08:00:00.000000Z",
+  "poses": [
+    {
+      "pose": {
+        "position": [1020, 0, 1500],
+        "orientation": [3.1416, 0, 0]
+      },
+      "kinematic_configuration": null,
+      "dataset_pose": "pick",
+      "dataset": "palletizing",
+      "name": "pick",
+      "description": "Infeed position the robot picks parts from",
+      "created_at": "2026-09-23T08:00:00.000000Z",
+      "updated_at": "2026-09-23T08:00:00.000000Z",
+      "metadata": null,
+      "frame": null
+    }
+  ],
+  "command_routines": [],
+  "frames": [
+    {
+      "frame": "table",
+      "name": "Table",
+      "reference_frame": null,
+      "pose": {
+        "position": [100, -200, 800],
+        "orientation": [0, 0, 0]
+      },
+      "dataset": "palletizing"
+    },
+    {
+      "frame": "pallet",
+      "name": "Pallet",
+      "reference_frame": "table",
+      "pose": {
+        "position": [800, 200, 0],
+        "orientation": [0, 0, 0]
+      },
+      "dataset": "palletizing"
+    }
+  ]
+}

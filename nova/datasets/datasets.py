@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import warnings
 from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -74,6 +75,15 @@ async def read(path: PathLike, *, base_dir: Path | None) -> Dataset:
     return Dataset.from_api_model(response)
 
 
+def _warn_deprecated(name: str, replacement: str) -> None:
+    warnings.warn(
+        f"nova.datasets.{name}() is deprecated and will be removed in a future version. "
+        f"Frames are now resolved locally - use {replacement} instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
 async def transform_to_frame(
     nova: Nova,
     dataset: api.models.DatasetId,
@@ -86,6 +96,10 @@ async def transform_to_frame(
     """Localize a list of poses that are expressed in the `world` frame into the
     given dataset frame.
 
+    .. deprecated::
+        Frames resolve locally now, without a round trip. Use
+        ``~dataset.frames[frame].as_world() @ world_pose`` instead.
+
     Args:
         nova: A NOVA instance.
         poses: The poses to localize, expressed in the `world` frame.
@@ -93,6 +107,7 @@ async def transform_to_frame(
         dataset: The dataset that owns the frame.
         revision: The dataset revision to use. Defaults to the latest revision.
     """
+    _warn_deprecated("transform_to_frame", "~dataset.frames[frame].as_world() @ world_pose")
 
     if not len(poses):
         logger.warning("No dataset poses provided, returning empty list.")
@@ -115,7 +130,15 @@ async def transform_to_world(
     revision: int | None = None,
     cell: str = CELL_NAME,
 ) -> list[api.models.Pose]:
-    """Resolve poses from the dataset frame to world coordinates."""
+    """Resolve poses from the dataset frame to world coordinates.
+
+    .. deprecated::
+        Frames resolve locally now, without a round trip. Use
+        ``DatasetPose.as_world()``, or ``dataset.frames[frame].as_world() @ local_pose``
+        for a pose that is not part of the dataset.
+    """
+    _warn_deprecated("transform_to_world", "DatasetPose.as_world()")
+
     if not len(poses):
         logger.warning("No dataset poses provided, returning empty list.")
         return []
