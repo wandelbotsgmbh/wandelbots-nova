@@ -101,3 +101,16 @@ behavior changes.** Update it when you touch any of:
 
 Verify example code and commands against the current SDK before editing, and keep them consistent
 with `examples/your-nova-app/`.
+
+## Bundled agent skills (`nova/agent_skills/`)
+
+The SDK ships the customer-facing `nova-app-review` skill in the wheel. Customers install it with
+`nova-agent-skills install` (`nova/helper_scripts/install_agent_skills.py`). It is **not** a skill
+for working on this repository.
+
+- When you change a public motion, IO, TCP, payload, program or exception API, update
+  `nova/agent_skills/nova-app-review/references/nova-sdk-mapping.md` (symbols, gaps, snippets).
+- When an SDK gap listed there is fixed (e.g. plan/execute timeouts, `MotionGroup.stop()`), replace
+  the workaround with the SDK feature.
+- Keep `scripts/scan.py` stdlib-only and Python 3.9 compatible; it runs in customer environments.
+  Cover new scanner checks in `tests/nova/agent_skills/test_scan.py`.

@@ -71,6 +71,7 @@ create-motion-group-models = "nova.helper_scripts.create_motion_group_models:upd
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
 dev-wheel = "nova.helper_scripts.trigger_dev_wheel:main"
+nova-agent-skills = "nova.helper_scripts.install_agent_skills:main"
 
 [dependency-groups]
 dev = [
