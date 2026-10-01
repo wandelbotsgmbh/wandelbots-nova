@@ -83,6 +83,20 @@ Each knob can be overridden: `NOVA_STANDSTILL_MOTION_VOTES`, `NOVA_STANDSTILL_RE
 `NOVA_RESUME_DETECT_MS`, `NOVA_RESUME_WINDOW_MS`. The unit tests run under `strict`
 (`tests/conftest.py`), which pins that the policy changes nothing for the old rules.
 
+## Resume strategy for IO pauses
+
+`ExecutionPolicy.pause_resume` (env `NOVA_PAUSE_RESUME`) chooses who resumes a `pause_on_io`
+pause (ADR 002 addendum):
+
+| Strategy | Wire | Frames while held | Resume |
+|---|---|---|---|
+| `sdk` (default) | `PauseOnIO` as given | `PAUSED_ON_IO` | SDK sends a start on the release edge; ignored starts supervised (`resume_detect_s`/`resume_window_s`) |
+| `controller` | `PauseOnIO.auto_resume=True` | `RUNNING` while braking, then `WAIT_FOR_IO` | controller, by itself; `missed_auto_resume=fail` (default) raises if it does not, `start` sends one SDK start |
+
+Under `controller` the machine treats `WAIT_FOR_IO` after motion as `paused` with reason IO
+(`arm(auto_resume=True)`); `WAIT_FOR_IO` while still `armed` is the condition already holding at
+the start. The cursor keeps a movement operation pending through such a hold.
+
 ## States
 
 | State | Description |

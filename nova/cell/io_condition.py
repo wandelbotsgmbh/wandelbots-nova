@@ -119,6 +119,29 @@ def motion_enable_signal(
     )
 
 
+def supports_auto_resume() -> bool:
+    """Whether the installed API client knows ``PauseOnIO.auto_resume`` (robotics/wbr!2384)."""
+    return "auto_resume" in api.models.PauseOnIO.model_fields
+
+
+def with_auto_resume(pause_on_io: api.models.PauseOnIO) -> api.models.PauseOnIO:
+    """A copy of ``pause_on_io`` the controller resumes by itself once it no longer holds.
+
+    The caller's condition object is left untouched.
+
+    Raises:
+        RuntimeError: The installed API client cannot send ``auto_resume``; sending
+            the condition without it would silently fall back to a terminal pause.
+    """
+    if not supports_auto_resume():
+        raise RuntimeError(
+            "PauseResumeStrategy.CONTROLLER needs PauseOnIO.auto_resume, which the installed "
+            "wandelbots-api-client does not have; use a client built with it or the 'sdk' "
+            "strategy (NOVA_PAUSE_RESUME=sdk)"
+        )
+    return pause_on_io.model_copy(update={"auto_resume": True})
+
+
 def _bus_io_state_connected(payload: bytes) -> bool:
     """Whether a ``bus-ios.status`` message reports a connected bus."""
     try:

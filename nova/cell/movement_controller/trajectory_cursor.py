@@ -61,6 +61,7 @@ from blinker import signal
 from nova import api
 from nova.actions.base import Action
 from nova.actions.container import CombinedActions
+from nova.cell.io_condition import with_auto_resume
 from nova.cell.movement_controller.policy import ExecutionPolicy, default_execution_policy
 from nova.cell.movement_controller.trajectory_state_machine import (
     PauseReason,
@@ -730,13 +731,19 @@ class TrajectoryCursor:
         ``set_outputs`` is always taken from the cursor: the server treats every
         ``StartMovementRequest`` as an override of the attached overlay, so it must
         travel with each one.
+
+        Under :attr:`PauseResumeStrategy.CONTROLLER` the pause condition is sent with
+        ``auto_resume``: the controller then resumes by itself once it clears.
         """
+        pause_condition = pause_on_io if pause_on_io is not None else self._pause_on_io
+        if pause_condition is not None and self._policy.controller_resumes:
+            pause_condition = with_auto_resume(pause_condition)
         return Intent(
             operation_type=operation_type,
             target_location=target_location,
             playback_speed_in_percent=playback_speed_in_percent,
             start_on_io=start_on_io if start_on_io is not None else self._start_on_io,
-            pause_on_io=pause_on_io if pause_on_io is not None else self._pause_on_io,
+            pause_on_io=pause_condition,
             set_outputs=self._set_outputs,
         )
 
@@ -1459,6 +1466,7 @@ class TrajectoryCursor:
                                 pending_op.operation_type, pending_op.target_location
                             ),
                             pause_on_io_armed=self._pause_on_io_armed(pending_op),
+                            auto_resume=self._auto_resume_armed(pending_op),
                         )
                     if machine.is_pending and self._operation_handler.is_commanded():
                         machine.arm()
@@ -1555,6 +1563,15 @@ class TrajectoryCursor:
                         )
                         self._complete_operation(error=error)
                         raise error
+                    if (
+                        paused_on_io
+                        and self._auto_resume_armed(current_op)
+                        and current_op.operation_type is not OperationType.PAUSE
+                    ):
+                        # The controller resumes this pause by itself
+                        # (PauseResumeStrategy.CONTROLLER): the movement is held, not
+                        # over. Its operation completes when the trajectory does.
+                        continue
                     self._complete_operation(paused_on_io=paused_on_io)
                     # An IO pause is `paused`, never `ended`: the cursor stays
                     # attached so the movement can be resumed with another start.
@@ -1606,6 +1623,30 @@ class TrajectoryCursor:
         if operation.operation_type is OperationType.PAUSE:
             return None
         return self._movement_pause_on_io
+
+    def _auto_resume_armed(self, operation: Operation) -> bool:
+        """Whether the operation's start lets the controller resume an IO pause by itself."""
+        return bool(self._pause_on_io_armed(operation)) and self._policy.controller_resumes
+
+    @property
+    def held_on_io(self) -> bool:
+        """The controller holds the robot on the ``pause_on_io`` condition right now.
+
+        An IO pause (``PAUSED_ON_IO``, or ``WAIT_FOR_IO`` after motion under
+        ``auto_resume``), or — under ``auto_resume`` — a start the controller has not
+        begun because the condition already held.
+        """
+        machine = self._state_machine
+        if machine.is_paused_on_io:
+            return True
+        current_op = self._operation_handler.current_operation
+        return (
+            machine.is_armed
+            and current_op is not None
+            and not current_op.future.done()
+            and self._auto_resume_armed(current_op)
+            and isinstance(machine.last_trajectory_state, api.models.TrajectoryWaitForIO)
+        )
 
     def _resume_not_taken_up(self) -> bool:
         """A resume out of an IO pause shows nothing but the old pause for too long."""

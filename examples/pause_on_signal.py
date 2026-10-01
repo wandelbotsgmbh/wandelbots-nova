@@ -21,6 +21,11 @@ This example runs two virtual robots (KUKA + UR), each enabled by its own contro
 output, and drives the signals from a second task while they move: first only the KUKA
 loses its enable, then both, then both get it back and finish.
 
+Who resumes the pause is selectable (ADR 002 addendum): by default the SDK sends the resume
+start once the signal is back; ``--resume=controller`` (or ``NOVA_PAUSE_RESUME=controller``)
+lets the robot controller resume by itself (``PauseOnIO.auto_resume``, needs a controller and
+API client built with robotics/wbr!2384).
+
 Prerequisites:
 - A NOVA instance (see .env / NOVA_API, NOVA_ACCESS_TOKEN)
 - Run this example script:
@@ -106,4 +111,24 @@ async def main(ctx: nova.ProgramContext):
 
 
 if __name__ == "__main__":
+    import argparse
+    from dataclasses import replace
+
+    from nova.cell.movement_controller.policy import (
+        PauseResumeStrategy,
+        default_execution_policy,
+        set_default_execution_policy,
+    )
+
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument(
+        "--resume",
+        choices=[strategy.value for strategy in PauseResumeStrategy],
+        help="who resumes an IO pause (default: NOVA_PAUSE_RESUME or 'sdk')",
+    )
+    args = parser.parse_args()
+    if args.resume is not None:
+        set_default_execution_policy(
+            replace(default_execution_policy(), pause_resume=PauseResumeStrategy(args.resume))
+        )
     run_program(main)

@@ -320,6 +320,8 @@ class TrajectoryExecutionMachine(StateMachine):
         self._estimator = StandstillEstimator(standstill, prismatic_joints)
         self.last_reading: StandstillReading | None = None
         self.location: float | None = None
+        # The execute.details.state of the last trajectory frame.
+        self.last_trajectory_state: TrajectoryState | None = None
         self.pause_reason: PauseReason | None = None
         self.failure_reason: str | None = None
         self.failed_frame: api.models.MotionGroupState | None = None
@@ -334,6 +336,8 @@ class TrajectoryExecutionMachine(StateMachine):
         self._stale_terminal: tuple[type, float] | None = None
         # Execution context of the operation being prepared / armed.
         self._pause_on_io_armed: bool | None = None
+        # The start carries PauseOnIO.auto_resume: WAIT_FOR_IO after motion is an IO pause.
+        self._auto_resume = False
         self._accept_repeated_terminal = False
         # The rest state a start left (PauseReason.IO for a resume out of an IO pause).
         self.resuming_from: PauseReason | str | None = None
@@ -357,6 +361,7 @@ class TrajectoryExecutionMachine(StateMachine):
         pause_requested: bool = False,
         accept_repeated_terminal: bool = False,
         pause_on_io_armed: bool | None = None,
+        auto_resume: bool = False,
     ) -> None:
         """Record the operation the owner is about to command (event ``queue_start``).
 
@@ -368,6 +373,7 @@ class TrajectoryExecutionMachine(StateMachine):
         self._pause_requested = self._pause_requested or pause_requested
         self._accept_repeated_terminal = accept_repeated_terminal
         self._pause_on_io_armed = pause_on_io_armed
+        self._auto_resume = auto_resume
 
     def arm(
         self,
@@ -375,6 +381,7 @@ class TrajectoryExecutionMachine(StateMachine):
         pause_requested: bool = False,
         accept_repeated_terminal: bool = False,
         pause_on_io_armed: bool | None = None,
+        auto_resume: bool | None = None,
     ) -> None:
         """Begin or resume execution (sends ``start``).
 
@@ -401,6 +408,11 @@ class TrajectoryExecutionMachine(StateMachine):
             pause_on_io_armed: Whether the start carries a ``pause_on_io``
                 condition. ``False`` makes a ``PAUSED_ON_IO`` frame a contradiction;
                 ``None`` (unknown) accepts it.
+            auto_resume: The ``pause_on_io`` condition carries ``auto_resume``
+                (robotics/wbr!2384): the controller holds the robot in ``WAIT_FOR_IO``
+                instead of ``PAUSED_ON_IO`` and resumes by itself once the condition
+                clears. ``WAIT_FOR_IO`` after motion is then an IO pause. ``None``
+                keeps what :meth:`expect_start` recorded.
         """
         from_pending = self.current_state == self.pending
         pending_pause = self._pause_requested if from_pending else False
@@ -410,7 +422,10 @@ class TrajectoryExecutionMachine(StateMachine):
             accept_repeated_terminal = accept_repeated_terminal or self._accept_repeated_terminal
             if pause_on_io_armed is None:
                 pause_on_io_armed = self._pause_on_io_armed
+            if auto_resume is None:
+                auto_resume = self._auto_resume
         self._pause_on_io_armed = pause_on_io_armed
+        self._auto_resume = bool(auto_resume)
         self._accept_repeated_terminal = False
         if accept_repeated_terminal:
             self._stale_terminal = None
@@ -485,6 +500,7 @@ class TrajectoryExecutionMachine(StateMachine):
             location = state.execute.details.location
             self.location = location
             trajectory_state = state.execute.details.state
+            self.last_trajectory_state = trajectory_state
 
             terminal = (
                 (type(trajectory_state), location)
@@ -663,6 +679,7 @@ class TrajectoryExecutionMachine(StateMachine):
             self._pause_requested = False
             self._accept_repeated_terminal = False
             self._pause_on_io_armed = None
+            self._auto_resume = False
 
     def on_start(self, source: State) -> None:
         # Level-based publishing (robotics/wbr!2262) keeps re-publishing the
@@ -792,6 +809,17 @@ class TrajectoryExecutionMachine(StateMachine):
                 # a new start arrives. Treating it as ``ended`` made execute()
                 # return mid-trajectory (docs/architecture/adr/002-io-pause-is-resumable.md).
                 self.pause_reason = self._reason_of(trajectory_state)
+                if standstill:
+                    self._pause_immediately()
+                else:
+                    self._begin_pausing()
+
+            case api.models.TrajectoryWaitForIO() if self._auto_resume:
+                # With PauseOnIO.auto_resume the controller reports its IO pause as
+                # WAIT_FOR_IO (after a RUNNING braking phase), not PAUSED_ON_IO, and
+                # resumes by itself — robotics/wbr!2384. After motion this is the
+                # IO pause, not a start gate.
+                self.pause_reason = PauseReason.IO
                 if standstill:
                     self._pause_immediately()
                 else:

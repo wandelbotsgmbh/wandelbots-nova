@@ -3,7 +3,7 @@ import contextlib
 import logging
 
 from nova.actions import MovementControllerContext
-from nova.cell.movement_controller.policy import ExecutionPolicy
+from nova.cell.movement_controller.policy import ExecutionPolicy, MissedAutoResume
 from nova.cell.movement_controller.trajectory_cursor import OperationResult, TrajectoryCursor
 from nova.exceptions import ResumeNotTakenUp
 from nova.types import MovementControllerFunction
@@ -41,6 +41,15 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     starts moving long after the operator released the signal would surprise
     them. After that the adapter waits for a new edge (the signal pausing and
     releasing again). In strict mode the ignored resume fails the execution.
+
+    Under :attr:`PauseResumeStrategy.CONTROLLER` every start carries
+    ``PauseOnIO.auto_resume`` and the controller resumes by itself: the adapter
+    sends no resume start and only supervises. If the signal was released but the
+    controller still holds the robot after ``resume_detect_s``, it fails the
+    execution (:attr:`MissedAutoResume.FAIL`, the default — an upstream defect
+    stays visible) or sends one start itself within ``resume_window_s``
+    (:attr:`MissedAutoResume.START`). The bus-loss guard works the same under
+    both strategies; its pause is a user pause, which only a start resumes.
 
     Must be called with a running event loop: the cursor schedules its
     background initialization at construction time.
@@ -119,6 +128,9 @@ class _OneShotDriver:
         self._guard_pause: asyncio.Future[OperationResult] | None = None
         self._signal_lost = False
         self._resumed = asyncio.Event()
+        # A start the auto-resume supervisor sent in the controller's place; the
+        # drive loop follows it instead of the operation it superseded.
+        self._replacement: asyncio.Future[OperationResult] | None = None
         self.error: BaseException | None = None
 
     async def run(self) -> None:
@@ -127,20 +139,34 @@ class _OneShotDriver:
             if self._wait_for_signal_loss is not None and self._wait_for_release is not None
             else None
         )
+        supervisor = (
+            asyncio.create_task(
+                self._supervise_auto_resume(), name="move_forward-auto-resume-supervisor"
+            )
+            if self._policy.controller_resumes
+            and self._wait_for_release is not None
+            and self._wait_for_hold is not None
+            and self._policy.resume_detect_s is not None
+            else None
+        )
         try:
             await self._drive()
         except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001 — surfaced to the protocol caller
-            logger.error(f"move_forward cannot continue the execution: {error!r}")
-            self.error = error
-            self._cursor.detach()
+            self._fail(error)
         finally:
-            for task in (guard, self._hold_watch):
+            for task in (guard, supervisor, self._hold_watch):
                 if task is not None:
                     task.cancel()
                     with contextlib.suppress(asyncio.CancelledError, Exception):
                         await task
+
+    def _fail(self, error: BaseException) -> None:
+        logger.error(f"move_forward cannot continue the execution: {error!r}")
+        if self.error is None:
+            self.error = error
+        self._cursor.detach()
 
     async def _drive(self) -> None:
         operation = self._operation
@@ -154,6 +180,10 @@ class _OneShotDriver:
                 task = asyncio.current_task()
                 if task is not None and task.cancelling():
                     raise  # our own cancellation (detach / teardown)
+                if self._replacement is not None:
+                    # The auto-resume supervisor started the movement again.
+                    operation, self._replacement = self._replacement, None
+                    continue
                 if self._guard_pause is None:
                     return  # the operation was cancelled from outside — nothing to drive
                 # The guard superseded the movement with a pause: let it settle,
@@ -261,6 +291,53 @@ class _OneShotDriver:
         assert self._hold_watch is not None
         await asyncio.shield(self._hold_watch)
         return False
+
+    async def _supervise_auto_resume(self) -> None:
+        """Under ``auto_resume``: notice a release the controller does not follow.
+
+        Push only: the hold and release edges come from the signal watcher, the
+        verdict from the cursor's view of the state stream after ``resume_detect_s``.
+        """
+        assert self._wait_for_hold is not None and self._wait_for_release is not None
+        assert self._policy.resume_detect_s is not None
+        try:
+            while True:
+                await self._wait_for_hold()
+                await self._wait_for_release()
+                edge_at = self._clock()
+                self._watch_for_hold()
+                await asyncio.sleep(self._policy.resume_detect_s)
+                if not self._cursor.held_on_io or self._condition_held_again():
+                    continue  # resumed as promised, or the signal is pausing again
+                location = self._cursor.current_location
+                if self._policy.effective_missed_auto_resume is MissedAutoResume.FAIL:
+                    raise ResumeNotTakenUp(
+                        f"the controller did not resume the IO pause at location {location} "
+                        f"within {self._policy.resume_detect_s:.1f} s although the pause signal "
+                        "allows motion (PauseOnIO.auto_resume); set "
+                        "NOVA_MISSED_AUTO_RESUME=start to resume from the SDK instead"
+                    )
+                elapsed = self._clock() - edge_at
+                if elapsed >= self._policy.resume_window_s:
+                    logger.warning(
+                        "IO pause at location %s not resumed by the controller within %.1f s "
+                        "of the signal release — set the signal to pause and release it again "
+                        "to continue",
+                        location,
+                        self._policy.resume_window_s,
+                    )
+                    continue
+                logger.warning(
+                    "IO pause at location %s not resumed by the controller although the signal "
+                    "allows motion — sending the start from the SDK (%.0f ms after the release)",
+                    location,
+                    elapsed * 1000,
+                )
+                self._replacement = self._cursor.forward()
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 — surfaced to the protocol caller
+            self._fail(error)
 
     async def _guard(self) -> None:
         """Pause the robot ourselves whenever the signal's source disappears."""

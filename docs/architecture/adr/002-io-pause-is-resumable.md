@@ -90,3 +90,35 @@ Profinet bus-IO service (full method and numbers in the local research note
   start the SDK sends while running is a no-op retarget.
 - Program-wide pausing (between motions) is a follow-up; `IOConditionWatcher` is the primitive
   to gate non-motion steps with the same signal.
+
+## Addendum (2026-10-01): selectable resume strategy
+
+robotics/wbr!2384 with service-manager !3081 adds `PauseOnIO.auto_resume`: the controller
+resumes an IO pause by itself once the condition clears. Neither MR is merged and no instance
+runs it yet, and the earlier objection to self-restarting motion (RB-3908) is still open. So
+the resume is a selectable strategy on `ExecutionPolicy`, and the default stays the SDK resume
+until the two have been compared on a cell:
+
+- `pause_resume=sdk` (default, `NOVA_PAUSE_RESUME=sdk`): this ADR as written. The SDK watches
+  the signal and sends the resume start, with supervision of ignored starts.
+- `pause_resume=controller`: every start carries `auto_resume=True`. Per wbr!2384 the
+  controller then brakes on path while still reporting `RUNNING`, holds the robot as
+  `WAIT_FOR_IO` (not `PAUSED_ON_IO`), and resumes with `RUNNING`. The machine reads
+  `WAIT_FOR_IO` after motion as an IO pause (`paused`, reason IO), and the existing
+  `paused(IO) ∧ RUNNING → executing` edge follows the resume. The cursor keeps the movement
+  operation pending through the hold, and the one-shot driver sends no start.
+- `missed_auto_resume` decides what happens when the signal was released but the controller
+  still holds the robot after `resume_detect_s`:
+  - `fail` (default, and always under `strict`) raises `ResumeNotTakenUp`, so an upstream
+    defect stays visible.
+  - `start` sends one start from the SDK within `resume_window_s` (the same rules as an
+    ignored resume), so a production cell keeps moving.
+
+Kept under both strategies: SDK-side signal observation (push only) and the bus-loss guard.
+Per wbr!2384 the controller keeps using the last cached bus value when the bus-IO service goes
+away. The guard's pause is a user pause, which drops the controller's `pause_on_io` and pending
+`set_outputs` and is resumed only by a start. Synchronized multi-group sessions always use
+`sdk`: one group resuming alone would break the shared time parameterization.
+
+`controller` needs an API client that has the field; without one it fails at the start instead
+of silently sending a terminal pause.

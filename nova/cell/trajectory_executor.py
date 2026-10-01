@@ -34,11 +34,12 @@ directly with an :class:`IOSyncDriver`. Then::
 """
 
 import asyncio
-import inspect
 import functools
+import inspect
+import logging
 from collections.abc import AsyncGenerator, Mapping, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from nova import api
 from nova.actions.base import Action
@@ -46,10 +47,17 @@ from nova.actions.container import located_writes, write_to_set_io
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
 from nova.cell.motion_group import MotionGroup
+from nova.cell.movement_controller.policy import (
+    ExecutionPolicy,
+    PauseResumeStrategy,
+    default_execution_policy,
+)
 from nova.cell.movement_controller.trajectory_cursor import TrajectoryCursor
 from nova.cell.multi_trajectory_cursor import MultiTrajectoryCursor, SyncDriver
 from nova.cell.robot_cell import ActionsLike, _normalize_actions
 from nova.cell.session_monitor import SessionMonitor
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -213,6 +221,7 @@ class TrajectoryExecutor:
         overlay = self._build_io_overlay(action_list)
 
         cursors: dict[str, TrajectoryCursor] = {}
+        policy = _session_policy(groups)
         for name, joint_trajectory in per_group.items():
             motion_group = self._motion_groups[name]
             group_args = (groups or {}).get(name) or GroupArgs()
@@ -235,6 +244,7 @@ class TrajectoryExecutor:
                 set_outputs=overlay[name] or None,
                 pause_on_io=group_args.pause_on_io,
                 prismatic_joints=await _prismatic_joints(motion_group),
+                policy=policy,
             )
 
         cursor = MultiTrajectoryCursor(cursors, self._sync, actions=action_list)
@@ -350,3 +360,21 @@ class TrajectoryExecutor:
             controller=motion_group._controller_id,
             client_request_generator=cursor.cntrl,  # ty: ignore[invalid-argument-type]
         )
+
+
+def _session_policy(groups: Mapping[str, GroupArgs] | None) -> ExecutionPolicy:
+    """The process-wide policy, with IO pauses always resumed by the caller.
+
+    A synchronized session shares one time parameterization across its groups. A
+    controller that resumed one group's IO pause by itself (``auto_resume``) would
+    move it alone and break that, so sessions keep ``PauseResumeStrategy.SDK``.
+    """
+    policy = default_execution_policy()
+    if policy.controller_resumes:
+        if any(args.pause_on_io is not None for args in (groups or {}).values()):
+            logger.warning(
+                "PauseResumeStrategy.CONTROLLER is not supported in synchronized sessions; "
+                "IO pauses of the session's groups are resumed by the caller"
+            )
+        policy = replace(policy, pause_resume=PauseResumeStrategy.SDK)
+    return policy

@@ -11,6 +11,13 @@ state stream does something the SDK did not expect:
   flag (see :mod:`nova.cell.movement_controller.standstill`).
 * ``resume_detect_s`` / ``resume_window_s`` — supervision of a resume out of an IO
   pause that the controller does not take up (see ``move_forward``).
+* ``pause_resume`` — who resumes a ``pause_on_io`` pause once the condition clears:
+  the SDK with a new start (``sdk``, default), or the controller itself
+  (``controller``: every start carries ``PauseOnIO.auto_resume``; robotics/wbr!2384).
+* ``missed_auto_resume`` — under ``controller``: what the SDK does when the signal
+  was released but the controller still holds the robot after ``resume_detect_s``.
+  ``fail`` (default) raises, so an upstream defect is visible; ``start`` sends one
+  start of its own inside ``resume_window_s`` to keep the cell moving.
 
 Presets: :meth:`ExecutionPolicy.robust` (the default), :meth:`ExecutionPolicy.strict`
 (raw flag, contradictions fail — the rules before this policy existed, plus failing
@@ -28,6 +35,8 @@ The process-wide default comes from the environment and can be tuned per knob::
     NOVA_STANDSTILL_PRISMATIC_JOINT_EPSILON=0.1    (mm, prismatic joints; "none" disables)
     NOVA_RESUME_DETECT_MS=500                      ("none" disables)
     NOVA_RESUME_WINDOW_MS=1000
+    NOVA_PAUSE_RESUME=sdk|controller               (default: sdk)
+    NOVA_MISSED_AUTO_RESUME=fail|start             (default: fail; strict forces fail)
 """
 
 from __future__ import annotations
@@ -35,10 +44,30 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field, replace
+from enum import StrEnum
+from typing import TypeVar
 
 from nova.cell.movement_controller.standstill import StandstillConfig
 
 logger = logging.getLogger(__name__)
+
+
+class PauseResumeStrategy(StrEnum):
+    """Who resumes a ``pause_on_io`` pause once its condition no longer holds."""
+
+    SDK = "sdk"
+    """The SDK watches the signal and sends a new start (the controller never resumes)."""
+    CONTROLLER = "controller"
+    """The controller resumes by itself (``PauseOnIO.auto_resume``, robotics/wbr!2384)."""
+
+
+class MissedAutoResume(StrEnum):
+    """Under :attr:`PauseResumeStrategy.CONTROLLER`: the signal was released, nothing moved."""
+
+    FAIL = "fail"
+    """Fail the execution with :class:`~nova.exceptions.ResumeNotTakenUp`."""
+    START = "start"
+    """Warn and send one start from the SDK (within ``resume_window_s`` of the release)."""
 
 
 @dataclass(frozen=True)
@@ -54,12 +83,27 @@ class ExecutionPolicy:
         resume_window_s: Measured from the release edge of the pause signal: no
             start is sent later than this. A resume the controller has not taken up
             by then needs a new edge (signal back to pausing, then released again).
+        pause_resume: Who resumes an IO pause (see :class:`PauseResumeStrategy`).
+        missed_auto_resume: What to do when the controller does not resume an IO
+            pause it was asked to resume by itself (see :class:`MissedAutoResume`).
+            Read through :attr:`effective_missed_auto_resume`: ``strict`` always fails.
     """
 
     strict: bool = False
     standstill: StandstillConfig = field(default_factory=StandstillConfig.robust)
     resume_detect_s: float | None = 0.5
     resume_window_s: float = 1.0
+    pause_resume: PauseResumeStrategy = PauseResumeStrategy.SDK
+    missed_auto_resume: MissedAutoResume = MissedAutoResume.FAIL
+
+    @property
+    def controller_resumes(self) -> bool:
+        """Whether IO pauses are resumed by the controller (``auto_resume``)."""
+        return self.pause_resume is PauseResumeStrategy.CONTROLLER
+
+    @property
+    def effective_missed_auto_resume(self) -> MissedAutoResume:
+        return MissedAutoResume.FAIL if self.strict else self.missed_auto_resume
 
     @classmethod
     def robust(cls) -> ExecutionPolicy:
@@ -114,7 +158,28 @@ class ExecutionPolicy:
             )
         if "NOVA_RESUME_WINDOW_MS" in env:
             policy = replace(policy, resume_window_s=float(env["NOVA_RESUME_WINDOW_MS"]) / 1000.0)
+        if "NOVA_PAUSE_RESUME" in env:
+            policy = replace(
+                policy, pause_resume=_choice(PauseResumeStrategy, "NOVA_PAUSE_RESUME", env)
+            )
+        if "NOVA_MISSED_AUTO_RESUME" in env:
+            policy = replace(
+                policy, missed_auto_resume=_choice(MissedAutoResume, "NOVA_MISSED_AUTO_RESUME", env)
+            )
         return policy
+
+
+_E = TypeVar("_E", bound=StrEnum)
+
+
+def _choice(enum: type[_E], name: str, env) -> _E:
+    value = env[name].strip().lower()
+    try:
+        return enum(value)
+    except ValueError:
+        raise ValueError(
+            f"{name}={value!r}: expected one of {', '.join(member.value for member in enum)}"
+        ) from None
 
 
 def _optional_float(value: str) -> float | None:
