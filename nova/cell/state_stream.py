@@ -336,7 +336,7 @@ class SharedMotionGroupStateStream:
                     break
         except StopAsyncIteration:
             if generation.reconnect_attempts > 0:
-                logger.error(
+                logger.warning(
                     f"Motion group state stream '{self._name}' could not be restored after "
                     f"{generation.reconnect_attempts} reconnect attempt(s) "
                     f"({generation.drop_detail}); ending {len(generation.queues)} subscriber(s)"
@@ -355,7 +355,7 @@ class SharedMotionGroupStateStream:
         loop = asyncio.get_running_loop()
         opened_at = loop.time()
         states = 0
-        logger.debug(
+        logger.warning(
             f"Opening motion group state stream '{self._name}' (rate={generation.rate_msecs})"
         )
         stream = self._open_stream(generation.rate_msecs)
