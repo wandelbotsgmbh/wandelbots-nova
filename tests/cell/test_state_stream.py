@@ -66,6 +66,16 @@ def shared(upstream):
     return SharedMotionGroupStateStream(open_stream=upstream.open, name="cell/ctrl/0@ctrl")
 
 
+@pytest.fixture
+def no_reconnect(monkeypatch):
+    monkeypatch.setattr("nova.cell.state_stream._RECONNECT_DELAYS_SECS", ())
+
+
+@pytest.fixture
+def fast_reconnect(monkeypatch):
+    monkeypatch.setattr("nova.cell.state_stream._RECONNECT_DELAYS_SECS", (0.0, 0.0))
+
+
 async def next_state(subscription, timeout: float = 1.0):
     return await asyncio.wait_for(subscription.__anext__(), timeout)
 
@@ -150,7 +160,7 @@ async def test_upstream_error_reaches_every_subscriber(shared, upstream):
             await next_state(subscription)
 
 
-async def test_graceful_upstream_end_ends_subscriptions(shared, upstream):
+async def test_graceful_upstream_end_ends_subscriptions(no_reconnect, shared, upstream):
     subscription = shared.subscribe()
     upstream.feed("s1")
     upstream.end()
@@ -158,7 +168,7 @@ async def test_graceful_upstream_end_ends_subscriptions(shared, upstream):
     assert received == ["s1"]
 
 
-async def test_subscribe_after_upstream_end_opens_a_fresh_socket(shared, upstream):
+async def test_subscribe_after_upstream_end_opens_a_fresh_socket(no_reconnect, shared, upstream):
     first = shared.subscribe()
     upstream.end()
     assert [state async for state in first] == []
@@ -168,6 +178,60 @@ async def test_subscribe_after_upstream_end_opens_a_fresh_socket(shared, upstrea
     assert await next_state(second) == "s2"
     assert len(upstream.open_rates) == 2
     await second.aclose()
+
+
+async def test_upstream_end_with_subscribers_reopens_the_socket(
+    fast_reconnect, shared, upstream, caplog
+):
+    """The generated client ends the stream silently when the connection drops:
+    subscribers keep receiving from a reopened socket."""
+    subscription = shared.subscribe(20)
+    upstream.feed("s1")
+    upstream.end()
+    upstream.feed("s2")
+
+    with caplog.at_level(logging.WARNING, logger="nova.cell.state_stream"):
+        assert await next_state(subscription) == "s1"
+        assert await next_state(subscription) == "s2"
+    assert upstream.open_rates == [20, 20]
+    assert any(
+        "ended unexpectedly (closed after" in m and "1 state(s)" in m for m in caplog.messages
+    )
+    assert any("reconnected after 1 attempt(s)" in m for m in caplog.messages)
+    await subscription.aclose()
+
+
+async def test_reconnect_budget_exhausted_ends_subscriptions(
+    fast_reconnect, shared, upstream, caplog
+):
+    subscription = shared.subscribe()
+    upstream.feed("s1")
+    for _ in range(3):
+        upstream.end()
+
+    with caplog.at_level(logging.WARNING, logger="nova.cell.state_stream"):
+        assert [state async for state in subscription] == ["s1"]
+    assert len(upstream.open_rates) == 3
+    assert any("could not be restored after 2 reconnect" in m for m in caplog.messages)
+
+
+async def test_failed_reopen_is_retried_then_reported(fast_reconnect, shared, upstream):
+    subscription = shared.subscribe()
+    upstream.end()
+    upstream.fail(OSError("connection refused"))
+    upstream.fail(OSError("connection refused again"))
+
+    with pytest.raises(OSError, match="again"):
+        await next_state(subscription)
+    assert len(upstream.open_rates) == 3
+
+
+async def test_errors_outside_a_reconnect_are_not_retried(fast_reconnect, shared, upstream):
+    subscription = shared.subscribe()
+    upstream.fail(ValueError("bad frame"))
+    with pytest.raises(ValueError, match="bad frame"):
+        await next_state(subscription)
+    assert len(upstream.open_rates) == 1
 
 
 async def test_socket_rate_is_fixed_by_the_first_subscriber(shared, upstream):
@@ -274,7 +338,7 @@ async def test_stream_aclose_ends_subscriptions_and_closes_the_socket(shared, up
         await next_state(subscription)
 
 
-async def test_subscribe_during_pump_teardown_gets_a_fresh_socket(upstream):
+async def test_subscribe_during_pump_teardown_gets_a_fresh_socket(no_reconnect, upstream):
     """A subscribe landing while the pump is closing the old websocket must not
     join the dying generation (it would end after zero states, with no reopen)."""
     close_started = asyncio.Event()
