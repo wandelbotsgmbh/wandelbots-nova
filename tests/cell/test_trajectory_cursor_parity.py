@@ -367,6 +367,29 @@ class TestStopWinsOverPendingIntent:
             future.result()
         cursor._initialize_task.cancel()
 
+    async def test_state_stream_failure_is_named_in_the_movement_error(self):
+        stream_error = RuntimeError("controller disconnected")
+
+        async def failing_states() -> AsyncIterator[api.models.MotionGroupState]:
+            yield _state(False, _execute(0.5))
+            raise stream_error
+
+        cursor = TrajectoryCursor(
+            motion_id="traj-1",
+            motion_group_state_stream=failing_states(),
+            joint_trajectory=_trajectory(3),
+            actions=_actions(3),
+            emit_motion_events=False,
+        )
+        future = cursor.forward()
+        with pytest.raises(RuntimeError):
+            await cursor._motion_group_state_monitor(ready_event=asyncio.Event())
+
+        with pytest.raises(ErrorDuringMovement, match="controller disconnected") as exc_info:
+            future.result()
+        assert exc_info.value.__cause__ is stream_error
+        cursor._initialize_task.cancel()
+
 
 class TestFirstDispatchGate:
     """An intent queued before ``cntrl`` starts must reach the wire first.

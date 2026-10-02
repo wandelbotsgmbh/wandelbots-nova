@@ -62,6 +62,21 @@ class ErrorDuringMovement(Exception):
         return self._message
 
 
+class MotionGroupStateStreamClosed(Exception):
+    """Raised when the server or network ends a motion group state stream."""
+
+    def __init__(
+        self, stream: str, *, code: int | None, reason: str | None, detail: str | None = None
+    ):
+        self.stream = stream
+        self.code = code
+        self.reason = reason
+        message = f"Motion group state stream {stream} closed (code={code}, reason={reason!r})"
+        if detail:
+            message += f": {detail}"
+        super().__init__(message)
+
+
 class LoadPlanFailed(Exception):
     def __init__(self, error: api.models.AddTrajectoryError):
         self._error = error

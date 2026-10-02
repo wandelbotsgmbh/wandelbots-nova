@@ -6,6 +6,8 @@ the pump-owns-the-socket contract is asserted against.
 """
 
 import asyncio
+import contextlib
+import json
 import logging
 
 import pytest
@@ -410,3 +412,87 @@ async def test_gateway_close_drains_its_registry(monkeypatch):
     assert upstream.aclose_count == 1
     with pytest.raises(StopAsyncIteration):
         await next_state(subscription)
+
+
+def _state_json() -> str:
+    from datetime import datetime, timezone
+
+    from nova import api
+
+    state = api.models.MotionGroupState(
+        timestamp=datetime.now(timezone.utc),
+        sequence_number=1,
+        motion_group="0@ctrl",
+        controller="ctrl",
+        joint_position=[0.0] * 6,
+        joint_limit_reached=api.models.MotionGroupStateJointLimitReached(limit_reached=[False] * 6),
+        standstill=True,
+        description_revision=1,
+    )
+    return json.dumps({"result": state.model_dump(mode="json")})
+
+
+@contextlib.asynccontextmanager
+async def _state_server(handler):
+    from websockets.asyncio.server import serve
+
+    from nova.config import NovaConfig
+    from nova.core.gateway import ApiGateway
+
+    async with serve(handler, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        gateway = ApiGateway(NovaConfig(host=f"http://127.0.0.1:{port}"))
+        try:
+            yield gateway
+        finally:
+            await gateway.close()
+
+
+@pytest.mark.parametrize("code", [1000, 1011])
+async def test_server_close_raises_with_code_and_reason(code):
+    from nova.exceptions import MotionGroupStateStreamClosed
+
+    paths = []
+
+    async def handler(connection):
+        paths.append(connection.request.path)
+        await connection.send(_state_json())
+        await connection.close(code, "controller disconnected")
+
+    async with _state_server(handler) as gateway:
+        stream = gateway._open_motion_group_state_stream("cell", "ctrl", "0@ctrl", 20)
+        state = await anext(stream)
+        assert state.controller == "ctrl"
+        with pytest.raises(MotionGroupStateStreamClosed) as exc_info:
+            await anext(stream)
+
+    assert exc_info.value.code == code
+    assert exc_info.value.reason == "controller disconnected"
+    assert paths == [
+        "/api/v2/cells/cell/controllers/ctrl/motion-groups/0@ctrl/state-stream?response_rate=20"
+    ]
+
+
+async def test_consumer_close_ends_stream_silently():
+    async def handler(connection):
+        await connection.send(_state_json())
+        await connection.wait_closed()
+
+    async with _state_server(handler) as gateway:
+        stream = gateway._open_motion_group_state_stream("cell", "ctrl", "0@ctrl", None)
+        await anext(stream)
+        await stream.aclose()
+
+
+async def test_server_close_ends_shared_subscriptions_with_the_error():
+    from nova.exceptions import MotionGroupStateStreamClosed
+
+    async def handler(connection):
+        await connection.send(_state_json())
+        await connection.close(1011, "controller disconnected")
+
+    async with _state_server(handler) as gateway:
+        subscription = gateway.motion_group_state_stream("cell", "ctrl", "0@ctrl").subscribe()
+        await next_state(subscription)
+        with pytest.raises(MotionGroupStateStreamClosed, match="controller disconnected"):
+            await next_state(subscription)

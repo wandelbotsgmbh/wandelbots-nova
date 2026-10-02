@@ -1319,6 +1319,7 @@ class TrajectoryCursor:
             ready_event: Event to signal when the monitor is ready to receive states.
         """
         logger.debug("Starting state monitor for trajectory cursor")
+        stream_error: Exception | None = None
         try:
             async for motion_group_state in self._held_at_first_dispatch(
                 self._motion_group_state_stream
@@ -1387,15 +1388,19 @@ class TrajectoryCursor:
         except asyncio.CancelledError:
             logger.debug("TrajectoryCursor motion group state monitor was cancelled")
             raise
+        except Exception as e:
+            stream_error = e
+            raise
         finally:
             # Fail, rather than silently abandon, an operation that can no longer
             # complete because the state stream is gone.
             if self._operation_handler.in_progress():
-                self._complete_operation(
-                    error=ErrorDuringMovement(
-                        "Motion group state stream ended before the movement completed"
-                    )
-                )
+                message = "Motion group state stream ended before the movement completed"
+                if stream_error is not None:
+                    message += f": {stream_error}"
+                error = ErrorDuringMovement(message)
+                error.__cause__ = stream_error
+                self._complete_operation(error=error)
             # stop the request loop
             self.detach()
             # stop the cursor iterator (TODO is this the right place?)
