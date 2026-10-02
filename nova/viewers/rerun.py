@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import math
+import warnings
 from typing import TYPE_CHECKING, Sequence, cast
 
 if TYPE_CHECKING:
@@ -19,9 +21,36 @@ from .utils import downsample_trajectory, extract_collision_setups_from_actions
 logger = logging.getLogger(__name__)
 
 
+def _resolve_show_collision(
+    show_collision: bool | None, link_chain: bool | None, tool: bool | None
+) -> bool | None:
+    """Settle the collision setting, honouring its two deprecated aliases.
+
+    Passing either alias draws collision unless both are off, and warns;
+    ``show_collision`` wins over them.
+    """
+    if link_chain is None and tool is None:
+        return show_collision
+    warnings.warn(
+        "show_collision_link_chain and show_collision_tool are deprecated; "
+        "use show_collision, which covers both.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    if show_collision is not False:
+        # The caller set the new one; it wins over what it replaced.
+        return show_collision
+    return bool(link_chain or tool)
+
+
 class Rerun(Viewer):
     """
     Rerun viewer for 3D visualization of robot motion and program execution.
+
+    Calling ``Rerun()`` still registers the viewer globally for backward compatibility, but
+    implicit registration is deprecated and will be removed in the next major release. Programs
+    should pass ``viewer=Rerun`` or a lambda to
+    ``@nova.program`` so each execution owns a fresh viewer.
 
     This viewer automatically captures and visualizes:
     - Robot trajectories and motion paths
@@ -34,17 +63,15 @@ class Rerun(Viewer):
     Example usage:
         # 3D view only (default)
         @nova.program(
-            viewer=nova.viewers.Rerun(
+            viewer=lambda: nova.viewers.Rerun(
                 tcp_tools={"vacuum": "assets/vacuum_cup.stl"}
             )
         )
 
         # Full interface with detailed analysis panels
         @nova.program(
-            viewer=nova.viewers.Rerun(
+            viewer=lambda: nova.viewers.Rerun(
                 show_safety_zones=True,
-                show_collision_link_chain=True,
-                show_collision_tool=True,
                 show_safety_link_chain=True,
                 tcp_tools={
                     "vacuum": "assets/vacuum_cup.stl",
@@ -60,11 +87,13 @@ class Rerun(Viewer):
         spawn: bool = True,
         show_safety_zones: bool = True,
         show_collision_scenes: bool = True,
-        show_collision_link_chain: bool = False,
-        show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
+        show_collision: bool | None = False,
+        show_collision_link_chain: bool | None = None,
+        show_collision_tool: bool | None = None,
         tcp_tools: dict[str, str] | None = None,
         trajectory_sample_interval_ms: float = 50.0,
+        state_sample_interval_ms: float = 1000.0 / 30.0,
     ) -> None:
         """
         Initialize the Rerun viewer.
@@ -74,31 +103,58 @@ class Rerun(Viewer):
             spawn: Whether to spawn a rerun viewer process automatically
             show_safety_zones: Whether to visualize safety zones for motion groups
             show_collision_scenes: Whether to show collision scenes
-            show_collision_link_chain: Whether to show robot collision mesh geometry
-            show_collision_tool: Whether to show TCP tool collision geometry
             show_safety_link_chain: Whether to show robot safety geometry (from controller)
+            show_collision: Whether to draw the robot's collision geometry
+                see-through: the model's own hulls and any tool collider the cell
+                defines, all read from the URDF. Off by default -- it shows what
+                the planner sees rather than what the robot looks like. ``None``
+                draws it only for links whose model carries no visual mesh, so
+                such a link still shows something.
+            show_collision_link_chain: Deprecated alias of show_collision; link
+                and tool volumes are one setting, both from the same URDF
+            show_collision_tool: Deprecated alias of show_collision
             tcp_tools: Optional mapping of TCP IDs to tool asset file paths
             trajectory_sample_interval_ms: Target time interval in milliseconds between trajectory
                 samples for visualization. Lower values = higher fidelity, higher values = better
                 performance. Sampling is adaptive, keeping more points at high-curvature regions.
                 (default: 50.0ms, equivalent to 20 samples/second)
+            state_sample_interval_ms: Target interval in milliseconds between live robot-state
+                samples logged to Rerun. This applies to NOVA, policy, and jogging state
+                visualization. Lower values increase fidelity and logging overhead.
+                (default: ~33.3ms, equivalent to 30 samples/second)
         """
         self.application_id: str | None = application_id
         self.spawn: bool = spawn
         self.show_safety_zones: bool = show_safety_zones
         self.show_collision_scenes: bool = show_collision_scenes
-        self.show_collision_link_chain: bool = show_collision_link_chain
-        self.show_collision_tool: bool = show_collision_tool
         self.show_safety_link_chain: bool = show_safety_link_chain
+        self.show_collision: bool | None = _resolve_show_collision(
+            show_collision, show_collision_link_chain, show_collision_tool
+        )
+        # Deprecated aliases, readable as attributes: both report what
+        # show_collision settled on unless the caller set them itself.
+        self.show_collision_link_chain: bool = (
+            show_collision_link_chain
+            if show_collision_link_chain is not None
+            else self.show_collision is not False
+        )
+        self.show_collision_tool: bool = (
+            show_collision_tool
+            if show_collision_tool is not None
+            else self.show_collision is not False
+        )
+        if not math.isfinite(state_sample_interval_ms) or state_sample_interval_ms <= 0:
+            raise ValueError("state_sample_interval_ms must be a positive finite value")
+
         self.tcp_tools: dict[str, str] = tcp_tools or {}
         self.trajectory_sample_interval_ms: float = trajectory_sample_interval_ms
+        self.state_sample_interval_ms: float = state_sample_interval_ms
         self._bridge: NovaRerunBridgeProtocol | None = None
         self._logged_safety_zones: set[str] = (
             set()
         )  # Track motion groups that already have safety zones logged
         self._bridge_initialized: bool = False
 
-        # Register this viewer as active
         register_viewer(self)
 
     def configure(self, nova: Nova) -> None:
@@ -133,9 +189,10 @@ class Rerun(Viewer):
                 nova=nova,
                 spawn=self.spawn,
                 recording_id=self.application_id,
-                show_collision_link_chain=self.show_collision_link_chain,
-                show_collision_tool=self.show_collision_tool,
                 show_safety_link_chain=self.show_safety_link_chain,
+                show_collision=self.show_collision,
+                state_sample_interval_ms=self.state_sample_interval_ms,
+                tcp_tools=self.tcp_tools,
             )
             self._bridge = cast(NovaRerunBridgeProtocol, bridge)
         except ImportError:
@@ -148,6 +205,11 @@ class Rerun(Viewer):
             # Rerun is an optional integration. If initialization fails (e.g. no rerun
             # viewer/proxy available), skip it instead of failing program execution.
             logger.warning("Skipping Rerun viewer configuration due to error: %s", e)
+
+    @property
+    def is_configured(self) -> bool:
+        """Return whether this viewer has an active NOVA Rerun bridge."""
+        return self._bridge is not None
 
     async def setup_after_preconditions(self) -> None:
         """Setup async components after preconditions are met.
@@ -362,6 +424,7 @@ class Rerun(Viewer):
     def cleanup(self) -> None:
         """Clean up rerun integration after program execution."""
         self._bridge = None
+        self._bridge_initialized = False
         self._logged_safety_zones.clear()  # Reset safety zone tracking
 
     def _resolve_tool_asset(self, tcp: str | None) -> str | None:

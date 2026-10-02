@@ -29,8 +29,3 @@ uv sync
 ```bash
 uv sync
 ```
-
-5- Download robot models
-```bash
-uv run download-models
-```

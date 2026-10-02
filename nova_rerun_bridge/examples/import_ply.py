@@ -3,7 +3,7 @@ import rerun as rr
 import trimesh
 
 import nova
-from nova import Nova, api, run_program
+from nova import Nova, ProgramContext, api, run_program
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -25,7 +25,7 @@ from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
         cleanup_controllers=False,
     ),
 )
-async def test():
+async def test(ctx: ProgramContext):
     """
     This example demonstrates how to import a PLY file and extract point cloud data.
     We choose the first green point and move the robot to it.

@@ -39,9 +39,6 @@ npx lint-staged      # run the hook manually against staged files
 # Build package
 uv build
 
-# Download robot models for visualization
-uv run download-models
-
 ## Architecture Overview
 
 

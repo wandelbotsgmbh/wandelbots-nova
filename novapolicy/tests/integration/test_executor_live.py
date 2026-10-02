@@ -17,6 +17,7 @@ import uuid
 import pytest
 
 from novapolicy.executor import PolicyExecutor
+from novapolicy.policy_client import CallbackPolicyClient
 from novapolicy.schema import Observation, PolicySchema
 from novapolicy.types import ActionChunk, StopContext
 
@@ -87,7 +88,11 @@ async def test_executor_jogs_both_arms_for_the_full_timeout():
                 Observation.joint_positions(f"arm{i}", source=mg) for i, mg in enumerate(mgs)
             ]
         )
-        executor = PolicyExecutor(schema, dual_wiggle, timeout_s=5.0)
+        executor = PolicyExecutor(
+            schema,
+            CallbackPolicyClient(dual_wiggle),
+            timeout_s=5.0,
+        )
 
         wall_start = time.monotonic()
         result = await executor.run()
@@ -123,14 +128,15 @@ async def test_stop_condition_ends_dual_arm_run_normally():
         mgs = [await stack.enter_async_context(c[0]) for c in controllers]
         homes = {mg.id: list(await mg.joints()) for mg in mgs}
 
+        policy_calls = 0
+
         async def hold(obs):
+            nonlocal policy_calls
+            policy_calls += 1
             return ActionChunk(joints={mg.id: [homes[mg.id]] for mg in mgs})
 
-        ticks = {"n": 0}
-
-        def stop_after_a_few_ticks(ctx: StopContext) -> bool:
-            ticks["n"] += 1
-            return ticks["n"] >= 5
+        def stop_after_policy_calls(ctx: StopContext) -> bool:
+            return policy_calls >= 2
 
         schema = PolicySchema(
             observations=[
@@ -139,14 +145,14 @@ async def test_stop_condition_ends_dual_arm_run_normally():
         )
         executor = PolicyExecutor(
             schema,
-            hold,
-            stop_conditions=[stop_after_a_few_ticks],
+            CallbackPolicyClient(hold),
+            stop_conditions=[stop_after_policy_calls],
             timeout_s=10.0,
         )
 
         result = await executor.run()
         mg_ids = {mg.id for mg in mgs}
 
-    assert result.reason == "stop condition: stop_after_a_few_ticks"
+    assert result.reason == "stop condition: stop_after_policy_calls"
     assert result.last_state is not None
     assert set(result.last_state) == mg_ids
