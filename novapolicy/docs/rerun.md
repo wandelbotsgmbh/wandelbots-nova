@@ -6,14 +6,10 @@ and skips all logging if Rerun isn't initialized, so nothing here runs in produc
 
 ## Usage
 
-Add `viewer=nova.viewers.Rerun` to the `@nova.program` decorator to get
+Add `viewer=nova.viewers.Rerun()` to the `@nova.program` decorator to get
 real-time 3D visualization of the execution. The executor automatically logs
 robot meshes, action chunk TCP paths, TCP trails, camera images, and joint
 timeseries — zero overhead when no viewer is active.
-
-`viewer=viewers.Rerun()` remains supported for compatibility, but its implicit global
-registration is deprecated and will be removed in the next major release. Prefer a factory as
-shown below so importing the program has no viewer side effects and every run gets fresh state.
 
 ```python
 from nova import viewers
@@ -22,7 +18,7 @@ from novapolicy import SequentialExecution
 
 @nova.program(
     id="my_policy",
-    viewer=lambda: viewers.Rerun(
+    viewer=viewers.Rerun(
         state_sample_interval_ms=10.0  # 100 Hz live state
     ),
 )

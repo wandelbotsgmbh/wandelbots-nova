@@ -1,6 +1,7 @@
 import asyncio
 
 import nova
+from examples.plan_and_execute import plan_and_execute
 
 
 @nova.program(id="test1")
@@ -27,7 +28,6 @@ async def simple_program(ctx: nova.ProgramContext, number_of_steps: int = 30):
 if __name__ == "__main__":
     import uvicorn
 
-    from examples.plan_and_execute import plan_and_execute
     from novax import Novax
 
     novax = Novax()
