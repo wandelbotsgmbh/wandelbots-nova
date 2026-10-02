@@ -382,7 +382,7 @@ class TestStopWinsOverPendingIntent:
             emit_motion_events=False,
         )
         future = cursor.forward()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ErrorDuringMovement, match="controller disconnected"):
             await cursor._motion_group_state_monitor(ready_event=asyncio.Event())
 
         with pytest.raises(ErrorDuringMovement, match="controller disconnected") as exc_info:

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 from functools import partial
 from typing import AsyncGenerator
@@ -17,7 +18,12 @@ from nova.actions.path_trigger_resolver import (
 )
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
-from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, PlanTrajectoryFailed
+from nova.exceptions import (
+    LoadPlanFailed,
+    MotionGroupStateStreamClosed,
+    NoInverseKinematicsSolutionFound,
+    PlanTrajectoryFailed,
+)
 from nova.types import Pose, RobotState
 from nova.types.state import MotionState, motion_group_state_to_motion_state
 from nova.utils.collision_setup import (
@@ -1147,9 +1153,14 @@ class MotionGroup(AbstractRobot):
         async with asyncio.TaskGroup() as tg:
             tg.create_task(execution(), name=f"execute_trajectory-{trajectory_id}-{self.id}")
 
-            async for motion_group_state in subscription:
-                if motion_group_state.execute and motion_group_state.execute.details is not None:
-                    yield motion_group_state_to_motion_state(motion_group_state)
+            # A lost stream is reported once, by the execution (the cursor shares it).
+            with contextlib.suppress(MotionGroupStateStreamClosed):
+                async for motion_group_state in subscription:
+                    if (
+                        motion_group_state.execute
+                        and motion_group_state.execute.details is not None
+                    ):
+                        yield motion_group_state_to_motion_state(motion_group_state)
 
     async def _tune_trajectory(
         self,
