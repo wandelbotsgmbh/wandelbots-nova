@@ -484,15 +484,65 @@ async def test_consumer_close_ends_stream_silently():
         await stream.aclose()
 
 
-async def test_server_close_ends_shared_subscriptions_with_the_error():
+async def test_server_close_ends_shared_subscriptions_with_the_error(monkeypatch):
     from nova.exceptions import MotionGroupStateStreamClosed
 
+    monkeypatch.setattr("nova.cell.state_stream._RECONNECT_DELAYS_SECS", (0.0, 0.0))
+    connections = 0
+
     async def handler(connection):
+        nonlocal connections
+        connections += 1
         await connection.send(_state_json())
         await connection.close(1011, "controller disconnected")
 
     async with _state_server(handler) as gateway:
         subscription = gateway.motion_group_state_stream("cell", "ctrl", "0@ctrl").subscribe()
-        await next_state(subscription)
+        received = 0
         with pytest.raises(MotionGroupStateStreamClosed, match="controller disconnected"):
-            await next_state(subscription)
+            while True:
+                await next_state(subscription)
+                received += 1
+
+    assert connections == 3, "a flapping stream is reopened only within the budget"
+    assert received == 3
+
+
+async def test_dropped_stream_is_reopened_for_attached_subscribers(monkeypatch, shared, upstream):
+    from nova.exceptions import MotionGroupStateStreamClosed
+
+    monkeypatch.setattr("nova.cell.state_stream._RECONNECT_DELAYS_SECS", (0.0,))
+    subscription = shared.subscribe(20)
+    upstream.feed("s1")
+    upstream.fail(MotionGroupStateStreamClosed("cell/ctrl/0@ctrl", code=1006, reason=""))
+    upstream.feed("s2")
+
+    assert await next_state(subscription) == "s1"
+    assert await next_state(subscription) == "s2"
+    assert upstream.open_rates == [20, 20]
+    await subscription.aclose()
+
+
+async def test_failed_reconnects_end_subscriptions_with_the_original_drop(
+    monkeypatch, shared, upstream
+):
+    from nova.exceptions import MotionGroupStateStreamClosed
+
+    monkeypatch.setattr("nova.cell.state_stream._RECONNECT_DELAYS_SECS", (0.0, 0.0))
+    subscription = shared.subscribe()
+    upstream.fail(MotionGroupStateStreamClosed("cell/ctrl/0@ctrl", code=1006, reason=""))
+    upstream.fail(OSError("connection refused"))
+    upstream.fail(OSError("connection refused"))
+
+    with pytest.raises(MotionGroupStateStreamClosed, match="code=1006") as exc_info:
+        await next_state(subscription)
+    assert isinstance(exc_info.value.__cause__, OSError)
+    assert len(upstream.open_rates) == 3
+
+
+async def test_other_upstream_errors_are_not_retried(shared, upstream):
+    subscription = shared.subscribe()
+    upstream.fail(ValueError("bad frame"))
+    with pytest.raises(ValueError, match="bad frame"):
+        await next_state(subscription)
+    assert len(upstream.open_rates) == 1

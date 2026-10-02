@@ -23,11 +23,17 @@ from dataclasses import dataclass, field
 from typing import Generic, TypeVar
 
 from nova import api
+from nova.exceptions import MotionGroupStateStreamClosed
 from nova.utils.downsample import downsample_stream
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+# Waits before each reconnect attempt after the server or network dropped the
+# stream; a connection that stays up for _STABLE_CONNECTION_SECS resets the budget.
+_RECONNECT_DELAYS_SECS = (0.1, 0.2, 0.5, 1.0, 1.0, 2.0)
+_STABLE_CONNECTION_SECS = 5.0
 
 # ``response_rate=None`` means the controller's own step rate server-side —
 # the fastest the server emits (measured ~3-12 ms depending on controller) —
@@ -187,6 +193,9 @@ class _PumpGeneration:
     # The one pending linger countdown; rescheduled whenever the last
     # subscriber leaves again, so an earlier countdown cannot fire early.
     linger_task: asyncio.Task | None = None
+    # The drop that started the current reconnect sequence, and attempts made since.
+    lost: MotionGroupStateStreamClosed | None = None
+    reconnect_attempts: int = 0
 
 
 class SharedMotionGroupStateStream:
@@ -203,7 +212,9 @@ class SharedMotionGroupStateStream:
 
     An upstream error ends every subscription with that error; a graceful
     upstream end just ends them. Either way the next subscribe opens a fresh
-    websocket.
+    websocket. A stream dropped by the server or network
+    (:class:`MotionGroupStateStreamClosed`) is first reopened a few times while
+    subscribers are attached; they only miss the states sent in between.
     """
 
     def __init__(
@@ -313,36 +324,81 @@ class SharedMotionGroupStateStream:
         """
         error: BaseException | None = None
         try:
-            stream = self._open_stream(generation.rate_msecs)
-            try:
-                iterator = stream.__aiter__()
-                close_wait = asyncio.ensure_future(generation.close_requested.wait())
-                try:
-                    while True:
-                        next_frame = asyncio.ensure_future(iterator.__anext__())
-                        await asyncio.wait(
-                            {next_frame, close_wait}, return_when=asyncio.FIRST_COMPLETED
-                        )
-                        if generation.close_requested.is_set():
-                            next_frame.cancel()
-                            await asyncio.gather(next_frame, return_exceptions=True)
-                            break
-                        self._broadcast(generation, next_frame.result())
-                finally:
-                    close_wait.cancel()
-                    # This generation stops serving here, but closing the
-                    # websocket below is an await point: a subscribe() landing
-                    # in that window must open a fresh generation instead of
-                    # joining this one moments before its queues are flushed.
-                    generation.close_requested.set()
-            finally:
-                await stream.aclose()
+            while await self._pump_connection(generation):
+                delay = _RECONNECT_DELAYS_SECS[generation.reconnect_attempts]
+                generation.reconnect_attempts += 1
+                logger.warning(
+                    f"Motion group state stream '{self._name}' lost: {generation.lost}; "
+                    f"reconnecting in {delay} s (attempt {generation.reconnect_attempts}/"
+                    f"{len(_RECONNECT_DELAYS_SECS)})"
+                )
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(generation.close_requested.wait(), delay)
+                if generation.close_requested.is_set():
+                    break
         except StopAsyncIteration:
             pass  # upstream ended gracefully
         except Exception as e:
             error = e
         finally:
             self._finish(generation, error)
+
+    async def _pump_connection(self, generation: _PumpGeneration) -> bool:
+        """Drain one websocket into the subscriber queues and close it.
+
+        Returns True when the stream was dropped and should be reopened.
+        """
+        reconnect = False
+        loop = asyncio.get_running_loop()
+        opened_at = loop.time()
+        stream = self._open_stream(generation.rate_msecs)
+        try:
+            iterator = stream.__aiter__()
+            close_wait = asyncio.ensure_future(generation.close_requested.wait())
+            try:
+                while True:
+                    next_frame = asyncio.ensure_future(iterator.__anext__())
+                    await asyncio.wait(
+                        {next_frame, close_wait}, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if generation.close_requested.is_set():
+                        next_frame.cancel()
+                        await asyncio.gather(next_frame, return_exceptions=True)
+                        break
+                    self._broadcast(generation, next_frame.result())
+                    if loop.time() - opened_at >= _STABLE_CONNECTION_SECS:
+                        generation.lost = None
+                        generation.reconnect_attempts = 0
+            except Exception as e:
+                reconnect = self._should_reconnect(generation, e)
+                if not reconnect:
+                    if generation.lost is not None and e is not generation.lost:
+                        raise generation.lost from e
+                    raise
+            finally:
+                close_wait.cancel()
+                if not reconnect:
+                    # This generation stops serving here, but closing the
+                    # websocket below is an await point: a subscribe() landing
+                    # in that window must open a fresh generation instead of
+                    # joining this one moments before its queues are flushed.
+                    generation.close_requested.set()
+        finally:
+            await stream.aclose()
+        return reconnect
+
+    @staticmethod
+    def _should_reconnect(generation: _PumpGeneration, error: Exception) -> bool:
+        if isinstance(error, MotionGroupStateStreamClosed):
+            generation.lost = generation.lost or error
+        elif generation.lost is None or isinstance(error, StopAsyncIteration):
+            return False
+        # Otherwise reopening after a drop failed: retry within the budget.
+        return (
+            bool(generation.queues)
+            and not generation.close_requested.is_set()
+            and generation.reconnect_attempts < len(_RECONNECT_DELAYS_SECS)
+        )
 
     def _broadcast(self, generation: _PumpGeneration, state: api.models.MotionGroupState) -> None:
         for queue in generation.queues.values():
