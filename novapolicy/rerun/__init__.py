@@ -8,7 +8,7 @@ Visualizes in real-time:
 - Joint position timeseries
 - Inspectable action chunk text logs
 
-Usage: Pass ``viewer=nova.viewers.Rerun()`` to the ``@nova.program`` decorator.
+Usage: Pass ``viewer=nova.viewers.Rerun`` to the ``@nova.program`` decorator.
 Fully decoupled — zero overhead when no viewer is active.
 
 Module structure:
