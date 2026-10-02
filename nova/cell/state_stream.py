@@ -193,6 +193,8 @@ class _PumpGeneration:
     # subscriber leaves again, so an earlier countdown cannot fire early.
     linger_task: asyncio.Task | None = None
     reconnect_attempts: int = 0
+    # Why and after how long the last connection ended, for the reconnect log.
+    drop_detail: str = ""
 
 
 class SharedMotionGroupStateStream:
@@ -323,16 +325,22 @@ class SharedMotionGroupStateStream:
                 delay = _RECONNECT_DELAYS_SECS[generation.reconnect_attempts]
                 generation.reconnect_attempts += 1
                 logger.warning(
-                    f"Motion group state stream '{self._name}' ended unexpectedly; "
-                    f"reconnecting in {delay} s (attempt {generation.reconnect_attempts}/"
-                    f"{len(_RECONNECT_DELAYS_SECS)})"
+                    f"Motion group state stream '{self._name}' ended unexpectedly "
+                    f"({generation.drop_detail}); reconnecting in {delay} s "
+                    f"(attempt {generation.reconnect_attempts}/{len(_RECONNECT_DELAYS_SECS)}, "
+                    f"{len(generation.queues)} subscriber(s))"
                 )
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(generation.close_requested.wait(), delay)
                 if generation.close_requested.is_set():
                     break
         except StopAsyncIteration:
-            pass  # upstream ended gracefully
+            if generation.reconnect_attempts > 0:
+                logger.error(
+                    f"Motion group state stream '{self._name}' could not be restored after "
+                    f"{generation.reconnect_attempts} reconnect attempt(s) "
+                    f"({generation.drop_detail}); ending {len(generation.queues)} subscriber(s)"
+                )
         except Exception as e:
             error = e
         finally:
@@ -346,6 +354,10 @@ class SharedMotionGroupStateStream:
         reconnect = False
         loop = asyncio.get_running_loop()
         opened_at = loop.time()
+        states = 0
+        logger.debug(
+            f"Opening motion group state stream '{self._name}' (rate={generation.rate_msecs})"
+        )
         stream = self._open_stream(generation.rate_msecs)
         try:
             iterator = stream.__aiter__()
@@ -361,8 +373,17 @@ class SharedMotionGroupStateStream:
                         await asyncio.gather(next_frame, return_exceptions=True)
                         break
                     self._broadcast(generation, next_frame.result())
+                    if states == 0 and generation.reconnect_attempts > 0:
+                        logger.warning(
+                            f"Motion group state stream '{self._name}' reconnected after "
+                            f"{generation.reconnect_attempts} attempt(s)"
+                        )
+                    states += 1
             except Exception as e:
-                if loop.time() - opened_at >= _STABLE_CONNECTION_SECS:
+                uptime = loop.time() - opened_at
+                cause = "closed" if isinstance(e, StopAsyncIteration) else repr(e)
+                generation.drop_detail = f"{cause} after {uptime:.1f} s and {states} state(s)"
+                if uptime >= _STABLE_CONNECTION_SECS:
                     generation.reconnect_attempts = 0
                 reconnect = self._should_reconnect(generation, e)
                 if not reconnect:

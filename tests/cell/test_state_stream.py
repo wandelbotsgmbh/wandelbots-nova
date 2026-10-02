@@ -180,7 +180,9 @@ async def test_subscribe_after_upstream_end_opens_a_fresh_socket(no_reconnect, s
     await second.aclose()
 
 
-async def test_upstream_end_with_subscribers_reopens_the_socket(fast_reconnect, shared, upstream):
+async def test_upstream_end_with_subscribers_reopens_the_socket(
+    fast_reconnect, shared, upstream, caplog
+):
     """The generated client ends the stream silently when the connection drops:
     subscribers keep receiving from a reopened socket."""
     subscription = shared.subscribe(20)
@@ -188,20 +190,29 @@ async def test_upstream_end_with_subscribers_reopens_the_socket(fast_reconnect, 
     upstream.end()
     upstream.feed("s2")
 
-    assert await next_state(subscription) == "s1"
-    assert await next_state(subscription) == "s2"
+    with caplog.at_level(logging.WARNING, logger="nova.cell.state_stream"):
+        assert await next_state(subscription) == "s1"
+        assert await next_state(subscription) == "s2"
     assert upstream.open_rates == [20, 20]
+    assert any(
+        "ended unexpectedly (closed after" in m and "1 state(s)" in m for m in caplog.messages
+    )
+    assert any("reconnected after 1 attempt(s)" in m for m in caplog.messages)
     await subscription.aclose()
 
 
-async def test_reconnect_budget_exhausted_ends_subscriptions(fast_reconnect, shared, upstream):
+async def test_reconnect_budget_exhausted_ends_subscriptions(
+    fast_reconnect, shared, upstream, caplog
+):
     subscription = shared.subscribe()
     upstream.feed("s1")
     for _ in range(3):
         upstream.end()
 
-    assert [state async for state in subscription] == ["s1"]
+    with caplog.at_level(logging.WARNING, logger="nova.cell.state_stream"):
+        assert [state async for state in subscription] == ["s1"]
     assert len(upstream.open_rates) == 3
+    assert any("could not be restored after 2 reconnect" in m for m in caplog.messages)
 
 
 async def test_failed_reopen_is_retried_then_reported(fast_reconnect, shared, upstream):
