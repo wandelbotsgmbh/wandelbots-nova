@@ -23,15 +23,14 @@ from dataclasses import dataclass, field
 from typing import Generic, TypeVar
 
 from nova import api
-from nova.exceptions import MotionGroupStateStreamClosed
 from nova.utils.downsample import downsample_stream
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# Waits before each reconnect attempt after the server or network dropped the
-# stream; a connection that stays up for _STABLE_CONNECTION_SECS resets the budget.
+# Waits before each reconnect attempt after the stream ended unexpectedly; a
+# connection that stays up for _STABLE_CONNECTION_SECS resets the budget.
 _RECONNECT_DELAYS_SECS = (0.1, 0.2, 0.5, 1.0, 1.0, 2.0)
 _STABLE_CONNECTION_SECS = 5.0
 
@@ -193,8 +192,6 @@ class _PumpGeneration:
     # The one pending linger countdown; rescheduled whenever the last
     # subscriber leaves again, so an earlier countdown cannot fire early.
     linger_task: asyncio.Task | None = None
-    # The drop that started the current reconnect sequence, and attempts made since.
-    lost: MotionGroupStateStreamClosed | None = None
     reconnect_attempts: int = 0
 
 
@@ -212,9 +209,7 @@ class SharedMotionGroupStateStream:
 
     An upstream error ends every subscription with that error; a graceful
     upstream end just ends them. Either way the next subscribe opens a fresh
-    websocket. A stream dropped by the server or network
-    (:class:`MotionGroupStateStreamClosed`) is first reopened a few times while
-    subscribers are attached; they only miss the states sent in between.
+    websocket.
     """
 
     def __init__(
@@ -328,7 +323,7 @@ class SharedMotionGroupStateStream:
                 delay = _RECONNECT_DELAYS_SECS[generation.reconnect_attempts]
                 generation.reconnect_attempts += 1
                 logger.warning(
-                    f"Motion group state stream '{self._name}' lost: {generation.lost}; "
+                    f"Motion group state stream '{self._name}' ended unexpectedly; "
                     f"reconnecting in {delay} s (attempt {generation.reconnect_attempts}/"
                     f"{len(_RECONNECT_DELAYS_SECS)})"
                 )
@@ -346,7 +341,7 @@ class SharedMotionGroupStateStream:
     async def _pump_connection(self, generation: _PumpGeneration) -> bool:
         """Drain one websocket into the subscriber queues and close it.
 
-        Returns True when the stream was dropped and should be reopened.
+        Returns True when the stream ended unexpectedly and should be reopened.
         """
         reconnect = False
         loop = asyncio.get_running_loop()
@@ -366,14 +361,11 @@ class SharedMotionGroupStateStream:
                         await asyncio.gather(next_frame, return_exceptions=True)
                         break
                     self._broadcast(generation, next_frame.result())
-                    if loop.time() - opened_at >= _STABLE_CONNECTION_SECS:
-                        generation.lost = None
-                        generation.reconnect_attempts = 0
             except Exception as e:
+                if loop.time() - opened_at >= _STABLE_CONNECTION_SECS:
+                    generation.reconnect_attempts = 0
                 reconnect = self._should_reconnect(generation, e)
                 if not reconnect:
-                    if generation.lost is not None and e is not generation.lost:
-                        raise generation.lost from e
                     raise
             finally:
                 close_wait.cancel()
@@ -389,13 +381,13 @@ class SharedMotionGroupStateStream:
 
     @staticmethod
     def _should_reconnect(generation: _PumpGeneration, error: Exception) -> bool:
-        if isinstance(error, MotionGroupStateStreamClosed):
-            generation.lost = generation.lost or error
-        elif generation.lost is None or isinstance(error, StopAsyncIteration):
-            return False
-        # Otherwise reopening after a drop failed: retry within the budget.
+        # The generated client ends the stream silently on any close (network
+        # loss, server close), so an end nobody requested is a dropped stream.
+        # While reconnecting, failures to reopen are retried as well.
+        retryable = isinstance(error, StopAsyncIteration) or generation.reconnect_attempts > 0
         return (
-            bool(generation.queues)
+            retryable
+            and bool(generation.queues)
             and not generation.close_requested.is_set()
             and generation.reconnect_attempts < len(_RECONNECT_DELAYS_SECS)
         )

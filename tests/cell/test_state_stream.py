@@ -6,8 +6,6 @@ the pump-owns-the-socket contract is asserted against.
 """
 
 import asyncio
-import contextlib
-import json
 import logging
 
 import pytest
@@ -66,6 +64,16 @@ def upstream():
 @pytest.fixture
 def shared(upstream):
     return SharedMotionGroupStateStream(open_stream=upstream.open, name="cell/ctrl/0@ctrl")
+
+
+@pytest.fixture
+def no_reconnect(monkeypatch):
+    monkeypatch.setattr("nova.cell.state_stream._RECONNECT_DELAYS_SECS", ())
+
+
+@pytest.fixture
+def fast_reconnect(monkeypatch):
+    monkeypatch.setattr("nova.cell.state_stream._RECONNECT_DELAYS_SECS", (0.0, 0.0))
 
 
 async def next_state(subscription, timeout: float = 1.0):
@@ -152,7 +160,7 @@ async def test_upstream_error_reaches_every_subscriber(shared, upstream):
             await next_state(subscription)
 
 
-async def test_graceful_upstream_end_ends_subscriptions(shared, upstream):
+async def test_graceful_upstream_end_ends_subscriptions(no_reconnect, shared, upstream):
     subscription = shared.subscribe()
     upstream.feed("s1")
     upstream.end()
@@ -160,7 +168,7 @@ async def test_graceful_upstream_end_ends_subscriptions(shared, upstream):
     assert received == ["s1"]
 
 
-async def test_subscribe_after_upstream_end_opens_a_fresh_socket(shared, upstream):
+async def test_subscribe_after_upstream_end_opens_a_fresh_socket(no_reconnect, shared, upstream):
     first = shared.subscribe()
     upstream.end()
     assert [state async for state in first] == []
@@ -170,6 +178,49 @@ async def test_subscribe_after_upstream_end_opens_a_fresh_socket(shared, upstrea
     assert await next_state(second) == "s2"
     assert len(upstream.open_rates) == 2
     await second.aclose()
+
+
+async def test_upstream_end_with_subscribers_reopens_the_socket(fast_reconnect, shared, upstream):
+    """The generated client ends the stream silently when the connection drops:
+    subscribers keep receiving from a reopened socket."""
+    subscription = shared.subscribe(20)
+    upstream.feed("s1")
+    upstream.end()
+    upstream.feed("s2")
+
+    assert await next_state(subscription) == "s1"
+    assert await next_state(subscription) == "s2"
+    assert upstream.open_rates == [20, 20]
+    await subscription.aclose()
+
+
+async def test_reconnect_budget_exhausted_ends_subscriptions(fast_reconnect, shared, upstream):
+    subscription = shared.subscribe()
+    upstream.feed("s1")
+    for _ in range(3):
+        upstream.end()
+
+    assert [state async for state in subscription] == ["s1"]
+    assert len(upstream.open_rates) == 3
+
+
+async def test_failed_reopen_is_retried_then_reported(fast_reconnect, shared, upstream):
+    subscription = shared.subscribe()
+    upstream.end()
+    upstream.fail(OSError("connection refused"))
+    upstream.fail(OSError("connection refused again"))
+
+    with pytest.raises(OSError, match="again"):
+        await next_state(subscription)
+    assert len(upstream.open_rates) == 3
+
+
+async def test_errors_outside_a_reconnect_are_not_retried(fast_reconnect, shared, upstream):
+    subscription = shared.subscribe()
+    upstream.fail(ValueError("bad frame"))
+    with pytest.raises(ValueError, match="bad frame"):
+        await next_state(subscription)
+    assert len(upstream.open_rates) == 1
 
 
 async def test_socket_rate_is_fixed_by_the_first_subscriber(shared, upstream):
@@ -276,7 +327,7 @@ async def test_stream_aclose_ends_subscriptions_and_closes_the_socket(shared, up
         await next_state(subscription)
 
 
-async def test_subscribe_during_pump_teardown_gets_a_fresh_socket(upstream):
+async def test_subscribe_during_pump_teardown_gets_a_fresh_socket(no_reconnect, upstream):
     """A subscribe landing while the pump is closing the old websocket must not
     join the dying generation (it would end after zero states, with no reopen)."""
     close_started = asyncio.Event()
@@ -412,137 +463,3 @@ async def test_gateway_close_drains_its_registry(monkeypatch):
     assert upstream.aclose_count == 1
     with pytest.raises(StopAsyncIteration):
         await next_state(subscription)
-
-
-def _state_json() -> str:
-    from datetime import datetime, timezone
-
-    from nova import api
-
-    state = api.models.MotionGroupState(
-        timestamp=datetime.now(timezone.utc),
-        sequence_number=1,
-        motion_group="0@ctrl",
-        controller="ctrl",
-        joint_position=[0.0] * 6,
-        joint_limit_reached=api.models.MotionGroupStateJointLimitReached(limit_reached=[False] * 6),
-        standstill=True,
-        description_revision=1,
-    )
-    return json.dumps({"result": state.model_dump(mode="json")})
-
-
-@contextlib.asynccontextmanager
-async def _state_server(handler):
-    from websockets.asyncio.server import serve
-
-    from nova.config import NovaConfig
-    from nova.core.gateway import ApiGateway
-
-    async with serve(handler, "127.0.0.1", 0) as server:
-        port = server.sockets[0].getsockname()[1]
-        gateway = ApiGateway(NovaConfig(host=f"http://127.0.0.1:{port}"))
-        try:
-            yield gateway
-        finally:
-            await gateway.close()
-
-
-@pytest.mark.parametrize("code", [1000, 1011])
-async def test_server_close_raises_with_code_and_reason(code):
-    from nova.exceptions import MotionGroupStateStreamClosed
-
-    paths = []
-
-    async def handler(connection):
-        paths.append(connection.request.path)
-        await connection.send(_state_json())
-        await connection.close(code, "controller disconnected")
-
-    async with _state_server(handler) as gateway:
-        stream = gateway._open_motion_group_state_stream("cell", "ctrl", "0@ctrl", 20)
-        state = await anext(stream)
-        assert state.controller == "ctrl"
-        with pytest.raises(MotionGroupStateStreamClosed) as exc_info:
-            await anext(stream)
-
-    assert exc_info.value.code == code
-    assert exc_info.value.reason == "controller disconnected"
-    assert paths == [
-        "/api/v2/cells/cell/controllers/ctrl/motion-groups/0@ctrl/state-stream?response_rate=20"
-    ]
-
-
-async def test_consumer_close_ends_stream_silently():
-    async def handler(connection):
-        await connection.send(_state_json())
-        await connection.wait_closed()
-
-    async with _state_server(handler) as gateway:
-        stream = gateway._open_motion_group_state_stream("cell", "ctrl", "0@ctrl", None)
-        await anext(stream)
-        await stream.aclose()
-
-
-async def test_server_close_ends_shared_subscriptions_with_the_error(monkeypatch):
-    from nova.exceptions import MotionGroupStateStreamClosed
-
-    monkeypatch.setattr("nova.cell.state_stream._RECONNECT_DELAYS_SECS", (0.0, 0.0))
-    connections = 0
-
-    async def handler(connection):
-        nonlocal connections
-        connections += 1
-        await connection.send(_state_json())
-        await connection.close(1011, "controller disconnected")
-
-    async with _state_server(handler) as gateway:
-        subscription = gateway.motion_group_state_stream("cell", "ctrl", "0@ctrl").subscribe()
-        received = 0
-        with pytest.raises(MotionGroupStateStreamClosed, match="controller disconnected"):
-            while True:
-                await next_state(subscription)
-                received += 1
-
-    assert connections == 3, "a flapping stream is reopened only within the budget"
-    assert received == 3
-
-
-async def test_dropped_stream_is_reopened_for_attached_subscribers(monkeypatch, shared, upstream):
-    from nova.exceptions import MotionGroupStateStreamClosed
-
-    monkeypatch.setattr("nova.cell.state_stream._RECONNECT_DELAYS_SECS", (0.0,))
-    subscription = shared.subscribe(20)
-    upstream.feed("s1")
-    upstream.fail(MotionGroupStateStreamClosed("cell/ctrl/0@ctrl", code=1006, reason=""))
-    upstream.feed("s2")
-
-    assert await next_state(subscription) == "s1"
-    assert await next_state(subscription) == "s2"
-    assert upstream.open_rates == [20, 20]
-    await subscription.aclose()
-
-
-async def test_failed_reconnects_end_subscriptions_with_the_original_drop(
-    monkeypatch, shared, upstream
-):
-    from nova.exceptions import MotionGroupStateStreamClosed
-
-    monkeypatch.setattr("nova.cell.state_stream._RECONNECT_DELAYS_SECS", (0.0, 0.0))
-    subscription = shared.subscribe()
-    upstream.fail(MotionGroupStateStreamClosed("cell/ctrl/0@ctrl", code=1006, reason=""))
-    upstream.fail(OSError("connection refused"))
-    upstream.fail(OSError("connection refused"))
-
-    with pytest.raises(MotionGroupStateStreamClosed, match="code=1006") as exc_info:
-        await next_state(subscription)
-    assert isinstance(exc_info.value.__cause__, OSError)
-    assert len(upstream.open_rates) == 3
-
-
-async def test_other_upstream_errors_are_not_retried(shared, upstream):
-    subscription = shared.subscribe()
-    upstream.fail(ValueError("bad frame"))
-    with pytest.raises(ValueError, match="bad frame"):
-        await next_state(subscription)
-    assert len(upstream.open_rates) == 1

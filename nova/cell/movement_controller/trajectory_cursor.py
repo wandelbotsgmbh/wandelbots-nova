@@ -1387,14 +1387,6 @@ class TrajectoryCursor:
         except asyncio.CancelledError:
             logger.debug("TrajectoryCursor motion group state monitor was cancelled")
             raise
-        except Exception as e:
-            if not self._operation_handler.in_progress():
-                raise
-            error = ErrorDuringMovement(
-                f"Motion group state stream ended before the movement completed: {e}"
-            )
-            self._complete_operation(error=error)
-            raise error from e
         finally:
             # Fail, rather than silently abandon, an operation that can no longer
             # complete because the state stream is gone.

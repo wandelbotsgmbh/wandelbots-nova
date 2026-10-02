@@ -1,21 +1,14 @@
 import asyncio
 import functools
-import json
 import logging
 import time
 from abc import ABC
-from collections.abc import AsyncGenerator
-from typing import Any, TypeVar
-from urllib.parse import quote, urlencode
-
-import websockets
-from websockets.asyncio.client import connect as websocket_connect
+from typing import TypeVar
 
 from nova import api
 from nova.cell.robot_cell import ConfigurablePeriphery, Device
 from nova.cell.state_stream import MotionGroupStateStreamRegistry, SharedMotionGroupStateStream
 from nova.config import NovaConfig
-from nova.exceptions import MotionGroupStateStreamClosed
 from nova.version import version as pkg_version
 
 logger = logging.getLogger(__name__)
@@ -92,56 +85,15 @@ class ApiGateway:
             linger_secs=config.motion_group_state_stream_linger_secs,
         )
 
-    async def _open_motion_group_state_stream(
+    def _open_motion_group_state_stream(
         self, cell: str, controller_id: str, motion_group_id: str, response_rate_msecs: int | None
-    ) -> AsyncGenerator[api.models.MotionGroupState, None]:
-        """Stream motion group states, raising when the server or network ends the stream.
-
-        Replaces the generated ``stream_motion_group_state``, which swallows every
-        ``ConnectionClosed`` and so hides why a stream ended. Only the consumer
-        closing the generator ends it silently.
-        """
-        configuration = self._api_client.configuration
-        host: str = configuration.host
-        headers = websockets.Headers()
-        if host.startswith("https://"):
-            host = host.removeprefix("https://")
-            if configuration.username:
-                user = quote(configuration.username, safe="")
-                password = quote(configuration.password or "", safe="")
-                host = f"{user}:{password}@{host}"
-            elif configuration.access_token:
-                headers["Authorization"] = f"Bearer {configuration.access_token}"
-            host = f"wss://{host}"
-        else:
-            host = host.replace("http://", "ws://", 1)
-
-        path = (
-            f"/cells/{quote(cell, safe='@')}/controllers/{quote(controller_id, safe='@')}"
-            f"/motion-groups/{quote(motion_group_id, safe='@')}/state-stream"
+    ):
+        return self.motion_group_api.stream_motion_group_state(
+            cell=cell,
+            controller=controller_id,
+            motion_group=motion_group_id,
+            response_rate=response_rate_msecs,
         )
-        url = host + path
-        if response_rate_msecs is not None:
-            url += "?" + urlencode({"response_rate": response_rate_msecs})
-
-        options: dict[str, Any] = {"open_timeout": 10, "additional_headers": headers}
-        options.update(getattr(configuration, "websocket_options", None) or {})
-        name = f"{cell}/{controller_id}/{motion_group_id}"
-
-        async with websocket_connect(url, **options) as websocket:
-            try:
-                async for message in websocket:
-                    data = json.loads(message)
-                    if "result" not in data:
-                        raise Exception(data)
-                    yield api.models.MotionGroupState.model_validate(data["result"])
-            except websockets.exceptions.ConnectionClosedError as e:
-                raise MotionGroupStateStreamClosed(
-                    name, code=websocket.close_code, reason=websocket.close_reason, detail=str(e)
-                ) from e
-            raise MotionGroupStateStreamClosed(
-                name, code=websocket.close_code, reason=websocket.close_reason
-            )
 
     def motion_group_state_stream(
         self, cell: str, controller_id: str, motion_group_id: str
