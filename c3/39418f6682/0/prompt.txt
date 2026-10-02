@@ -1,0 +1,59 @@
+pls still push the branch so i can use it in another project
+
+---
+
+So i set up @/Users/q/2lab/cell-plc-simulation/ app to use the branch and it runs on an IPC with the WBR/RAE image. How do I change the policy now and what is the default if i don't provide anything?
+
+---
+
+explain the not supported message pls 
+
+<pasted_content id="9948">
+2026-10-01 13:25:58 [INFO] helpers.motion.trajectory_store: Trajektorien-Cache: 68 gespeicherte Einträge für Namespace 'ir999r01.folge11_rrt'
+2026-10-01 13:25:58 [INFO] helpers.motion.trajectory_store: Trajektorien-Cache: TREFFER p1-p4 (Startabweichung 0.00000, Schlüssel 764ac89349b80da1)
+2026-10-01 13:25:58 [INFO] helpers.motion.playback_speed: Override: 58% (Standard der Folge 70%)
+2026-10-01 13:26:06 [INFO] folge11: P4 erreicht
+2026-10-01 13:26:07 [INFO] helpers.motion.playback_speed: Override: 58% (Standard der Folge 70%)
+2026-10-01 13:26:07 [WARNING] nova.cell.trajectory_executor: PauseResumeStrategy.CONTROLLER is not supported in synchronized sessions; IO pauses of the session's groups are resumed by the caller
+2026-10-01 13:26:07 [INFO] helpers.motion.collision_free: Pausebedingung steht zu Beginn eines synchronisierten Blocks an (ir999r01_e14_robenabled) – warte auf Freigabe, bevor die Startbarriere scharf geschaltet wird
+</pasted_content id="9948">
+
+---
+
+pls check how multi motion groups actually continue motion currently (i.e. do they resync on a signal or just issue two start requests again)
+
+---
+
+do you know about the pause test app in this session here?
+
+---
+
+the repo is at @/Users/q/1prj/audi/arg3-longterm-tests/ I'd like the pause apps there to be updated, so they can use the auto_resume feature as well. maybe on a new branch there so we can roll back to the older versions
+
+---
+
+yes push it
+
+---
+
+push pause-on-io-repro too
+
+---
+
+when does this happen: 
+
+
+<pasted_content id="9948">
+│ [2026-10-02 08:42:15.332] [service] [InternalMotionService] [info] [06bcdf45-f22d-4850-a034-68990f434c21] Pause on IO condition met for IO: 'ir999r01_e14_robenabled'. Auto-resume disabled - stopping trajectory execution.                                │
+│ [2026-10-02 08:42:15.332] [service] [InternalMotionService] [info] [06bcdf45-f22d-4850-a034-68990f434c21] Discarding start on IO condition because pause condition has been met before                                                                      │
+│ [2026-10-02 08:42:15.332] [service] [InternalMotionService] [info] [5e885789-7d80-4aca-ace6-1aec78ac5529] Pause on IO condition met for IO: 'ir999r01_e14_robenabled'. Auto-resume disabled - stopping trajectory execution.                                │
+│ [2026-10-02 08:42:15.332] [service] [InternalMotionService] [info] [5e885789-7d80-4aca-ace6-1aec78ac5529] Discarding start on IO condition because pause condition has been met before
+</pasted_content id="9948">
+
+---
+
+Let's think about it in another way. If the RAE implementation uses WAIT_FOR_IO to implement the resuming. Would that not also mean it behaves pretty much the same when it comes to a synchronized resume, than the SDK does now? Could we then not also allow CONTROLLER resume there?
+
+---
+
+yes implement it on lab/pause-auto-resume
