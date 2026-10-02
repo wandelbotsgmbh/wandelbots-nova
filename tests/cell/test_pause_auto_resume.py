@@ -14,7 +14,9 @@ installed API client may predate ``auto_resume``. The wire test runs once it has
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+from dataclasses import replace
 
 import pytest
 
@@ -32,8 +34,18 @@ from nova.cell.movement_controller.trajectory_state_machine import (
     PauseReason,
     TrajectoryExecutionMachine,
 )
-from nova.cell.trajectory_executor import GroupArgs, _session_policy
+from nova.cell.trajectory_executor import GroupArgs, TrajectoryExecutor, _session_policy
 from nova.exceptions import ResumeNotTakenUp
+from tests.cell.multi_group_doubles import (
+    ended_state,
+    execute_detail,
+    multi_trajectory,
+    running_state,
+    sync_driver,
+    wait_for_io_state,
+)
+from tests.cell.multi_group_doubles import motion_group as md_motion_group
+from tests.cell.multi_group_doubles import state as msg_state
 from tests.cell.test_robust_execution import (
     _collect,
     _FedStates,
@@ -43,11 +55,12 @@ from tests.cell.test_robust_execution import (
     _starts_become,
     _state,
     _supervised_context,
-    ended,
     parked,
-    running,
     wait_for_io,
 )
+from tests.cell.test_robust_execution import ended as ended_frame
+from tests.cell.test_robust_execution import running as running_frame
+from tests.cell.test_trajectory_executor_session import _FakeGateway
 
 CONTROLLER = ExecutionPolicy(
     pause_resume=PauseResumeStrategy.CONTROLLER, resume_detect_s=0.05, resume_window_s=0.3
@@ -131,7 +144,7 @@ async def test_only_the_controller_strategy_sends_auto_resume():
         assert start.pause_on_io is not None
         assert getattr(start.pause_on_io, "auto_resume", None) is expected
         assert ('"auto_resume":true' in start.model_dump_json(exclude_none=True)) is bool(expected)
-        states.feed(running(1.0), ended(3.0), ended(3.0), ended(3.0))
+        states.feed(running_frame(1.0), ended_frame(3.0), ended_frame(3.0), ended_frame(3.0))
         async with asyncio.timeout(5):
             await run
 
@@ -164,7 +177,7 @@ def _feed(machine: TrajectoryExecutionMachine, *frames) -> None:
 class TestMachine:
     def test_wait_for_io_after_motion_is_an_io_pause_the_controller_resumes(self):
         machine = _armed_machine(auto_resume=True)
-        _feed(machine, running(0.5), running(0.8))  # braking is still reported RUNNING
+        _feed(machine, running_frame(0.5), running_frame(0.8))  # braking is still reported RUNNING
         _feed(machine, wait_for_io(0.9))
         assert machine.is_paused
         assert machine.pause_reason is PauseReason.IO
@@ -173,14 +186,14 @@ class TestMachine:
         _feed(machine, wait_for_io(0.9), wait_for_io(0.9))  # the hold is re-published
         assert machine.is_paused_on_io
 
-        _feed(machine, running(1.0))  # the controller resumed on its own
+        _feed(machine, running_frame(1.0))  # the controller resumed on its own
         assert machine.is_executing
-        _feed(machine, ended(3.0))
+        _feed(machine, ended_frame(3.0))
         assert machine.is_ended
 
     def test_a_hold_settling_while_braking_pauses_on_standstill(self):
         machine = _armed_machine(auto_resume=True)
-        _feed(machine, running(0.5))
+        _feed(machine, running_frame(0.5))
         machine.process_motion_state(_state(False, wait_for_io(0.9).execute))
         assert machine.is_pausing
         _feed(machine, wait_for_io(0.9))
@@ -190,20 +203,20 @@ class TestMachine:
         machine = _armed_machine(auto_resume=True)
         _feed(machine, parked(), wait_for_io(0.0), wait_for_io(0.0))
         assert machine.is_armed
-        _feed(machine, running(0.1))
+        _feed(machine, running_frame(0.1))
         assert machine.is_executing
 
     def test_the_condition_turning_true_after_the_end_is_no_contradiction(self):
         machine = _armed_machine(auto_resume=True)
-        _feed(machine, running(1.0), ended(3.0))
+        _feed(machine, running_frame(1.0), ended_frame(3.0))
         assert machine.is_ended
-        _feed(machine, wait_for_io(3.0), wait_for_io(3.0), ended(3.0))
+        _feed(machine, wait_for_io(3.0), wait_for_io(3.0), ended_frame(3.0))
         assert machine.is_ended
         assert not machine.is_error
 
     def test_without_auto_resume_wait_for_io_keeps_executing(self):
         machine = _armed_machine(auto_resume=False)
-        _feed(machine, running(0.5), wait_for_io(0.9))
+        _feed(machine, running_frame(0.5), wait_for_io(0.9))
         assert machine.is_executing
 
 
@@ -216,9 +229,9 @@ async def _paused_by_the_controller(states, signal, requests) -> None:
     """Moving, then the signal pauses: braking (RUNNING) and the WAIT_FOR_IO hold."""
     states.feed(_state(True))  # the cursor dispatches once the stream is live
     await _starts_become(requests, 1)
-    states.feed(running(0.5))
+    states.feed(running_frame(0.5))
     signal.set(pausing=True)
-    states.feed(running(0.8), wait_for_io(0.9), wait_for_io(0.9))
+    states.feed(running_frame(0.8), wait_for_io(0.9), wait_for_io(0.9))
 
 
 async def test_the_controller_resumes_and_no_resume_start_is_sent(flag_injection):
@@ -232,7 +245,14 @@ async def test_the_controller_resumes_and_no_resume_start_is_sent(flag_injection
     assert not run.done(), "an IO hold must not end the execution"
 
     signal.set(pausing=False)
-    states.feed(wait_for_io(0.9), running(1.2), running(2.0), ended(3.0), ended(3.0), ended(3.0))
+    states.feed(
+        wait_for_io(0.9),
+        running_frame(1.2),
+        running_frame(2.0),
+        ended_frame(3.0),
+        ended_frame(3.0),
+        ended_frame(3.0),
+    )
     async with asyncio.timeout(5):
         await run
 
@@ -252,7 +272,7 @@ async def test_a_condition_holding_at_the_start_waits_without_a_start(flag_injec
     assert not run.done()
 
     signal.set(pausing=False)
-    states.feed(running(0.2), ended(3.0), ended(3.0), ended(3.0))
+    states.feed(running_frame(0.2), ended_frame(3.0), ended_frame(3.0), ended_frame(3.0))
     async with asyncio.timeout(5):
         await run
     assert _start_count(requests) == 1
@@ -296,7 +316,7 @@ async def test_a_missed_auto_resume_is_started_from_the_sdk_when_configured(flag
         await _republish(states, wait_for_io(0.9), lambda: _start_count(requests) >= 2)
     assert "sending the start from the SDK" in caplog.text
 
-    states.feed(running(1.2), ended(3.0), ended(3.0), ended(3.0))
+    states.feed(running_frame(1.2), ended_frame(3.0), ended_frame(3.0), ended_frame(3.0))
     async with asyncio.timeout(5):
         await run
     assert _start_count(requests) == 2
@@ -345,7 +365,7 @@ async def test_a_condition_back_before_the_check_is_an_ordinary_hold(flag_inject
     assert not run.done(), "a signal that holds again is no missed resume"
 
     signal.set(pausing=False)
-    states.feed(running(1.2), ended(3.0), ended(3.0), ended(3.0))
+    states.feed(running_frame(1.2), ended_frame(3.0), ended_frame(3.0), ended_frame(3.0))
     async with asyncio.timeout(5):
         await run
     assert _start_count(requests) == 1
@@ -354,18 +374,177 @@ async def test_a_condition_back_before_the_check_is_an_ordinary_hold(flag_inject
 # ---------------------------------------------------------------------------
 # Synchronized sessions
 # ---------------------------------------------------------------------------
+# With auto_resume the controller holds a paused group exactly like a closed start
+# gate (Action::PAUSE -> WAIT_FOR_IO, every cycle) and lifts the hold in the first
+# cycle that sees the condition clear. The same condition on every group therefore
+# restarts them in the same cycle, as the barrier's release does.
 
 
-def test_synchronized_sessions_keep_the_sdk_strategy(caplog):
-    set_default_execution_policy(ExecutionPolicy(pause_resume=PauseResumeStrategy.CONTROLLER))
-    with caplog.at_level(logging.WARNING):
-        policy = _session_policy({"a": GroupArgs(pause_on_io=_pause_condition())})
-    assert policy.pause_resume is PauseResumeStrategy.SDK
-    assert "not supported in synchronized sessions" in caplog.text
+def _enable(io: str = "e14") -> api.models.PauseOnIO:
+    return api.models.PauseOnIO(
+        io=api.models.IOBooleanValue(io=io, value=False),
+        comparator=api.models.Comparator.COMPARATOR_EQUALS,
+        io_origin=api.models.IOOrigin.BUS_IO,
+    )
 
-    caplog.clear()
-    assert _session_policy(None).pause_resume is PauseResumeStrategy.SDK
-    assert "not supported" not in caplog.text, "no warning without a pause condition"
+
+_ONE_CONTROLLER = {"a": "ctrl", "b": "ctrl"}
+
+
+class TestSessionPolicy:
+    @pytest.fixture(autouse=True)
+    def _controller_default(self):
+        set_default_execution_policy(ExecutionPolicy(pause_resume=PauseResumeStrategy.CONTROLLER))
+
+    def test_a_shared_condition_keeps_the_controller_strategy(self, caplog):
+        groups = {"a": GroupArgs(pause_on_io=_enable()), "b": GroupArgs(pause_on_io=_enable())}
+        with caplog.at_level(logging.INFO):
+            policy = _session_policy(groups, _ONE_CONTROLLER)
+        assert policy.pause_resume is PauseResumeStrategy.CONTROLLER
+        assert "share the pause condition on 'e14'" in caplog.text
+
+    def test_groups_across_controllers_are_allowed_with_a_skew_note(self, caplog):
+        groups = {"a": GroupArgs(pause_on_io=_enable()), "b": GroupArgs(pause_on_io=_enable())}
+        with caplog.at_level(logging.INFO):
+            policy = _session_policy(groups, {"a": "ctrl-1", "b": "ctrl-2"})
+        assert policy.controller_resumes
+        assert "groups span controllers" in caplog.text
+
+    @pytest.mark.parametrize(
+        "groups",
+        [
+            {
+                "a": GroupArgs(pause_on_io=_enable("e14")),
+                "b": GroupArgs(pause_on_io=_enable("e15")),
+            },
+            {"a": GroupArgs(pause_on_io=_enable())},  # b would never pause
+        ],
+        ids=["different conditions", "one group without a condition"],
+    )
+    def test_differing_conditions_fall_back_to_the_sdk(self, groups, caplog):
+        with caplog.at_level(logging.WARNING):
+            policy = _session_policy(groups, _ONE_CONTROLLER)
+        assert policy.pause_resume is PauseResumeStrategy.SDK
+        assert "needs the same pause_on_io on every group" in caplog.text
+
+    def test_a_session_without_conditions_keeps_the_policy_silently(self, caplog):
+        with caplog.at_level(logging.INFO):
+            policy = _session_policy(None, _ONE_CONTROLLER)
+        assert policy.controller_resumes
+        assert caplog.text == ""
+
+
+def _held(location: float, at_milliseconds: int):
+    return msg_state(
+        True, execute_detail(location, api.models.TrajectoryWaitForIO()), at_milliseconds
+    )
+
+
+class TestSynchronizedAutoResume:
+    @pytest.fixture(autouse=True)
+    def _controller_default(self):
+        set_default_execution_policy(
+            replace(ExecutionPolicy.strict_policy(), pause_resume=PauseResumeStrategy.CONTROLLER)
+        )
+
+    @pytest.mark.skipif(not supports_auto_resume(), reason="client predates auto_resume")
+    async def test_a_pause_holding_at_the_start_releases_the_barrier_and_resumes_together(self):
+        """The race the SDK strategy loses (wbr: 'Discarding start on IO condition because
+        pause condition has been met before'): with auto_resume the pause is a hold, the
+        start gate survives, the barrier releases and both groups start when the signal
+        clears -- one start each, no second barrier."""
+        gateway = _FakeGateway()
+        queues = {"a": asyncio.Queue(), "b": asyncio.Queue()}
+        executor = TrajectoryExecutor(
+            {
+                name: md_motion_group(gateway, queues[name], trajectory_id=f"traj-{name}")
+                for name in ("a", "b")
+            },
+            sync=sync_driver(gateway),
+        )
+        groups = {"a": GroupArgs(pause_on_io=_enable()), "b": GroupArgs(pause_on_io=_enable())}
+
+        run = asyncio.create_task(executor.execute(multi_trajectory("a", "b"), groups=groups))
+        await gateway.reached("start", 2)
+        # Gate closed and pause holding: both report WAIT_FOR_IO -> barrier releases.
+        for name in ("a", "b"):
+            queues[name].put_nowait(wait_for_io_state(at_milliseconds=10))
+        await gateway.reached("write", 2)
+        # The sync IO is released but the pause still holds them.
+        for name in ("a", "b"):
+            queues[name].put_nowait(_held(0.0, 20))
+            queues[name].put_nowait(_held(0.0, 30))
+        await asyncio.sleep(0.05)
+        assert not run.done()
+        # The signal clears: the controller starts both in the same cycle.
+        for name in ("a", "b"):
+            queues[name].put_nowait(running_state(1.0, at_milliseconds=40))
+            queues[name].put_nowait(ended_state(2.0, at_milliseconds=50))
+        await asyncio.wait_for(run, timeout=5)
+
+        for name in ("a", "b"):
+            starts = gateway.start_requests[f"traj-{name}"]
+            assert len(starts) == 1, "no resume start, no second barrier"
+            assert starts[0].start_on_io is not None
+            assert starts[0].pause_on_io.auto_resume is True
+        assert gateway.trigger_writes == [False, True]
+
+    @pytest.mark.skipif(not supports_auto_resume(), reason="client predates auto_resume")
+    async def test_a_pause_mid_motion_is_resumed_by_the_controller_without_a_barrier(self):
+        gateway = _FakeGateway()
+        queues = {"a": asyncio.Queue(), "b": asyncio.Queue()}
+        executor = TrajectoryExecutor(
+            {
+                name: md_motion_group(gateway, queues[name], trajectory_id=f"traj-{name}")
+                for name in ("a", "b")
+            },
+            sync=sync_driver(gateway),
+        )
+        groups = {"a": GroupArgs(pause_on_io=_enable()), "b": GroupArgs(pause_on_io=_enable())}
+
+        run = asyncio.create_task(executor.execute(multi_trajectory("a", "b"), groups=groups))
+        await gateway.reached("start", 2)
+        for name in ("a", "b"):
+            queues[name].put_nowait(wait_for_io_state(at_milliseconds=10))
+        await gateway.reached("write", 2)
+        for name in ("a", "b"):
+            queue = queues[name]
+            queue.put_nowait(running_state(0.5, at_milliseconds=20))
+            queue.put_nowait(running_state(0.8, at_milliseconds=30))  # braking
+            queue.put_nowait(_held(0.9, 40))
+            queue.put_nowait(_held(0.9, 50))
+        await asyncio.sleep(0.05)
+        assert not run.done(), "an IO hold must not end the session's operations"
+        for name in ("a", "b"):
+            queues[name].put_nowait(running_state(1.5, at_milliseconds=60))
+            queues[name].put_nowait(ended_state(2.0, at_milliseconds=70))
+        await asyncio.wait_for(run, timeout=5)
+
+        assert all(len(gateway.start_requests[f"traj-{n}"]) == 1 for n in ("a", "b"))
+        assert gateway.trigger_writes == [False, True]
+
+    @pytest.mark.skipif(not supports_auto_resume(), reason="client predates auto_resume")
+    async def test_differing_conditions_send_no_auto_resume(self):
+        gateway = _FakeGateway()
+        queues = {"a": asyncio.Queue(), "b": asyncio.Queue()}
+        executor = TrajectoryExecutor(
+            {
+                name: md_motion_group(gateway, queues[name], trajectory_id=f"traj-{name}")
+                for name in ("a", "b")
+            },
+            sync=sync_driver(gateway),
+        )
+        groups = {
+            "a": GroupArgs(pause_on_io=_enable("e14")),
+            "b": GroupArgs(pause_on_io=_enable("e15")),
+        }
+        run = asyncio.create_task(executor.execute(multi_trajectory("a", "b"), groups=groups))
+        await gateway.reached("start", 2)
+        for name in ("a", "b"):
+            assert gateway.start_requests[f"traj-{name}"][0].pause_on_io.auto_resume is False
+        run.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await run
 
 
 async def test_the_bus_loss_guard_still_pauses_and_resumes_from_the_sdk(flag_injection):
@@ -386,7 +565,7 @@ async def test_the_bus_loss_guard_still_pauses_and_resumes_from_the_sdk(flag_inj
     run = asyncio.create_task(_collect(move_forward(context), requests))
     states.feed(_state(True))
     await _starts_become(requests, 1)
-    states.feed(running(0.5))
+    states.feed(running_frame(0.5))
     await asyncio.sleep(0.01)
 
     signal.set(pausing=True)  # the bus is gone; the signal is unknown — treat as pausing
@@ -400,7 +579,9 @@ async def test_the_bus_loss_guard_still_pauses_and_resumes_from_the_sdk(flag_inj
 
     signal.set(pausing=False)  # bus back, signal allows motion
     await _starts_become(requests, 2)
-    states.feed(parked(0.8), running(1.2), ended(3.0), ended(3.0), ended(3.0))
+    states.feed(
+        parked(0.8), running_frame(1.2), ended_frame(3.0), ended_frame(3.0), ended_frame(3.0)
+    )
     async with asyncio.timeout(5):
         await run
     assert _start_count(requests) == 2

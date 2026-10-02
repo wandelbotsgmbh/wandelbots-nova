@@ -93,6 +93,10 @@ pause (ADR 002 addendum):
 | `sdk` (default) | `PauseOnIO` as given | `PAUSED_ON_IO` | SDK sends a start on the release edge; ignored starts supervised (`resume_detect_s`/`resume_window_s`) |
 | `controller` | `PauseOnIO.auto_resume=True` | `RUNNING` while braking, then `WAIT_FOR_IO` | controller, by itself; `missed_auto_resume=fail` (default) raises if it does not, `start` sends one SDK start |
 
+Synchronized sessions (`TrajectoryExecutor`) keep `controller` only when every group carries the
+same `pause_on_io`; the shared condition then restarts all groups in the same controller cycle,
+like the barrier's release. Otherwise they fall back to `sdk`.
+
 Under `controller` the machine treats `WAIT_FOR_IO` after motion as `paused` with reason IO
 (`arm(auto_resume=True)`); `WAIT_FOR_IO` while still `armed` is the condition already holding at
 the start. The cursor keeps a movement operation pending through such a hold.

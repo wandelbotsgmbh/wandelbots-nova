@@ -117,8 +117,17 @@ until the two have been compared on a cell:
 Kept under both strategies: SDK-side signal observation (push only) and the bus-loss guard.
 Per wbr!2384 the controller keeps using the last cached bus value when the bus-IO service goes
 away. The guard's pause is a user pause, which drops the controller's `pause_on_io` and pending
-`set_outputs` and is resumed only by a start. Synchronized multi-group sessions always use
-`sdk`: one group resuming alone would break the shared time parameterization.
+`set_outputs` and is resumed only by a start.
+
+Synchronized multi-group sessions keep `controller` when **every** group carries the same
+`pause_on_io`, and fall back to `sdk` (with a warning) otherwise. Per wbr!2384 an auto-resume hold
+is the same mechanism as a closed start gate: `Action::PAUSE`, reported as `WAIT_FOR_IO` and
+evaluated every cycle. With a shared condition every group's hold lifts in the same controller
+cycle, so the pause signal does what the barrier's sync IO does on a resume. It also removes a
+race of `sdk`: there, a pause condition that holds while the start gate is still closed is a
+terminal stop that discards the gate ("Discarding start on IO condition because pause condition
+has been met before"), and the barrier can hang. With `auto_resume` it is a hold that keeps the
+gate. Groups on different controllers resume with the same skew a cross-controller sync IO has.
 
 `controller` needs an API client that has the field; without one it fails at the start instead
 of silently sending a terminal pause.

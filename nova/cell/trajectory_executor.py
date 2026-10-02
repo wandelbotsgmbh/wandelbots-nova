@@ -91,10 +91,13 @@ class GroupArgs:
             :meth:`MotionGroup.stream_state`.
         pause_on_io: This group's pause signal, attached to every start the
             group's cursor emits. The controller pauses the group on path while
-            the condition holds; the others keep running. Resume is the
-            caller's call (:meth:`MultiTrajectoryCursor.forward` once the
-            signal cleared) — the controller does not resume by itself. The
-            same condition may be given to several groups to pause them all.
+            the condition holds; the others keep running. Under
+            ``PauseResumeStrategy.SDK`` resuming is the caller's call
+            (:meth:`MultiTrajectoryCursor.forward` once the signal cleared). Under
+            ``CONTROLLER`` the controller resumes by itself — only when every
+            group of the session carries the same condition; otherwise the
+            session falls back to ``SDK`` (see ``_session_policy``). The same
+            condition may be given to several groups to pause them all.
     """
 
     ignore_controller_limits: bool = True
@@ -221,7 +224,9 @@ class TrajectoryExecutor:
         overlay = self._build_io_overlay(action_list)
 
         cursors: dict[str, TrajectoryCursor] = {}
-        policy = _session_policy(groups)
+        policy = _session_policy(
+            groups, {name: self._motion_groups[name]._controller_id for name in per_group}
+        )
         for name, joint_trajectory in per_group.items():
             motion_group = self._motion_groups[name]
             group_args = (groups or {}).get(name) or GroupArgs()
@@ -362,19 +367,59 @@ class TrajectoryExecutor:
         )
 
 
-def _session_policy(groups: Mapping[str, GroupArgs] | None) -> ExecutionPolicy:
-    """The process-wide policy, with IO pauses always resumed by the caller.
+def _session_policy(
+    groups: Mapping[str, GroupArgs] | None, controllers: Mapping[str, str]
+) -> ExecutionPolicy:
+    """The process-wide policy, as far as a synchronized session can honour it.
 
-    A synchronized session shares one time parameterization across its groups. A
-    controller that resumed one group's IO pause by itself (``auto_resume``) would
-    move it alone and break that, so sessions keep ``PauseResumeStrategy.SDK``.
+    A synchronized session shares one time parameterization across its groups, so
+    all of them must restart in the same controller cycle. Under
+    ``PauseResumeStrategy.SDK`` the caller resumes through the start barrier again.
+    Under ``CONTROLLER`` (``auto_resume``, robotics/wbr!2384) the controller holds
+    a paused group exactly like a start gate that is not open yet (``Action::PAUSE``
+    → ``WAIT_FOR_IO``, evaluated every cycle) and lifts the hold in the first
+    cycle that sees the condition clear. With the *same* condition on every group
+    that is the same cycle for all of them -- the pause signal then acts as the
+    barrier's sync IO -- so the strategy is kept. With differing or partial
+    conditions groups would resume on their own; the session falls back to ``SDK``.
+
+    ``auto_resume`` also fixes a race of the ``SDK`` strategy: a pause condition
+    that holds while the start gate is still closed is a terminal stop there,
+    which discards the gate; with ``auto_resume`` it is a hold that keeps it.
+
+    ``controllers`` maps group names to their controller ids (for the log only:
+    across controllers the condition is evaluated on each one's own clock, the
+    same skew a sync IO across controllers already has).
     """
     policy = default_execution_policy()
-    if policy.controller_resumes:
-        if any(args.pause_on_io is not None for args in (groups or {}).values()):
-            logger.warning(
-                "PauseResumeStrategy.CONTROLLER is not supported in synchronized sessions; "
-                "IO pauses of the session's groups are resumed by the caller"
-            )
-        policy = replace(policy, pause_resume=PauseResumeStrategy.SDK)
-    return policy
+    if not policy.controller_resumes:
+        return policy
+    conditions = {name: (groups or {}).get(name, GroupArgs()).pause_on_io for name in controllers}
+    present = [condition for condition in conditions.values() if condition is not None]
+    if not present:
+        return policy  # nothing pauses; the strategy has nothing to do
+    if len(present) == len(conditions) and all(c == present[0] for c in present):
+        logger.info(
+            "PauseResumeStrategy.CONTROLLER in a synchronized session: all %d groups share "
+            "the pause condition on '%s' and resume in the same controller cycle%s",
+            len(conditions),
+            _io_name(present[0]),
+            ""
+            if len(set(controllers.values())) == 1
+            else " of each controller (groups span controllers: expect the same skew as a "
+            "cross-controller sync IO)",
+        )
+        return policy
+    logger.warning(
+        "PauseResumeStrategy.CONTROLLER needs the same pause_on_io on every group of a "
+        "synchronized session (%s); IO pauses of this session are resumed by the caller",
+        ", ".join(
+            f"{name}: {'none' if c is None else _io_name(c)}" for name, c in conditions.items()
+        ),
+    )
+    return replace(policy, pause_resume=PauseResumeStrategy.SDK)
+
+
+def _io_name(condition: api.models.PauseOnIO) -> str:
+    io = getattr(condition.io, "actual_instance", condition.io)
+    return getattr(io, "io", "?")
