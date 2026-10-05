@@ -105,7 +105,8 @@ with `examples/your-nova-app/`.
 ## Bundled agent skills (`nova/agent_skills/`)
 
 The SDK ships the customer-facing `nova-app-review` skill in the wheel. Customers install it with
-`nova-agent-skills install` (`nova/helper_scripts/install_agent_skills.py`). It is **not** a skill
+`uv run nova-skills install` (`nova/helper_scripts/install_agent_skills.py`; documented in the
+`README.md` section "Review your app with a coding agent"). It is **not** a skill
 for working on this repository.
 
 - When you change a public motion, IO, TCP, payload, program or exception API, update
@@ -114,3 +115,5 @@ for working on this repository.
   the workaround with the SDK feature.
 - Keep `scripts/scan.py` stdlib-only and Python 3.9 compatible; it runs in customer environments.
   Cover new scanner checks in `tests/nova/agent_skills/test_scan.py`.
+- When you change the `nova-skills` command or its options, update the `README.md` section and the
+  hint in `docs/programs.md`.

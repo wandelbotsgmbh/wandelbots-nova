@@ -25,7 +25,7 @@ Track these steps with a todo list.
 - Note the installed SDK version: `uv run python -c "import importlib.metadata as m; print(m.version('wandelbots-nova'))"`
   (or the project's own interpreter). If an `.installed-from.json` file next to this `SKILL.md`
   names a different `wandelbots-nova` version, tell the user to refresh the skill with
-  `nova-agent-skills install` and continue with a note that SDK mappings may be stale.
+  `nova-skills install` and continue with a note that SDK mappings may be stale.
 
 ### 2. Discover the architecture
 

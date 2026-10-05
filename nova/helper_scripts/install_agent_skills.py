@@ -1,12 +1,12 @@
-"""Entry point for the ``nova-agent-skills`` script.
+"""Entry point for the ``nova-skills`` script.
 
 Copies the agent skills bundled with wandelbots-nova (``nova/agent_skills/``) into a project so
 coding agents (Claude Code, Cursor, GitHub Copilot, ...) can use them::
 
-    nova-agent-skills list
-    nova-agent-skills install                      # -> .agents/skills/
-    nova-agent-skills install --agent claude --agent copilot
-    nova-agent-skills install --agent all --force
+    nova-skills list
+    nova-skills install                      # -> .agents/skills/
+    nova-skills install --agent claude --agent copilot
+    nova-skills install --agent all --force
 """
 
 import argparse
@@ -80,7 +80,7 @@ def install_skill(name: str, source: Traversable, dest: Path, force: bool) -> tu
             if not modified and previous == digests and stamp.get("version") == _sdk_version():
                 return True, "up to date"
         elif not force:
-            return False, "skipped, not installed by nova-agent-skills (use --force to overwrite)"
+            return False, "skipped, not installed by nova-skills (use --force to overwrite)"
 
     for rel in previous.keys() - files.keys():
         (dest / rel).unlink(missing_ok=True)
@@ -129,7 +129,7 @@ def _list(_: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="nova-agent-skills",
+        prog="nova-skills",
         description="Install the coding-agent skills bundled with wandelbots-nova into a project.",
     )
     sub = parser.add_subparsers(dest="command", required=True)

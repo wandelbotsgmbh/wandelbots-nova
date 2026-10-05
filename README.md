@@ -230,13 +230,14 @@ reports each finding in chat with a severity, file/line evidence, a concrete fix
 Install the skill into your project:
 
 ```bash
-uv run nova-agent-skills install                  # .agents/skills/ (Cursor, VS Code)
-uv run nova-agent-skills install --agent claude   # .claude/skills/ (Claude Code)
-uv run nova-agent-skills install --agent all      # .agents, .claude, .cursor, .github
+uv run nova-skills list                     # show bundled skills
+uv run nova-skills install                  # .agents/skills/ (Cursor, VS Code)
+uv run nova-skills install --agent claude   # .claude/skills/ (Claude Code)
+uv run nova-skills install --agent all      # .agents, .claude, .cursor, .github
 ```
 
 Then ask your agent, e.g. _"Review this NOVA app for safety and performance issues"_. Re-run
-`nova-agent-skills install` after upgrading the SDK so the skill matches the installed version.
+`nova-skills install` after upgrading the SDK so the skill matches the installed version.
 The review is defence in depth and does not replace certified safety functions.
 
 ## Development

@@ -263,7 +263,7 @@ Common `Novax` options:
 
 ## Troubleshooting
 
-- **Want a review of your programs?** Run `uv run nova-agent-skills install` in your app and ask
+- **Want a review of your programs?** Run `uv run nova-skills install` in your app and ask
   your coding agent to review the app. The bundled `nova-app-review` skill checks safety, motion,
   IO, async, performance and NOVA SDK usage and reports fixes per finding.
 - **Program not showing up?** Make sure its module is imported — put the file under a
