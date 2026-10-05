@@ -18,6 +18,7 @@ def configure_logging():
     logging.getLogger("websockets.client").setLevel(LOG_LEVEL)
     logging.getLogger("websockets.protocol").setLevel(LOG_LEVEL)
     logging.getLogger("nats").setLevel(LOG_LEVEL)  # python-nats
+    logging.getLogger("statemachine").setLevel(LOG_LEVEL)  # python-statemachine
 
     # The `nova` logger itself should simply propagate to the root handler configured above.
     logger = logging.getLogger("nova")

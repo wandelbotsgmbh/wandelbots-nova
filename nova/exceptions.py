@@ -62,6 +62,28 @@ class ErrorDuringMovement(Exception):
         return self._message
 
 
+class UnexpectedTrajectoryState(ErrorDuringMovement):
+    """The controller reported a trajectory state that contradicts what the SDK commanded.
+
+    Raised by the trajectory cursor when a motion-group state frame cannot be reconciled
+    with the execution it is tracking — e.g. the controller reports ``RUNNING`` while the
+    SDK believes the trajectory is paused or finished and has not issued a start, or a
+    one-shot ``execute()`` is paused by someone other than the SDK. The execution is torn
+    down instead of being left in a state that can never complete.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        machine_state: str | None = None,
+        frame: api.models.MotionGroupState | None = None,
+    ):
+        self.machine_state = machine_state
+        self.frame = frame
+        super().__init__(message)
+
+
 class LoadPlanFailed(Exception):
     def __init__(self, error: api.models.AddTrajectoryError):
         self._error = error

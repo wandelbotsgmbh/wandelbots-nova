@@ -43,20 +43,33 @@ def move_forward(context: MovementControllerContext) -> MovementControllerFuncti
     )
     # Starting immediately is move_forward policy, not a cursor capability.
     operation = cursor.forward()
-    operation.add_done_callback(_consume_operation_outcome)
+    operation.add_done_callback(lambda op: _consume_operation_outcome(op, cursor))
     return cursor.cntrl
 
 
-def _consume_operation_outcome(operation: asyncio.Future) -> None:
+def _consume_operation_outcome(operation: asyncio.Future, cursor: TrajectoryCursor) -> None:
     """Retrieve the one-shot operation's result so asyncio never warns about it.
 
     Nobody awaits this future in one-shot execution: movement errors reach the
     protocol caller through ``cntrl`` itself. A state stream that ends before
     the trajectory completes only resolves the future, matching the previous
     ``move_forward`` behaviour of returning once the state monitor is gone.
+
+    A controller-side IO pause (``pause_on_io``) leaves the cursor attached and
+    resumable, but ``move_forward`` has no way to observe the signal yet, so it
+    ends the execution there rather than waiting forever.
     """
     if operation.cancelled():
         return
     error = operation.exception()
     if error is not None:
         logger.debug(f"move_forward operation ended with an error: {error!r}")
+        return
+    result = operation.result()
+    if result.paused_on_io:
+        logger.warning(
+            "pause_on_io paused the trajectory at location %s; move_forward cannot resume it "
+            "yet — the execution ends here",
+            result.final_location,
+        )
+        cursor.detach()
