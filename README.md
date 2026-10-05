@@ -34,6 +34,15 @@ The SDK will help you to build your own apps and services using Python on top of
     - [Formatting](#formatting)
     - [Yaml linting](#yaml-linting)
     - [Branch versions for testing](#branch-versions-for-testing)
+  - [How to contribute](#how-to-contribute)
+    - [Before you start](#before-you-start)
+    - [Set up your environment](#set-up-your-environment)
+    - [Run the checks locally](#run-the-checks-locally)
+    - [Code style](#code-style)
+    - [Commits and pull request title](#commits-and-pull-request-title)
+    - [Write the description](#write-the-description)
+    - [After you open the pull request](#after-you-open-the-pull-request)
+    - [Contributing with an AI coding agent](#contributing-with-an-ai-coding-agent)
   - [Release process](#release-process)
     - [Branch behaviour overview](#branch-behaviour-overview)
     - [Stable releases from `main`](#stable-releases-from-main)
@@ -257,6 +266,101 @@ Using PEP 508 direct URL syntax:
 ```toml
 wandelbots-nova @ git+https://github.com/wandelbotsgmbh/wandelbots-nova.git@fix/http-prefix
 ```
+
+## How to contribute
+
+Contributions are welcome — bug reports, fixes, new examples, and documentation improvements all
+help. This section describes the whole path from an idea to a merged pull request so you do not
+have to reverse-engineer it from CI failures.
+
+### Before you start
+
+- Search the [issues](https://github.com/wandelbotsgmbh/wandelbots-nova/issues) first. If none
+  matches, open one and describe the problem before writing code — for anything beyond a small fix
+  this saves you from building something we cannot merge.
+- Keep one problem per pull request. Unrelated changes in the same branch slow the review down and
+  make the generated changelog misleading.
+- The SDK targets the **released** NOVA API v2. Treat the installed `wandelbots_api_client` as the
+  source of truth for model and field names, not an internal or nightly spec.
+
+### Set up your environment
+
+```bash
+git clone https://github.com/wandelbotsgmbh/wandelbots-nova.git
+cd wandelbots-nova
+uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
+npm install   # one-time: activates the husky pre-commit hook (format + lint on staged files)
+```
+
+Copy `.env.template` to `.env` and fill in `NOVA_API` and `NOVA_ACCESS_TOKEN`. See
+[Configure environment variables](#configure-environment-variables).
+
+### Run the checks locally
+
+These are the exact commands the pull request pipeline runs. Running them before you push turns a
+red pipeline into a local, fast feedback loop:
+
+```bash
+uv run ruff format .                                            # format (100 char lines)
+uv run ruff check --select I --fix                              # import order
+uv run ruff check .                                             # lint
+uv run ty check                                                 # typecheck
+PYTHONPATH=. LOG_LEVEL=WARNING uv run pytest -rs -v -m "not integration"   # unit tests
+```
+
+Tests marked `@pytest.mark.integration` need a reachable NOVA instance and are excluded above. Run
+them with `-m "integration"` when you have one.
+
+### Code style
+
+- Python >=3.12, modern type hints (`list[T]`, not `List[T]`).
+- Everything in the SDK is async — use `await` and `async with`.
+- Line length 100, formatted by ruff (Black-compatible).
+- Change only what your task needs. Do not reformat or refactor untouched code; it hides the real
+  diff from reviewers.
+- Never hand-edit `uv.lock` — regenerate it with `uv sync` or `uv lock`.
+
+### Commits and pull request title
+
+Commit subjects and the pull request title follow
+[Conventional Commits](https://www.conventionalcommits.org/):
+
+```text
+chore|feat|fix[(scope)][!]: Description
+```
+
+The title is validated by CI and drives the release: `feat` bumps the minor version, `fix` and
+`chore` bump the patch version, and a trailing `!` marks a breaking change. Title the pull request
+after the whole branch, not after your last commit.
+
+### Write the description
+
+The repository ships a [pull request template](.github/PULL_REQUEST_TEMPLATE.md) that GitHub fills
+in for you. Two sections are mandatory:
+
+- **Why** — the problem or motivation. A reviewer should understand the change without the ticket
+  or the chat history.
+- **Benefits** — what is better for a user, operator or maintainer after it lands. Not a
+  restatement of the diff.
+
+Add a **Test plan** with the commands you actually ran. "Tested locally" is not a test plan. Delete
+the template sections that do not apply.
+
+### After you open the pull request
+
+1. Wait for the checks (format, lint, typecheck, unit tests, YAML lint, dependency review, PR
+   title). Fix failures on your branch — do not relax a check to get it green.
+2. A maintainer reviews it; see [CODEOWNERS](.github/CODEOWNERS) for who is notified.
+3. On merge to `main`, release-please opens or updates a release pull request and a nightly build
+   is published. See [Release process](#release-process).
+
+### Contributing with an AI coding agent
+
+Agents are welcome, unreviewed agent output is not. [`AGENTS.md`](AGENTS.md) and
+[`CLAUDE.md`](CLAUDE.md) hold the behavioral rules (think before coding, keep it simple, surgical
+changes), and [`.agents/skills/`](.agents/skills) holds task-specific skills for CI triage, pull
+requests and the NOVA API. Point your agent at them, then review the diff yourself before you
+push — you are the author of the pull request.
 
 ## Release process
 
