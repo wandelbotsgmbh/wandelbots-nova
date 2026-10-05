@@ -58,8 +58,20 @@ def validate_collision_setups(actions: list[Action]) -> list[api.models.Collisio
 
 
 def get_safety_collision_setup_from_motion_group_description(
-    motion_group_description: api.models.MotionGroupDescription, tcp_name: str | None
+    motion_group_description: api.models.MotionGroupDescription,
+    tcp_name: str | None,
+    *,
+    self_collision_detection: bool = True,
 ) -> api.models.CollisionSetup:
+    """Build the collision setup from the motion group's safety zones, link and tool colliders.
+
+    Args:
+        motion_group_description: The motion group to build the collision setup for.
+        tcp_name: The TCP whose safety tool colliders are used as the tool.
+        self_collision_detection: Whether the planner checks the motion group's links and tool
+            against each other. Enabled by default so a plan cannot move the tool into the
+            robot's own links.
+    """
     tool_colliders = (
         motion_group_description.safety_tool_colliders.get(tcp_name)
         if motion_group_description.safety_tool_colliders is not None and tcp_name is not None
@@ -75,5 +87,5 @@ def get_safety_collision_setup_from_motion_group_description(
         colliders=motion_group_description.safety_zones,
         link_chain=link_chain,
         tool=tool,
-        self_collision_detection=False,  # explicitly set here until we have a better understanding
+        self_collision_detection=self_collision_detection,
     )

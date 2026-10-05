@@ -43,9 +43,13 @@ def motion_group_setup_from_motion_group_description(
     motion_group_description: api.models.MotionGroupDescription,
     tcp_name: str | None = None,
     payload: api.models.Payload | None = None,
+    *,
+    self_collision_detection: bool = True,
 ) -> api.models.MotionGroupSetup:
     collision_setup = get_safety_collision_setup_from_motion_group_description(
-        motion_group_description=motion_group_description, tcp_name=tcp_name
+        motion_group_description=motion_group_description,
+        tcp_name=tcp_name,
+        self_collision_detection=self_collision_detection,
     )
     tcps = motion_group_description.tcps
     tcp_offset = tcps[tcp_name].pose if tcp_name is not None and tcps is not None else None
