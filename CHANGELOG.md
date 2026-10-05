@@ -1,6 +1,13 @@
 # CHANGELOG
 
 
+## [6.1.1](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v6.1.0...v6.1.1) (2026-10-05)
+
+
+### Bug Fixes
+
+* **deps:** require urllib3&gt;=2.8.0 for security advisories ([#534](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/534)) ([7c4cfef](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7c4cfef3c87e5ee6ad10cdd1400bee71d3db2266))
+
 ## [6.1.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v6.0.0...v6.1.0) (2026-09-25)
 
 
