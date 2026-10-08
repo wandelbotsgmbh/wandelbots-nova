@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "c61d646a497b",
+  "strategy": "manual-commit",
+  "branch": "lab/pause-auto-resume",
+  "checkpoints_count": 11,
+  "files_touched": [
+    ".vscode/settings.json",
+    "examples/lab/pause_probe/estop_probe.py",
+    "examples/lab/pause_probe/plc_sim/b1_interlock_estop.py",
+    "examples/lab/pause_probe/plc_sim/b23_fault_hold_resume.py",
+    "examples/lab/pause_probe/plc_sim/release_stale.py",
+    "examples/lab/pause_probe/runs/20261005-222206-estop-A1.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222239-estop-A1.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222305-estop-A2.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222310-estop-A5.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222326-estop-A7.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222348-estop-A3.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222406-estop-A4.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222437-estop-A5.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222516-estop-A4.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222610-estop-A8.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222717-estop-A6.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222743-estop-A6.jsonl",
+    "examples/lab/pause_probe/runs/20261005-222806-estop-A6.jsonl"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c6/1d646a497b/0/metadata.json",
+      "transcript": "/c6/1d646a497b/0/full.jsonl",
+      "compact_transcript": "/c6/1d646a497b/0/transcript.jsonl",
+      "content_hash": "/c6/1d646a497b/0/content_hash.txt",
+      "prompt": "/c6/1d646a497b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 882,
+    "cache_creation_tokens": 1235977,
+    "cache_read_tokens": 33142194,
+    "output_tokens": 131334,
+    "api_call_count": 173,
+    "subagent_tokens": {
+      "input_tokens": 192,
+      "cache_creation_tokens": 403129,
+      "cache_read_tokens": 11318076,
+      "output_tokens": 16401,
+      "api_call_count": 96
+    }
+  }
+}

@@ -1,0 +1,349 @@
+what api client version is the new branch using?
+
+---
+
+push it real good
+
+---
+
+What would happen if the execution would be interrupted by an espot and then resumed by the resume handling in @/Users/q/2lab/cell-plc-simulation?
+
+---
+
+<task-notification>
+<task-id>aaa9b270105b20ea0</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/418e8b83-02ce-4088-b1d9-d40b039cc111/tasks/aaa9b270105b20ea0.output</output-file>
+<status>completed</status>
+<summary>Agent "SDK e-stop execution behavior" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I could not find anything in the SDK that detects an E-STOP during `execute()`. Nothing reads `safety_state` or `operation_mode` while a trajectory runs. What the caller sees depends only on what the controller puts on the motion-group state stream and the execute websocket. The repo has no measurement of what RAE actually publishes on an E-STOP. So `execute()` may raise, hang, or return normally mid-path, depending on the wire.
+
+## 0. Refs
+
+| ref | commit | relation |
+|---|---|---|
+| `lab/robust-standstill` | `57ac81c7` | 24 commits on top of merge-base `1db359a` with main: NATS interlock, pause_on_io resume, motion_enable_signal, bus-loss guard, armed/transient/rest machine, debounced standstill |
+| `lab/pause-auto-resume` (checked out) | `b0cac43c` | exactly `robust-standstill` + 3 commits (`bfd49920`, `a604671e`, `b0cac43c`): `PauseOnIO.auto_resume` strategy. Nothing is missing relative to robust-standstill. |
+| `main` | `af6d6394` | 2 commits past the merge-base (release 6.1.0, datasets). None of the lab work is on main. |
+
+API client pins: robust-standstill uses `wandelbots_api_client==26.7.0`. pause-auto-resume uses the internal build `26.8.0+a3081...`.
+
+## 1. Observing safety state / operation mode
+
+- `safety_state` and `operation_mode` exist only on `RobotControllerState`. `MotionGroupState`, which is the only thing the cursor and state machine consume, has no safety field. It has just `standstill`, the joints and `execute`.
+- The only readers of `safety_state`:
+  - **`nova/program/runner.py:374-402`, `_estop_handler`.** Anything other than `SAFETY_STATE_NORMAL` or `SAFETY_STATE_REDUCED` calls `self.stop()`, which cancels the program. That makes the run `STOPPED`; it is not raised as an error.
+    - It is effectively inert in the normal path. `runner.py:482-486` builds `RobotCell(timer=None, cycle=None)` with no devices.
+    - `RobotCell.stream_state` (`robot_cell.py:811-817`) then returns immediately when no device streams state.
+    - It only works with `robot_cell_override`, and only if you run through `ProgramRunner`. A plain `MotionGroup.execute()` caller gets nothing.
+  - **`novapolicy/estop.py:25-31, 88-146`, `EstopMonitor` → `EmergencyStopError`.** This is the policy executor and jogger only, not `MotionGroup.execute`. `novapolicy/types.py:132-136` says it directly: "The Nova SDK does not have an equivalent".
+- `Controller.get_estop`/`set_estop` (`controller.py:150-175`) work on virtual controllers only.
+- `MotionGroup._execute` (`motion_group.py:1118-1213`), `TrajectoryCursor`, `move_forward`, `TrajectoryExecutor` and `IOConditionWatcher` contain no safety or operation-mode check.
+- `MotionGroup.stop()` (`motion_group.py:559-573`) is dead code: it calls the v1 `motion_api`, which raises AttributeError.
+
+## 2. What the stream emits, and how each case is handled (robust-standstill)
+
+There is no `Standstill` response and no `StandstillReason` (`REASON_MOTION_ENDED` / `REASON_USER_PAUSED_MOTION` etc.) in v2. I grepped: zero hits in `nova/`.
+- `ExecuteTrajectoryResponse` is a oneOf of `InitializeMovementResponse`, `StartMovementResponse`, `PauseMovementResponse`, `PlaybackSpeedResponse` and `MovementErrorResponse(kind="MOTION_ERROR")`.
+- Progress is only observed through `MotionGroupState.execute.details.state`, which is `RUNNING` | `END_OF_TRAJECTORY` | `PAUSED_BY_USER` | `WAIT_FOR_IO` | `PAUSED_ON_IO`.
+- The API docstring says `MovementError` is sent for "unexpected errors during the execution, e.g., controller disconnects during movement".
+
+Repo knowledge of the backend comes from the local, gitignored research note `docs/architecture/incoming/execution-completion-detection-research.md:234-246` (wbr!2262). It says the controller's internal `STOPPED` maps to wire `PAUSED_BY_USER`, and `STOPPED` removes the motion provider, so the `execute` block disappears. `movement_controller/README.md:27-28` repeats this: "A stopped execution also reports `PAUSED_BY_USER` … after stop/teardown the `execute` block disappears."
+
+Case by case, for an E-STOP while `executing`:
+
+| What arrives | Machine (`trajectory_state_machine.py`) | Result for `execute()` (`move_forward`, one-shot) |
+|---|---|---|
+| `MovementErrorResponse` on the websocket while an operation is in progress | – | `trajectory_cursor.py:1680-1692` → `ErrorDuringMovement("Error occurred during trajectory execution: &lt;msg&gt;")`. `cntrl` unwraps the TaskGroup (`1327-1333`), so **`execute()` raises `ErrorDuringMovement`**. A test pins this: `tests/cell/test_trajectory_cursor_parity.py:663-667` ("E-STOP triggered"). |
+| `PAUSED_BY_USER` (STOPPED mapped) + standstill | `_handle_executing` `789-798` → `paused`, reason `USER` | `trajectory_cursor.py:1541-1557` → **raises `UnexpectedTrajectoryState`** ("paused by user … during one-shot execution; only this cursor may pause it"), a subclass of `ErrorDuringMovement`. |
+| `RUNNING` still reported with `standstill=true` | `800-803`: "A standstill flag on a RUNNING frame is jitter, not a completion" → stays `executing` | **Hangs.** There is no timeout or stall watchdog. `MovementStalled`/`max_stall_s` exist only on the unmerged branch `fix/trajectory-completion-standstill-watchdog`. |
+| `execute` block disappears (bare standstill frames) | `465-480`: bare standstill only concludes from `ending`/`pausing`, so `executing` stays put | **Hangs.** |
+| `END_OF_TRAJECTORY` | → `ending`/`ended` | Returns normally (false success). Unlikely on an E-STOP, but nothing would catch it. |
+| Execute websocket closed by the server | `iterate_responses` breaks on "Cancelled on the server side", and on a clean close the `async for` simply ends. `_response_consumer` (`1664`) then returns **without error**. | Depends on the state stream; often a hang. |
+| `PAUSED_ON_IO` while the start carried no `pause_on_io` | `578-595`: strict → `error`; robust → warn and follow as an IO pause | strict: `UnexpectedTrajectoryState`. robust: treated as a resumable IO pause (see 4). |
+
+One more trap: `_response_consumer` drops every response when no operation is in progress (`trajectory_cursor.py:1667-1672`, "skipping"). During an IO-pause wait the operation is already completed (`paused_on_io=True`). So **a `MovementErrorResponse` arriving while paused on IO is silently ignored**.
+
+**`TrajectoryExecutor` sessions** (`trajectory_executor.py:228-238`, `detach_on_standstill=False`) do not have the one-shot rule. A `PAUSED_BY_USER` at standstill completes the group's `forward()` normally (`trajectory_cursor.py:1558`). `MultiTrajectoryCursor._forward` just gathers the results (`multi_trajectory_cursor.py:457`), and `TrajectoryExecutor.execute` (`182-183`) **returns normally mid-trajectory** without checking `final_location`. A `MovementErrorResponse` or state-machine error still raises; the TaskGroup is unwrapped at `263-270`.
+
+## 3. Debounced standstill and `ExecutionPolicy`
+
+- `policy.py:44-74`, presets:
+  - `robust` (default): `strict=False`, `StandstillConfig.robust()`, `resume_detect_s=0.5`, `resume_window_s=1.0`.
+  - `strict`: raw flag, contradictions and jitter fail.
+  - `diagnose`: debounced, but everything fails.
+  - Set via `NOVA_EXECUTION_POLICY` and the per-knob env vars (`policy.py:21-30`). README table at `README.md:74-78`.
+- The estimator (`standstill.py:184-200`, docstring `1-37`) only decides "at rest or moving". It uses raw-flag votes (`motion_votes=3`, `rest_votes=2`), commanded-location change and measured-joint change. It does not classify *why* the robot stopped.
+- An E-STOP is never classified as such. The classification comes only from the discriminator:
+  - `END_OF_TRAJECTORY` → "ended"
+  - `PAUSED_BY_USER` → user pause
+  - `PAUSED_ON_IO` → IO pause
+  - `RUNNING` at rest → jitter, keep executing
+- Debouncing only delays the conclusion by a couple of frames. It does not change the outcomes in the table.
+- With `robust`, a jitter is just logged (`_on_jitter` `561-576`). Contradictions log a warning and follow the wire: `_contradiction` `876-896`, and `paused(USER)`/`ended` + `RUNNING` → `executing` (`844-869`). With `strict`/`diagnose` those become `UnexpectedTrajectoryState`.
+- One gap: in `armed`, `PAUSED_BY_USER` at standstill only counts as a pause once commanded progress was seen (`_track_commanded_progress` `766-778`, `_handle_armed` `745-760`). An E-STOP right after a start, before the commanded location moved, therefore stays `armed` forever. ADR 003 `:111-114` admits the hang: "a timeout in `armed` is the place to address it".
+- Ignored-resume rules (`move_forward.py:221-263`, README `200-208`):
+  - A resume out of an IO pause that shows only the old `PAUSED_ON_IO` for `resume_detect_s` gets `resume_not_taken_up` (`trajectory_cursor.py:1508-1520, 1610-1621`; `abandon_start` `418-427`).
+  - robust: one more start if within `resume_window_s` of the release edge, otherwise wait for a new edge (signal goes to pausing, then released).
+  - strict: `ResumeNotTakenUp`.
+  - This only applies when `resuming_from is PauseReason.IO`.
+
+## 4. pause_on_io / resume after an E-STOP
+
+- The SDK resume path is `_OneShotDriver._drive` (`move_forward.py:145-200`). Once an operation resolved `paused_on_io`, it awaits `wait_for_pause_on_io_release()`, which only watches the IO via `IOConditionWatcher` (`io_condition.py:131-186`, wired at `motion_group.py:1158-1168`). Then it calls `self._cursor.forward()`, which sends a fresh `StartMovementRequest` from the cursor's last commanded location (`_current_location`).
+- The resume path does **not** check:
+  - safety state or operation mode;
+  - drives-on status;
+  - whether the actual joints are still on the planned path. The commanded location is "commanded, not observed" (README `50-51`).
+  - It also does not re-plan from the current position.
+- So **yes**: if the E-STOP happens while the machine is `paused(IO)`, or the controller reports the E-STOP as `PAUSED_ON_IO`, a PLC toggling the enable signal makes the SDK send a start on the same trajectory and websocket at the old location. Retries follow the 0.5 s / 1 s rules above.
+- If the wire flips to `PAUSED_BY_USER` while paused, `pause_reason` follows the wire to `USER` (`855-859`). The driver does not re-check this and still sends `forward()` on release. `on_start` then sets `resuming_from=USER` (`680-681`), so `_resume_not_taken_up` never fires. If the controller ignores the start, the operation sits in `armed` and **hangs**.
+- If the E-STOP hits while `executing` and the wire shows `PAUSED_BY_USER`, one-shot raises (section 2), so no resume is attempted.
+- Bus-loss guard (`move_forward.py:265-278`): on loss of the bus-IO service it sends a `PauseMovementRequest`, and resumes when the signal is back.
+- What the controller does with a start after an E-STOP (drives were off, possibly off-path after STOP 0/1) is not documented anywhere in the repo. The SDK would see one of three things:
+  - a `MovementErrorResponse` → `ErrorDuringMovement` if an operation is in progress;
+  - an ignored start → ignored-resume logic, or the `armed` hang described above;
+  - motion → followed.
+- The API docstring only says physical controllers move "to desired actual joint configuration, if possible". The `executeTrajectory` doc lists a start-location joint precondition for `InitializeMovementRequest` only.
+
+**Differences on `lab/pause-auto-resume`** (`trajectory_state_machine.py` +28, `trajectory_cursor.py` +43, `move_forward.py` +87):
+- New `pause_resume=controller` (`NOVA_PAUSE_RESUME`). Every start carries `PauseOnIO.auto_resume=True`. `WAIT_FOR_IO` after motion is read as `paused(IO)`, and the controller resumes by itself when the condition clears; the SDK sends no start. The default is still `sdk`.
+- `_supervise_auto_resume` raises `ResumeNotTakenUp` (`missed_auto_resume=fail`, the default) or sends one SDK start (`start`).
+- `TrajectoryExecutor` keeps the `controller` strategy when all groups share an identical `pause_on_io`.
+- Still no safety checks. Under `controller`, resuming after an E-STOP is decided entirely inside the controller. ADR 002's addendum notes that "the earlier objection to self-restarting motion (RB-3908) is still open".
+
+## 5. State stream ending or failing
+
+- **Graceful end** of the shared state websocket (`state_stream.py:340-341` → `_EndOfStream`):
+  1. The cursor's monitor loop ends. Its `finally` (`trajectory_cursor.py:1568-1580`) completes the in-progress op with `ErrorDuringMovement("Motion group state stream ended before the movement completed")` and calls `detach()`.
+  2. In `move_forward` the driver swallows that error. `_drive` returns at `165-167`, and the class docstring `95-98` says so explicitly.
+  3. `driver.error` stays `None`, `cntrl` finishes, and **`execute()` returns normally, mid-trajectory, with no exception**.
+  4. For interactive or `TrajectoryExecutor` callers, the awaited `forward()` future raises that `ErrorDuringMovement`.
+- **Error end** (exception in the pump): `state_stream.py:342-345, 360-363` re-raises it to the subscriber (`_drain_queue` `170-173`). The monitor task fails, the TaskGroup unwraps it, and **`execute()` raises that exception**.
+- There is no `StateStreamEnded` class anywhere. The only other "ended" error is `multi_trajectory_cursor.py:191` ("State stream ended before the group armed its start-on-IO trigger", a RuntimeError), raised during the barrier.
+
+## 6. Docs and ADRs
+
+- `docs/architecture/adr/002-io-pause-is-resumable.md`: IO pause is resumable and `move_forward` resumes on release. No mention of E-STOP or safety. pause-auto-resume adds the auto_resume addendum with the RB-3908 note.
+- `docs/architecture/adr/003-trajectory-state-machine-armed-transient-rest.md:55-69, 111-114`: errors surface as `UnexpectedTrajectoryState`, and the known `armed` hang. `:62` lists "a stop" among discriminators that are only logged at rest.
+- `nova/cell/movement_controller/README.md:27-28, 74-78, 179-208`: wire behaviour, policy table, completion and resume rules.
+- Local gitignored notes in `docs/architecture/incoming/` (`.gitignore:196`):
+  - `pause-on-signal-evaluation.md:29`: safety state / OperationMode are "read-only gates", no endpoint.
+  - `execution-completion-detection.md:221` and `-research.md:197`: a stall watchdog is proposed for "a real protective stop".
+  - `execution-completion-detection.md:331`: after a torque fault the controller needs manual intervention at the panel.
+- No ADR or doc covers E-STOP, safety state or resume after an emergency stop. The only text: the `OperationState.FAILED` docstring "(e.g., E-STOP triggered)" (`trajectory_cursor.py:158`), `wandelscript/CHANGELOG.md:202` "RPS-1217: Runner EStop handling", and the novapolicy docs.</result>
+<usage><subagent_tokens>169353</subagent_tokens><tool_uses>53</tool_uses><duration_ms>253034</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a48b9387c2d316c83</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/418e8b83-02ce-4088-b1d9-d40b039cc111/tasks/a48b9387c2d316c83.output</output-file>
+<status>completed</status>
+<summary>Agent "PLC sim resume handling" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I didn't modify anything. Repo: `/Users/q/2lab/cell-plc-simulation`, checked-out branch `chore/nova-sdk-robust-standstill-pin`.
+
+## Summary
+
+- **There is no e-stop-specific code anywhere in the repo.** Two mechanisms cover all interruptions:
+  1. **E14 robot-enable hold.** The robot pauses on path while E14 is low and continues on the same trajectory when it comes back. No exception is raised.
+  2. **E27 per-step fault hold.** Any exception (e-stop / `MOTION_ERROR`, a pause from the pendant or another client, the state stream ending, a timeout, a bus error) is caught per step. The Folge forces its fault signals low, waits for `E27` high, restores the signals, and retries **the same step**.
+- **What a retry re-runs:**
+  - Taught blocks of all 12 cell robots continue on their **remembered trajectory** from the cursor location (`path_resume.py`). They do **not** replan from the live joints, apart from a short "back onto the path" joint move.
+  - Synced arm+rail RRT blocks, ir340r01's gluing UP11 and ir450r01's search moves replan from the live joints.
+- **The Folge does not restart from the top** while the fault hold is active. `A9` stays low and the PLC `cell_sequencer` stays parked in state 2/3. A restart from the top only happens via the dispatcher backstop (an error outside any step), a dispatcher kill/restart, or an operator stop + start.
+- **SDK pin:**
+  - The working tree is **uncommitted**: `nova/pyproject.toml` pins `lab/pause-auto-resume`, and `uv.lock` resolves it to `b0cac43c15641e9ba06ab94f214fea18040aa048` (wandelbots-nova 6.0.0).
+  - HEAD (`a46a2df`) still pins `lab/robust-standstill`, resolved to `57ac81c73dddacda0b24498bb72a2accf69e368e`.
+  - `nova/.nova` adds `NOVA_PAUSE_RESUME=controller`, also uncommitted.
+  - The `.venv` is installed from `b0cac43`.
+
+## 1. Resume / retry handling
+
+### A. E14 pause (`pause_on_io`)
+- Every Folge builds `motion_enable_signal('&lt;robot&gt;_e14_robenabled', BUS_IO)` and passes it as `pause_on_io`, for example `nova/ir340r01/folge11.py:119-129`, `nova/ir999r01/folge11.py:84-85,127-143`, `nova/ir350r01/folge11.py:140-155`.
+- **Single motion group:** `nova/sdk_fix/playback_speed_on_execute_fix.py` is a fork of the SDK's `move_forward`, wired in through `helpers/motion/playback_speed.py:197-240` (`move_forward_at_operator_speed`).
+  - In `_OneShotDriver._drive` (`:281-327`), when an operation ends with `paused_on_io`, it awaits `context.wait_for_pause_on_io_release()` and then calls `cursor.forward(playback_speed_in_percent=...)` again.
+  - That re-runs the **rest of the same trajectory** on the same cursor. No replan.
+  - A bus-IO-loss guard (`:329-343`) pauses the cursor from the SDK when the bus-IO service drops.
+- **No watchdog while a pause condition is armed:** `helpers/motion/watchdog.py:114-122`. A pause may last indefinitely.
+- **Synced arm+rail blocks:** `helpers/motion/collision_free.py:402-553` (`_drive_through_io_pauses`).
+  - It waits for E14 to be high before the first `forward()` (`:502-509`). This fixes the 2026-09-14 barrier deadlock.
+  - Each resume is a new `cursor.forward()` through the whole start barrier (`:543-549`).
+- **Mismatch with the new SDK setting:** the sdk_fix driver does not implement the SDK's new auto-resume supervision.
+  - The cursor itself reads `default_execution_policy()`, so with `NOVA_PAUSE_RESUME=controller` every start carries `auto_resume` (SDK `trajectory_cursor.py:736-740`).
+  - The cursor then does not complete the operation on an IO pause (`:1565-1572`).
+  - The SDK's own `move_forward` adds `_supervise_auto_resume` / `ResumeNotTakenUp` handling (SDK `move_forward.py:290-320`) and `resume_window_s` retries. The repo fork has none of this.
+  - The fork's header says it is verbatim from rev `3b662f7`.
+  - I infer from the code (not tested) that a missed controller auto-resume on the repo path may leave `execute()` waiting with no watchdog, and that `NOVA_MISSED_AUTO_RESUME` has no effect there.
+  - The synced path (`collision_free.py`) is also unchanged for the controller strategy. The SDK's `_session_policy` (`trajectory_executor.py:369-420`) is what keeps or downgrades the strategy.
+
+### B. Fault hold and retry: `helpers/cell/folge_guard.py:209-346`
+- `except Exception` around `step()` (`:295-297`).
+- It snapshots the fault-signal tags (`:299`), forces them FALSE in one atomic write (`handle_folge_fault`, `:147-189`), and waits for `E27 == True` (`:317-323`).
+- Then it restores the snapshot (`:325-332`), calls `on_resume` to re-assert `MODE_CONTROL` (`:334-342`), sleeps 1 s and retries the **same step** (`:344-346`).
+- The docstring (`:232-247`) states that a plain retry replans from the live joints, which is wrong mid-motion. That is why `path_resume` exists.
+- UPs called on their own use `run_step_without_fault_hold` (`:349-364`): no hold, the error ends the run.
+
+### C. Continue on path: `helpers/motion/path_resume.py:445-735` (`plan_and_execute_resuming`)
+- **First attempt:** `plan_with_store` + execute, with an `on_cursor` capture.
+  - On any exception it records the trajectory, the cursor's `current_location` and the rail position (`:693-721`).
+  - An execute that returns short raises `MotionNotCompleted` (`:723-733`). This works around sdk_fix README §6: `execute()` returns normally when a trajectory ends short.
+- **Retry (a record exists): never a fresh plan.**
+  - Rail must be within `RAIL_START_ATOL_MM` of its position at the fault (`:559-583`).
+  - It finds the trajectory sample within `CURSOR_WINDOW=0.1` of the cursor location that is closest to the **live joints** (`:585-610`).
+  - If the robot is off that sample by more than `_CONNECT_SKIP_ATOL`, it does a slow planned `jnt` move onto it at 10 % (`_return_to_path`, `:400-442`, `:613-637`). This is the KRL BCO-run analog, and it plans from the live joints.
+  - Then it executes the **same trajectory object** with `initial_location=sample.location` (`:647-681`).
+- **What blocks a resume:**
+  - The robot is beyond `return_to_path_atol` (per Folge `RETURN_TO_PATH_ATOL`: ir340r01 0.01 rad, ir999r01 0.05 rad).
+  - The rail moved, or the block identity doesn't match (`:544-556`).
+  - In those cases it raises `ResumeNotPossible`, a `ReportedFault`, and goes back to the E27 hold. The log text says "Roboter in Grundstellung bringen und Folge neu starten".
+- **Memory is per process** (`PathResume()` is built inside `main()`). A dispatcher restart loses it (docstring `:79-85`).
+- **Where it is wired in:**
+  - Wired: every taught block of the 12 cell robots' `folge11.py` and UPs, `ir999r01/folge11.py:127-137`, and `folge11_resume.py`.
+  - Not wired: synced RRT blocks (`ir999r01/folge11.py:169-178` etc. replan via `plan_rrt_synced_at_axis` from the live joints), ir340r01 UP11 (`folge11.py:120,282`), ir450r01 search moves.
+  - `plan_and_execute_synced_resuming` (`:803-1014`) exists but no Folge calls it (`:837-838`, sdk_fix README §11).
+- **Status:** README §10 and the docstring (`:87-90`) say it has **not been run against a controller**. The init-position tolerance is unmeasured.
+
+### D. SDK exceptions that reach the hold (pinned SDK, `trajectory_cursor.py`)
+| Interruption | What the SDK raises | Where |
+|---|---|---|
+| Pause by user / another client during one-shot execution | `UnexpectedTrajectoryState` | `:1557-1564` |
+| State stream ends | `ErrorDuringMovement("Motion group state stream ended before the movement completed")` | `:1586-1592` |
+| `MOTION_ERROR` (e.g. e-stop) | `ErrorDuringMovement`, only if an operation is still in progress | sdk_fix README §9 |
+
+- **Cancellation is not caught (gap):** synced sessions can surface as a bare `CancelledError`, which is re-raised (`collision_free.py:724-740`). `CancelledError` is a `BaseException`, so it bypasses `run_step_with_fault_hold`, the Folge's `except Exception` and `cell.py`'s `except Exception`.
+
+## 2. Dispatcher (D9) reaction to a Folge exception
+- **Inside a step:** it never reaches the dispatcher (see 1B). `A9` stays False and the PLC stays in state 2/3.
+- **Outside a step** (init, or the wrapper itself):
+  1. The Folge's own `except` writes `a1_mirrorseq=0`, calls `handle_folge_fault`, and re-raises (`ir340r01/folge11.py:381-384`, `ir999r01/folge11.py:542-547`).
+  2. `cell.py` catches it (`ir340r01/cell.py:88-128`, `ir999r01/cell.py:96-122`), logs it, waits for `E27`, then sets `a9_seqready=True` and `sequencer.finish()`.
+  3. The loop goes back to waiting for E1 → the PLC re-selects the same Folge → **it restarts from the beginning**.
+- It does not skip or exit, and nothing is reported to the PLC beyond A9/A1 (no fault-collective bit is written).
+- `cell_sync.py` has no fault logic. It only handles the graceful-stop marker (checked between Folgen), peer-aware permission waits (`:315-344`), speed and test-Folge markers.
+- **Dispatcher killed / restarted:**
+  - On startup the new dispatcher writes `a1=0, a9=True` (`cell.py:48`). The PLC, sitting in state 3 (WAIT DONE, `cell_sequencer.st:154`), sees A9, pulses `done` and re-dispatches the Folge from the top.
+  - `done` isn't consumed anywhere in `plc/src` today.
+  - Presence detection doesn't fire, because states 2/3 don't run the timer (`:166`; header `:35`).
+- **Supervision:** `cell_app/supervise.py:31-75` only supervises liveness. It does not restart crashed dispatchers.
+- **Other recovery tooling:**
+  - `recover_from_step.py` is supported by `cell_app/production.py:237-249`, but no robot has one.
+  - `nova/START_FROM_STEP_PLAN.md` is a proposal only.
+
+## 3. SDK pin and the APIs used
+- **Pin:** see Summary. `wandelbots-api-client` is `26.8.0+a3081.4275fd77.483450` from the internal index; this build has `PauseOnIO.auto_resume`.
+- **APIs used:**
+  - `nova.cell.motion_enable_signal`
+  - `motion_group.execute(..., movement_controller=, pause_on_io=)` (`watchdog.py:114-131`)
+  - `TrajectoryCursor(initial_location=, pause_on_io=, set_outputs=, detach_on_standstill=True)` and `cursor.forward(playback_speed_in_percent=)` / `cursor.pause()` (sdk_fix)
+  - `context.wait_for_pause_on_io_release` / `wait_for_pause_signal_loss`
+  - `MultiMotionGroup.builder(...).sync_on_io().build().attach(groups=GroupArgs(pause_on_io=...))`, plus `sdk_fix/executor_start_location_fix.attach_at`
+  - `IOConditionWatcher.holds/wait_until_released/wait_until_bus_io_lost`
+- **`ExecutionPolicy` is never referenced in repo code.** It only takes effect through environment variables (SDK `policy.py:28-39,121-169`): `.nova` sets `NOVA_PAUSE_RESUME=controller`, and the default preset is `robust`.
+
+## 4. PLC side
+- **No e-stop, drives or safety chain is modelled.** The production gate (`K40` etc.) is deferred (PLAN.md Phase 5, `:150-162`).
+- **E14** is derived every scan as `e14_robenabled := NOT &lt;robot&gt;_robenabled_force_low` (e.g. `plc/src/robots/ir340r01.st:204`, `ir360r01.st:200`). The force flags are in `plc/src/test_flags.st:27-39,98-113` and `plc-basement/src/test_flags.st:6-35`.
+  - The PLC never re-triggers a sequence start after E14 returns. Resuming is purely on the NOVA/controller side.
+  - The comment at `ir340r01.st:55-69` still describes the old client-side cursor pause. A "SUPERSEDED" note follows it.
+- **E27 `quitcont`** is declared but "not driven by any FB yet – force by hand via .mon" (`ir340r01.st:79-84`, `ir360r01.st:72-77`).
+  - Gap: `wait_for_bus_io` fires on the current level (`cell_sequencer.st` header). If E27 is left high, I infer the hold would retry every ~1 s without an operator, but I haven't verified this.
+- **`cell_sequencer`** (`plc/src/cell_sequencer.st`):
+  - Level-based states 0–3 (`:134-158`). E9 is only raised in state 1 after the mirror.
+  - Reset happens on `reset` or when `present` drops (`:119-122`).
+  - The PLC never re-starts a Folge on its own after a fault: it waits for A9.
+
+## 5. Docs
+- `nova/sdk_fix/README.md`:
+  - §6: short-ending execute is accepted as-is.
+  - §8: barrier deadlock; the prototype was withdrawn after the 2026-09-15 collision.
+  - §9: `execute()` does not return after completion, and `MOTION_ERROR` is ignored once the operation is complete.
+  - §10: no mid-trajectory start; prototyped.
+  - §11: executor start location; unwired.
+- `PLAN.md`:
+  - D9 (`:32`) and Phase 8 (`:432+`).
+  - 2026-09-14 entry: synced block never resumed (`:1282-1317`).
+  - 2026-09-15 entries: collision / E-stop after the arm moved without the rail (`:1342-1366`).
+- `CLAUDE.md`: E14 force (`:569-573`); `folge11_resume.py` (`:955-967`).
+- `folge_guard.py` docstring (`:1-77`) and `path_resume.py` docstring "What it does not cover" (`:71-90`).
+
+## 6. Handshake inconsistencies if a Folge re-runs from the start (or a step re-runs)
+
+**Station arbiter after a mid-turn restart from the top** (`plc/src/station_arbiter.st:117-130`)
+- `MAKRO0` drops Profilfrei, then "Start-Profilfrei" sets it TRUE again.
+- The glitch rejection (header `:44-48`) only works when that glitch comes before the turn's first stable clear. After a restart in the middle of a turn, a slot that was `requested` latches `entered` and then `visited`, and the turn advances **without the real entry or the work**.
+- The robot then blocks at `macro1000` until the cycle comes round again, while the next robot is let into the fixture.
+- The station `reset` (`station3340.st:93`) only fires when no slot is `in_cell`. That doesn't happen on a quick restart, because `present` holds in states 2/3.
+
+**Fault-hold force/restore** (`folge_guard.py:299-332`)
+- Forcing every Profilfrei low and later restoring it creates a FALSE→TRUE edge the arbiter can read as enter/clear.
+- If the fault happened while waiting in `macro1000` with `aNN=True`, this could complete a turn spuriously. Flagged in PLAN.md 2026-09-17 as "fault-hold snapshot/Profilfrei audit (user validates)".
+
+**Whole step re-run on retry**
+- `macro2000` (guard lock) is inside motion steps (e.g. `ir340r01/folge11.py:210,243`), so it is re-requested on every retry; it is idempotent.
+- Process macros `macro1050`/`1051`/`1053` re-assert in-position and wait for the release again. In the sim, `in_out_sim` is a stateless `TON(a)` mirror (`plc/src/in_out_sim.st`), so this stays consistent. On a real cell it could mean a second clinch/weld/rivet.
+- `macro2001` (FM) re-sends its code.
+
+**Path-attached `io_write`s on a path resume**
+- Writes located before the resume point are not re-fired (`path_resume.py:30-33`). Their bus values rely on the snapshot restore, or on not being in the fault set.
+- Point/index numbers (`a193`/`a161`/`a97`, written at the head of the approach) are not re-written.
+
+**Interlocks (`nova.interlock`)**
+- Held through the hold (not fault signals).
+- On a restart from the top, stale locks are only released after the P0 move and `MAKRO0` (`ir340r01/folge11.py:171-180`).
+
+**Other**
+- Grippers/clamps (`a79`/`a75` "Spanner") are Profilfrei bits, so the snapshot covers them.
+- `a15_athome` is deliberately never forced (`folge_guard.py:68-72`).
+- After a restart away from home, `_move_to_p0` plans from the live joints: in production that raises `TrajectoryReplanRequired` (`playback_speed.py:437`), and in commissioning it is an unplanned direct move.</result>
+<usage><subagent_tokens>246772</subagent_tokens><tool_uses>56</tool_uses><duration_ms>269227</duration_ms></usage>
+</task-notification>
+
+---
+
+did you finish with the last prompt?
+
+---
+
+An estop will most likely lead to an exception in the motion execution via the API. We can verify this with a k8s instance and a virtual robot when i provide you the instance information. The instance is at 172.31.11.216 I already updated @.env 
+you can create a virtual kuka like one of the ir360 ones which have the most dangerous interlocks or create both even and the en estop can be trigerred during some motion using the virtual controller api parts
+
+---
+
+Regarding the interlock test.  Okay the locks stay held but when the step gets rerxecuted or the movement resumes otherwise is this still safe? How can we test this safely?
+
+---
+
+How can I run the tests myself?
+
+---
+
+What does this do? 
+
+<pasted_content id="e6dc">
+cd /Users/q/2lab/cell-plc-simulation/nova
+export NOVA_API=http://172.31.11.216
+uv run python setup/sync_bus_ios.py --robot ir360r01 --apply
+uv run python setup/sync_bus_ios.py --robot ir360r02 --apply
+</pasted_content id="e6dc">
+
+---
+
+can you make the deploy.py script not always create all the signals
+
+---
+
+commit this on a branch and open an MR
+
+---
+
+where in the steps are the interlocks aquired
+
+---
+
+I now have an IPC with virtual robots. The IPC is at 192.168.102.51 and it's kubeconfig is @/Users/q/5kubes/audi-2
