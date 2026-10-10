@@ -1,0 +1,5 @@
+pls check git history of say the last two month whether the move through singularity handling which was added to the API was merged wired through in the SDK
+
+---
+
+Look at @/Users/q/Downloads/diagnosis-2026-10-07T14_06_11/ in the logs there the planner might log request with or without the singularity ahndling set. Can you find out?

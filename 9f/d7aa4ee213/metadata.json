@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "9fd7aa4ee213",
+  "strategy": "manual-commit",
+  "branch": "lab/pause-auto-resume",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".vscode/settings.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/9f/d7aa4ee213/0/metadata.json",
+      "transcript": "/9f/d7aa4ee213/0/full.jsonl",
+      "compact_transcript": "/9f/d7aa4ee213/0/transcript.jsonl",
+      "content_hash": "/9f/d7aa4ee213/0/content_hash.txt",
+      "prompt": "/9f/d7aa4ee213/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 30,
+    "cache_creation_tokens": 69082,
+    "cache_read_tokens": 775858,
+    "output_tokens": 7219,
+    "api_call_count": 15
+  }
+}
