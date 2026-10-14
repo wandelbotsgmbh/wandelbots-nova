@@ -271,7 +271,10 @@ class MotionGroup(AbstractRobot):
         return motion_group_description.motion_group_model
 
     async def get_setup(
-        self, tcp_name: str | None = None, payload_override: str | api.models.Payload | None = None
+        self,
+        tcp_name: str | None = None,
+        payload_override: str | api.models.Payload | None = None,
+        external_tool_offset_name: str | None = None,
     ) -> api.models.MotionGroupSetup:
         """Get the motion group setup.
 
@@ -319,10 +322,12 @@ class MotionGroup(AbstractRobot):
             tcp_name=tcp_name,
             motion_group_description=motion_group_description,
         )
+
         return motion_group_setup_from_motion_group_description(
             motion_group_description=motion_group_description,
             tcp_name=tcp_name,
             payload=resolved_payload,
+            external_tool_offset_name=external_tool_offset_name,
         )
 
     @staticmethod
@@ -966,6 +971,7 @@ class MotionGroup(AbstractRobot):
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
+        external_tool_offset_name: str | None = None,
     ) -> api.models.JointTrajectory:
         if not actions:
             raise ValueError("No actions provided")
@@ -986,7 +992,10 @@ class MotionGroup(AbstractRobot):
 
         current_joints = start_joint_position or await self.joints()
         motion_group_setup = await self._resolve_setup_for_plan(
-            tcp=tcp, motion_group_setup=motion_group_setup, payload_override=payload_override
+            tcp=tcp,
+            motion_group_setup=motion_group_setup,
+            payload_override=payload_override,
+            external_tool_offset_name=external_tool_offset_name,
         )
 
         # TODO: can be done in parallel, would be a big performance boost
@@ -1033,28 +1042,40 @@ class MotionGroup(AbstractRobot):
         tcp: str | None,
         motion_group_setup: api.models.MotionGroupSetup | None,
         payload_override: str | api.models.Payload | None,
+        external_tool_offset_name: str | None,
     ) -> api.models.MotionGroupSetup:
         """Return the motion group setup to plan with, applying any payload override."""
         if motion_group_setup is None:
-            return await self.get_setup(tcp_name=tcp, payload_override=payload_override)
-
-        if payload_override is None:
-            return motion_group_setup
-
-        # Caller supplied both an explicit setup and a payload override;
-        # the explicit payload wins. Do not mutate the caller's setup.
-        motion_group_setup = motion_group_setup.model_copy(deep=True)
-        if isinstance(payload_override, api.models.Payload):
-            # Already a concrete Payload — no need to fetch the description.
-            self._log_payload_override(payload_override.name)
-            motion_group_setup.payload = payload_override
-        else:
-            description = await self._fetch_motion_group_description()
-            motion_group_setup.payload = await self._resolve_payload(
-                payload_override=payload_override,
+            return await self.get_setup(
                 tcp_name=tcp,
-                motion_group_description=description,
+                payload_override=payload_override,
+                external_tool_offset_name=external_tool_offset_name,
             )
+
+        # Do not mutate the caller's setup.
+        motion_group_setup = motion_group_setup.model_copy(deep=True)
+
+        if payload_override is not None:
+            if isinstance(payload_override, api.models.Payload):
+                # Already a concrete Payload — no need to fetch the description.
+                self._log_payload_override(payload_override.name)
+                motion_group_setup.payload = payload_override
+            else:
+                description = await self._fetch_motion_group_description()
+                motion_group_setup.payload = await self._resolve_payload(
+                    payload_override=payload_override,
+                    tcp_name=tcp,
+                    motion_group_description=description,
+                )
+
+        if external_tool_offset_name is not None:
+            description = await self._fetch_motion_group_description()
+            motion_group_setup.external_tool_offset = (
+                description.tcps[external_tool_offset_name].pose
+                if description.tcps is not None
+                else None
+            )
+
         return motion_group_setup
 
     @staticmethod
