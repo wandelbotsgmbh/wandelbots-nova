@@ -150,6 +150,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
+        external_tool_offset_name: str | None = None,
     ) -> api.models.JointTrajectory:
         """
         A simple example planner that:
