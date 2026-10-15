@@ -2,8 +2,9 @@
 
 from nova import api
 from nova.actions import Action
-from nova.datasets import Dataset, DatasetError
+from nova.actions.io import WriteAction
 from nova.actions.motions import CartesianPTP, Circular, JointPTP, Linear
+from nova.datasets import Dataset, DatasetError
 from nova.exceptions import PoseResolutionError, UnsupportedRoutineCommand
 from nova.types import Pose
 from nova.types.motion_settings import MotionSettings
@@ -35,6 +36,8 @@ def _to_action(
     command: api.models.Command,
 ):
     label = f"Command {index} ({command.type})"
+    if isinstance(command, api.models.SetIOCommand):
+        return _to_write(command)
     if not isinstance(command, api.models.ExplicitPathMotionCommand):
         raise UnsupportedRoutineCommand(f"{label} is not supported yet")
 
@@ -59,6 +62,15 @@ def _to_action(
         )
     raise UnsupportedRoutineCommand(
         f"{label}: path type {type(path_type).__name__} is not supported"
+    )
+
+
+def _to_write(command: api.models.SetIOCommand) -> WriteAction:
+    """Map set_io onto a write; its ``at`` trigger is resolved against the planned path."""
+    io = command.io_value
+    value = int(io.value) if isinstance(io, api.models.IOIntegerValue) else io.value
+    return WriteAction(
+        key=io.io, value=value, device_id=None, origin=command.io_origin, at=command.at
     )
 
 

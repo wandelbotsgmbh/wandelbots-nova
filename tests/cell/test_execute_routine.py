@@ -22,6 +22,9 @@ from nova.command_routines import (
     move_circular,
     move_joint_ptp,
     move_linear,
+    set_io,
+    at_path_fraction,
+    at_time,
 )
 from nova.core.gateway import ApiGateway
 from nova.datasets import Dataset, DatasetFrame, DatasetPose
@@ -227,6 +230,82 @@ class TestExecution:
 
         # THEN
         motion_group._load_planned_motion.assert_awaited_once()
+
+
+class _RecordingProtocolFake(_ExecuteProtocolFake):
+    """Records the start requests the execution sends to the controller."""
+
+    def __init__(self, upstream: FakeUpstream):
+        super().__init__(upstream)
+        self.start_requests: list[api.models.StartMovementRequest] = []
+
+    async def __call__(self, cell, controller, client_request_generator):
+        async def recording(responses):
+            async for request in client_request_generator(responses):
+                if isinstance(request, api.models.StartMovementRequest):
+                    self.start_requests.append(request)
+                yield request
+
+        await super().__call__(cell, controller, recording)
+
+
+class TestSetIO:
+    """set_io commands become the outputs requested at start of execution."""
+
+    async def _run(self, *commands) -> list[api.models.SetIO]:
+        upstream = FakeUpstream()
+        motion_group = _motion_group(upstream)
+        recorder = _RecordingProtocolFake(upstream)
+        motion_group._api_client.trajectory_execution_api.execute_trajectory = recorder
+
+        async with asyncio.timeout(5):
+            await motion_group.plan_and_execute_routine(_routine(*commands))
+
+        return recorder.start_requests[0].set_outputs
+
+    async def test_set_io_without_trigger_switches_at_the_following_motion_boundary(self):
+        # WHEN
+        outputs = await self._run(
+            move_linear(_pose(1.0)), set_io("valve", True), move_linear(_pose(2.0))
+        )
+
+        # THEN
+        assert [(o.io.io, o.io.value, o.location) for o in outputs] == [("valve", True, 1.0)]
+
+    async def test_integer_and_analog_values_and_bus_origin_are_honoured(self):
+        # WHEN
+        outputs = await self._run(
+            set_io("count", 7),
+            set_io("speed", 0.5, io_origin=api.models.IOOrigin.BUS_IO),
+            move_linear(_pose(1.0)),
+        )
+
+        # THEN
+        assert [(o.io.io, o.io.value, o.io_origin) for o in outputs] == [
+            ("count", "7", api.models.IOOrigin.CONTROLLER),
+            ("speed", 0.5, api.models.IOOrigin.BUS_IO),
+        ]
+
+    async def test_path_fraction_trigger_switches_inside_the_following_motion(self):
+        # WHEN
+        outputs = await self._run(
+            move_linear(_pose(1.0)),
+            set_io("valve", True, at=at_path_fraction(0.5)),
+            move_linear(_pose(2.0)),
+        )
+
+        # THEN
+        assert [o.location for o in outputs] == [1.5]
+
+    async def test_time_trigger_switches_at_the_triggered_location(self):
+        # WHEN (planned times equal locations)
+        outputs = await self._run(
+            set_io("valve", True, at=at_time(0.25, api.models.AtReference.PREVIOUS)),
+            move_linear(_pose(1.0)),
+        )
+
+        # THEN
+        assert [o.location for o in outputs] == [0.25]
 
 
 class TestRejection:
