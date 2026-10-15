@@ -17,6 +17,7 @@ from nova.actions.path_trigger_resolver import (
 )
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
+from nova.datasets import Dataset
 from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, PlanTrajectoryFailed
 from nova.types import Pose, RobotState
 from nova.types.state import MotionState, motion_group_state_to_motion_state
@@ -33,6 +34,7 @@ from nova.utils.motion_group_setup import (
 )
 
 from .movement_controller import move_forward
+from .routine_execution import routine_to_actions
 from .robot_cell import AbstractRobot
 from .tuner import TrajectoryTuner
 
@@ -988,6 +990,84 @@ class MotionGroup(AbstractRobot):
                 current_joints = tuple(trajectory.joint_positions[-1])
 
         return combine_trajectories(all_trajectories)
+
+    def _check_routine_motion_group(self, routine: api.models.CommandRoutine) -> None:
+        if routine.motion_group is not None and routine.motion_group.id != self.id:
+            raise ValueError(
+                f"Routine '{routine.command_routine}' references motion group "
+                f"'{routine.motion_group.id}', not '{self.id}'"
+            )
+
+    async def plan_routine(
+        self, routine: api.models.CommandRoutine, dataset: Dataset | None = None
+    ) -> api.models.JointTrajectory:
+        """Plan a CommandRoutine using its own context.
+
+        The routine's TCP, start joint position and motion group setup are used; per-command
+        motion settings take precedence over the routine's default motion settings.
+
+        Args:
+            routine: The routine to plan.
+            dataset: The dataset the routine's pose references point into. Required if the
+                routine uses local pose references or poses given in a dataset frame; those are
+                resolved to world poses (with their kinematic configuration) before planning.
+
+        Raises:
+            UnsupportedRoutineCommand: If the routine contains a command that is not supported yet.
+            PoseResolutionError: If a pose cannot be resolved to a world pose.
+            ValueError: If the routine references a different motion group.
+        """
+        self._check_routine_motion_group(routine)
+        return await self.plan(
+            routine_to_actions(routine, dataset),
+            routine.tcp,
+            start_joint_position=(
+                tuple(routine.start_joint_position) if routine.start_joint_position else None
+            ),
+            motion_group_setup=routine.motion_group_setup,
+        )
+
+    async def execute_routine(
+        self,
+        routine: api.models.CommandRoutine,
+        joint_trajectory: api.models.JointTrajectory,
+        dataset: Dataset | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
+    ) -> None:
+        """Execute a trajectory planned with :meth:`plan_routine` for the same routine and dataset.
+
+        Cancel the task awaiting this call to stop the run.
+        """
+        self._check_routine_motion_group(routine)
+        await self.execute(
+            joint_trajectory,
+            routine.tcp,
+            routine_to_actions(routine, dataset),
+            state_stream_rate_msecs=state_stream_rate_msecs,
+        )
+
+    async def plan_and_execute_routine(
+        self,
+        routine: api.models.CommandRoutine,
+        dataset: Dataset | None = None,
+        *,
+        state_stream_rate_msecs: int | None = None,
+    ) -> None:
+        """Plan and execute a CommandRoutine.
+
+        Everything is translated, resolved and planned before the robot moves. Cancel the task
+        awaiting this call to stop the run. See :meth:`plan_routine` for ``dataset``.
+
+        Raises:
+            UnsupportedRoutineCommand: If the routine contains a command that is not supported yet.
+            PoseResolutionError: If a pose cannot be resolved to a world pose.
+            ValueError: If the routine references a different motion group.
+        """
+        joint_trajectory = await self.plan_routine(routine, dataset)
+        await self.execute_routine(
+            routine, joint_trajectory, dataset, state_stream_rate_msecs=state_stream_rate_msecs
+        )
 
     async def _resolve_setup_for_plan(
         self,
