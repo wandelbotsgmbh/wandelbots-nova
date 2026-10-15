@@ -17,19 +17,19 @@
       "deletions": 0,
       "files": 0
     },
-    "cost": 0.5681936000000001,
+    "cost": 0.6672846000000002,
     "tokens": {
-      "input": 82,
-      "output": 13366,
-      "reasoning": 2487,
+      "input": 98,
+      "output": 16293,
+      "reasoning": 2797,
       "cache": {
-        "read": 1340046,
-        "write": 110198
+        "read": 1818811,
+        "write": 117723
       }
     },
     "time": {
       "created": 1792087281493,
-      "updated": 1792088301880
+      "updated": 1792088326169
     }
   },
   "messages": [
@@ -4003,7 +4003,43 @@
           "modelID": "claude-sonnet-5.5"
         },
         "summary": {
-          "diffs": []
+          "diffs": [
+            {
+              "file": ".specs/ndx-883-command-routine-execution/issues/01-tracer-run-code-built-motion-routine.md",
+              "patch": "Index: .specs/ndx-883-command-routine-execution/issues/01-tracer-run-code-built-motion-routine.md\n===================================================================\n--- .specs/ndx-883-command-routine-execution/issues/01-tracer-run-code-built-motion-routine.md\t\n+++ .specs/ndx-883-command-routine-execution/issues/01-tracer-run-code-built-motion-routine.md\t\n@@ -1,20 +1,20 @@\n # 01: Tracer: run a code-built motion routine\n \n **Parent:** NDX-883 (Add execution of command_routines to Python SDK)\n \n **What to build:** A Robot Programmer can take a CommandRoutine built in code and run it on its motion group through public SDK entry points that mirror `plan` / `execute` / `plan_and_execute`: `plan_routine`, `execute_routine` and `plan_and_execute_routine` on the motion group. The routine contains explicit-path motions (linear, cartesian PTP, joint PTP, circular) with concrete pose or joint targets. Execution uses the routine's own context (TCP, motion group, start joint position, default motion settings, motion group setup) and does not take caller overrides. The programmer can stop a run by cancelling the awaiting task. Without a stop it runs to completion. Observing execution state is deferred to tickets 04-06, once the observation mechanism is decided. Any command type this slice doesn't support yet is rejected before the robot moves, with an error naming the command. Later tickets remove types from that rejected list.\n \n Note: the NOVA API has no endpoint for executing a routine. The SDK has to put execution together from the existing planning and trajectory-execution APIs. Existing `MotionGroup.plan`/`execute` and action-based programs must keep working unchanged.\n \n **Blocked by:** None (can start immediately)\n \n-**Status:** ready-for-agent\n+**Status:** done (committed)\n \n - [x] `plan_routine`, `execute_routine` and `plan_and_execute_routine` run a CommandRoutine on the motion group the routine references.\n - [x] Explicit-path motion commands (line, cartesian PTP, joint PTP, circle) execute in order.\n - [x] The routine's TCP, start joint position, default motion settings and motion group setup are used. Per-command motion settings take precedence over the routine defaults.\n - [x] The programmer can stop a run by cancelling the awaiting task. (Observing state moved to tickets 04-06.)\n - [x] Not-yet-supported command types are rejected before any motion, with an error naming the command.\n - [x] Behaviour test at the public entry point with gateway test doubles covers: run to completion, stop, routine context used, rejection of an unsupported command.\n - [x] Integration test runs a motion-only routine on the virtual controller to completion.\n - [x] Existing plan/execute and action-based test suites stay green.\n",
+              "additions": 1,
+              "deletions": 1,
+              "status": "modified"
+            },
+            {
+              "file": ".specs/ndx-883-command-routine-execution/issues/02-run-routines-from-dataset.md",
+              "patch": "Index: .specs/ndx-883-command-routine-execution/issues/02-run-routines-from-dataset.md\n===================================================================\n--- .specs/ndx-883-command-routine-execution/issues/02-run-routines-from-dataset.md\t\n+++ .specs/ndx-883-command-routine-execution/issues/02-run-routines-from-dataset.md\t\n@@ -1,15 +1,15 @@\n # 02: Run routines loaded from a Dataset\n \n **Parent:** NDX-883\n \n **What to build:** A Robot Programmer loads a Dataset, picks one of its CommandRoutines by id and runs it through the same entry points as ticket 01, passing the loaded Dataset as `dataset=` (`plan_routine`, `execute_routine`, `plan_and_execute_routine`). Local pose references (poses taught in the Dataset) are resolved to concrete targets. If a reference can't be resolved, the run fails before any motion with an error naming the missing pose.\n \n **Blocked by:** 01 (Tracer: run a code-built motion routine)\n \n-**Status:** ready-for-agent\n+**Status:** done (committed)\n \n - [x] A routine taken from a loaded Dataset runs through the same public entry point.\n - [x] Local pose references are resolved against the Dataset, including its frames (`DatasetPose.as_world()`, kinematic configuration kept; poses given inline in a dataset frame are resolved too).\n - [x] An unresolvable pose reference fails before motion and names the pose.\n - [x] Behaviour test with test doubles covers resolution and the missing-pose failure.\n - [x] Integration test loads a Dataset and runs one of its routines on the virtual controller.\n",
+              "additions": 1,
+              "deletions": 1,
+              "status": "modified"
+            },
+            {
+              "file": ".specs/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md",
+              "patch": "Index: .specs/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md\n===================================================================\n--- .specs/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md\t\n+++ .specs/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md\t\n@@ -1,16 +1,16 @@\n # 03: set_io in routines (incl. triggers)\n \n **Parent:** NDX-883\n \n **What to build:** A routine containing set_io commands switches outputs while it runs. Without a trigger, an output switches at the motion boundary given by the command's position in the routine. With an `at` trigger (time, distance or path fraction, relative to a motion boundary), it switches at that point along the motion. Controller and bus IO origins are both honoured. set_io is removed from the list of rejected commands.\n \n **Blocked by:** 01 (Tracer: run a code-built motion routine). External dependency: ADR 001 (merge movement controllers into trajectory cursor) still has pending hardware verification of the IO overlay that routine IO relies on. Confirm it before closing this ticket.\n \n-**Status:** ready-for-agent\n+**Status:** done (committed)\n \n - [x] set_io without a trigger switches the output at the corresponding motion boundary.\n - [x] set_io with time, distance and path-fraction triggers switches at the triggered location.\n - [x] Boolean, integer and analog values and the configured IO origin are honoured.\n - [x] Behaviour test with test doubles asserts the requested outputs and their locations.\n - [x] Integration test on the virtual controller observes the outputs switching during the run. (Written; not run, no NOVA instance available.)\n - [x] ADR 001 IO-overlay hardware verification: still open, not confirmed.\n",
+              "additions": 1,
+              "deletions": 1,
+              "status": "modified"
+            },
+            {
+              "file": ".specs/ndx-883-command-routine-execution/issues/04-real-controller-validation-and-docs.md",
+              "patch": "Index: .specs/ndx-883-command-routine-execution/issues/04-real-controller-validation-and-docs.md\n===================================================================\n--- .specs/ndx-883-command-routine-execution/issues/04-real-controller-validation-and-docs.md\t\n+++ .specs/ndx-883-command-routine-execution/issues/04-real-controller-validation-and-docs.md\t\n@@ -1,15 +1,15 @@\n # 04: Real-controller validation, example and docs\n \n **Parent:** NDX-883\n \n **What to build:** A Robot Programmer can follow an example and docs to load a Dataset and run a routine end-to-end. The routine uses every supported command type: explicit motions (line, cartesian PTP, joint PTP, circle) and set_io with and without triggers. The flow is verified on the virtual controller and on a real controller. The docs state which command types are not supported yet (wait_for_time, wait_for_io, pause_on_io, marker, generated_motion) and how they are rejected.\n \n **Blocked by:** 02 (Run routines loaded from a Dataset), 03 (set_io in routines)\n \n-**Status:** ready-for-agent\n+**Status:** in-progress (real-controller run pending)\n \n - [x] An example in the SDK runs a Dataset routine with explicit motions and set_io (with and without triggers).\n - [x] Docs describe running routines (from code and from a Dataset), observing state, stop, errors, and the list of unsupported command types.\n - [x] An integration test on the virtual controller runs that routine to completion.\n - [ ] A manual run on a real controller is recorded as passing (motions and outputs behave as defined). **Pending: needs real hardware.**\n - [x] The existing plan/execute and action test suites are green.\n",
+              "additions": 1,
+              "deletions": 1,
+              "status": "modified"
+            },
+            {
+              "file": ".specs/ndx-883-command-routine-execution/spec.md",
+              "patch": "Index: .specs/ndx-883-command-routine-execution/spec.md\n===================================================================\n--- .specs/ndx-883-command-routine-execution/spec.md\t\n+++ .specs/ndx-883-command-routine-execution/spec.md\t\n@@ -1,87 +1,89 @@\n # Spec: Execute CommandRoutines in the Python SDK (NDX-883)\n \n **Parent:** NDX-883\n-**Status:** ready-for-agent\n+**Status:** implemented on virtual controller; real-controller validation pending (ticket 04)\n **Codebase:** wandelbots-nova\n **Tickets:** ./issues/01–04\n \n ## Problem Statement\n \n Robot Programmers using the NOVA Python SDK can build CommandRoutines in code and keep them in Datasets, but they cannot execute them. The SDK stops at the data model. To move a robot, programmers convert routines into action lists by hand or skip CommandRoutines entirely. As a result, users say they cannot fully use Datasets and their tooling, and no further tooling can be built on CommandRoutines.\n \n Note that NDX-844 (\"Add CommandRoutine execution to the Python SDK\", released in 6.0.0) delivered only the routine builders. It added no execution.\n \n ## Solution\n \n The SDK gets a single public way to run a CommandRoutine on its motion group. The routine can come from code or from a loaded Dataset. As a first step, execution reaches **parity with action lists**: the commands that have an action-list equivalent run.\n \n - **What runs:** explicit motions (linear, cartesian PTP, joint PTP, circular) and set_io, with or without time, distance or path-fraction triggers.\n - **What is rejected:** routines containing wait_for_time, wait_for_io, pause_on_io, marker or generated_motion. They are rejected before the robot moves, with an error naming the command.\n - **What gets used:** the routine's own context. Dataset pose references are resolved.\n - **What the programmer can do:** observe execution state and stop the run. Without a stop, it runs to completion.\n - **Where it runs:** on the virtual controller and on a real controller.\n - **What doesn't change:** existing plan/execute and action-based programs behave exactly as before.\n \n ## User Stories\n \n 1. As a Robot Programmer, I want to run a CommandRoutine with one SDK call, so that I don't have to convert it into an action list.\n 2. As a Robot Programmer, I want to run a routine I built in code, so that I can try routines out without a Dataset.\n 3. As a Robot Programmer, I want to load a Dataset and run one of its routines by id, so that I can use Datasets end-to-end.\n 4. As a Robot Programmer, I want local pose references in a routine resolved against its Dataset, including frames, so that taught poses drive the robot.\n 5. As a Robot Programmer, I want a clear error naming the missing pose when a reference cannot be resolved, before the robot moves, so that I can fix the Dataset safely.\n 6. As a Robot Programmer, I want the routine to run on the motion group it references, so that I don't repeat information the routine already holds.\n 7. As a Robot Programmer, I want the routine's TCP, start joint position, default motion settings and motion group setup to be used, so that the routine is the single source of truth.\n 8. As a Robot Programmer, I want per-command motion settings to take precedence over the routine defaults, so that individual motions can be tuned.\n 9. As a Robot Programmer, I want linear, cartesian PTP, joint PTP and circular motions to execute in order, so that the path matches the authored routine.\n 10. As a Robot Programmer, I want a clear error before motion when planning fails, so that a partial run never starts.\n 11. As a Robot Programmer, I want set_io without a trigger to switch the output at its motion boundary, so that IO happens where I placed it.\n 12. As a Robot Programmer, I want set_io with a time, distance or path-fraction trigger to switch at that point along the motion, so that I get precise process timing.\n 13. As a Robot Programmer, I want boolean, integer and analog outputs and the controller or bus IO origin honoured, so that every kind of output works.\n 14. As a Robot Programmer, I want a routine containing wait_for_time, wait_for_io, pause_on_io, marker or generated_motion to be rejected up front with the command named, so that nothing is silently skipped.\n 15. As a Robot Programmer, I want to observe execution state while a routine runs, so that I can monitor and log it.\n 16. As a Robot Programmer, I want to stop a running routine at any time, so that I stay in control.\n 17. As a Robot Programmer, I want no further outputs written after a stop, so that a stop really ends the run.\n 18. As a Robot Programmer, I want the same routine to behave the same on the virtual and the real controller, so that simulation results carry over.\n 19. As a Robot Programmer, I want to run routines inside my existing programs as ordinary SDK code, so that I don't need a new runtime.\n 20. As a Robot Programmer, I want my existing plan/execute and action-based programs unchanged, so that adopting routines carries no migration risk.\n 21. As a Robot Programmer, I want an example and docs showing how to run a Dataset routine and which commands are not supported yet, so that I can get started quickly.\n 22. As a tooling developer, I want routine execution to be available in the SDK, so that I can build further tooling on Datasets and CommandRoutines.\n \n ## Implementation Decisions\n \n-- **Public entry points mirror plan / execute / plan_and_execute.** They live on `MotionGroup`: `plan_routine(routine)` returns a `JointTrajectory`, `execute_routine(routine, joint_trajectory)` runs it, and `plan_and_execute_routine(routine)` does both. There is no streaming variant. Stop means cancelling the task awaiting the call. Callers cannot override the routine's context.\n+- **Public entry points mirror plan / execute / plan_and_execute.** They live on `MotionGroup`: `plan_routine(routine, dataset=None)` returns a `JointTrajectory`, `execute_routine(routine, joint_trajectory, dataset=None, *, state_stream_rate_msecs=None)` runs it, and `plan_and_execute_routine(routine, dataset=None, *, state_stream_rate_msecs=None)` does both. `dataset` is an optional argument: it is required only when the routine uses local pose references or poses in a dataset frame. `execute_routine` translates the routine again to rebuild the action list, so it must get the same routine and dataset as `plan_routine`. There is no streaming variant. Stop means cancelling the task awaiting the call. Callers cannot override the routine's context through the call. To adapt a routine whose TCP or setup does not match the controller (as with the seed dataset routines), copy it with `model_copy(update=...)` first.\n - **Execution reuses the action-list machinery.** The pinned API client (26.7.0) has CommandRoutine models but no endpoint for executing a routine. Because scope is parity with action lists, the SDK translates the routine internally into the existing motion and IO-write model and executes it through the existing plan/execute path. That path goes through the trajectory cursor, the single execute-trajectory implementation per ADR 001. This translation is internal and not a public conversion feature.\n - **Command mapping:**\n   - Explicit motions map to the equivalent action-list motions.\n   - set_io maps to IO writes. Its trigger maps onto the shared AtTrigger vocabulary and the existing path-trigger resolution into `set_outputs`.\n - **Validation happens before motion.** The unsupported-command check, pose resolution and planning all complete before the robot moves. wait_for_time, wait_for_io, pause_on_io, marker and generated_motion are rejected, with the error naming the command.\n - **Dataset integration.** Routines come from a Dataset's command routines. Local pose references are resolved through the existing Dataset frame/pose resolution.\n+- **Errors.** `UnsupportedRoutineCommand` (also for inline targets with another TCP, non-joint targets for joint PTP, and other pose reference types) and `PoseResolutionError` (both `ValueError` subclasses in `nova.exceptions`) are raised during translation. A routine referencing another motion group raises `ValueError`.\n+- **Docs and example.** `docs/command_routines.md` and `examples/command_routine.py` (reuses `examples/example_dataset.json`, virtual KUKA, `OUT#1`) document and show the flow. The dataset's seed routine holds only `wait_for_time`, so the example filters unsupported commands and appends motions and `set_io` in code.\n - **Existing code is left alone.** The routine builders from NDX-844 stay unchanged, and the existing MotionGroup plan/execute and actions APIs stay unchanged.\n \n ## Testing Decisions\n \n - **What makes a good test.** Tests assert only external behaviour at the public entry point: which motions ran, which outputs were requested and where, stop behaviour and errors. They do not assert internal translation details.\n - **Main seam.** All tests go through the single public routine-execution entry point.\n   - Behaviour tests use gateway test doubles, following the existing cell tests (the trajectory cursor and trajectory executor tests).\n   - Integration tests run on the virtual controller, following the existing motion group integration tests.\n - **Coverage per ticket.** Each ticket ships one behaviour test and one virtual-controller integration test. Ticket 04 adds a recorded manual run on a real controller.\n - **Regression.** The existing plan/execute, action and command routine builder test suites must stay green.\n \n ## Out of Scope\n \n - Executing wait_for_time, wait_for_io, pause_on_io, marker and generated_motion. These have no action-list equivalent and are deferred to later work.\n - Manual pause/resume and stepping by the programmer.\n - Synchronized execution across multiple motion groups.\n - Exposure via novax (program-run HTTP API).\n - Rerun visualization of routine execution.\n - Writing or editing routines back to a Dataset.\n - Routine-to-action-list conversion as a user-facing feature.\n - Running several routines in parallel or chained.\n - Changes to NDX-844 or its changelog entry.\n - Caller overrides of the routine's own context.\n \n ## Further Notes\n \n - **External dependency.** ADR 001 still has pending hardware verification of the IO overlay (`set_outputs`), and routine IO depends on it. It must be confirmed before ticket 03 closes.\n - **Breakdown and ordering.** The slices are in `./issues/`. Ticket 01 is the tracer. Tickets 02 and 03 can run in parallel after it. Ticket 04 is real-controller validation plus example and docs.\n - **Deferred commands.** Supporting the deferred commands later will need SDK-side handling, because the execution API has no native wait or marker. It will also need the open trajectory-cursor TODO about surfacing non-motion actions as events.\n",
+              "additions": 4,
+              "deletions": 2,
+              "status": "modified"
+            }
+          ]
         },
         "id": "msg_140c95248001U4Oj0Ms0hht0Ab",
         "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A"
@@ -4136,21 +4172,24 @@
           "cwd": "/Users/mkhe/NDX/wandelbots-nova",
           "root": "/Users/mkhe/NDX/wandelbots-nova"
         },
-        "cost": 0,
+        "cost": 0.0091189,
         "tokens": {
-          "input": 0,
-          "output": 0,
+          "total": 56357,
+          "input": 2,
+          "output": 206,
           "reasoning": 0,
           "cache": {
-            "read": 0,
-            "write": 0
+            "write": 600,
+            "read": 55549
           }
         },
         "modelID": "claude-sonnet-5.5",
         "providerID": "github-copilot",
         "time": {
-          "created": 1792088301879
+          "created": 1792088301879,
+          "completed": 1792088308519
         },
+        "finish": "tool-calls",
         "id": "msg_140c96137001e1xOgGi8Hcv4Er",
         "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A"
       },
@@ -4167,15 +4206,20 @@
           "tool": "bash",
           "callID": "toolu_016ahpz4CovobzYmhFnGwH69",
           "state": {
-            "metadata": {
-              "output": ""
-            },
-            "status": "running",
+            "status": "completed",
             "input": {
               "command": "git add docs/command_routines.md examples/command_routine.py examples/README.md tests/nova/cell/motion_group/test_execute_routine.py && git commit -q -m \"docs: add CommandRoutine example, docs and dataset integration test (NDX-883)\" && git show --stat HEAD | tail -6; git diff d82f1239~1 HEAD --stat; cat nova/cell/routine_execution.py; sed -n 985,1075p nova/cell/motion_group.py"
             },
+            "output": "\n docs/command_routines.md                           | 76 +++++++++++++++++++++\n examples/README.md                                 |  1 +\n examples/command_routine.py                        | 77 ++++++++++++++++++++++\n .../nova/cell/motion_group/test_execute_routine.py | 50 ++++++++++++++\n 4 files changed, 204 insertions(+)\n docs/command_routines.md                           |  76 ++++\n examples/README.md                                 |   1 +\n examples/command_routine.py                        |  77 ++++\n nova/cell/motion_group.py                          |  80 ++++\n nova/cell/routine_execution.py                     | 140 +++++++\n nova/exceptions.py                                 |   8 +\n tests/cell/test_execute_routine.py                 | 451 +++++++++++++++++++++\n .../nova/cell/motion_group/test_execute_routine.py | 232 +++++++++++\n 8 files changed, 1065 insertions(+)\n\"\"\"Translate a CommandRoutine into the SDK's action model for execution.\"\"\"\n\nfrom nova import api\nfrom nova.actions import Action\nfrom nova.actions.io import WriteAction\nfrom nova.actions.motions import CartesianPTP, Circular, JointPTP, Linear\nfrom nova.datasets import Dataset, DatasetError\nfrom nova.exceptions import PoseResolutionError, UnsupportedRoutineCommand\nfrom nova.types import Pose\nfrom nova.types.motion_settings import MotionSettings\n\n\ndef routine_to_actions(\n    routine: api.models.CommandRoutine, dataset: Dataset | None = None\n) -> list[Action]:\n    \"\"\"Translate the routine's commands into motion actions, in order.\n\n    Poses taught in ``dataset`` (local pose references and poses given in a dataset frame)\n    are resolved to world poses.\n\n    Raises:\n        UnsupportedRoutineCommand: If a command cannot be executed yet.\n        PoseResolutionError: If a pose cannot be resolved to a world pose.\n        Nothing is translated partially, so these are raised before any motion.\n    \"\"\"\n    return [\n        _to_action(routine, dataset, index, command)\n        for index, command in enumerate(routine.commands)\n    ]\n\n\ndef _to_action(\n    routine: api.models.CommandRoutine,\n    dataset: Dataset | None,\n    index: int,\n    command: api.models.Command,\n):\n    label = f\"Command {index} ({command.type})\"\n    if isinstance(command, api.models.SetIOCommand):\n        return _to_write(command)\n    if not isinstance(command, api.models.ExplicitPathMotionCommand):\n        raise UnsupportedRoutineCommand(f\"{label} is not supported yet\")\n\n    settings = _to_settings(command.motion_settings or routine.default_motion_settings)\n    path_type = command.path_type\n\n    if isinstance(path_type, api.models.PathTypeJointPTP):\n        if not isinstance(command.target, api.models.JointPositionReference):\n            raise UnsupportedRoutineCommand(f\"{label}: joint PTP needs a joint position target\")\n        return JointPTP(target=tuple(command.target.joints), settings=settings)\n\n    target = _to_pose(routine, dataset, label, command.target)\n    if isinstance(path_type, api.models.PathTypeLine):\n        return Linear(target=target, settings=settings)\n    if isinstance(path_type, api.models.PathTypeCartesianPTP):\n        return CartesianPTP(target=target, settings=settings)\n    if isinstance(path_type, api.models.PathTypeCircle):\n        return Circular(\n            target=target,\n            intermediate=_to_pose(routine, dataset, label, path_type.via_pose),\n            settings=settings,\n        )\n    raise UnsupportedRoutineCommand(\n        f\"{label}: path type {type(path_type).__name__} is not supported\"\n    )\n\n\ndef _to_write(command: api.models.SetIOCommand) -> WriteAction:\n    \"\"\"Map set_io onto a write; its ``at`` trigger is resolved against the planned path.\"\"\"\n    io = command.io_value\n    value = int(io.value) if isinstance(io, api.models.IOIntegerValue) else io.value\n    return WriteAction(\n        key=io.io, value=value, device_id=None, origin=command.io_origin, at=command.at\n    )\n\n\ndef _to_pose(\n    routine: api.models.CommandRoutine, dataset: Dataset | None, label: str, ref: api.models.PoseRef\n) -> Pose:\n    \"\"\"Resolve a pose reference to a world pose, keeping its kinematic configuration.\"\"\"\n    if isinstance(ref, api.models.LocalPoseReference):\n        if dataset is None or ref.pose_id not in dataset.poses:\n            where = \"no dataset was given\" if dataset is None else f\"dataset '{dataset.id}'\"\n            raise PoseResolutionError(\n                f\"{label}: pose '{ref.pose_id}' cannot be resolved: not found, {where}\"\n            )\n        dataset_pose = dataset.poses[ref.pose_id]\n        try:\n            world = dataset_pose.as_world()\n        except DatasetError as error:\n            raise PoseResolutionError(\n                f\"{label}: pose '{ref.pose_id}' cannot be resolved to world: {error}\"\n            ) from error\n        return world.model_copy(\n            update={\"kinematic_configuration\": dataset_pose.kinematic_configuration}\n        )\n\n    if not isinstance(ref, api.models.InlinePoseReference):\n        raise UnsupportedRoutineCommand(\n            f\"{label}: {type(ref).__name__} targets are not supported yet\"\n        )\n    if ref.tcp is not None and ref.tcp != routine.tcp:\n        raise UnsupportedRoutineCommand(f\"{label}: per-target TCP overrides are not supported\")\n\n    pose = Pose.from_api_model(ref.pose, ref.kinematic_configuration)\n    if ref.frame is None:\n        return pose\n    if dataset is None or ref.frame not in dataset.frames:\n        raise PoseResolutionError(\n            f\"{label}: frame '{ref.frame}' cannot be resolved: not found in the given dataset\"\n        )\n    try:\n        world = dataset.frames[ref.frame].as_world() @ pose\n    except DatasetError as error:\n        raise PoseResolutionError(\n            f\"{label}: frame '{ref.frame}' cannot be resolved to world: {error}\"\n        ) from error\n    return world.model_copy(update={\"kinematic_configuration\": ref.kinematic_configuration})\n\n\ndef _to_settings(settings: api.models.MotionSettings | None) -> MotionSettings:\n    if settings is None:\n        return MotionSettings()\n    limits = settings.limits_override or api.models.LimitsOverride()\n    return MotionSettings(\n        blending=settings.blending,\n        joint_velocity_limits=_as_tuple(limits.joint_velocity_limits),\n        joint_acceleration_limits=_as_tuple(limits.joint_acceleration_limits),\n        joint_jerk_limits=_as_tuple(limits.joint_jerk_limits),\n        tcp_velocity_limit=limits.tcp_velocity_limit,\n        tcp_acceleration_limit=limits.tcp_acceleration_limit,\n        tcp_jerk_limit=limits.tcp_jerk_limit,\n        tcp_orientation_velocity_limit=limits.tcp_orientation_velocity_limit,\n        tcp_orientation_acceleration_limit=limits.tcp_orientation_acceleration_limit,\n        tcp_orientation_jerk_limit=limits.tcp_orientation_jerk_limit,\n    )\n\n\ndef _as_tuple(values: list[float] | None) -> tuple[float, ...] | None:\n    return tuple(values) if values else None\n                    motion_group_setup=motion_group_setup,\n                    singularity_handling=singularity_handling,\n                )\n                all_trajectories.append(trajectory)\n                # the last joint position of this trajectory is the starting point for the next one\n                current_joints = tuple(trajectory.joint_positions[-1])\n\n        return combine_trajectories(all_trajectories)\n\n    def _check_routine_motion_group(self, routine: api.models.CommandRoutine) -> None:\n        if routine.motion_group is not None and routine.motion_group.id != self.id:\n            raise ValueError(\n                f\"Routine '{routine.command_routine}' references motion group \"\n                f\"'{routine.motion_group.id}', not '{self.id}'\"\n            )\n\n    async def plan_routine(\n        self, routine: api.models.CommandRoutine, dataset: Dataset | None = None\n    ) -> api.models.JointTrajectory:\n        \"\"\"Plan a CommandRoutine using its own context.\n\n        The routine's TCP, start joint position and motion group setup are used; per-command\n        motion settings take precedence over the routine's default motion settings.\n\n        Args:\n            routine: The routine to plan.\n            dataset: The dataset the routine's pose references point into. Required if the\n                routine uses local pose references or poses given in a dataset frame; those are\n                resolved to world poses (with their kinematic configuration) before planning.\n\n        Raises:\n            UnsupportedRoutineCommand: If the routine contains a command that is not supported yet.\n            PoseResolutionError: If a pose cannot be resolved to a world pose.\n            ValueError: If the routine references a different motion group.\n        \"\"\"\n        self._check_routine_motion_group(routine)\n        return await self.plan(\n            routine_to_actions(routine, dataset),\n            routine.tcp,\n            start_joint_position=(\n                tuple(routine.start_joint_position) if routine.start_joint_position else None\n            ),\n            motion_group_setup=routine.motion_group_setup,\n        )\n\n    async def execute_routine(\n        self,\n        routine: api.models.CommandRoutine,\n        joint_trajectory: api.models.JointTrajectory,\n        dataset: Dataset | None = None,\n        *,\n        state_stream_rate_msecs: int | None = None,\n    ) -> None:\n        \"\"\"Execute a trajectory planned with :meth:`plan_routine` for the same routine and dataset.\n\n        Cancel the task awaiting this call to stop the run.\n        \"\"\"\n        self._check_routine_motion_group(routine)\n        await self.execute(\n            joint_trajectory,\n            routine.tcp,\n            routine_to_actions(routine, dataset),\n            state_stream_rate_msecs=state_stream_rate_msecs,\n        )\n\n    async def plan_and_execute_routine(\n        self,\n        routine: api.models.CommandRoutine,\n        dataset: Dataset | None = None,\n        *,\n        state_stream_rate_msecs: int | None = None,\n    ) -> None:\n        \"\"\"Plan and execute a CommandRoutine.\n\n        Everything is translated, resolved and planned before the robot moves. Cancel the task\n        awaiting this call to stop the run. See :meth:`plan_routine` for ``dataset``.\n\n        Raises:\n            UnsupportedRoutineCommand: If the routine contains a command that is not supported yet.\n            PoseResolutionError: If a pose cannot be resolved to a world pose.\n            ValueError: If the routine references a different motion group.\n        \"\"\"\n        joint_trajectory = await self.plan_routine(routine, dataset)\n        await self.execute_routine(\n            routine, joint_trajectory, dataset, state_stream_rate_msecs=state_stream_rate_msecs\n        )\n\n    async def _resolve_setup_for_plan(\n        self,\n        tcp: str | None,\n        motion_group_setup: api.models.MotionGroupSetup | None,\n",
+            "metadata": {
+              "output": "\n docs/command_routines.md                           | 76 +++++++++++++++++++++\n examples/README.md                                 |  1 +\n examples/command_routine.py                        | 77 ++++++++++++++++++++++\n .../nova/cell/motion_group/test_execute_routine.py | 50 ++++++++++++++\n 4 files changed, 204 insertions(+)\n docs/command_routines.md                           |  76 ++++\n examples/README.md                                 |   1 +\n examples/command_routine.py                        |  77 ++++\n nova/cell/motion_group.py                          |  80 ++++\n nova/cell/routine_execution.py                     | 140 +++++++\n nova/exceptions.py                                 |   8 +\n tests/cell/test_execute_routine.py                 | 451 +++++++++++++++++++++\n .../nova/cell/motion_group/test_execute_routine.py | 232 +++++++++++\n 8 files changed, 1065 insertions(+)\n\"\"\"Translate a CommandRoutine into the SDK's action model for execution.\"\"\"\n\nfrom nova import api\nfrom nova.actions import Action\nfrom nova.actions.io import WriteAction\nfrom nova.actions.motions import CartesianPTP, Circular, JointPTP, Linear\nfrom nova.datasets import Dataset, DatasetError\nfrom nova.exceptions import PoseResolutionError, UnsupportedRoutineCommand\nfrom nova.types import Pose\nfrom nova.types.motion_settings import MotionSettings\n\n\ndef routine_to_actions(\n    routine: api.models.CommandRoutine, dataset: Dataset | None = None\n) -> list[Action]:\n    \"\"\"Translate the routine's commands into motion actions, in order.\n\n    Poses taught in ``dataset`` (local pose references and poses given in a dataset frame)\n    are resolved to world poses.\n\n    Raises:\n        UnsupportedRoutineCommand: If a command cannot be executed yet.\n        PoseResolutionError: If a pose cannot be resolved to a world pose.\n        Nothing is translated partially, so these are raised before any motion.\n    \"\"\"\n    return [\n        _to_action(routine, dataset, index, command)\n        for index, command in enumerate(routine.commands)\n    ]\n\n\ndef _to_action(\n    routine: api.models.CommandRoutine,\n    dataset: Dataset | None,\n    index: int,\n    command: api.models.Command,\n):\n    label = f\"Command {index} ({command.type})\"\n    if isinstance(command, api.models.SetIOCommand):\n        return _to_write(command)\n    if not isinstance(command, api.models.ExplicitPathMotionCommand):\n        raise UnsupportedRoutineCommand(f\"{label} is not supported yet\")\n\n    settings = _to_settings(command.motion_settings or routine.default_motion_settings)\n    path_type = command.path_type\n\n    if isinstance(path_type, api.models.PathTypeJointPTP):\n        if not isinstance(command.target, api.models.JointPositionReference):\n            raise UnsupportedRoutineCommand(f\"{label}: joint PTP needs a joint position target\")\n        return JointPTP(target=tuple(command.target.joints), settings=settings)\n\n    target = _to_pose(routine, dataset, label, command.target)\n    if isinstance(path_type, api.models.PathTypeLine):\n        return Linear(target=target, settings=settings)\n    if isinstance(path_type, api.models.PathTypeCartesianPTP):\n        return CartesianPTP(target=target, settings=settings)\n    if isinstance(path_type, api.models.PathTypeCircle):\n        return Circular(\n            target=target,\n            intermediate=_to_pose(routine, dataset, label, path_type.via_pose),\n            settings=settings,\n        )\n    raise UnsupportedRoutineCommand(\n        f\"{label}: path type {type(path_type).__name__} is not supported\"\n    )\n\n\ndef _to_write(command: api.models.SetIOCommand) -> WriteAction:\n    \"\"\"Map set_io onto a write; its ``at`` trigger is resolved against the planned path.\"\"\"\n    io = command.io_value\n    value = int(io.value) if isinstance(io, api.models.IOIntegerValue) else io.value\n    return WriteAction(\n        key=io.io, value=value, device_id=None, origin=command.io_origin, at=command.at\n    )\n\n\ndef _to_pose(\n    routine: api.models.CommandRoutine, dataset: Dataset | None, label: str, ref: api.models.PoseRef\n) -> Pose:\n    \"\"\"Resolve a pose reference to a world pose, keeping its kinematic configuration.\"\"\"\n    if isinstance(ref, api.models.LocalPoseReference):\n        if dataset is None or ref.pose_id not in dataset.poses:\n            where = \"no dataset was given\" if dataset is None else f\"dataset '{dataset.id}'\"\n            raise PoseResolutionError(\n                f\"{label}: pose '{ref.pose_id}' cannot be resolved: not found, {where}\"\n            )\n        dataset_pose = dataset.poses[ref.pose_id]\n        try:\n            world = dataset_pose.as_world()\n        except DatasetError as error:\n            raise PoseResolutionError(\n                f\"{label}: pose '{ref.pose_id}' cannot be resolved to world: {error}\"\n            ) from error\n        return world.model_copy(\n            update={\"kinematic_configuration\": dataset_pose.kinematic_configuration}\n        )\n\n    if not isinstance(ref, api.models.InlinePoseReference):\n        raise UnsupportedRoutineCommand(\n            f\"{label}: {type(ref).__name__} targets are not supported yet\"\n        )\n    if ref.tcp is not None and ref.tcp != routine.tcp:\n        raise UnsupportedRoutineCommand(f\"{label}: per-target TCP overrides are not supported\")\n\n    pose = Pose.from_api_model(ref.pose, ref.kinematic_configuration)\n    if ref.frame is None:\n        return pose\n    if dataset is None or ref.frame not in dataset.frames:\n        raise PoseResolutionError(\n            f\"{label}: frame '{ref.frame}' cannot be resolved: not found in the given dataset\"\n        )\n    try:\n        world = dataset.frames[ref.frame].as_world() @ pose\n    except DatasetError as error:\n        raise PoseResolutionError(\n            f\"{label}: frame '{ref.frame}' cannot be resolved to world: {error}\"\n        ) from error\n    return world.model_copy(update={\"kinematic_configuration\": ref.kinematic_configuration})\n\n\ndef _to_settings(settings: api.models.MotionSettings | None) -> MotionSettings:\n    if settings is None:\n        return MotionSettings()\n    limits = settings.limits_override or api.models.LimitsOverride()\n    return MotionSettings(\n        blending=settings.blending,\n        joint_velocity_limits=_as_tuple(limits.joint_velocity_limits),\n        joint_acceleration_limits=_as_tuple(limits.joint_acceleration_limits),\n        joint_jerk_limits=_as_tuple(limits.joint_jerk_limits),\n        tcp_velocity_limit=limits.tcp_velocity_limit,\n        tcp_acceleration_limit=limits.tcp_acceleration_limit,\n        tcp_jerk_limit=limits.tcp_jerk_limit,\n        tcp_orientation_velocity_limit=limits.tcp_orientation_velocity_limit,\n        tcp_orientation_acceleration_limit=limits.tcp_orientation_acceleration_limit,\n        tcp_orientation_jerk_limit=limits.tcp_orientation_jerk_limit,\n    )\n\n\ndef _as_tuple(values: list[float] | None) -> tuple[float, ...] | None:\n    return tuple(values) if values else None\n                    motion_group_setup=motion_group_setup,\n                    singularity_handling=singularity_handling,\n                )\n                all_trajectories.append(trajectory)\n                # the last joint position of this trajectory is the starting point for the next one\n                current_joints = tuple(trajectory.joint_positions[-1])\n\n        return combine_trajectories(all_trajectories)\n\n    def _check_routine_motion_group(self, routine: api.models.CommandRoutine) -> None:\n        if routine.motion_group is not None and routine.motion_group.id != self.id:\n            raise ValueError(\n                f\"Routine '{routine.command_routine}' references motion group \"\n                f\"'{routine.motion_group.id}', not '{self.id}'\"\n            )\n\n    async def plan_routine(\n        self, routine: api.models.CommandRoutine, dataset: Dataset | None = None\n    ) -> api.models.JointTrajectory:\n        \"\"\"Plan a CommandRoutine using its own context.\n\n        The routine's TCP, start joint position and motion group setup are used; per-command\n        motion settings take precedence over the routine's default motion settings.\n\n        Args:\n            routine: The routine to plan.\n            dataset: The dataset the routine's pose references point into. Required if the\n                routine uses local pose references or poses given in a dataset frame; those are\n                resolved to world poses (with their kinematic configuration) before planning.\n\n        Raises:\n            UnsupportedRoutineCommand: If the routine contains a command that is not supported yet.\n            PoseResolutionError: If a pose cannot be resolved to a world pose.\n            ValueError: If the routine references a different motion group.\n        \"\"\"\n        self._check_routine_motion_group(routine)\n        return await self.plan(\n            routine_to_actions(routine, dataset),\n            routine.tcp,\n            start_joint_position=(\n                tuple(routine.start_joint_position) if routine.start_joint_position else None\n            ),\n            motion_group_setup=routine.motion_group_setup,\n        )\n\n    async def execute_routine(\n        self,\n        routine: api.models.CommandRoutine,\n        joint_trajectory: api.models.JointTrajectory,\n        dataset: Dataset | None = None,\n        *,\n        state_stream_rate_msecs: int | None = None,\n    ) -> None:\n        \"\"\"Execute a trajectory planned with :meth:`plan_routine` for the same routine and dataset.\n\n        Cancel the task awaiting this call to stop the run.\n        \"\"\"\n        self._check_routine_motion_group(routine)\n        await self.execute(\n            joint_trajectory,\n            routine.tcp,\n            routine_to_actions(routine, dataset),\n            state_stream_rate_msecs=state_stream_rate_msecs,\n        )\n\n    async def plan_and_execute_routine(\n        self,\n        routine: api.models.CommandRoutine,\n        dataset: Dataset | None = None,\n        *,\n        state_stream_rate_msecs: int | None = None,\n    ) -> None:\n        \"\"\"Plan and execute a CommandRoutine.\n\n        Everything is translated, resolved and planned before the robot moves. Cancel the task\n        awaiting this call to stop the run. See :meth:`plan_routine` for ``dataset``.\n\n        Raises:\n            UnsupportedRoutineCommand: If the routine contains a command that is not supported yet.\n            PoseResolutionError: If a pose cannot be resolved to a world pose.\n            ValueError: If the routine references a different motion group.\n        \"\"\"\n        joint_trajectory = await self.plan_routine(routine, dataset)\n        await self.execute_routine(\n            routine, joint_trajectory, dataset, state_stream_rate_msecs=state_stream_rate_msecs\n        )\n\n    async def _resolve_setup_for_plan(\n        self,\n        tcp: str | None,\n        motion_group_setup: api.models.MotionGroupSetup | None,\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "git add docs/command_routines.md examples/command_routine.py examples/README.md tests/nova/cell/motion_group/test_execute_routine.py && git commit -q -m \"docs: add CommandRoutine example, docs and dataset integration test (NDX-883)\" && git show --stat HEAD | tail -6; git diff d82f1239~1 HEAD --stat; cat nova/cell/routine_execution.py; sed -n 985,1075p nova/cell/motion_group.py",
             "time": {
-              "start": 1792088303871
+              "start": 1792088303871,
+              "end": 1792088308339
             }
           },
           "metadata": {
@@ -4188,6 +4232,705 @@
           "id": "prt_140c9651b001yH8dwIiG7Zr5PI",
           "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
           "messageID": "msg_140c96137001e1xOgGi8Hcv4Er"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-finish",
+          "tokens": {
+            "total": 56357,
+            "input": 2,
+            "output": 206,
+            "reasoning": 0,
+            "cache": {
+              "write": 600,
+              "read": 55549
+            }
+          },
+          "cost": 0.0091189,
+          "id": "prt_140c97ad8001aY9VXR8KNbEOFR",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c96137001e1xOgGi8Hcv4Er"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_140c95248001U4Oj0Ms0hht0Ab",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0202014,
+        "tokens": {
+          "total": 60739,
+          "input": 2,
+          "output": 123,
+          "reasoning": 292,
+          "cache": {
+            "write": 4173,
+            "read": 56149
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792088308521,
+          "completed": 1792088312575
+        },
+        "finish": "tool-calls",
+        "id": "msg_140c97b290015GJostS01STgAh",
+        "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A"
+      },
+      "parts": [
+        {
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-start",
+          "id": "prt_140c97e9a0015X99t6QRchrtbp",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c97b290015GJostS01STgAh"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "start": 1792088310035,
+            "end": 1792088311845
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "CAQS5gwKEAgSGAI4AUIIdGhpbmtpbmcSDHxEGkSLiOfgArQWwRoMpH/rD+UiRTB9JZwlIjBXzqDg7wkEyjENb0O/MQenoiefQct4Q+zfVlibtF5rfRbR0QTNxglV9Lbn2kl4CCoqgwwU57/vX+s63BDtuLl+OhcxueYbzBT+o7YURpU45JNE3vysMUGbRRVEuCYEHTI4v7E70Fk1y0p5xdt5vAtzruS5421tRNlXqUtJa//mL1lAWKfOytblLWAMutmeMfp5CcVtBtbIJLWBx5bCXyU0LALS6IYniWCZnavs9BAiha0PLwJ2LN8Otm5+vAslPKX8EW2+H+q+SiKkF4241ZUscIGILGkhInXdl45VFL/fY8q9XZ7NcYykuMWhurLvOohTjGemaYxPzW2Fk+2XPjLCnVhlIE4O4O1rZkKcXd23Q6/XmCbJABFJFXzErmcCjcNXEnDkFmgv7gtn+moYzFrbVYaGg04kT4f0e92OEdHDavrHZyGHu51/pwxSlQjSO2BsmVf+sq1bcqX6n3sgZknGheR0A3sl2QFlNzbT9ljtyEuB/vDPMTeDqjBgrP5bcc3CdrCBDIvEM9Rqa8XQa7o609DI1PHcYPWRJBkWaPmxO5SAqBHpYZcgU7jgdMdXYj/xK29iZy050dSbyNexMAUMEYnuPH8FG+ea1PStL2OUYNP63uL1cq/p5e+/jZZiO2FytksPrzD2s2qVpqCeBMKVNHKuV59/A3xs5YorG+U+W14IovdWO/tqfeXfCn5j36VK6sp0TMfNLn0qUARvGdiEQkYT/zi8S+bsw/hNYHhZEt+AOful5N+mqO+1z2noWOyQVuRPDlgL00JOB22KQDVUYEL5/bt9979/XmSDasa9gu9gt4m1B1IQWAFoemRxw0pWyA5AYHGrjeNkduZ9l9NOvcPZb7aKwuulsYLFEojUgmhXGHHScnI4OC9lwdJSXftIdtkibROAajkj1D+iSkP5vS/xc1NHr5r7BQtNvDonuPPRmAPtLbxZfWTJN1nUYPYNkISUM0KsukreENeYfoBfn073K0Ij5EfbN73tSCP9CSqHayjx8HZucSvFIo8Ez/TXziql8ER4Hx1ApTH2litcRyhhGlyXiW2nEf2MJuxHvq2IQ31geZJQA9uLy8gK9v8JUp9cxIeV6Aaj0CK1mPIds4cSA12J8KOEJy08CqrK4XTirS2r6dm0FWih8vHFcXAXdGolGl1Yh8wGoNg7q3g+mqIaJ9MTboLOIrloxi1bBY0J7fp9nTY8X1elVDa2H/otXJojrS8BlZX8FaFKcb16T3QUoofFdIylTrKYRNpBhRY2wx5r+aIoKOKw4vWpHKk1WC+6eiL9dmpJ2YmJgGaMtTm+Maw5PRGVeVcDu0lSpuIsA9ndZKfEuA1Yr4azXE941V6+UBe0AEbffhV7pnvZxenv2sm1YzvbQVwnfsFRI9WudfbQ/xO88KqByJ8K3cCzTdpYivMxq+2gNJ+WzcMF8gsqvV47/dJJ/iIKr9JUIdyabK1VgTnoSByOhMmO7+mC1S1MhUaEjyEHILPW4QdGD2VnOvvKegsG1iulZi8WqbYg8cLioLvZCzj/x6ac2QZf+E94t4PlG2QrwPO+XE51tgGYcmvbTSFwr/jgD/mxlHHtPgir/2ckngbihAOzNV1kPXO2blcgMq1scQIx+UjCqE/B6gYm5RN+F2A+IyfxhUwC/c4eWzi/s+n2Zgwrgbfxg8eZJiphRqEZJ0qi5inkOqxb9cMsu0F707VTzxhlXXUC1w/aV8IlHmPx79Qt7PR5hd89gRzNOPuTPVD/Bu7GYJShaktLFH8eULw+udUAGM5NyNINLkSRtsEYb2CG/fnCkzCDDFaVlw6Qpu5DC6q6Nykkg/jU9hKUEVRFuwQVmhvUbMbzjgQeZwM+n/TKz7XQv2qZ3YkAD+7GTiwCtIK3LLN6EgH10cPQr8HdQqsFLJEJfc7fhMDh+Hz+Xa4pATKlygq6ddvX3G8YqLWOeocZk2hrhW0iLUZOhFwpVYcc1czhqjm+QIqr/DCO7AhTxDXs3ZngJd/5aC23Zsp6YGOFoCdC2ENv1eyiAXbjV81RobqfvO64HJAKkcpqV24KNgKAbSb2l+a6t53ubwX1V1u/P+2gLJDa2nXFeoZwzT7MbCV/5iRoEpopr1ebOvStd9UD5m7Ldh0YAQ=="
+            }
+          },
+          "id": "prt_140c98113001CiZhn32micrgpC",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c97b290015GJostS01STgAh"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01DRjFubTMrH2raHBzKUZ2cn",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd .scratch/ndx-883-command-routine-execution; sed -n 80,200p spec.md; head -12 issues/0[123]*.md | grep -n \"Status\\|^#\"; cat issues/04*.md | tail -8"
+            },
+            "output": "zsh:cd:1: no such file or directory: .scratch/ndx-883-command-routine-execution\nsed: spec.md: No such file or directory\nzsh:1: no matches found: issues/0[123]*.md\nzsh:1: no matches found: issues/04*.md\n",
+            "metadata": {
+              "output": "zsh:cd:1: no such file or directory: .scratch/ndx-883-command-routine-execution\nsed: spec.md: No such file or directory\nzsh:1: no matches found: issues/0[123]*.md\nzsh:1: no matches found: issues/04*.md\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd .scratch/ndx-883-command-routine-execution; sed -n 80,200p spec.md; head -12 issues/0[123]*.md | grep -n \"Status\\|^#\"; cat issues/04*.md | tail -8",
+            "time": {
+              "start": 1792088312436,
+              "end": 1792088312458
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_140c9888b0014At1DOfW49f4OQ",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c97b290015GJostS01STgAh"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-finish",
+          "tokens": {
+            "total": 60739,
+            "input": 2,
+            "output": 123,
+            "reasoning": 292,
+            "cache": {
+              "write": 4173,
+              "read": 56149
+            }
+          },
+          "cost": 0.0202014,
+          "id": "prt_140c98ac6001MLk9JuL7PLZ1d6",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c97b290015GJostS01STgAh"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_140c95248001U4Oj0Ms0hht0Ab",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0084637,
+        "tokens": {
+          "total": 60950,
+          "input": 2,
+          "output": 115,
+          "reasoning": 0,
+          "cache": {
+            "write": 511,
+            "read": 60322
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792088312577,
+          "completed": 1792088314198
+        },
+        "finish": "tool-calls",
+        "id": "msg_140c98b01001iSvnRnrb0zCHxN",
+        "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A"
+      },
+      "parts": [
+        {
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-start",
+          "id": "prt_140c98ec8001NSwh7hCCXYhAeM",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c98b01001iSvnRnrb0zCHxN"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01Eqe5TvkALr592EQn7Jn1dT",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova/.scratch/ndx-883-command-routine-execution; grep -n \"Status\" issues/*.md; tail -8 issues/04*.md"
+            },
+            "output": "zsh:cd:1: no such file or directory: /Users/mkhe/NDX/wandelbots-nova/.scratch/ndx-883-command-routine-execution\nzsh:1: no matches found: issues/*.md\nzsh:1: no matches found: issues/04*.md\n",
+            "metadata": {
+              "output": "zsh:cd:1: no such file or directory: /Users/mkhe/NDX/wandelbots-nova/.scratch/ndx-883-command-routine-execution\nzsh:1: no matches found: issues/*.md\nzsh:1: no matches found: issues/04*.md\n",
+              "exit": 1,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova/.scratch/ndx-883-command-routine-execution; grep -n \"Status\" issues/*.md; tail -8 issues/04*.md",
+            "time": {
+              "start": 1792088314007,
+              "end": 1792088314016
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_140c98ec90013GWuqebAx35DrQ",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c98b01001iSvnRnrb0zCHxN"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-finish",
+          "tokens": {
+            "total": 60950,
+            "input": 2,
+            "output": 115,
+            "reasoning": 0,
+            "cache": {
+              "write": 511,
+              "read": 60322
+            }
+          },
+          "cost": 0.0084637,
+          "id": "prt_140c990fc001abs8neFqUlkZ77",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c98b01001iSvnRnrb0zCHxN"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_140c95248001U4Oj0Ms0hht0Ab",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0074623,
+        "tokens": {
+          "total": 61133,
+          "input": 2,
+          "output": 84,
+          "reasoning": 0,
+          "cache": {
+            "write": 214,
+            "read": 60833
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792088314200,
+          "completed": 1792088315868
+        },
+        "finish": "tool-calls",
+        "id": "msg_140c99158001yBmqiF8hdama4S",
+        "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A"
+      },
+      "parts": [
+        {
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-start",
+          "id": "prt_140c995f3001RfFG8mEBb01KE7",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c99158001yBmqiF8hdama4S"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_013RZVX1hdJi7SEQDC1pkYjc",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; ls -a .scratch; git status --short | head"
+            },
+            "output": "ls: .scratch: No such file or directory\n M .gitignore\n?? .opencode/skills/\n?? .specs/\n?? examples/09_trajectory_cursor.py\n?? examples/abb-irb-1300-demo.json\n?? examples/start_here_cr.py\n?? trajectory_cursor_overview.md\n",
+            "metadata": {
+              "output": "ls: .scratch: No such file or directory\n M .gitignore\n?? .opencode/skills/\n?? .specs/\n?? examples/09_trajectory_cursor.py\n?? examples/abb-irb-1300-demo.json\n?? examples/start_here_cr.py\n?? trajectory_cursor_overview.md\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; ls -a .scratch; git status --short | head",
+            "time": {
+              "start": 1792088315637,
+              "end": 1792088315701
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_140c995f4001mCwXfViyhB6DoJ",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c99158001yBmqiF8hdama4S"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-finish",
+          "tokens": {
+            "total": 61133,
+            "input": 2,
+            "output": 84,
+            "reasoning": 0,
+            "cache": {
+              "write": 214,
+              "read": 60833
+            }
+          },
+          "cost": 0.0074623,
+          "id": "prt_140c9976f001kwhAGHTGxZ5Q7q",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c99158001yBmqiF8hdama4S"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_140c95248001U4Oj0Ms0hht0Ab",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0076012,
+        "tokens": {
+          "total": 61346,
+          "input": 2,
+          "output": 82,
+          "reasoning": 18,
+          "cache": {
+            "write": 197,
+            "read": 61047
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792088315870,
+          "completed": 1792088317305
+        },
+        "finish": "tool-calls",
+        "id": "msg_140c997de001XfnaixTpW54IHQ",
+        "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A"
+      },
+      "parts": [
+        {
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-start",
+          "id": "prt_140c99c15001hQnaIfU3pHy7gi",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c997de001XfnaixTpW54IHQ"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "start": 1792088316950,
+            "end": 1792088317053
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "CAQS5gYKEAgSGAI4AUIIdGhpbmtpbmcSDDe3dNa5FFcQPrxpHBoM7wVVGRGY8P+n6NnVIjDmVfOsuDRjz7eZHpw4skYEqFTt+AbuUOiAo6PSowOCnTAnj78twtPksSt13q3YcV8qgwZHt/C84IRU4hGI/+2mTWqhVeOfD3fohSFydCnzzcjGXShYVaN26LvbTVS3w4yXU/9cBSanzx+QtaC0GvMVjQCk7pwx08gg8iK6ba8NikOiU4rsoBRQFOHwos4+QQbNqB2plZdHs6Bgx1rjcpBV7qKXwmi7gKAA0eRAhu5/b/+jHxYqHCe3Bqe9/P+0c9W4rJ7SM9ZVQfxV8JOTE2mnyfHzdUz2FXeQyBqs3knLbUscjpitMLLNqIDBRjDipGIszfK/c/bjW/i9hFnKGVDXKXn5hJ1gr63df7w4N1SubbkIi1oilDPa40k8QRmHS3EWDo3JkmXqNLSW4AKSvgaXgH8hMoRoRA55tsw5gYbQPGIO+c4hGC0PeLOKSuEPTg/71gQMwOQByqj4tzJKQCTo/mio4VJJkc0meqkakW4IgD2dCxlaBbaW/1P6Je1L80Ustc50iY/UVXdJACdZPri24ol792lJblVTvRBxcaqlPGV/1p8UfsoY+ArxE3KlVCdgN652ZWZoprm0at6uh8PyBw7EbwLmKwUj/0VPeyF5Sm2eGidosSk0UZvJxX+1DYFsOVhNRzQ3UXksV9NNa8JcavOZ6426ngWfMtb5aropPs3uc+ZUuLvUgiXTPWJgdBHf0mny2rX3c8m+mqRuR93aT/DFczgrtedilyU7NRa/eGzIoMmJACmRK05R9HdcXlz27JsLY+r/U9I1D/7faIXuQCo/9oGK7RI4DoC6NObqtTcY842ndQiU+qnIVQ6qkrMjPKvb2mFFljitqCK8pxLurOHTqiV4r4BmT2sDg1tK/czhLOPn07IXDR4gmZ+UxvQseZFGsow+btZ2pc32BloX3dfbpP1nz8AWmsRODrzJOi0zrVmXQn3KVrf9oqw497ETLTySctCk3w8wmeu43BQXeV98CfHlI3eqan5dh28/Q+98ovNVvX1H6jZXz9XW61/WHyrC5GxXeGb8QpilkHVW8oANm5yt7n+F8Dq9okW1+hQ+9KsKtTvQZjBUY6bCgKHXvbBEV4gYAQ=="
+            }
+          },
+          "id": "prt_140c99c16001s6kfQLMbN1SKWv",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c997de001XfnaixTpW54IHQ"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01478fEA4ZCXbwSF6NaAiM6c",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova/.specs; find . -type f | head; "
+            },
+            "output": "./.DS_Store\n./ndx-883-command-routine-execution/requirements.md\n./ndx-883-command-routine-execution/.DS_Store\n./ndx-883-command-routine-execution/spec.md\n./ndx-883-command-routine-execution/issues/04-real-controller-validation-and-docs.md\n./ndx-883-command-routine-execution/issues/02-run-routines-from-dataset.md\n./ndx-883-command-routine-execution/issues/01-tracer-run-code-built-motion-routine.md\n./ndx-883-command-routine-execution/issues/03-set-io-in-routines.md\n",
+            "metadata": {
+              "output": "./.DS_Store\n./ndx-883-command-routine-execution/requirements.md\n./ndx-883-command-routine-execution/.DS_Store\n./ndx-883-command-routine-execution/spec.md\n./ndx-883-command-routine-execution/issues/04-real-controller-validation-and-docs.md\n./ndx-883-command-routine-execution/issues/02-run-routines-from-dataset.md\n./ndx-883-command-routine-execution/issues/01-tracer-run-code-built-motion-routine.md\n./ndx-883-command-routine-execution/issues/03-set-io-in-routines.md\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova/.specs; find . -type f | head; ",
+            "time": {
+              "start": 1792088317171,
+              "end": 1792088317193
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_140c99c7e001laclonnGsPwtSH",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c997de001XfnaixTpW54IHQ"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-finish",
+          "tokens": {
+            "total": 61346,
+            "input": 2,
+            "output": 82,
+            "reasoning": 18,
+            "cache": {
+              "write": 197,
+              "read": 61047
+            }
+          },
+          "cost": 0.0076012,
+          "id": "prt_140c99d42001qGFi7RWPYXhnrF",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c997de001XfnaixTpW54IHQ"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_140c95248001U4Oj0Ms0hht0Ab",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0084509,
+        "tokens": {
+          "total": 61713,
+          "input": 2,
+          "output": 154,
+          "reasoning": 0,
+          "cache": {
+            "write": 313,
+            "read": 61244
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792088317307,
+          "completed": 1792088319108
+        },
+        "finish": "tool-calls",
+        "id": "msg_140c99d7b0011GcoypPhAvCa1X",
+        "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A"
+      },
+      "parts": [
+        {
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-start",
+          "id": "prt_140c9a1da001Jm7bHcORlpn8c1",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c99d7b0011GcoypPhAvCa1X"
+        },
+        {
+          "type": "text",
+          "text": "Directory was renamed to `.specs` (uncommitted, left out of the commit). Updating the spec there.",
+          "time": {
+            "start": 1792088318427,
+            "end": 1792088318441
+          },
+          "id": "prt_140c9a1db001V87qY2W0c5NRCJ",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c99d7b0011GcoypPhAvCa1X"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01CYETUfbPjwcQ8JFhaxJLyt",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova/.specs/ndx-883-command-routine-execution; grep -n \"Status\" issues/*.md spec.md; tail -7 issues/04*.md"
+            },
+            "output": "issues/01-tracer-run-code-built-motion-routine.md:11:**Status:** ready-for-agent\nissues/02-run-routines-from-dataset.md:9:**Status:** ready-for-agent\nissues/03-set-io-in-routines.md:9:**Status:** ready-for-agent\nissues/04-real-controller-validation-and-docs.md:9:**Status:** ready-for-agent\nspec.md:4:**Status:** ready-for-agent\n**Status:** ready-for-agent\n\n- [x] An example in the SDK runs a Dataset routine with explicit motions and set_io (with and without triggers).\n- [x] Docs describe running routines (from code and from a Dataset), observing state, stop, errors, and the list of unsupported command types.\n- [x] An integration test on the virtual controller runs that routine to completion.\n- [ ] A manual run on a real controller is recorded as passing (motions and outputs behave as defined). **Pending: needs real hardware.**\n- [x] The existing plan/execute and action test suites are green.\n",
+            "metadata": {
+              "output": "issues/01-tracer-run-code-built-motion-routine.md:11:**Status:** ready-for-agent\nissues/02-run-routines-from-dataset.md:9:**Status:** ready-for-agent\nissues/03-set-io-in-routines.md:9:**Status:** ready-for-agent\nissues/04-real-controller-validation-and-docs.md:9:**Status:** ready-for-agent\nspec.md:4:**Status:** ready-for-agent\n**Status:** ready-for-agent\n\n- [x] An example in the SDK runs a Dataset routine with explicit motions and set_io (with and without triggers).\n- [x] Docs describe running routines (from code and from a Dataset), observing state, stop, errors, and the list of unsupported command types.\n- [x] An integration test on the virtual controller runs that routine to completion.\n- [ ] A manual run on a real controller is recorded as passing (motions and outputs behave as defined). **Pending: needs real hardware.**\n- [x] The existing plan/execute and action test suites are green.\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova/.specs/ndx-883-command-routine-execution; grep -n \"Status\" issues/*.md spec.md; tail -7 issues/04*.md",
+            "time": {
+              "start": 1792088318954,
+              "end": 1792088318977
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_140c9a2400018C4b8pCmoyMUiL",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c99d7b0011GcoypPhAvCa1X"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-finish",
+          "tokens": {
+            "total": 61713,
+            "input": 2,
+            "output": 154,
+            "reasoning": 0,
+            "cache": {
+              "write": 313,
+              "read": 61244
+            }
+          },
+          "cost": 0.0084509,
+          "id": "prt_140c9a449001zRWdFRGTKlsWaX",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c99d7b0011GcoypPhAvCa1X"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_140c95248001U4Oj0Ms0hht0Ab",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0172172,
+        "tokens": {
+          "total": 63045,
+          "input": 2,
+          "output": 979,
+          "reasoning": 0,
+          "cache": {
+            "write": 507,
+            "read": 61557
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792088319110,
+          "completed": 1792088326167
+        },
+        "finish": "tool-calls",
+        "id": "msg_140c9a486001T78Or4Ra483R49",
+        "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A"
+      },
+      "parts": [
+        {
+          "snapshot": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "type": "step-start",
+          "id": "prt_140c9a888001KoKsoCgVnStDz0",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c9a486001T78Or4Ra483R49"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_016ncjKMNgUJpW6f5JgW6FdK",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova/.specs/ndx-883-command-routine-execution; python3 - <<'E'\nimport re,glob\nfor f in glob.glob('issues/0[123]*.md'):\n    s=open(f).read().replace(\"**Status:** ready-for-agent\",\"**Status:** done (committed)\");open(f,'w').write(s)\nf=glob.glob('issues/04*.md')[0]\ns=open(f).read().replace(\"**Status:** ready-for-agent\",\"**Status:** in-progress (real-controller run pending)\");open(f,'w').write(s)\ns=open('spec.md').read()\ns=s.replace(\"**Status:** ready-for-agent\",\"**Status:** implemented on virtual controller; real-controller validation pending (ticket 04)\")\ns=s.replace(\"`plan_routine(routine)` returns a `JointTrajectory`, `execute_routine(routine, joint_trajectory)` runs it, and `plan_and_execute_routine(routine)` does both.\",\n\"`plan_routine(routine, dataset=None)` returns a `JointTrajectory`, `execute_routine(routine, joint_trajectory, dataset=None, *, state_stream_rate_msecs=None)` runs it, and `plan_and_execute_routine(routine, dataset=None, *, state_stream_rate_msecs=None)` does both. `dataset` is an optional argument: it is required only when the routine uses local pose references or poses in a dataset frame. `execute_routine` translates the routine again to rebuild the action list, so it must get the same routine and dataset as `plan_routine`.\")\ns=s.replace(\"Callers cannot override the routine's context.\",\"Callers cannot override the routine's context through the call. To adapt a routine whose TCP or setup does not match the controller (as with the seed dataset routines), copy it with `model_copy(update=...)` first.\")\ns=s.replace(\"- **Existing code is left alone.**\",\"\"\"- **Errors.** `UnsupportedRoutineCommand` (also for inline targets with another TCP, non-joint targets for joint PTP, and other pose reference types) and `PoseResolutionError` (both `ValueError` subclasses in `nova.exceptions`) are raised during translation. A routine referencing another motion group raises `ValueError`.\n- **Docs and example.** `docs/command_routines.md` and `examples/command_routine.py` (reuses `examples/example_dataset.json`, virtual KUKA, `OUT#1`) document and show the flow. The dataset's seed routine holds only `wait_for_time`, so the example filters unsupported commands and appends motions and `set_io` in code.\n- **Existing code is left alone.**\"\"\")\nopen('spec.md','w').write(s)\nE\ngit -C ../.. status --short | head -3"
+            },
+            "output": " M .gitignore\n?? .opencode/skills/\n?? .specs/\n",
+            "metadata": {
+              "output": " M .gitignore\n?? .opencode/skills/\n?? .specs/\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova/.specs/ndx-883-command-routine-execution; python3 - <<'E'\nimport re,glob\nfor f in glob.glob('issues/0[123]*.md'):\n    s=open(f).read().replace(\"**Status:** ready-for-agent\",\"**Status:** done (committed)\");open(f,'w').write(s)\nf=glob.glob('issues/04*.md')[0]\ns=open(f).read().replace(\"**Status:** ready-for-agent\",\"**Status:** in-progress (real-controller run pending)\");open(f,'w').write(s)\ns=open('spec.md').read()\ns=s.replace(\"**Status:** ready-for-agent\",\"**Status:** implemented on virtual controller; real-controller validation pending (ticket 04)\")\ns=s.replace(\"`plan_routine(routine)` returns a `JointTrajectory`, `execute_routine(routine, joint_trajectory)` runs it, and `plan_and_execute_routine(routine)` does both.\",\n\"`plan_routine(routine, dataset=None)` returns a `JointTrajectory`, `execute_routine(routine, joint_trajectory, dataset=None, *, state_stream_rate_msecs=None)` runs it, and `plan_and_execute_routine(routine, dataset=None, *, state_stream_rate_msecs=None)` does both. `dataset` is an optional argument: it is required only when the routine uses local pose references or poses in a dataset frame. `execute_routine` translates the routine again to rebuild the action list, so it must get the same routine and dataset as `plan_routine`.\")\ns=s.replace(\"Callers cannot override the routine's context.\",\"Callers cannot override the routine's context through the call. To adapt a routine whose TCP or setup does not match the controller (as with the seed dataset routines), copy it with `model_copy(update=...)` first.\")\ns=s.replace(\"- **Existing code is left alone.**\",\"\"\"- **Errors.** `UnsupportedRoutineCommand` (also for inline targets with another TCP, non-joint targets for joint PTP, and other pose reference types) and `PoseResolutionError` (both `ValueError` subclasses in `nova.exceptions`) are raised during translation. A routine referencing another motion group raises `ValueError`.\n- **Docs and example.** `docs/command_routines.md` and `examples/command_routine.py` (reuses `examples/example_dataset.json`, virtual KUKA, `OUT#1`) document and show the flow. The dataset's seed routine holds only `wait_for_time`, so the example filters unsupported commands and appends motions and `set_io` in code.\n- **Existing code is left alone.**\"\"\")\nopen('spec.md','w').write(s)\nE\ngit -C ../.. status --short | head -3",
+            "time": {
+              "start": 1792088325788,
+              "end": 1792088325906
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_140c9a88a001X6kbdAgh7E8FW5",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c9a486001T78Or4Ra483R49"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "945bb34cd65d7dbd7fe2e448f996964d175a2d68",
+          "type": "step-finish",
+          "tokens": {
+            "total": 63045,
+            "input": 2,
+            "output": 979,
+            "reasoning": 0,
+            "cache": {
+              "write": 507,
+              "read": 61557
+            }
+          },
+          "cost": 0.0172172,
+          "id": "prt_140c9bfc9001hdXQLSYxp2PXne",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c9a486001T78Or4Ra483R49"
+        },
+        {
+          "type": "patch",
+          "hash": "1e276cb108f328d210b21f13107d5a505d3e1f0b",
+          "files": [
+            "/Users/mkhe/NDX/wandelbots-nova/.specs/ndx-883-command-routine-execution/issues/01-tracer-run-code-built-motion-routine.md",
+            "/Users/mkhe/NDX/wandelbots-nova/.specs/ndx-883-command-routine-execution/issues/02-run-routines-from-dataset.md",
+            "/Users/mkhe/NDX/wandelbots-nova/.specs/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md",
+            "/Users/mkhe/NDX/wandelbots-nova/.specs/ndx-883-command-routine-execution/issues/04-real-controller-validation-and-docs.md",
+            "/Users/mkhe/NDX/wandelbots-nova/.specs/ndx-883-command-routine-execution/spec.md"
+          ],
+          "id": "prt_140c9c0160018I826jnsbwTVB0",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c9a486001T78Or4Ra483R49"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_140c95248001U4Oj0Ms0hht0Ab",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0205754,
+        "tokens": {
+          "total": 64260,
+          "input": 2,
+          "output": 1184,
+          "reasoning": 0,
+          "cache": {
+            "write": 1010,
+            "read": 62064
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792088326169,
+          "completed": 1792088336233
+        },
+        "finish": "stop",
+        "id": "msg_140c9c019001Inp0gYPSi7AX4m",
+        "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A"
+      },
+      "parts": [
+        {
+          "snapshot": "945bb34cd65d7dbd7fe2e448f996964d175a2d68",
+          "type": "step-start",
+          "id": "prt_140c9d856001aMeoQVrWSDMhbl",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c9c019001Inp0gYPSi7AX4m"
+        },
+        {
+          "type": "text",
+          "text": "Committed as `docs: add CommandRoutine example, docs and dataset integration test (NDX-883)`. It contains `docs/command_routines.md`, `examples/command_routine.py`, `examples/README.md` and the integration test. The `.scratch` directory has been renamed to `.specs`. That, `.opencode/skills`, `.gitignore` and the other untracked files are not committed. I haven't re-run the tests since the commit.\n\n**Spec sync (done, uncommitted in `.specs/`)**\n- The spec now shows the real signatures: `dataset=None` and `state_stream_rate_msecs` on all three calls. The spec had no `dataset` argument.\n- It notes that `execute_routine` needs the same routine and dataset as `plan_routine`, because it re-translates the routine.\n- It says the call can't override the routine's context, and that users adapt a routine with `model_copy(update=...)` instead.\n- It lists the error types, including `ValueError` for another motion group.\n- It mentions the docs and the example.\n- Tickets 01–03 are marked done, ticket 04 is in progress (real-controller run pending), and the spec status says the same.\n\n**Improvements for extracting this into a service**\n1. **Translation is tied to `MotionGroup`.** `routine_to_actions` is already a pure function. I'd move it behind a small `RoutineRunner` or service-layer module that takes the routine, dataset and motion group. `MotionGroup.*_routine` would then only delegate to it.\n2. **Execution returns nothing.** A service needs a run id, a status (`planning`, `running`, `completed`, `failed`, `stopped`), and an explicit `stop`. Right now stop means cancelling the awaiting task, which an HTTP API can't express. A streaming or status variant fits here, and the spec currently rules it out.\n3. **Validation is mixed into planning.** Add a cheap `validate_routine(routine, dataset)` that runs the unsupported-command and pose-resolution checks without the robot or planner. A service can then reject a bad request with a 4xx before queuing anything.\n4. **Errors aren't structured.** The failures are plain exceptions with messages that embed the command index. Adding `command_index`, `command_type` and `pose_id` fields would let an API return clean error bodies.\n5. **Translation runs twice.** `execute_routine` re-translates the routine. A `PlannedRoutine` object holding the trajectory and the action list would remove the \"same routine and dataset\" contract. The result is also serializable and cacheable.\n6. **Routine context mismatch.** Dataset routines often carry a TCP and setup that don't fit the controller, as the example shows. The service should resolve the TCP and setup server-side. Optionally, the API could accept a `tcp` and `setup` override, and the SDK doesn't today.\n7. **Dataset handling.** `dataset` is passed as an in-memory object. A service wants a dataset reference (id and revision) resolved on the server.\n8. **Unsupported commands are a fixed list.** The five types are hard-coded in several places: the translator, the docs and the example. Exporting one `SUPPORTED_COMMANDS` constant would keep them in sync, and the service could expose it as a capabilities endpoint.\n9. **IO overlay isn't hardware-verified.** The ADR 001 hardware check for IO is still open. Finish it before a service builds on `set_io`.\n\nDo you want me to tackle any of these? The first three, the runner module, run status and stop, and `validate_routine`, look like the best base for the service.",
+          "time": {
+            "start": 1792088332376,
+            "end": 1792088336111
+          },
+          "id": "prt_140c9d858001hZWFER6Bo31i9w",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c9c019001Inp0gYPSi7AX4m"
+        },
+        {
+          "reason": "stop",
+          "snapshot": "945bb34cd65d7dbd7fe2e448f996964d175a2d68",
+          "type": "step-finish",
+          "tokens": {
+            "total": 64260,
+            "input": 2,
+            "output": 1184,
+            "reasoning": 0,
+            "cache": {
+              "write": 1010,
+              "read": 62064
+            }
+          },
+          "cost": 0.0205754,
+          "id": "prt_140c9e72b00140YY2PUzr2iO43",
+          "sessionID": "ses_ebf4630aaffePptmr8JLGGve8A",
+          "messageID": "msg_140c9c019001Inp0gYPSi7AX4m"
         }
       ]
     }
