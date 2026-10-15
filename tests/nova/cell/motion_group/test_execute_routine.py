@@ -1,10 +1,11 @@
+import asyncio
 from datetime import datetime, timezone
 
 import pytest
 
 from nova import Nova, api
 from nova.cell.controllers import virtual_controller
-from nova.command_routines import command_routine, move_joint_ptp, move_linear
+from nova.command_routines import command_routine, move_joint_ptp, move_linear, set_io
 from nova.datasets import Dataset, DatasetFrame, DatasetPose
 from nova.types import Pose
 
@@ -124,3 +125,58 @@ class TestDatasetPoses:
                         commands=[move_joint_ptp(list(start))],
                     )
                 )
+
+
+class TestSetIO:
+    """set_io switches a controller output while the routine runs."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_set_io_switches_output_during_run_on_virtual_controller(self):
+        controller_name = "ur-routine-io-test"
+        async with Nova() as nova:
+            cell = nova.cell()
+            await cell.ensure_controller(
+                virtual_controller(
+                    name=controller_name,
+                    manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                    type="universalrobots-ur10e",
+                )
+            )
+            controller = await cell.controller(controller_name)
+            async with controller[0] as mg:
+                # GIVEN
+                await controller.write("tool_out[0]", False)
+                start = list(await mg.joints())
+                moved = [start[0] + 0.3, *start[1:]]
+                routine = command_routine(
+                    "io",
+                    motion_group=mg.id,
+                    tcp="Flange",
+                    motion_group_setup=await mg.get_setup("Flange"),
+                    start_joint_position=start,
+                    commands=[
+                        move_joint_ptp(moved),
+                        set_io("tool_out[0]", True),
+                        move_joint_ptp(start),
+                    ],
+                )
+
+                # WHEN
+                observed: list[bool] = []
+
+                async def watch():
+                    while True:
+                        observed.append(bool(await controller.read("tool_out[0]")))
+                        await asyncio.sleep(0.05)
+
+                watcher = asyncio.create_task(watch())
+                try:
+                    await mg.plan_and_execute_routine(routine)
+                finally:
+                    watcher.cancel()
+
+                # THEN
+                assert observed[0] is False
+                assert await controller.read("tool_out[0]") is True
+                await controller.write("tool_out[0]", False)
