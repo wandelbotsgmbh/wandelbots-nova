@@ -3,7 +3,7 @@
   "checkpoint_id": "f75f81151c9b",
   "strategy": "manual-commit",
   "branch": "feat/command-routine-execution",
-  "checkpoints_count": 5,
+  "checkpoints_count": 6,
   "files_touched": [
     "tests/nova/cell/motion_group/test_execute_routine.py"
   ],
@@ -14,6 +14,13 @@
       "compact_transcript": "/f7/5f81151c9b/0/transcript.jsonl",
       "content_hash": "/f7/5f81151c9b/0/content_hash.txt",
       "prompt": "/f7/5f81151c9b/0/prompt.txt"
+    },
+    {
+      "metadata": "/f7/5f81151c9b/1/metadata.json",
+      "transcript": "/f7/5f81151c9b/1/full.jsonl",
+      "compact_transcript": "/f7/5f81151c9b/1/transcript.jsonl",
+      "content_hash": "/f7/5f81151c9b/1/content_hash.txt",
+      "prompt": "/f7/5f81151c9b/1/prompt.txt"
     }
   ],
   "token_usage": {
