@@ -3,7 +3,7 @@
   "checkpoint_id": "bf879e1fab2c",
   "strategy": "manual-commit",
   "branch": "feat/command-routine-execution",
-  "checkpoints_count": 21,
+  "checkpoints_count": 22,
   "files_touched": [
     "nova/cell/routine_execution.py",
     "tests/cell/test_execute_routine.py",
@@ -30,13 +30,20 @@
       "compact_transcript": "/bf/879e1fab2c/2/transcript.jsonl",
       "content_hash": "/bf/879e1fab2c/2/content_hash.txt",
       "prompt": "/bf/879e1fab2c/2/prompt.txt"
+    },
+    {
+      "metadata": "/bf/879e1fab2c/3/metadata.json",
+      "transcript": "/bf/879e1fab2c/3/full.jsonl",
+      "compact_transcript": "/bf/879e1fab2c/3/transcript.jsonl",
+      "content_hash": "/bf/879e1fab2c/3/content_hash.txt",
+      "prompt": "/bf/879e1fab2c/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 302,
-    "cache_creation_tokens": 521553,
-    "cache_read_tokens": 11351883,
-    "output_tokens": 59732,
-    "api_call_count": 131
+    "input_tokens": 324,
+    "cache_creation_tokens": 567124,
+    "cache_read_tokens": 11623090,
+    "output_tokens": 67603,
+    "api_call_count": 141
   }
 }
