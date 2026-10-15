@@ -17,19 +17,19 @@
       "deletions": 0,
       "files": 0
     },
-    "cost": 0.29965390000000003,
+    "cost": 0.32927330000000005,
     "tokens": {
-      "input": 68,
-      "output": 8062,
-      "reasoning": 983,
+      "input": 72,
+      "output": 9385,
+      "reasoning": 1088,
       "cache": {
-        "read": 1064679,
-        "write": 41040
+        "read": 1174968,
+        "write": 42761
       }
     },
     "time": {
       "created": 1792086079337,
-      "updated": 1792086251452
+      "updated": 1792086264973
     }
   },
   "messages": [
@@ -1081,10 +1081,17 @@
         "summary": {
           "diffs": [
             {
+              "file": ".scratch/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md",
+              "patch": "Index: .scratch/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md\n===================================================================\n--- .scratch/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md\t\n+++ .scratch/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md\t\n@@ -1,16 +1,16 @@\n # 03: set_io in routines (incl. triggers)\n \n **Parent:** NDX-883\n \n **What to build:** A routine containing set_io commands switches outputs while it runs. Without a trigger, an output switches at the motion boundary given by the command's position in the routine. With an `at` trigger (time, distance or path fraction, relative to a motion boundary), it switches at that point along the motion. Controller and bus IO origins are both honoured. set_io is removed from the list of rejected commands.\n \n **Blocked by:** 01 (Tracer: run a code-built motion routine). External dependency: ADR 001 (merge movement controllers into trajectory cursor) still has pending hardware verification of the IO overlay that routine IO relies on. Confirm it before closing this ticket.\n \n **Status:** ready-for-agent\n \n-- [ ] set_io without a trigger switches the output at the corresponding motion boundary.\n-- [ ] set_io with time, distance and path-fraction triggers switches at the triggered location.\n-- [ ] Boolean, integer and analog values and the configured IO origin are honoured.\n-- [ ] Behaviour test with test doubles asserts the requested outputs and their locations.\n-- [ ] Integration test on the virtual controller observes the outputs switching during the run.\n-- [ ] ADR 001 IO-overlay hardware verification confirmed (or explicitly noted as still open).\n+- [x] set_io without a trigger switches the output at the corresponding motion boundary.\n+- [x] set_io with time, distance and path-fraction triggers switches at the triggered location.\n+- [x] Boolean, integer and analog values and the configured IO origin are honoured.\n+- [x] Behaviour test with test doubles asserts the requested outputs and their locations.\n+- [x] Integration test on the virtual controller observes the outputs switching during the run. (Written; not run, no NOVA instance available.)\n+- [x] ADR 001 IO-overlay hardware verification: still open, not confirmed.\n",
+              "additions": 6,
+              "deletions": 6,
+              "status": "modified"
+            },
+            {
               "file": "nova/cell/routine_execution.py",
-              "patch": "Index: nova/cell/routine_execution.py\n===================================================================\n--- nova/cell/routine_execution.py\t\n+++ nova/cell/routine_execution.py\t\n@@ -1,128 +1,140 @@\n \"\"\"Translate a CommandRoutine into the SDK's action model for execution.\"\"\"\n \n from nova import api\n from nova.actions import Action\n from nova.datasets import Dataset, DatasetError\n+from nova.actions.io import WriteAction\n from nova.actions.motions import CartesianPTP, Circular, JointPTP, Linear\n from nova.exceptions import PoseResolutionError, UnsupportedRoutineCommand\n from nova.types import Pose\n from nova.types.motion_settings import MotionSettings\n \n \n def routine_to_actions(\n     routine: api.models.CommandRoutine, dataset: Dataset | None = None\n ) -> list[Action]:\n     \"\"\"Translate the routine's commands into motion actions, in order.\n \n     Poses taught in ``dataset`` (local pose references and poses given in a dataset frame)\n     are resolved to world poses.\n \n     Raises:\n         UnsupportedRoutineCommand: If a command cannot be executed yet.\n         PoseResolutionError: If a pose cannot be resolved to a world pose.\n         Nothing is translated partially, so these are raised before any motion.\n     \"\"\"\n     return [\n         _to_action(routine, dataset, index, command)\n         for index, command in enumerate(routine.commands)\n     ]\n \n \n def _to_action(\n     routine: api.models.CommandRoutine,\n     dataset: Dataset | None,\n     index: int,\n     command: api.models.Command,\n ):\n     label = f\"Command {index} ({command.type})\"\n+    if isinstance(command, api.models.SetIOCommand):\n+        return _to_write(command)\n     if not isinstance(command, api.models.ExplicitPathMotionCommand):\n         raise UnsupportedRoutineCommand(f\"{label} is not supported yet\")\n \n     settings = _to_settings(command.motion_settings or routine.default_motion_settings)\n     path_type = command.path_type\n \n     if isinstance(path_type, api.models.PathTypeJointPTP):\n         if not isinstance(command.target, api.models.JointPositionReference):\n             raise UnsupportedRoutineCommand(f\"{label}: joint PTP needs a joint position target\")\n         return JointPTP(target=tuple(command.target.joints), settings=settings)\n \n     target = _to_pose(routine, dataset, label, command.target)\n     if isinstance(path_type, api.models.PathTypeLine):\n         return Linear(target=target, settings=settings)\n     if isinstance(path_type, api.models.PathTypeCartesianPTP):\n         return CartesianPTP(target=target, settings=settings)\n     if isinstance(path_type, api.models.PathTypeCircle):\n         return Circular(\n             target=target,\n             intermediate=_to_pose(routine, dataset, label, path_type.via_pose),\n             settings=settings,\n         )\n     raise UnsupportedRoutineCommand(\n         f\"{label}: path type {type(path_type).__name__} is not supported\"\n     )\n \n \n+def _to_write(command: api.models.SetIOCommand) -> WriteAction:\n+    \"\"\"Map set_io onto a write; its ``at`` trigger is resolved against the planned path.\"\"\"\n+    io = command.io_value\n+    value = int(io.value) if isinstance(io, api.models.IOIntegerValue) else io.value\n+    return WriteAction(\n+        key=io.io, value=value, device_id=None, origin=command.io_origin, at=command.at\n+    )\n+\n+\n def _to_pose(\n     routine: api.models.CommandRoutine, dataset: Dataset | None, label: str, ref: api.models.PoseRef\n ) -> Pose:\n     \"\"\"Resolve a pose reference to a world pose, keeping its kinematic configuration.\"\"\"\n     if isinstance(ref, api.models.LocalPoseReference):\n         if dataset is None or ref.pose_id not in dataset.poses:\n             where = \"no dataset was given\" if dataset is None else f\"dataset '{dataset.id}'\"\n             raise PoseResolutionError(\n                 f\"{label}: pose '{ref.pose_id}' cannot be resolved: not found, {where}\"\n             )\n         dataset_pose = dataset.poses[ref.pose_id]\n         try:\n             world = dataset_pose.as_world()\n         except DatasetError as error:\n             raise PoseResolutionError(\n                 f\"{label}: pose '{ref.pose_id}' cannot be resolved to world: {error}\"\n             ) from error\n         return world.model_copy(\n             update={\"kinematic_configuration\": dataset_pose.kinematic_configuration}\n         )\n \n     if not isinstance(ref, api.models.InlinePoseReference):\n         raise UnsupportedRoutineCommand(\n             f\"{label}: {type(ref).__name__} targets are not supported yet\"\n         )\n     if ref.tcp is not None and ref.tcp != routine.tcp:\n         raise UnsupportedRoutineCommand(f\"{label}: per-target TCP overrides are not supported\")\n \n     pose = Pose.from_api_model(ref.pose, ref.kinematic_configuration)\n     if ref.frame is None:\n         return pose\n     if dataset is None or ref.frame not in dataset.frames:\n         raise PoseResolutionError(\n             f\"{label}: frame '{ref.frame}' cannot be resolved: not found in the given dataset\"\n         )\n     try:\n         world = dataset.frames[ref.frame].as_world() @ pose\n     except DatasetError as error:\n         raise PoseResolutionError(\n             f\"{label}: frame '{ref.frame}' cannot be resolved to world: {error}\"\n         ) from error\n     return world.model_copy(update={\"kinematic_configuration\": ref.kinematic_configuration})\n \n \n def _to_settings(settings: api.models.MotionSettings | None) -> MotionSettings:\n     if settings is None:\n         return MotionSettings()\n     limits = settings.limits_override or api.models.LimitsOverride()\n     return MotionSettings(\n         blending=settings.blending,\n         joint_velocity_limits=_as_tuple(limits.joint_velocity_limits),\n         joint_acceleration_limits=_as_tuple(limits.joint_acceleration_limits),\n         joint_jerk_limits=_as_tuple(limits.joint_jerk_limits),\n         tcp_velocity_limit=limits.tcp_velocity_limit,\n         tcp_acceleration_limit=limits.tcp_acceleration_limit,\n         tcp_jerk_limit=limits.tcp_jerk_limit,\n         tcp_orientation_velocity_limit=limits.tcp_orientation_velocity_limit,\n         tcp_orientation_acceleration_limit=limits.tcp_orientation_acceleration_limit,\n         tcp_orientation_jerk_limit=limits.tcp_orientation_jerk_limit,\n     )\n \n \n def _as_tuple(values: list[float] | None) -> tuple[float, ...] | None:\n     return tuple(values) if values else None\n",
-              "additions": 12,
-              "deletions": 0,
+              "patch": "Index: nova/cell/routine_execution.py\n===================================================================\n--- nova/cell/routine_execution.py\t\n+++ nova/cell/routine_execution.py\t\n@@ -1,128 +1,140 @@\n \"\"\"Translate a CommandRoutine into the SDK's action model for execution.\"\"\"\n \n from nova import api\n from nova.actions import Action\n-from nova.datasets import Dataset, DatasetError\n+from nova.actions.io import WriteAction\n from nova.actions.motions import CartesianPTP, Circular, JointPTP, Linear\n+from nova.datasets import Dataset, DatasetError\n from nova.exceptions import PoseResolutionError, UnsupportedRoutineCommand\n from nova.types import Pose\n from nova.types.motion_settings import MotionSettings\n \n \n def routine_to_actions(\n     routine: api.models.CommandRoutine, dataset: Dataset | None = None\n ) -> list[Action]:\n     \"\"\"Translate the routine's commands into motion actions, in order.\n \n     Poses taught in ``dataset`` (local pose references and poses given in a dataset frame)\n     are resolved to world poses.\n \n     Raises:\n         UnsupportedRoutineCommand: If a command cannot be executed yet.\n         PoseResolutionError: If a pose cannot be resolved to a world pose.\n         Nothing is translated partially, so these are raised before any motion.\n     \"\"\"\n     return [\n         _to_action(routine, dataset, index, command)\n         for index, command in enumerate(routine.commands)\n     ]\n \n \n def _to_action(\n     routine: api.models.CommandRoutine,\n     dataset: Dataset | None,\n     index: int,\n     command: api.models.Command,\n ):\n     label = f\"Command {index} ({command.type})\"\n+    if isinstance(command, api.models.SetIOCommand):\n+        return _to_write(command)\n     if not isinstance(command, api.models.ExplicitPathMotionCommand):\n         raise UnsupportedRoutineCommand(f\"{label} is not supported yet\")\n \n     settings = _to_settings(command.motion_settings or routine.default_motion_settings)\n     path_type = command.path_type\n \n     if isinstance(path_type, api.models.PathTypeJointPTP):\n         if not isinstance(command.target, api.models.JointPositionReference):\n             raise UnsupportedRoutineCommand(f\"{label}: joint PTP needs a joint position target\")\n         return JointPTP(target=tuple(command.target.joints), settings=settings)\n \n     target = _to_pose(routine, dataset, label, command.target)\n     if isinstance(path_type, api.models.PathTypeLine):\n         return Linear(target=target, settings=settings)\n     if isinstance(path_type, api.models.PathTypeCartesianPTP):\n         return CartesianPTP(target=target, settings=settings)\n     if isinstance(path_type, api.models.PathTypeCircle):\n         return Circular(\n             target=target,\n             intermediate=_to_pose(routine, dataset, label, path_type.via_pose),\n             settings=settings,\n         )\n     raise UnsupportedRoutineCommand(\n         f\"{label}: path type {type(path_type).__name__} is not supported\"\n     )\n \n \n+def _to_write(command: api.models.SetIOCommand) -> WriteAction:\n+    \"\"\"Map set_io onto a write; its ``at`` trigger is resolved against the planned path.\"\"\"\n+    io = command.io_value\n+    value = int(io.value) if isinstance(io, api.models.IOIntegerValue) else io.value\n+    return WriteAction(\n+        key=io.io, value=value, device_id=None, origin=command.io_origin, at=command.at\n+    )\n+\n+\n def _to_pose(\n     routine: api.models.CommandRoutine, dataset: Dataset | None, label: str, ref: api.models.PoseRef\n ) -> Pose:\n     \"\"\"Resolve a pose reference to a world pose, keeping its kinematic configuration.\"\"\"\n     if isinstance(ref, api.models.LocalPoseReference):\n         if dataset is None or ref.pose_id not in dataset.poses:\n             where = \"no dataset was given\" if dataset is None else f\"dataset '{dataset.id}'\"\n             raise PoseResolutionError(\n                 f\"{label}: pose '{ref.pose_id}' cannot be resolved: not found, {where}\"\n             )\n         dataset_pose = dataset.poses[ref.pose_id]\n         try:\n             world = dataset_pose.as_world()\n         except DatasetError as error:\n             raise PoseResolutionError(\n                 f\"{label}: pose '{ref.pose_id}' cannot be resolved to world: {error}\"\n             ) from error\n         return world.model_copy(\n             update={\"kinematic_configuration\": dataset_pose.kinematic_configuration}\n         )\n \n     if not isinstance(ref, api.models.InlinePoseReference):\n         raise UnsupportedRoutineCommand(\n             f\"{label}: {type(ref).__name__} targets are not supported yet\"\n         )\n     if ref.tcp is not None and ref.tcp != routine.tcp:\n         raise UnsupportedRoutineCommand(f\"{label}: per-target TCP overrides are not supported\")\n \n     pose = Pose.from_api_model(ref.pose, ref.kinematic_configuration)\n     if ref.frame is None:\n         return pose\n     if dataset is None or ref.frame not in dataset.frames:\n         raise PoseResolutionError(\n             f\"{label}: frame '{ref.frame}' cannot be resolved: not found in the given dataset\"\n         )\n     try:\n         world = dataset.frames[ref.frame].as_world() @ pose\n     except DatasetError as error:\n         raise PoseResolutionError(\n             f\"{label}: frame '{ref.frame}' cannot be resolved to world: {error}\"\n         ) from error\n     return world.model_copy(update={\"kinematic_configuration\": ref.kinematic_configuration})\n \n \n def _to_settings(settings: api.models.MotionSettings | None) -> MotionSettings:\n     if settings is None:\n         return MotionSettings()\n     limits = settings.limits_override or api.models.LimitsOverride()\n     return MotionSettings(\n         blending=settings.blending,\n         joint_velocity_limits=_as_tuple(limits.joint_velocity_limits),\n         joint_acceleration_limits=_as_tuple(limits.joint_acceleration_limits),\n         joint_jerk_limits=_as_tuple(limits.joint_jerk_limits),\n         tcp_velocity_limit=limits.tcp_velocity_limit,\n         tcp_acceleration_limit=limits.tcp_acceleration_limit,\n         tcp_jerk_limit=limits.tcp_jerk_limit,\n         tcp_orientation_velocity_limit=limits.tcp_orientation_velocity_limit,\n         tcp_orientation_acceleration_limit=limits.tcp_orientation_acceleration_limit,\n         tcp_orientation_jerk_limit=limits.tcp_orientation_jerk_limit,\n     )\n \n \n def _as_tuple(values: list[float] | None) -> tuple[float, ...] | None:\n     return tuple(values) if values else None\n",
+              "additions": 13,
+              "deletions": 1,
               "status": "modified"
             },
             {
@@ -3392,21 +3399,24 @@
           "cwd": "/Users/mkhe/NDX/wandelbots-nova",
           "root": "/Users/mkhe/NDX/wandelbots-nova"
         },
-        "cost": 0,
+        "cost": 0.0155777,
         "tokens": {
-          "input": 0,
-          "output": 0,
-          "reasoning": 0,
+          "total": 56373,
+          "input": 2,
+          "output": 689,
+          "reasoning": 105,
           "cache": {
-            "read": 0,
-            "write": 0
+            "write": 865,
+            "read": 54712
           }
         },
         "modelID": "claude-sonnet-5.5",
         "providerID": "github-copilot",
         "time": {
-          "created": 1792086251451
+          "created": 1792086251451,
+          "completed": 1792086264970
         },
+        "finish": "tool-calls",
         "id": "msg_140aa17bb001zqO717BY7ykxAd",
         "sessionID": "ses_ebf588896ffeqUcWkVIwGNi8Yl"
       },
@@ -3450,15 +3460,20 @@
           "tool": "bash",
           "callID": "toolu_018sPQd8uGsLvRW29Th9Ekz6",
           "state": {
-            "metadata": {
-              "output": "All checks passed!\n17 passed, 169 warnings in 1.59s\n"
-            },
-            "status": "running",
+            "status": "completed",
             "input": {
               "command": "cd /Users/mkhe/NDX/wandelbots-nova; python3 - <<'E'\np='nova/cell/routine_execution.py'\ns=open(p).read()\ns=s.replace(\"from nova.datasets import Dataset, DatasetError\\nfrom nova.actions.io import WriteAction\\nfrom nova.actions.motions import CartesianPTP, Circular, JointPTP, Linear\\n\",\"from nova.actions.io import WriteAction\\nfrom nova.actions.motions import CartesianPTP, Circular, JointPTP, Linear\\nfrom nova.datasets import Dataset, DatasetError\\n\")\nopen(p,'w').write(s)\np='.scratch/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md'\ns=open(p).read()\ns=s.replace(\"- [ ]\",\"- [x]\")\ns=s.replace(\"- [x] Integration test on the virtual controller observes the outputs switching during the run.\",\"- [x] Integration test on the virtual controller observes the outputs switching during the run. (Written; not run, no NOVA instance available.)\")\ns=s.replace(\"- [x] ADR 001 IO-overlay hardware verification confirmed (or explicitly noted as still open).\",\"- [x] ADR 001 IO-overlay hardware verification: still open, not confirmed.\")\nopen(p,'w').write(s)\nE\nuv run ruff check nova | tail -1; uv run pytest tests/cell/test_execute_routine.py -q 2>&1 | grep passed\ngit add nova/cell/routine_execution.py tests/cell/test_execute_routine.py tests/nova/cell/motion_group/test_execute_routine.py\ngit commit -q -m \"feat: run set_io commands in CommandRoutines (NDX-883)\" && git log --oneline -1"
             },
+            "output": "All checks passed!\n17 passed, 169 warnings in 1.59s\nfe2748c3 feat: run set_io commands in CommandRoutines (NDX-883)\n",
+            "metadata": {
+              "output": "All checks passed!\n17 passed, 169 warnings in 1.59s\nfe2748c3 feat: run set_io commands in CommandRoutines (NDX-883)\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; python3 - <<'E'\np='nova/cell/routine_execution.py'\ns=open(p).read()\ns=s.replace(\"from nova.datasets import Dataset, DatasetError\\nfrom nova.actions.io import WriteAction\\nfrom nova.actions.motions import CartesianPTP, Circular, JointPTP, Linear\\n\",\"from nova.actions.io import WriteAction\\nfrom nova.actions.motions import CartesianPTP, Circular, JointPTP, Linear\\nfrom nova.datasets import Dataset, DatasetError\\n\")\nopen(p,'w').write(s)\np='.scratch/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md'\ns=open(p).read()\ns=s.replace(\"- [ ]\",\"- [x]\")\ns=s.replace(\"- [x] Integration test on the virtual controller observes the outputs switching during the run.\",\"- [x] Integration test on the virtual controller observes the outputs switching during the run. (Written; not run, no NOVA instance available.)\")\ns=s.replace(\"- [x] ADR 001 IO-overlay hardware verification confirmed (or explicitly noted as still open).\",\"- [x] ADR 001 IO-overlay hardware verification: still open, not confirmed.\")\nopen(p,'w').write(s)\nE\nuv run ruff check nova | tail -1; uv run pytest tests/cell/test_execute_routine.py -q 2>&1 | grep passed\ngit add nova/cell/routine_execution.py tests/cell/test_execute_routine.py tests/nova/cell/motion_group/test_execute_routine.py\ngit commit -q -m \"feat: run set_io commands in CommandRoutines (NDX-883)\" && git log --oneline -1",
             "time": {
-              "start": 1792086257001
+              "start": 1792086257001,
+              "end": 1792086264709
             }
           },
           "metadata": {
@@ -3471,6 +3486,107 @@
           "id": "prt_140aa2122001aw2xyjzfKthZhB",
           "sessionID": "ses_ebf588896ffeqUcWkVIwGNi8Yl",
           "messageID": "msg_140aa17bb001zqO717BY7ykxAd"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "5f4c8a4eef84b246ccfbf4ee941c35f0d5bf4e71",
+          "type": "step-finish",
+          "tokens": {
+            "total": 56373,
+            "input": 2,
+            "output": 689,
+            "reasoning": 105,
+            "cache": {
+              "write": 865,
+              "read": 54712
+            }
+          },
+          "cost": 0.0155777,
+          "id": "prt_140aa4c2a001KPAJ4DAzPSK4H7",
+          "sessionID": "ses_ebf588896ffeqUcWkVIwGNi8Yl",
+          "messageID": "msg_140aa17bb001zqO717BY7ykxAd"
+        },
+        {
+          "type": "patch",
+          "hash": "07ea03261c30a7deab2de9dc35fa0286ca9b8180",
+          "files": [
+            "/Users/mkhe/NDX/wandelbots-nova/.scratch/ndx-883-command-routine-execution/issues/03-set-io-in-routines.md",
+            "/Users/mkhe/NDX/wandelbots-nova/nova/cell/routine_execution.py"
+          ],
+          "id": "prt_140aa4c88001tfMotU3v9r2NY7",
+          "sessionID": "ses_ebf588896ffeqUcWkVIwGNi8Yl",
+          "messageID": "msg_140aa17bb001zqO717BY7ykxAd"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_140a89bcf001uf5kGoy9Rhxg6i",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0140417,
+        "tokens": {
+          "total": 57069,
+          "input": 2,
+          "output": 634,
+          "reasoning": 0,
+          "cache": {
+            "write": 856,
+            "read": 55577
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792086264972,
+          "completed": 1792086270170
+        },
+        "finish": "stop",
+        "id": "msg_140aa4c8c0011iyxHj3xxIbqbl",
+        "sessionID": "ses_ebf588896ffeqUcWkVIwGNi8Yl"
+      },
+      "parts": [
+        {
+          "snapshot": "5f4c8a4eef84b246ccfbf4ee941c35f0d5bf4e71",
+          "type": "step-start",
+          "id": "prt_140aa602d001tVMNbs7EtVMIe1",
+          "sessionID": "ses_ebf588896ffeqUcWkVIwGNi8Yl",
+          "messageID": "msg_140aa4c8c0011iyxHj3xxIbqbl"
+        },
+        {
+          "type": "text",
+          "text": "Ticket 03 (`set_io` in routines, including triggers) is implemented and committed as `fe2748c3`. The one new integration test is written but unrun, and the ADR 001 hardware check is still open.\n\n**What changed:** `set_io` now maps to the existing `WriteAction` in `nova/cell/routine_execution.py`. The existing trigger resolver and `set_outputs` overlay then handle the rest. I didn't add new execution code.\n- A `set_io` with no trigger switches at the following motion boundary.\n- Time and path-fraction triggers switch inside the following motion; I didn't add a distance-trigger test.\n- Boolean, integer and analog values and the controller or bus origin carry through.\n- `set_io` is no longer rejected. Other unsupported commands, such as `marker`, still are.\n\n**Tests:**\n- **Behaviour tests:** four new tests in `TestSetIO` in `tests/cell/test_execute_routine.py` pass. They check the outputs and locations sent in the start request.\n- **Integration test:** the new test is in `tests/nova/cell/motion_group/test_execute_routine.py`. It runs a routine with `set_io` on a virtual KUKA and watches `OUT#900` switch. It collects, but I couldn't run it because no NOVA instance is configured here.\n- **Suite:** `ruff`, `ty` and the non-integration suite pass (803 tests). I excluded `tests/novax`, which needs an optional extra that isn't installed.\n\n**Open items:**\n- **ADR 001:** the hardware verification of the IO overlay is not done. I noted it as open in the ticket.\n- **Code review:** the `code-review` skill isn't installed, so I reviewed the diff myself and fixed one import-order issue.\n- **Ticket file:** `.scratch/` is untracked, so my edit ticking the ticket's checkboxes isn't committed.",
+          "time": {
+            "start": 1792086269998,
+            "end": 1792086270025
+          },
+          "id": "prt_140aa602e001zuEHmGTJUvtD0R",
+          "sessionID": "ses_ebf588896ffeqUcWkVIwGNi8Yl",
+          "messageID": "msg_140aa4c8c0011iyxHj3xxIbqbl"
+        },
+        {
+          "reason": "stop",
+          "snapshot": "5f4c8a4eef84b246ccfbf4ee941c35f0d5bf4e71",
+          "type": "step-finish",
+          "tokens": {
+            "total": 57069,
+            "input": 2,
+            "output": 634,
+            "reasoning": 0,
+            "cache": {
+              "write": 856,
+              "read": 55577
+            }
+          },
+          "cost": 0.0140417,
+          "id": "prt_140aa6093001gHSMN4xiZOCGzP",
+          "sessionID": "ses_ebf588896ffeqUcWkVIwGNi8Yl",
+          "messageID": "msg_140aa4c8c0011iyxHj3xxIbqbl"
         }
       ]
     }
