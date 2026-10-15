@@ -1,0 +1,9 @@
+Research only (no code changes) in /Users/mkhe/NDX/wandelbots-nova (Python SDK). Thoroughness: medium. I'm designing a feature to execute api.models.CommandRoutine (built in nova/command_routines/) on a MotionGroup. Report concisely with file:line refs:
+1. MotionGroup public API for planning/executing: signatures of plan, execute, plan_and_execute, stream_execute, and how actions (nova/actions/*: lin, ptp, jnt, cir, io_write, wait, path triggers in nova/actions/path_trigger.py) are converted into the API plan request. What action types exist (motions, WriteAction, WaitAction?, etc.) and whether waits/io between motions are supported inside one plan.
+2. The command model classes in nova/command_routines/commands.py: what api.models types each factory returns (ExplicitPathMotionCommand, GeneratedPathMotionCommand, SetIO..., WaitForIO, PauseOnIO, Marker, WaitForTime), and their key fields (how targets reference poses: local pose vs dataset pose reference; trigger fields).
+3. Any existing conversion between api Command models and SDK actions (grep for ExplicitPathMotionCommand, GeneratedPathMotionCommand usage outside command_routines).
+4. How I/O is read/written and waited on in the SDK (controller IO API, e.g. controller.read/write, stream of IO, wait for IO).
+5. Datasets: nova/datasets — how to get a dataset and resolve a pose by id (types.py, client).
+6. TrajectoryCursor (docs/architecture/adr/001...) — briefly what it is and whether it supports pause/resume (relevant for pause_on_io).
+7. Any event/callback mechanism during execution (e.g. on_movement, MotionState stream) that could carry marker events.
+8. Where examples live and test layout for command_routines.
