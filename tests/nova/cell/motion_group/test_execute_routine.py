@@ -5,8 +5,16 @@ import pytest
 
 from nova import Nova, api
 from nova.cell.controllers import virtual_controller
-from nova.command_routines import command_routine, move_joint_ptp, move_linear, set_io
+from nova.command_routines import (
+    command_routine,
+    marker,
+    move_joint_ptp,
+    move_linear,
+    set_io,
+    wait_for_time,
+)
 from nova.datasets import Dataset, DatasetFrame, DatasetPose
+from nova.exceptions import UnsupportedRoutineCommand
 from nova.types import Pose
 
 
@@ -230,3 +238,48 @@ class TestExampleDatasetRoutine:
                 # THEN
                 assert await controller.read("OUT#1") is False
                 await mg.plan_and_execute([joint_ptp(home)], tcp)
+
+
+class TestUnsupportedCommands:
+    """Unsupported commands are rejected with a message naming them, before the robot moves."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    @pytest.mark.parametrize(
+        "command, command_type", [(wait_for_time(500), "wait_for_time"), (marker("here"), "marker")]
+    )
+    async def test_unsupported_command_is_rejected_before_motion_on_virtual_controller(
+        self, command, command_type
+    ):
+        controller_name = "ur-routine-unsupported-test"
+        async with Nova() as nova:
+            cell = nova.cell()
+            await cell.ensure_controller(
+                virtual_controller(
+                    name=controller_name,
+                    manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                    type="universalrobots-ur10e",
+                )
+            )
+            controller = await cell.controller(controller_name)
+            async with controller[0] as mg:
+                # GIVEN
+                start = list(await mg.joints())
+                moved = [start[0] + 0.3, *start[1:]]
+                routine = command_routine(
+                    "unsupported",
+                    motion_group=mg.id,
+                    tcp="Flange",
+                    motion_group_setup=await mg.get_setup("Flange"),
+                    start_joint_position=start,
+                    commands=[move_joint_ptp(moved), command],
+                )
+
+                # WHEN
+                with pytest.raises(UnsupportedRoutineCommand) as error:
+                    await mg.plan_and_execute_routine(routine)
+
+                # THEN
+                assert command_type in str(error.value)
+                assert "not supported yet" in str(error.value)
+                assert await mg.joints() == pytest.approx(start, abs=1e-3)
