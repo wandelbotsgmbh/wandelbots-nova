@@ -18,6 +18,7 @@ Examples on how to use the wandelbots-nova library.
 12. [Blend between motion commands](blending.py)
 13. [Palletizing with a dataset frame](palletizing.py)
 14. [Pose transformations with `@` and `~`](pose_transformations.py)
+15. [Run a CommandRoutine from a dataset](command_routine.py)
 
 ## Usage
 

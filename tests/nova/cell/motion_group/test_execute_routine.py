@@ -180,3 +180,53 @@ class TestSetIO:
                 assert observed[0] is False
                 assert await controller.read("tool_out[0]") is True
                 await controller.write("tool_out[0]", False)
+
+
+class TestExampleDatasetRoutine:
+    """A Dataset routine with explicit motions and set_io, with and without trigger, completes."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_dataset_routine_with_set_io_runs_on_virtual_controller(self):
+        from pathlib import Path
+
+        from nova import datasets as ds
+        from nova.actions import joint_ptp
+        from nova.command_routines import at_path_fraction, move_cartesian_ptp
+
+        controller_name = "kuka-kr16-r2010"
+        dataset = await ds.read("examples/example_dataset.json", base_dir=Path(__file__).parents[4])
+        async with Nova() as nova:
+            cell = nova.cell()
+            await cell.ensure_controller(
+                virtual_controller(
+                    name=controller_name,
+                    manufacturer=api.models.Manufacturer.KUKA,
+                    type="kuka-kr16_r2010_2",
+                )
+            )
+            controller = await cell.controller(controller_name)
+            async with controller[0] as mg:
+                # GIVEN
+                tcp = (await mg.tcp_names())[0]
+                home = tuple(await mg.joints())
+                routine = command_routine(
+                    "example",
+                    tcp=tcp,
+                    motion_group_setup=await mg.get_setup(tcp),
+                    start_joint_position=list(home),
+                    commands=[
+                        move_cartesian_ptp("pick"),
+                        set_io("OUT#1", True),
+                        move_linear("place"),
+                        set_io("OUT#1", False, at=at_path_fraction(0.5)),
+                        move_cartesian_ptp("pick"),
+                    ],
+                )
+
+                # WHEN
+                await mg.plan_and_execute_routine(routine, dataset)
+
+                # THEN
+                assert await controller.read("OUT#1") is False
+                await mg.plan_and_execute([joint_ptp(home)], tcp)
