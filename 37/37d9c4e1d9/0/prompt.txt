@@ -1,0 +1,34 @@
+Implement the work described by the user in the spec or tickets.
+
+If the user passes a ticket reference, fetch it from the issue tracker and state its title before starting. If the reference is ambiguous, ask.
+
+Read `context.md` in this skill's directory for project-specific domain knowledge (robot type for tests, IO names, known environment quirks) and follow it. When you learn something new of that kind, or the user states a testing convention, add it there.
+
+Call the Skill tool with "tdd" where possible, at pre-agreed seams.
+
+Run typechecking regularly, single test files regularly, and the full test suite once at the end.
+
+Once done, call the Skill tool with "code-review" to review the work.
+
+Never commit automatically. You MUST wait for the user's explicit approval before running `git commit`: leave the changes uncommitted in the working tree, summarise them, ask the user to review and approve, and then stop and wait. Only after the user explicitly approves, commit to the current branch. Finishing the work, passing tests or a completed review are not approval.
+
+At the end of each implemented ticket or subtask, you MUST show the user a short "How to test quickly" section so they can test and validate the changes immediately, followed by a "Limitations" section. Both are required every time, before asking for approval to commit.
+
+"How to test quickly" contains:
+
+- The exact commands to run that ticket's tests, for example `uv run pytest tests/cell/test_<name>.py -v` for the gateway-double tests and `uv run pytest tests/nova/cell/motion_group/test_<name>.py -v` for the integration test.
+- Integration tests need a running NOVA instance, configured through `.env` (`NOVA_API`, `NOVA_ACCESS_TOKEN`, `CELL_NAME`; copy `.env.template` if missing). All integration tests: `uv run pytest -m integration -v`.
+- What a pass looks like (for example `1 passed`).
+
+"Limitations" points the user to anything that bounds how far the changes can be trusted:
+
+- Tests that were written but not run (for example integration tests without a NOVA instance), and why.
+- Checks skipped or excluded (for example ignored test directories, a missing skill, unavailable hardware).
+- Open external dependencies or unverified assumptions (for example pending hardware verification named in the ticket).
+- Behaviour deliberately not covered by the ticket, such as command types still rejected.
+
+
+Base directory for this skill: /Users/mkhe/NDX/wandelbots-nova/.opencode/skills/implement
+Relative paths in this skill (e.g., scripts/, references/) are relative to this base directory.
+
+can you implement 03-set-io-in-routines.md in .specs? I already have such thing implemented but it implemented a separate plan and execute_routine call. I actually want to reuse the already existing plan and execute calls
