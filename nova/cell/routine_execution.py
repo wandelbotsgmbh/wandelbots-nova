@@ -10,6 +10,44 @@ from nova.types import Pose
 from nova.types.motion_settings import MotionSettings
 
 
+def resolve_routine(
+    routine: api.models.CommandRoutine, dataset: Dataset
+) -> api.models.CommandRoutine:
+    """Return a copy of ``routine`` whose poses are inline world poses.
+
+    Local pose references and poses given in a dataset frame are resolved against ``dataset``,
+    keeping their kinematic configuration, so the result runs without a dataset.
+
+    Raises:
+        PoseResolutionError: If a pose cannot be resolved to a world pose.
+    """
+    commands = []
+    for index, command in enumerate(routine.commands):
+        if isinstance(command, api.models.ExplicitPathMotionCommand):
+            label = f"Command {index} ({command.type})"
+            update: dict = {}
+            if not isinstance(command.target, api.models.JointPositionReference):
+                update["target"] = _to_world_ref(routine, dataset, label, command.target)
+            path_type = command.path_type
+            if isinstance(path_type, api.models.PathTypeCircle):
+                via = _to_world_ref(routine, dataset, label, path_type.via_pose)
+                update["path_type"] = path_type.model_copy(update={"via_pose": via})
+            command = command.model_copy(update=update)
+        commands.append(command)
+    return routine.model_copy(update={"commands": commands})
+
+
+def _to_world_ref(
+    routine: api.models.CommandRoutine, dataset: Dataset, label: str, ref: api.models.PoseRef
+) -> api.models.PoseRef:
+    if not isinstance(ref, (api.models.LocalPoseReference, api.models.InlinePoseReference)):
+        return ref
+    pose = _to_pose(routine, dataset, label, ref)
+    return api.models.InlinePoseReference(
+        pose=pose.to_api_model(), kinematic_configuration=pose.kinematic_configuration
+    )
+
+
 def routine_to_actions(
     routine: api.models.CommandRoutine, dataset: Dataset | None = None
 ) -> list[Action]:

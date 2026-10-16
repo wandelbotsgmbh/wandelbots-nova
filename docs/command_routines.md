@@ -7,9 +7,9 @@ action lists:
 
 | Call | Returns |
 | --- | --- |
-| `await mg.plan_routine(routine, dataset=None)` | `JointTrajectory` |
-| `await mg.execute_routine(routine, joint_trajectory, dataset=None)` | runs a planned trajectory |
-| `await mg.plan_and_execute_routine(routine, dataset=None)` | plans, then runs |
+| `await mg.plan(routine)` | `JointTrajectory` |
+| `await mg.execute(joint_trajectory, routine.tcp, routine)` | runs a planned trajectory |
+| `await mg.plan_and_execute(routine)` | plans, then runs |
 
 The routine's own context is used and cannot be overridden. Per-command motion settings take
 precedence over the routine defaults. Planning only needs the start joint position, so move the
@@ -28,17 +28,20 @@ routine = command_routine(
     start_joint_position=list(await mg.joints()),
     commands=[move_joint_ptp(target_joints), set_io("tool_out[0]", True), move_linear(pose_ref)],
 )
-await mg.plan_and_execute_routine(routine)
+await mg.plan_and_execute(routine)
 ```
 
 ## From a Dataset
 
-Load the Dataset (for example with `ds.local_dataset(...)` in `@nova.program` preconditions) and pass
-it along. Local pose references and poses in a Dataset frame are resolved to world poses through it:
+Load the Dataset (for example with `ds.local_dataset(...)` in `@nova.program` preconditions) and
+resolve the routine against it. Local pose references and poses in a Dataset frame become inline
+world poses, so the calls above need no dataset:
 
 ```python
+from nova.cell.routine_execution import resolve_routine
+
 routine = ctx.dataset.command_routines["my-routine"]
-await mg.plan_and_execute_routine(routine, ctx.dataset)
+await mg.plan_and_execute(resolve_routine(routine, ctx.dataset))
 ```
 
 If the routine's TCP or motion group setup do not match your controller, replace them with
