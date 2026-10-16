@@ -1,4 +1,4 @@
-"""Executing a CommandRoutine through ``MotionGroup.plan_and_execute_routine``.
+"""Executing a CommandRoutine through ``MotionGroup.plan_and_execute``.
 
 Behaviour is asserted at the public entry point only: what the planner was asked
 to plan, which states came out, and the errors. The gateway is a double; the
@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from nova.cell.routine_execution import resolve_routine
 from nova import api
 from nova.cell.motion_group import MotionGroup
 from nova.cell.state_stream import MotionGroupStateStreamRegistry
@@ -64,14 +65,14 @@ async def _plan(cell, plan_trajectory_request) -> api.models.PlanTrajectoryRespo
     )
 
 
-def _motion_group(upstream: FakeUpstream) -> MotionGroup:
+def _motion_group(upstream: FakeUpstream, protocol=None) -> MotionGroup:
     gateway = MagicMock(spec=ApiGateway)
     registry = MotionGroupStateStreamRegistry(
         open_stream=lambda cell, controller_id, motion_group_id, rate: upstream.open(rate)
     )
     gateway.motion_group_state_stream = registry.stream
     gateway.trajectory_execution_api = MagicMock()
-    gateway.trajectory_execution_api.execute_trajectory = _ExecuteProtocolFake(upstream)
+    gateway.trajectory_execution_api.execute_trajectory = protocol or _ExecuteProtocolFake(upstream)
     gateway.trajectory_planning_api = MagicMock()
     gateway.trajectory_planning_api.plan_trajectory = AsyncMock(side_effect=_plan)
     motion_group = MotionGroup(
@@ -140,7 +141,7 @@ class TestExecution:
 
         # WHEN
         async with asyncio.timeout(5):
-            await motion_group.plan_and_execute_routine(routine)
+            await motion_group.plan_and_execute(routine)
 
         # THEN
         motion_group._load_planned_motion.assert_awaited_once()
@@ -160,7 +161,7 @@ class TestExecution:
 
         # WHEN
         async with asyncio.timeout(5):
-            await motion_group.plan_and_execute_routine(routine)
+            await motion_group.plan_and_execute(routine)
 
         # THEN
         request = (
@@ -189,7 +190,7 @@ class TestExecution:
 
         # WHEN
         async with asyncio.timeout(5):
-            await motion_group.plan_and_execute_routine(routine)
+            await motion_group.plan_and_execute(routine)
 
         # THEN
         limits = [
@@ -210,7 +211,7 @@ class TestExecution:
 
         # WHEN
         async with asyncio.timeout(5):
-            await motion_group.plan_and_execute_routine(routine)
+            await motion_group.plan_and_execute(routine)
 
         # THEN
         assert [
@@ -221,12 +222,12 @@ class TestExecution:
         # GIVEN
         motion_group = _motion_group(FakeUpstream())
         routine = _routine(move_linear(_pose(1.0)), move_linear(_pose(2.0)))
-        trajectory = await motion_group.plan_routine(routine)
+        trajectory = await motion_group.plan(routine)
         motion_group._load_planned_motion.assert_not_awaited()  # planning does not move the robot
 
         # WHEN
         async with asyncio.timeout(5):
-            await motion_group.execute_routine(routine, trajectory)
+            await motion_group.execute(trajectory, routine.tcp, routine)
 
         # THEN
         motion_group._load_planned_motion.assert_awaited_once()
@@ -254,14 +255,13 @@ class TestSetIO:
 
     async def _run(self, *commands) -> list[api.models.SetIO]:
         upstream = FakeUpstream()
-        motion_group = _motion_group(upstream)
         recorder = _RecordingProtocolFake(upstream)
-        motion_group._api_client.trajectory_execution_api.execute_trajectory = recorder
+        motion_group = _motion_group(upstream, recorder)
 
         async with asyncio.timeout(5):
-            await motion_group.plan_and_execute_routine(_routine(*commands))
+            await motion_group.plan_and_execute(_routine(*commands))
 
-        return recorder.start_requests[0].set_outputs
+        return recorder.start_requests[0].set_outputs or []
 
     async def test_set_io_without_trigger_switches_at_the_following_motion_boundary(self):
         # WHEN
@@ -318,7 +318,7 @@ class TestRejection:
 
         # WHEN
         with pytest.raises(UnsupportedRoutineCommand, match=r"Command 1 \(marker\)"):
-            await motion_group.plan_and_execute_routine(routine)
+            await motion_group.plan_and_execute(routine)
 
         # THEN
         motion_group._api_client.trajectory_planning_api.plan_trajectory.assert_not_awaited()
@@ -332,7 +332,19 @@ class TestRejection:
         # WHEN
         # THEN
         with pytest.raises(ValueError, match="1@other"):
-            await motion_group.plan_and_execute_routine(routine)
+            await motion_group.plan_and_execute(routine)
+
+    async def test_rejects_overrides_of_the_routine_context(self):
+        # GIVEN
+        motion_group = _motion_group(FakeUpstream())
+        routine = _routine(move_linear(_pose(1.0)))
+
+        # WHEN
+        # THEN
+        with pytest.raises(ValueError, match="overrides"):
+            await motion_group.plan(routine, start_joint_position=(0.0,) * 6)
+        with pytest.raises(ValueError, match="own TCP"):
+            await motion_group.plan(routine, "Other")
 
 
 class TestStop:
@@ -342,9 +354,7 @@ class TestStop:
         # GIVEN
         upstream = FakeUpstream()
         motion_group = _motion_group(upstream)
-        task = asyncio.create_task(
-            motion_group.plan_and_execute_routine(_routine(move_linear(_pose(1.0))))
-        )
+        task = asyncio.create_task(motion_group.plan_and_execute(_routine(move_linear(_pose(1.0)))))
         async with asyncio.timeout(5):
             while not motion_group._load_planned_motion.await_count:
                 await asyncio.sleep(0)
@@ -368,7 +378,7 @@ class TestPoseResolution:
 
         # WHEN
         async with asyncio.timeout(5):
-            await motion_group.plan_and_execute_routine(routine, dataset=_fixture_dataset())
+            await motion_group.plan_and_execute(resolve_routine(routine, _fixture_dataset()))
 
         # THEN
         (command,) = _planned_commands(motion_group)
@@ -384,8 +394,8 @@ class TestPoseResolution:
 
         # WHEN
         async with asyncio.timeout(5):
-            await motion_group.plan_and_execute_routine(
-                _routine(move_linear(in_frame)), dataset=_fixture_dataset()
+            await motion_group.plan_and_execute(
+                resolve_routine(_routine(move_linear(in_frame)), _fixture_dataset())
             )
 
         # THEN
@@ -399,7 +409,7 @@ class TestPoseResolution:
 
         # WHEN
         with pytest.raises(PoseResolutionError, match="missing-pose"):
-            await motion_group.plan_and_execute_routine(routine, dataset=_fixture_dataset())
+            await motion_group.plan_and_execute(resolve_routine(routine, _fixture_dataset()))
 
         # THEN
         motion_group._api_client.trajectory_planning_api.plan_trajectory.assert_not_awaited()
@@ -411,7 +421,7 @@ class TestPoseResolution:
 
         # WHEN
         with pytest.raises(PoseResolutionError, match="slot"):
-            await motion_group.plan_and_execute_routine(_routine(move_linear("slot")))
+            await motion_group.plan_and_execute(_routine(move_linear("slot")))
 
         # THEN
         motion_group._api_client.trajectory_planning_api.plan_trajectory.assert_not_awaited()
@@ -439,7 +449,9 @@ class TestPoseResolution:
 
         # WHEN
         async with asyncio.timeout(5):
-            await motion_group.plan_and_execute_routine(_routine(move_linear("p")), dataset=dataset)
+            await motion_group.plan_and_execute(
+                resolve_routine(_routine(move_linear("p")), dataset)
+            )
 
         # THEN
         # Worked out by hand:

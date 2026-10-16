@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from nova.cell.routine_execution import resolve_routine
 from nova import Nova, api
 from nova.cell.controllers import virtual_controller
 from nova.command_routines import (
@@ -61,7 +62,7 @@ class TestMotionRoutine:
                 )
 
                 # WHEN
-                await mg.plan_and_execute_routine(routine)
+                await mg.plan_and_execute(routine)
 
                 # THEN
                 end_joints = await mg.joints()
@@ -115,7 +116,7 @@ class TestDatasetPoses:
                 )
 
                 # WHEN
-                await mg.plan_and_execute_routine(routine, dataset)
+                await mg.plan_and_execute(resolve_routine(routine, dataset))
 
                 # THEN
 
@@ -124,7 +125,7 @@ class TestDatasetPoses:
                 assert tuple(reached.position.to_tuple()) == pytest.approx(
                     tuple(expected.position.to_tuple()), abs=1.0
                 )
-                await mg.plan_and_execute_routine(
+                await mg.plan_and_execute(
                     command_routine(
                         "back",
                         motion_group=mg.id,
@@ -180,7 +181,7 @@ class TestSetIO:
 
                 watcher = asyncio.create_task(watch())
                 try:
-                    await mg.plan_and_execute_routine(routine)
+                    await mg.plan_and_execute(routine)
                 finally:
                     watcher.cancel()
 
@@ -233,7 +234,7 @@ class TestExampleDatasetRoutine:
                 )
 
                 # WHEN
-                await mg.plan_and_execute_routine(routine, dataset)
+                await mg.plan_and_execute(resolve_routine(routine, dataset))
 
                 # THEN
                 assert await controller.read("OUT#1") is False
@@ -277,7 +278,7 @@ class TestUnsupportedCommands:
 
                 # WHEN
                 with pytest.raises(UnsupportedRoutineCommand) as error:
-                    await mg.plan_and_execute_routine(routine)
+                    await mg.plan_and_execute(routine)
 
                 # THEN
                 assert command_type in str(error.value)

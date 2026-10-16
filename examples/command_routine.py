@@ -11,6 +11,7 @@ Which commands are supported: see `docs/command_routines.md` ("Supported command
 """
 
 import nova
+from nova.cell.routine_execution import resolve_routine
 from nova import api, run_program
 from nova import datasets as ds
 from nova.actions import joint_ptp
@@ -68,7 +69,7 @@ async def start(ctx: nova.ProgramContext):
     )
 
     print("Running routine...")
-    await motion_group.plan_and_execute_routine(routine, ctx.dataset)
+    await motion_group.plan_and_execute(resolve_routine(routine, ctx.dataset))
     await motion_group.plan_and_execute([joint_ptp(home)], tcp)
     print(f"{OUTPUT} = {await controller.read(OUTPUT)}")
 
