@@ -1,0 +1,1128 @@
+{
+  "info": {
+    "id": "ses_ec0255093ffernmjgWQeaAs8Eu",
+    "slug": "brave-forest",
+    "projectID": "a07a8bf3d362b3f5b4e5eabef7c1b022a246bc07",
+    "directory": "/Users/mkhe/NDX/wandelbots-nova",
+    "path": "",
+    "parentID": "ses_ec02756c9ffeq3sWLOK5f7dRNP",
+    "title": "Explore routine execution code (@explore subagent)",
+    "agent": "explore",
+    "model": {
+      "id": "claude-sonnet-5.5",
+      "providerID": "github-copilot",
+      "variant": "default"
+    },
+    "version": "1.18.32",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "cost": 0.1574695,
+    "tokens": {
+      "input": 22,
+      "output": 7486,
+      "reasoning": 101,
+      "cache": {
+        "read": 153930,
+        "write": 26465
+      }
+    },
+    "permission": [
+      {
+        "permission": "todowrite",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "task",
+        "pattern": "*",
+        "action": "deny"
+      }
+    ],
+    "time": {
+      "created": 1792072658796,
+      "updated": 1792072714564
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1792072658804
+        },
+        "agent": "explore",
+        "model": {
+          "providerID": "github-copilot",
+          "modelID": "claude-sonnet-5.5"
+        },
+        "summary": {
+          "diffs": [
+            {
+              "file": "examples/start_here_cr.py",
+              "patch": "Index: examples/start_here_cr.py\n===================================================================\n--- examples/start_here_cr.py\t\n+++ examples/start_here_cr.py\t\n@@ -1,109 +1,111 @@\n \"\"\"\n This example shows how to use the Python SDK to control a virtual KUKA KR16 R2010 robot.\n \n This demonstrates:\n - Setting up a virtual robot controller\n - Connecting to the robot\n - Planning and executing basic movements\n - Using joint and point-to-point motion types\n \n Key robotics concepts:\n - Motion groups: Controllable robot parts (usually the arm)\n - TCP (Tool Center Point): The point you control on the robot\n - Joint movement (jnt): Move by specifying joint angles in radians\n - Point-to-point movement (ptp): Move to a specific position/orientation (x,y,z, rotation angle in radians)\n - Pose: Position (x,y,z) and orientation (rx,ry,rz) in 3D space\n \"\"\"\n \n import asyncio\n \n from pydantic import Field\n \n import nova\n from nova import api, run_program\n+from nova import datasets as ds\n from nova.actions import cartesian_ptp, circular, joint_ptp, linear\n from nova.cell import virtual_controller\n from nova.types import MotionSettings, Pose\n \n \n # Configure the robot program\n @nova.program(\n     id=\"start_here\",  # Unique identifier of the program. If not provided, the function name will be used.\n     name=\"Start Here\",  # Readable name of the program\n     # viewer=nova.viewers.Rerun(),  # add this line for a 3D visualization\n     preconditions=nova.ProgramPreconditions(\n         controllers=[\n             virtual_controller(\n                 name=\"kuka-kr16-r2010\",\n                 manufacturer=api.models.Manufacturer.KUKA,\n                 type=\"kuka-kr16_r2010_2\",\n             )\n         ],\n         cleanup_controllers=False,\n+        dataset=ds.local_dataset(\"abb-irb-1300-demo.json\"),\n     ),\n )\n async def start(\n     ctx: nova.ProgramContext,\n     count: int = Field(\n         default=1, ge=1, le=10, description=\"The number of times to repeat the movement\"\n     ),\n ):\n     \"\"\"Main robot control function.\"\"\"\n     cell = ctx.cell\n     controller = await cell.controller(\"kuka-kr16-r2010\")\n     cycle = ctx.cycle(extra={\"app\": \"visual-studio-code\"})\n \n     normal = MotionSettings(tcp_velocity_limit=100)\n     fast = MotionSettings(tcp_velocity_limit=250)\n \n     motion_group = controller[0]\n     home_joints = await motion_group.joints()\n     tcp_names = await motion_group.tcp_names()\n     tcp = tcp_names[0]\n \n     # Get current TCP pose and create target poses\n     current_pose = await motion_group.tcp_pose(tcp)\n     target_pose = current_pose @ Pose((100, 0, 0, 0, 0, 0))\n \n     # Actions define the sequence of movements and other actions to be executed by the robot\n     actions = [\n         joint_ptp(home_joints, settings=normal),  # Move to home position slowly\n         cartesian_ptp(target_pose, settings=fast),  # Move to target pose\n         cartesian_ptp(\n             target_pose @ Pose([200, 0, 0, 0, 0, 0]), settings=fast\n         ),  # Move 100mm in target pose's local x-axis\n         linear(\n             target_pose @ Pose(200, 200, 0, 0, 0, 0), settings=fast\n         ),  # Move 100mm in local x and y axes\n         joint_ptp(home_joints, settings=normal),\n         cartesian_ptp(target_pose @ Pose((0, 200, 0, 0, 0, 0)), settings=fast),\n         circular(\n             target_pose @ Pose((0, 200, 0, 0, 0, 0)),\n             intermediate=target_pose @ Pose((0, 200, 0, 0, 0, 0)),\n             settings=fast,\n         ),\n         joint_ptp(home_joints, settings=normal),\n     ]\n \n     # Start the cycle\n     await cycle.start()\n \n     # Plan the movements (shows in 3D viewer or creates an rrd file)\n     joint_trajectory = await motion_group.plan(actions, tcp)\n \n     # OPTIONAL: Execute the planned movements\n     # You can comment out the lines below to only see the plan in Rerun\n     print(\"Executing planned movements...\")\n     for i in range(count):\n         print(f\"Executing movement {i + 1} of {count}\")\n         await motion_group.execute(joint_trajectory, tcp, actions=actions)\n         print(f\"Movement {i + 1} completed\")\n         await asyncio.sleep(1)\n \n     # Finish the cycle\n     await cycle.finish()\n     print(\"Movement execution completed!\")\n \n \n if __name__ == \"__main__\":\n     run_program(start)\n",
+              "additions": 2,
+              "deletions": 0,
+              "status": "modified"
+            }
+          ]
+        },
+        "id": "msg_13fdaaf74001NZ5fWZx05GFoSr",
+        "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "In /Users/mkhe/NDX/wandelbots-nova (read-only research, medium thoroughness) find: 1) CommandRoutine builders (NDX-844) and the API models for CommandRoutine/commands (module paths, fields: motion group, tcp, start joint position, default motion settings, motion group setup, commands list, per-command settings). 2) MotionGroup class: plan/execute/stream signatures, trajectory cursor (nova/cell/... ) and how execute yields state; ADR 001. 3) Existing tests for cursor/trajectory executor and gateway test doubles (file paths, fixtures), and integration tests for motion group on virtual controller (paths, markers). 4) Existing code converting motions to Actions (nova/actions). Return file paths with line numbers and short signatures; also docs/ADR location and commands used for typecheck/tests (pyproject/Makefile).",
+          "id": "prt_13fdaaf76001QNJDTmFJJ2h4ap",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaaf74001NZ5fWZx05GFoSr"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_13fdaaf74001NZ5fWZx05GFoSr",
+        "role": "assistant",
+        "mode": "explore",
+        "agent": "explore",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0178405,
+        "tokens": {
+          "total": 6678,
+          "input": 4,
+          "output": 153,
+          "reasoning": 0,
+          "cache": {
+            "write": 6521,
+            "read": 0
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792072659761,
+          "completed": 1792072661627
+        },
+        "finish": "tool-calls",
+        "id": "msg_13fdab331001XTJd8GBBOzt8BJ",
+        "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu"
+      },
+      "parts": [
+        {
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-start",
+          "id": "prt_13fdab6d3001abLdkq3zsbzcmx",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdab331001XTJd8GBBOzt8BJ"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01HQM4t1VZf2s6rwA4Djdz9b",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; git log --oneline -3; rg -il \"CommandRoutine|NDX-844\" --glob '!uv.lock' | head -30; ls; ls docs docs/adr* 2>/dev/null | head -40; ls nova nova/cell nova/actions"
+            },
+            "output": "7c4cfef3 fix(deps): require urllib3>=2.8.0 for security advisories (#534)\naf6d6394 chore(main): release 6.1.0 (#527)\na6e9941b feat(datasets): resolve dataset frames locally via as_world() (#529)\nCHANGELOG.md\ndocs/architecture/adr/001-merge-movement-controllers-into-trajectory-cursor.md\ntests/command_routines/test_command_routine.py\nnova/datasets/types.py\nnova/command_routines/commands.py\nnova/command_routines/routine.py\nnova/command_routines/__init__.py\n__pycache__\nAGENTS.md\nCHANGELOG.md\nCLAUDE.md\ndevportal.env.tpl\ndocs\nexamples\nkubeconfig\nLICENSE\nnats.conf\nnova\nnova_import_profile.html\nnova_rerun_bridge\nnovapolicy\nnovax\npackage-lock.json\npackage.json\npyproject.toml\nREADME.md\nrelease-please-config.json\nreports\nruff.toml\nscripts\nskaffold.yaml\nspecs\ntests\ntrajectory_cursor_overview.md\nuv.lock\nwandelscript\nzsh:1: no matches found: docs/adr*\nnova:\n__init__.py\n__pycache__\nactions\napi.py\napi.pyi\ncell\ncommand_routines\nconfig.py\ncore\ndatasets\nevents\nexceptions.py\nextensions\nhelper_scripts\nlogging\nprogram\npy.typed\ntypes\nutils\nversion.py\nviewers\n\nnova/actions:\n__init__.py\n__pycache__\nbase.py\ncontainer.py\nio.py\nmock.py\nmotions.py\npath_trigger_resolver.py\npath_trigger.py\ntrajectory_builder.py\n\nnova/cell:\n__init__.py\n__pycache__\ncell.py\ncontroller.py\ncontrollers.py\nio.py\nmotion_group_models.py\nmotion_group.py\nmovement_controller\nmulti_motion_group_planner.py\nmulti_motion_group.py\nmulti_trajectory_cursor.py\nrobot_cell.py\nsession_monitor.py\nsimulation.py\nstate_stream.py\ntest.ts\ntrajectory_executor.py\ntuner.py\n",
+            "metadata": {
+              "output": "7c4cfef3 fix(deps): require urllib3>=2.8.0 for security advisories (#534)\naf6d6394 chore(main): release 6.1.0 (#527)\na6e9941b feat(datasets): resolve dataset frames locally via as_world() (#529)\nCHANGELOG.md\ndocs/architecture/adr/001-merge-movement-controllers-into-trajectory-cursor.md\ntests/command_routines/test_command_routine.py\nnova/datasets/types.py\nnova/command_routines/commands.py\nnova/command_routines/routine.py\nnova/command_routines/__init__.py\n__pycache__\nAGENTS.md\nCHANGELOG.md\nCLAUDE.md\ndevportal.env.tpl\ndocs\nexamples\nkubeconfig\nLICENSE\nnats.conf\nnova\nnova_import_profile.html\nnova_rerun_bridge\nnovapolicy\nnovax\npackage-lock.json\npackage.json\npyproject.toml\nREADME.md\nrelease-please-config.json\nreports\nruff.toml\nscripts\nskaffold.yaml\nspecs\ntests\ntrajectory_cursor_overview.md\nuv.lock\nwandelscript\nzsh:1: no matches found: docs/adr*\nnova:\n__init__.py\n__pycache__\nactions\napi.py\napi.pyi\ncell\ncommand_routines\nconfig.py\ncore\ndatasets\nevents\nexceptions.py\nextensions\nhelper_scripts\nlogging\nprogram\npy.typed\ntypes\nutils\nversion.py\nviewers\n\nnova/actions:\n__init__.py\n__pycache__\nbase.py\ncontainer.py\nio.py\nmock.py\nmotions.py\npath_trigger_resolver.py\npath_trigger.py\ntrajectory_builder.py\n\nnova/cell:\n__init__.py\n__pycache__\ncell.py\ncontroller.py\ncontrollers.py\nio.py\nmotion_group_models.py\nmotion_group.py\nmovement_controller\nmulti_motion_group_planner.py\nmulti_motion_group.py\nmulti_trajectory_cursor.py\nrobot_cell.py\nsession_monitor.py\nsimulation.py\nstate_stream.py\ntest.ts\ntrajectory_executor.py\ntuner.py\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; git log --oneline -3; rg -il \"CommandRoutine|NDX-844\" --glob '!uv.lock' | head -30; ls; ls docs docs/adr* 2>/dev/null | head -40; ls nova nova/cell nova/actions",
+            "time": {
+              "start": 1792072661348,
+              "end": 1792072661496
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_13fdab6e0001A8HfUOIYvhvQ1J",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdab331001XTJd8GBBOzt8BJ"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-finish",
+          "tokens": {
+            "total": 6678,
+            "input": 4,
+            "output": 153,
+            "reasoning": 0,
+            "cache": {
+              "write": 6521,
+              "read": 0
+            }
+          },
+          "cost": 0.0178405,
+          "id": "prt_13fdaba3d0010Kk2HWzqmpovQj",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdab331001XTJd8GBBOzt8BJ"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_13fdaaf74001NZ5fWZx05GFoSr",
+        "role": "assistant",
+        "mode": "explore",
+        "agent": "explore",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0075786,
+        "tokens": {
+          "total": 7876,
+          "input": 2,
+          "output": 472,
+          "reasoning": 0,
+          "cache": {
+            "write": 881,
+            "read": 6521
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792072661628,
+          "completed": 1792072665516
+        },
+        "finish": "tool-calls",
+        "id": "msg_13fdaba7c001SMVJTdi4cWwfWQ",
+        "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu"
+      },
+      "parts": [
+        {
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-start",
+          "id": "prt_13fdabe4c001lzXzdwNtid8Dpm",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaba7c001SMVJTdi4cWwfWQ"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01A6fwYjDJmTxbVKL4nY2DTR",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; wc -l nova/command_routines/*.py nova/cell/motion_group.py nova/cell/trajectory_executor.py; cat nova/command_routines/__init__.py; rg -n \"^class |^    def |^    async def |^def |^async def |^@\" nova/command_routines/*.py nova/cell/trajectory_executor.py; ls nova/cell/movement_controller; rg -n \"^class |    def |    async def \" nova/cell/motion_group.py"
+            },
+            "output": "      58 nova/command_routines/__init__.py\n     263 nova/command_routines/commands.py\n      97 nova/command_routines/routine.py\n    1186 nova/cell/motion_group.py\n     329 nova/cell/trajectory_executor.py\n    1933 total\n\"\"\"Assemble NOVA CommandRoutine objects declaratively.\n\nBuild a routine by passing an ordered list of commands to :func:`command_routine`.\nThe command, pose, path and trigger factories in :mod:`nova.command_routines.commands`\nconstruct the individual pieces; :func:`with_settings` shares motion settings across a\ngroup of motions.\n\"\"\"\n\nfrom nova.command_routines.commands import (\n    at_distance,\n    at_path_fraction,\n    at_time,\n    generated_motion,\n    io_value,\n    joint_position,\n    local_pose,\n    marker,\n    motion,\n    move_cartesian_ptp,\n    move_circular,\n    move_joint_ptp,\n    move_linear,\n    path_cartesian_ptp,\n    path_circle,\n    path_joint_ptp,\n    path_line,\n    pause_on_io,\n    set_io,\n    wait_for_io,\n    wait_for_time,\n)\nfrom nova.command_routines.routine import command_routine, with_settings\n\n__all__ = [\n    \"command_routine\",\n    \"with_settings\",\n    \"motion\",\n    \"generated_motion\",\n    \"move_linear\",\n    \"move_cartesian_ptp\",\n    \"move_joint_ptp\",\n    \"move_circular\",\n    \"set_io\",\n    \"wait_for_time\",\n    \"wait_for_io\",\n    \"pause_on_io\",\n    \"marker\",\n    \"io_value\",\n    \"local_pose\",\n    \"joint_position\",\n    \"path_line\",\n    \"path_cartesian_ptp\",\n    \"path_joint_ptp\",\n    \"path_circle\",\n    \"at_path_fraction\",\n    \"at_distance\",\n    \"at_time\",\n]\nnova/command_routines/routine.py:15:def command_routine(\nnova/command_routines/routine.py:74:def with_settings(\nnova/command_routines/commands.py:17:def io_value(io: str, value: bool | int | float) -> api.models.IOValue:\nnova/command_routines/commands.py:36:def local_pose(pose_id: str) -> api.models.LocalPoseReference:\nnova/command_routines/commands.py:41:def joint_position(joints: list[float]) -> api.models.JointPositionReference:\nnova/command_routines/commands.py:46:def _as_pose_ref(target: api.models.PoseRef | str) -> api.models.PoseRef:\nnova/command_routines/commands.py:51:def _as_joint_ref(target: api.models.PoseRef | list[float]) -> api.models.PoseRef:\nnova/command_routines/commands.py:59:def path_line() -> api.models.PathTypeLine:\nnova/command_routines/commands.py:64:def path_cartesian_ptp() -> api.models.PathTypeCartesianPTP:\nnova/command_routines/commands.py:69:def path_joint_ptp() -> api.models.PathTypeJointPTP:\nnova/command_routines/commands.py:74:def path_circle(via_pose: api.models.PoseRef) -> api.models.PathTypeCircle:\nnova/command_routines/commands.py:82:def at_path_fraction(value: float) -> api.models.PathFractionTrigger:\nnova/command_routines/commands.py:87:def at_distance(\nnova/command_routines/commands.py:94:def at_time(seconds: float, reference: api.models.AtReference) -> api.models.TimeTrigger:\nnova/command_routines/commands.py:102:def motion(\nnova/command_routines/commands.py:120:def generated_motion(\nnova/command_routines/commands.py:138:def move_linear(\nnova/command_routines/commands.py:151:def move_cartesian_ptp(\nnova/command_routines/commands.py:168:def move_joint_ptp(\nnova/command_routines/commands.py:181:def move_circular(\nnova/command_routines/commands.py:199:def set_io(\nnova/command_routines/commands.py:214:def wait_for_time(\nnova/command_routines/commands.py:227:def wait_for_io(\nnova/command_routines/commands.py:241:def pause_on_io(\nnova/command_routines/commands.py:252:def marker(\nnova/cell/trajectory_executor.py:54:@dataclass(frozen=True)\nnova/cell/trajectory_executor.py:55:class GroupArgs:\nnova/cell/trajectory_executor.py:89:class TrajectoryExecutor:\nnova/cell/trajectory_executor.py:106:    def __init__(\nnova/cell/trajectory_executor.py:141:    def motion_groups(self) -> dict[str, MotionGroup]:\nnova/cell/trajectory_executor.py:145:    async def execute(\nnova/cell/trajectory_executor.py:165:    async def attach(\nnova/cell/trajectory_executor.py:249:    def _split_for_groups(\nnova/cell/trajectory_executor.py:269:    def _build_io_overlay(self, actions: Sequence[Action]) -> dict[str, list[api.models.SetIO]]:\nnova/cell/trajectory_executor.py:283:    async def apply_non_motion_actions(self, actions: Sequence[Action]) -> None:\nnova/cell/trajectory_executor.py:300:    def _motion_group_for_write(self, write: WriteAction) -> str:\nnova/cell/trajectory_executor.py:323:    async def _run_execute_trajectory(self, name: str, cursor: TrajectoryCursor) -> None:\n__init__.py\n__pycache__\nmove_forward.py\nREADME.md\ntrajectory_cursor.py\ntrajectory_state_machine.py\n144:class MotionGroup(AbstractRobot):\n147:    def __init__(self, api_client: ApiGateway, cell: str, controller_id: str, motion_group_id: str):\n164:    def id(self) -> str:\n173:    def current_motion(self) -> str | None:\n176:    def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:\n181:    async def _execute_direct_non_motion_actions(self, actions: list[Action]) -> None:\n212:    async def _fetch_motion_group_description(self) -> api.models.MotionGroupDescription:\n217:    async def get_description(self) -> api.models.MotionGroupDescription:\n225:    async def get_model(self) -> str:\n234:    async def get_setup(\n290:    def _log_payload_override(name: str) -> None:\n297:    async def _resolve_payload(\n335:    async def payloads(self) -> dict[str, api.models.Payload]:\n343:    async def payload_names(self) -> list[str]:\n347:    async def active_payload_name(self) -> str | None:\n351:    async def active_payload(self) -> api.models.Payload | None:\n358:    async def get_mounting(self) -> Pose | None:\n371:    async def get_safety_collision_setup(self, tcp: str) -> api.models.CollisionSetup:\n382:    async def get_default_collision_link_chain(self) -> api.models.LinkChain:\n394:    async def _inverse_kinematics(\n442:    async def forward_kinematics(\n479:    async def get_kinematic_configuration(\n508:    async def open(self):\n513:    async def close(self):\n520:    async def stop(self):\n539:    async def get_state(self, tcp: str | None = None) -> RobotState:\n566:    async def stream_state(\n594:    def _state_stream(self):\n600:    def _resolve_state_stream_rate(self, explicit_rate_msecs: int | None) -> int | None:\n607:    async def joints(self) -> tuple[float, ...]:\n613:    async def tcp_pose(self, tcp: str | None = None) -> Pose:\n623:    def _tcps_as_dict(\n630:    async def tcp_offset(self, tcp: str) -> Pose:\n637:    async def tcps(self) -> dict[str, api.models.RobotTcp]:\n657:    async def tcp_names(self) -> list[str]:\n661:    async def active_tcp_name(self) -> str | None:\n664:    async def active_tcp(self) -> api.models.RobotTcp | None:\n671:    async def ensure_virtual_tcp(\n722:    async def _fetch_state(self) -> api.models.MotionGroupState:\n727:    async def _load_planned_motion(\n746:    async def _plan_with_collision_check(\n820:    async def _plan_collision_free(\n922:    async def _plan(\n992:    async def _resolve_setup_for_plan(\n1022:    def _build_wait_trajectory(\n1039:    async def _resolve_set_outputs(\n1079:    async def _execute(\n1137:        async def execution():\n1154:    async def _tune_trajectory(\n1164:        async def plan_fn(actions: list[Action]) -> tuple[str, api.models.JointTrajectory]:\n",
+            "metadata": {
+              "output": "      58 nova/command_routines/__init__.py\n     263 nova/command_routines/commands.py\n      97 nova/command_routines/routine.py\n    1186 nova/cell/motion_group.py\n     329 nova/cell/trajectory_executor.py\n    1933 total\n\"\"\"Assemble NOVA CommandRoutine objects declaratively.\n\nBuild a routine by passing an ordered list of commands to :func:`command_routine`.\nThe command, pose, path and trigger factories in :mod:`nova.command_routines.commands`\nconstruct the individual pieces; :func:`with_settings` shares motion settings across a\ngroup of motions.\n\"\"\"\n\nfrom nova.command_routines.commands import (\n    at_distance,\n    at_path_fraction,\n    at_time,\n    generated_motion,\n    io_value,\n    joint_position,\n    local_pose,\n    marker,\n    motion,\n    move_cartesian_ptp,\n    move_circular,\n    move_joint_ptp,\n    move_linear,\n    path_cartesian_ptp,\n    path_circle,\n    path_joint_ptp,\n    path_line,\n    pause_on_io,\n    set_io,\n    wait_for_io,\n    wait_for_time,\n)\nfrom nova.command_routines.routine import command_routine, with_settings\n\n__all__ = [\n    \"command_routine\",\n    \"with_settings\",\n    \"motion\",\n    \"generated_motion\",\n    \"move_linear\",\n    \"move_cartesian_ptp\",\n    \"move_joint_ptp\",\n    \"move_circular\",\n    \"set_io\",\n    \"wait_for_time\",\n    \"wait_for_io\",\n    \"pause_on_io\",\n    \"marker\",\n    \"io_value\",\n    \"local_pose\",\n    \"joint_position\",\n    \"path_line\",\n    \"path_cartesian_ptp\",\n    \"path_joint_ptp\",\n    \"path_circle\",\n    \"at_path_fraction\",\n    \"at_distance\",\n    \"at_time\",\n]\nnova/command_routines/routine.py:15:def command_routine(\nnova/command_routines/routine.py:74:def with_settings(\nnova/command_routines/commands.py:17:def io_value(io: str, value: bool | int | float) -> api.models.IOValue:\nnova/command_routines/commands.py:36:def local_pose(pose_id: str) -> api.models.LocalPoseReference:\nnova/command_routines/commands.py:41:def joint_position(joints: list[float]) -> api.models.JointPositionReference:\nnova/command_routines/commands.py:46:def _as_pose_ref(target: api.models.PoseRef | str) -> api.models.PoseRef:\nnova/command_routines/commands.py:51:def _as_joint_ref(target: api.models.PoseRef | list[float]) -> api.models.PoseRef:\nnova/command_routines/commands.py:59:def path_line() -> api.models.PathTypeLine:\nnova/command_routines/commands.py:64:def path_cartesian_ptp() -> api.models.PathTypeCartesianPTP:\nnova/command_routines/commands.py:69:def path_joint_ptp() -> api.models.PathTypeJointPTP:\nnova/command_routines/commands.py:74:def path_circle(via_pose: api.models.PoseRef) -> api.models.PathTypeCircle:\nnova/command_routines/commands.py:82:def at_path_fraction(value: float) -> api.models.PathFractionTrigger:\nnova/command_routines/commands.py:87:def at_distance(\nnova/command_routines/commands.py:94:def at_time(seconds: float, reference: api.models.AtReference) -> api.models.TimeTrigger:\nnova/command_routines/commands.py:102:def motion(\nnova/command_routines/commands.py:120:def generated_motion(\nnova/command_routines/commands.py:138:def move_linear(\nnova/command_routines/commands.py:151:def move_cartesian_ptp(\nnova/command_routines/commands.py:168:def move_joint_ptp(\nnova/command_routines/commands.py:181:def move_circular(\nnova/command_routines/commands.py:199:def set_io(\nnova/command_routines/commands.py:214:def wait_for_time(\nnova/command_routines/commands.py:227:def wait_for_io(\nnova/command_routines/commands.py:241:def pause_on_io(\nnova/command_routines/commands.py:252:def marker(\nnova/cell/trajectory_executor.py:54:@dataclass(frozen=True)\nnova/cell/trajectory_executor.py:55:class GroupArgs:\nnova/cell/trajectory_executor.py:89:class TrajectoryExecutor:\nnova/cell/trajectory_executor.py:106:    def __init__(\nnova/cell/trajectory_executor.py:141:    def motion_groups(self) -> dict[str, MotionGroup]:\nnova/cell/trajectory_executor.py:145:    async def execute(\nnova/cell/trajectory_executor.py:165:    async def attach(\nnova/cell/trajectory_executor.py:249:    def _split_for_groups(\nnova/cell/trajectory_executor.py:269:    def _build_io_overlay(self, actions: Sequence[Action]) -> dict[str, list[api.models.SetIO]]:\nnova/cell/trajectory_executor.py:283:    async def apply_non_motion_actions(self, actions: Sequence[Action]) -> None:\nnova/cell/trajectory_executor.py:300:    def _motion_group_for_write(self, write: WriteAction) -> str:\nnova/cell/trajectory_executor.py:323:    async def _run_execute_trajectory(self, name: str, cursor: TrajectoryCursor) -> None:\n__init__.py\n__pycache__\nmove_forward.py\nREADME.md\ntrajectory_cursor.py\ntrajectory_state_machine.py\n144:class MotionGroup(AbstractRobot):\n147:    def __init__(self, api_client: ApiGateway, cell: str, controller_id: str, motion_group_id: str):\n164:    def id(self) -> str:\n173:    def current_motion(self) -> str | None:\n176:    def _supports_direct_non_motion_actions(self, actions: list[Action]) -> bool:\n181:    async def _execute_direct_non_motion_actions(self, actions: list[Action]) -> None:\n212:    async def _fetch_motion_group_description(self) -> api.models.MotionGroupDescription:\n217:    async def get_description(self) -> api.models.MotionGroupDescription:\n225:    async def get_model(self) -> str:\n234:    async def get_setup(\n290:    def _log_payload_override(name: str) -> None:\n297:    async def _resolve_payload(\n335:    async def payloads(self) -> dict[str, api.models.Payload]:\n343:    async def payload_names(self) -> list[str]:\n347:    async def active_payload_name(self) -> str | None:\n351:    async def active_payload(self) -> api.models.Payload | None:\n358:    async def get_mounting(self) -> Pose | None:\n371:    async def get_safety_collision_setup(self, tcp: str) -> api.models.CollisionSetup:\n382:    async def get_default_collision_link_chain(self) -> api.models.LinkChain:\n394:    async def _inverse_kinematics(\n442:    async def forward_kinematics(\n479:    async def get_kinematic_configuration(\n508:    async def open(self):\n513:    async def close(self):\n520:    async def stop(self):\n539:    async def get_state(self, tcp: str | None = None) -> RobotState:\n566:    async def stream_state(\n594:    def _state_stream(self):\n600:    def _resolve_state_stream_rate(self, explicit_rate_msecs: int | None) -> int | None:\n607:    async def joints(self) -> tuple[float, ...]:\n613:    async def tcp_pose(self, tcp: str | None = None) -> Pose:\n623:    def _tcps_as_dict(\n630:    async def tcp_offset(self, tcp: str) -> Pose:\n637:    async def tcps(self) -> dict[str, api.models.RobotTcp]:\n657:    async def tcp_names(self) -> list[str]:\n661:    async def active_tcp_name(self) -> str | None:\n664:    async def active_tcp(self) -> api.models.RobotTcp | None:\n671:    async def ensure_virtual_tcp(\n722:    async def _fetch_state(self) -> api.models.MotionGroupState:\n727:    async def _load_planned_motion(\n746:    async def _plan_with_collision_check(\n820:    async def _plan_collision_free(\n922:    async def _plan(\n992:    async def _resolve_setup_for_plan(\n1022:    def _build_wait_trajectory(\n1039:    async def _resolve_set_outputs(\n1079:    async def _execute(\n1137:        async def execution():\n1154:    async def _tune_trajectory(\n1164:        async def plan_fn(actions: list[Action]) -> tuple[str, api.models.JointTrajectory]:\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; wc -l nova/command_routines/*.py nova/cell/motion_group.py nova/cell/trajectory_executor.py; cat nova/command_routines/__init__.py; rg -n \"^class |^    def |^    async def |^def |^async def |^@\" nova/command_routines/*.py nova/cell/trajectory_executor.py; ls nova/cell/movement_controller; rg -n \"^class |    def |    async def \" nova/cell/motion_group.py",
+            "time": {
+              "start": 1792072663849,
+              "end": 1792072663907
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_13fdabe4e001He7QAGyXvm1IiF",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaba7c001SMVJTdi4cWwfWQ"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01RSDSXidR5TetC3ydD3mrdd",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; ls tests tests/cell tests/command_routines 2>/dev/null; rg -l \"cursor|TrajectoryExecutor|Gateway|gateway\" tests | head -30; rg -n \"markers|addopts|asyncio_mode|pyright|mypy|\\[tool.poe|testpaths\" pyproject.toml; ls scripts; rg -n \"^class |^def |^async def \" nova/actions/trajectory_builder.py nova/actions/motions.py | head -50; rg -n \"marker|virtual\" tests/conftest.py | head"
+            },
+            "output": "tests:\n__init__.py\n__pycache__\nactions\ncell\ncommand_routines\nconftest.py\ndatatypes\nevents\nnova\nnova_rerun_bridge\nnovax\nprogram\ntest_config.py\ntest_import_performance.py\ntest_import.py\ntest_viewer_integration.py\ntest_viewers.py\nutils\n\ntests/cell:\n__pycache__\nfixtures\nmulti_group_doubles.py\ntest_controller_api_gateway.py\ntest_execute_shared_stream.py\ntest_io_sync_driver.py\ntest_io.py\ntest_motion_group.py\ntest_move_forward_adapter.py\ntest_multi_motion_group_planner.py\ntest_multi_motion_group.py\ntest_optional_tcp.py\ntest_plan_limits.py\ntest_process_motion_group_state.py\ntest_state_stream_rate.py\ntest_state_stream.py\ntest_trajectory_cursor_concurrency.py\ntest_trajectory_cursor_level_states.py\ntest_trajectory_cursor_parity.py\ntest_trajectory_cursor.py\ntest_trajectory_executor_session.py\ntest_trajectory_executor.py\ntest_trajectory_state_machine.py\n\ntests/command_routines:\n__init__.py\n__pycache__\ntest_command_routine.py\ntests/test_config.py\ntests/cell/test_controller_api_gateway.py\ntests/cell/test_trajectory_executor.py\ntests/nova_rerun_bridge/test_model_loader.py\ntests/cell/test_state_stream.py\ntests/cell/test_io_sync_driver.py\ntests/cell/multi_group_doubles.py\ntests/cell/test_move_forward_adapter.py\ntests/cell/test_state_stream_rate.py\ntests/cell/test_multi_motion_group_planner.py\ntests/cell/test_trajectory_cursor.py\ntests/cell/test_plan_limits.py\ntests/cell/test_multi_motion_group.py\ntests/cell/test_trajectory_cursor_concurrency.py\ntests/cell/test_trajectory_cursor_parity.py\ntests/cell/test_optional_tcp.py\ntests/cell/test_motion_group.py\ntests/cell/test_trajectory_executor_session.py\ntests/cell/test_execute_shared_stream.py\ntests/cell/test_trajectory_cursor_level_states.py\ntests/nova/datasets/test_client.py\ntests/nova/cell/test_trajectory_executor_integration.py\ntests/nova/cell/motion_group/test_payload.py\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py\n103:asyncio_mode = \"auto\"\n108:addopts = \"\"\"\n116:testpaths = \"\"\"\n121:markers = \"\"\"\n143:# subclass-only members) that ty's static inference cannot follow but that mypy\n160:# attributes that ty's static inference cannot follow (and which mypy already\n__pycache__\ncreate_json_schema.py\ncreate_nova_instance.py\ncreate_nova_instance.sh\ndelete_all_nova_instances.sh\ndelete_nova_instance.sh\nextract_sbom_information.py\npull_nova_app_template.sh\ntrigger_dev_wheel.sh\nnova/actions/trajectory_builder.py:9:class TrajectoryBuilder:\nnova/actions/motions.py:22:class Motion(Action, ABC):\nnova/actions/motions.py:44:class Linear(Motion):\nnova/actions/motions.py:68:def linear(\nnova/actions/motions.py:101:class CartesianPTP(Motion):\nnova/actions/motions.py:136:def cartesian_ptp(\nnova/actions/motions.py:171:class Circular(Motion):\nnova/actions/motions.py:200:def circular(\nnova/actions/motions.py:240:class JointPTP(Motion):\nnova/actions/motions.py:265:def joint_ptp(\nnova/actions/motions.py:296:class Spline(Motion):\nnova/actions/motions.py:313:def spline(\nnova/actions/motions.py:354:class CollisionFreeMotion(Motion):\nnova/actions/motions.py:376:class MultiCollisionFreeMotion(Action):\nnova/actions/motions.py:411:def multi_collision_free(\nnova/actions/motions.py:439:def collision_free(\n",
+            "metadata": {
+              "output": "tests:\n__init__.py\n__pycache__\nactions\ncell\ncommand_routines\nconftest.py\ndatatypes\nevents\nnova\nnova_rerun_bridge\nnovax\nprogram\ntest_config.py\ntest_import_performance.py\ntest_import.py\ntest_viewer_integration.py\ntest_viewers.py\nutils\n\ntests/cell:\n__pycache__\nfixtures\nmulti_group_doubles.py\ntest_controller_api_gateway.py\ntest_execute_shared_stream.py\ntest_io_sync_driver.py\ntest_io.py\ntest_motion_group.py\ntest_move_forward_adapter.py\ntest_multi_motion_group_planner.py\ntest_multi_motion_group.py\ntest_optional_tcp.py\ntest_plan_limits.py\ntest_process_motion_group_state.py\ntest_state_stream_rate.py\ntest_state_stream.py\ntest_trajectory_cursor_concurrency.py\ntest_trajectory_cursor_level_states.py\ntest_trajectory_cursor_parity.py\ntest_trajectory_cursor.py\ntest_trajectory_executor_session.py\ntest_trajectory_executor.py\ntest_trajectory_state_machine.py\n\ntests/command_routines:\n__init__.py\n__pycache__\ntest_command_routine.py\ntests/test_config.py\ntests/cell/test_controller_api_gateway.py\ntests/cell/test_trajectory_executor.py\ntests/nova_rerun_bridge/test_model_loader.py\ntests/cell/test_state_stream.py\ntests/cell/test_io_sync_driver.py\ntests/cell/multi_group_doubles.py\ntests/cell/test_move_forward_adapter.py\ntests/cell/test_state_stream_rate.py\ntests/cell/test_multi_motion_group_planner.py\ntests/cell/test_trajectory_cursor.py\ntests/cell/test_plan_limits.py\ntests/cell/test_multi_motion_group.py\ntests/cell/test_trajectory_cursor_concurrency.py\ntests/cell/test_trajectory_cursor_parity.py\ntests/cell/test_optional_tcp.py\ntests/cell/test_motion_group.py\ntests/cell/test_trajectory_executor_session.py\ntests/cell/test_execute_shared_stream.py\ntests/cell/test_trajectory_cursor_level_states.py\ntests/nova/datasets/test_client.py\ntests/nova/cell/test_trajectory_executor_integration.py\ntests/nova/cell/motion_group/test_payload.py\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py\n103:asyncio_mode = \"auto\"\n108:addopts = \"\"\"\n116:testpaths = \"\"\"\n121:markers = \"\"\"\n143:# subclass-only members) that ty's static inference cannot follow but that mypy\n160:# attributes that ty's static inference cannot follow (and which mypy already\n__pycache__\ncreate_json_schema.py\ncreate_nova_instance.py\ncreate_nova_instance.sh\ndelete_all_nova_instances.sh\ndelete_nova_instance.sh\nextract_sbom_information.py\npull_nova_app_template.sh\ntrigger_dev_wheel.sh\nnova/actions/trajectory_builder.py:9:class TrajectoryBuilder:\nnova/actions/motions.py:22:class Motion(Action, ABC):\nnova/actions/motions.py:44:class Linear(Motion):\nnova/actions/motions.py:68:def linear(\nnova/actions/motions.py:101:class CartesianPTP(Motion):\nnova/actions/motions.py:136:def cartesian_ptp(\nnova/actions/motions.py:171:class Circular(Motion):\nnova/actions/motions.py:200:def circular(\nnova/actions/motions.py:240:class JointPTP(Motion):\nnova/actions/motions.py:265:def joint_ptp(\nnova/actions/motions.py:296:class Spline(Motion):\nnova/actions/motions.py:313:def spline(\nnova/actions/motions.py:354:class CollisionFreeMotion(Motion):\nnova/actions/motions.py:376:class MultiCollisionFreeMotion(Action):\nnova/actions/motions.py:411:def multi_collision_free(\nnova/actions/motions.py:439:def collision_free(\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; ls tests tests/cell tests/command_routines 2>/dev/null; rg -l \"cursor|TrajectoryExecutor|Gateway|gateway\" tests | head -30; rg -n \"markers|addopts|asyncio_mode|pyright|mypy|\\[tool.poe|testpaths\" pyproject.toml; ls scripts; rg -n \"^class |^def |^async def \" nova/actions/trajectory_builder.py nova/actions/motions.py | head -50; rg -n \"marker|virtual\" tests/conftest.py | head",
+            "time": {
+              "start": 1792072665277,
+              "end": 1792072665374
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_13fdac32c001XVPpYZq9UJQpjN",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaba7c001SMVJTdi4cWwfWQ"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-finish",
+          "tokens": {
+            "total": 7876,
+            "input": 2,
+            "output": 472,
+            "reasoning": 0,
+            "cache": {
+              "write": 881,
+              "read": 6521
+            }
+          },
+          "cost": 0.0075786,
+          "id": "prt_13fdac967001QDAYlENGA4UJro",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaba7c001SMVJTdi4cWwfWQ"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_13fdaaf74001NZ5fWZx05GFoSr",
+        "role": "assistant",
+        "mode": "explore",
+        "agent": "explore",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0175217,
+        "tokens": {
+          "total": 12855,
+          "input": 2,
+          "output": 420,
+          "reasoning": 0,
+          "cache": {
+            "write": 5031,
+            "read": 7402
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792072665518,
+          "completed": 1792072669324
+        },
+        "finish": "tool-calls",
+        "id": "msg_13fdac9ae001dJKlfSDN7uzzJX",
+        "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu"
+      },
+      "parts": [
+        {
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-start",
+          "id": "prt_13fdacde5001sRAf0hwWCN07kw",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdac9ae001dJKlfSDN7uzzJX"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01BazCYpDbvaeQpzG2it2eCu",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; sed -n 95,140p pyproject.toml; rg -n \"poe|typecheck|pytest|ty check|mypy\" pyproject.toml .github/workflows/*.y*ml 2>/dev/null| head -20; cat nova/command_routines/routine.py | sed -n 10,97p; sed -n 100,140p nova/command_routines/commands.py; sed -n 250,263p nova/command_routines/commands.py; python3 - <<'E'\nE\nrg -n \"class CommandRoutine\\b|class CommandRoutine\\(\" .venv/lib/python3*/site-packages/wandelbots_api_client/v2_pydantic/models/ | head; ls tests/cell/fixtures tests/nova/cell tests/nova/cell/motion_group; rg -n \"^class |^def |^async def |fixture\" tests/cell/multi_group_doubles.py | head -30; rg -n \"pytest.mark|^async def test|^def test\" tests/nova/cell/motion_group/test_trajectory_cursor_integration.py | head -20"
+            },
+            "output": "[tool.hatch.build.targets.sdist]\ninclude = [\"nova\", \"nova_rerun_bridge\", \"wandelscript\", \"novax\", \"novapolicy\"]\n\n[tool.hatch.build.targets.wheel]\ninclude = [\"nova\", \"nova_rerun_bridge\", \"wandelscript\", \"novax\", \"novapolicy\"]\n\n\n[tool.pytest.ini_options]\nasyncio_mode = \"auto\"\nlog_cli = false\nlog_cli_level = \"DEBUG\"\nlog_cli_format = \"%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)\"\nlog_cli_date_format = \"%Y-%m-%d %H:%M:%S\"\naddopts = \"\"\"\n    --doctest-modules\n    --junitxml=reports/pytest.xml\n    --import-mode=importlib\n    --timeout=300\n    --timeout-method=thread\"\"\"\njunit_family = \"xunit2\"\nnorecursedirs = \"develop .ipynb_checkpoints .venv .tox *.egg\"\ntestpaths = \"\"\"\n    nova\n    wandelscript\n    tests\n\"\"\"\nmarkers = \"\"\"\n    integration: mark a test as requiring a running Nova instance\n    xdist_group(name): group tests that needs to run sequentially\n\"\"\"\n\n\n[tool.ty.environment]\npython-version = \"3.12\"\n\n[tool.ty.src]\ninclude = [\"nova\", \"examples\", \"tests\", \"wandelscript\", \"novax\", \"nova_rerun_bridge\"]\nexclude = [\n    \"wandelscript/grammar\",\n    \"wandelscript/motions.py\",\n    \"wandelscript/builtins/fs.py\",\n    \"wandelscript/metamodel.py\",\n]\n\n[tool.ty.terminal]\noutput-format = \"concise\"\npyproject.toml:79:    \"pytest>=8.4.1\",\npyproject.toml:80:    \"pytest-asyncio>=1.1.0\",\npyproject.toml:87:    \"pytest-xdist>=3.8.0\",\npyproject.toml:89:    \"pytest-timeout>=2.3.1\",\npyproject.toml:102:[tool.pytest.ini_options]\npyproject.toml:110:    --junitxml=reports/pytest.xml\npyproject.toml:143:# subclass-only members) that ty's static inference cannot follow but that mypy\npyproject.toml:160:# attributes that ty's static inference cannot follow (and which mypy already\n.github/workflows/nova-run-examples.yaml:120:          # NOTE: no `-s` — let pytest capture stdout/logs and only print them for\n.github/workflows/nova-run-examples.yaml:124:            run_cmd: \"pytest -rs -v -m integration\"\n.github/workflows/nova-dev.yaml:37:        run: uv run ty check\n.github/workflows/nova-dev.yaml:40:        run: PYTHONPATH=. LOG_LEVEL=WARNING uv run pytest -rs -v -m \"not integration\"\nfrom nova import api\n\n_MOTION_COMMANDS = (api.models.ExplicitPathMotionCommand, api.models.GeneratedPathMotionCommand)\n\n\ndef command_routine(\n    routine_id: str,\n    *,\n    commands: list[api.models.Command],\n    motion_group_setup: api.models.MotionGroupSetup | None = None,\n    tcp: str | None = None,\n    start_joint_position: list[float] | None = None,\n    default_motion_settings: api.models.MotionSettings | None = None,\n    name: str | None = None,\n    description: str | None = None,\n    dataset: str | None = None,\n    motion_group: api.models.MotionGroupReference | str | None = None,\n    metadata: dict[str, str] | None = None,\n) -> api.models.CommandRoutine:\n    \"\"\"Build a ``CommandRoutine`` from an ordered list of commands.\n\n    Args:\n        routine_id: The routine id (must start with a letter and contain only\n            letters, digits and hyphens).\n        commands: The ordered commands. Must contain at least one command.\n        motion_group_setup: The baseline motion group setup, or ``None`` for an\n            I/O-only routine.\n        tcp: The routine-level tool-center-point identifier.\n        start_joint_position: The starting joints a motion routine requires.\n        default_motion_settings: The routine-level baseline motion settings.\n        name: A human-readable routine name.\n        description: A routine description.\n        dataset: The owning dataset id.\n        motion_group: The executing motion group, given as a reference or an id.\n        metadata: String-valued annotations preserved on round-trip.\n\n    Examples:\n    >>> from nova.command_routines import set_io\n    >>> routine = command_routine(\n    ...     \"pick-and-place\",\n    ...     commands=[set_io(\"digital_out[0]\", True)],\n    ... )\n    >>> routine.command_routine, len(routine.commands)\n    ('pick-and-place', 1)\n    \"\"\"\n    return api.models.CommandRoutine(\n        command_routine=routine_id,\n        dataset=dataset,\n        name=name,\n        description=description,\n        motion_group=(\n            api.models.MotionGroupReference(id=motion_group)\n            if isinstance(motion_group, str)\n            else motion_group\n        ),\n        motion_group_setup=motion_group_setup,\n        tcp=tcp,\n        start_joint_position=start_joint_position,\n        default_motion_settings=default_motion_settings,\n        commands=commands,\n        metadata=metadata,\n    )\n\n\ndef with_settings(\n    settings: api.models.MotionSettings, commands: list[api.models.Command]\n) -> list[api.models.Command]:\n    \"\"\"Apply ``settings`` to motion commands in ``commands`` that lack their own.\n\n    Returns a new list; motion commands that already define ``motion_settings`` and\n    non-motion commands are passed through unchanged.\n\n    Examples:\n    >>> from nova.command_routines import move_linear\n    >>> commands_with_settings = with_settings(\n    ...     api.models.MotionSettings(),\n    ...     [move_linear(\"a\")],\n    ... )\n    >>> commands_with_settings[0].motion_settings is not None\n    True\n    \"\"\"\n    result: list[api.models.Command] = []\n    for command in commands:\n        if isinstance(command, _MOTION_COMMANDS) and command.motion_settings is None:\n            result.append(command.model_copy(update={\"motion_settings\": settings}))\n        else:\n            result.append(command)\n    return result\n\n\ndef motion(\n    target: api.models.PoseRef,\n    path_type: api.models.PathType,\n    *,\n    settings: api.models.MotionSettings | None = None,\n    intent: str | None = None,\n    metadata: dict[str, str] | None = None,\n) -> api.models.ExplicitPathMotionCommand:\n    \"\"\"A motion command whose path is authored explicitly.\"\"\"\n    return api.models.ExplicitPathMotionCommand(\n        target=target,\n        path_type=path_type,\n        motion_settings=settings,\n        intent=intent,\n        metadata=metadata,\n    )\n\n\ndef generated_motion(\n    target: api.models.PoseRef,\n    generator: api.models.MotionGenerator,\n    *,\n    settings: api.models.MotionSettings | None = None,\n    intent: str | None = None,\n    metadata: dict[str, str] | None = None,\n) -> api.models.GeneratedPathMotionCommand:\n    \"\"\"A motion command whose path the planner generates from ``generator``.\"\"\"\n    return api.models.GeneratedPathMotionCommand(\n        target=target,\n        generator=generator,\n        motion_settings=settings,\n        intent=intent,\n        metadata=metadata,\n    )\n\n\ndef move_linear(\n    target: api.models.PoseRef | str,\n    *,\n\n\ndef marker(\n    name: str,\n    *,\n    payload: dict[str, Any] | None = None,\n    at: api.models.AtTrigger | None = None,\n    intent: str | None = None,\n    metadata: dict[str, str] | None = None,\n) -> api.models.MarkerCommand:\n    \"\"\"Emit a named point of interest when execution crosses a trajectory location.\"\"\"\n    return api.models.MarkerCommand(\n        name=name, payload=payload, at=at, intent=intent, metadata=metadata\n    )\ntests/cell/fixtures:\nframes_50ms_edge_then_bare_standstill.json\nframes_step_pause_then_bare_standstill.json\n\ntests/nova/cell:\n__pycache__\nmotion_group\ntest_trajectory_executor_integration.py\n\ntests/nova/cell/motion_group:\n__pycache__\ntest_collision_check_planning.py\ntest_collision_free_planning.py\ntest_inverse_kinematics.py\ntest_motion_group_movement.py\ntest_motion_group_task_cancelation.py\ntest_pause_on_io.py\ntest_payload.py\ntest_trajectory_cursor_integration.py\n20:def multi_trajectory(*keys: str) -> api.models.MultiJointTrajectory:\n28:def state(\n44:def execute_detail(location: float, trajectory_state=None) -> api.models.Execute:\n55:def wait_for_io_state(at_milliseconds: int = 0) -> api.models.MotionGroupState:\n59:def running_state(location: float, at_milliseconds: int = 0) -> api.models.MotionGroupState:\n63:def ended_state(location: float, at_milliseconds: int = 0) -> api.models.MotionGroupState:\n67:def paused_state(location: float, at_milliseconds: int = 0) -> api.models.MotionGroupState:\n73:def watch_condition(io: str, value: bool = True) -> api.models.StartOnIO:\n81:def sync_driver(api_client, groups: tuple[str, ...] = (\"a\", \"b\")) -> IOSyncDriver:\n91:class IOGateway:\n109:def motion_group(\n110:@pytest.mark.asyncio\n111:@pytest.mark.integration\n112:async def test_circular_is_a_single_action_in_planned_trajectory(ur_mg):\n132:@pytest.mark.asyncio\n133:@pytest.mark.integration\n134:async def test_cursor_emits_source_span_for_current_action(ur_mg):\n218:@pytest.mark.asyncio\n219:@pytest.mark.integration\n220:async def test_cursor_forward_start_on_io_delays_movement_start(kuka_mg):\n271:@pytest.mark.asyncio\n272:@pytest.mark.integration\n273:async def test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):\n334:@pytest.mark.asyncio\n335:@pytest.mark.integration\n336:async def test_cursor_detach_on_standstill_tears_down_on_pause_on_io(kuka_mg):\n420:@pytest.mark.asyncio\n421:@pytest.mark.integration\n422:async def test_cursor_set_outputs_fires_io_during_movement(kuka_mg):\n",
+            "metadata": {
+              "output": "[tool.hatch.build.targets.sdist]\ninclude = [\"nova\", \"nova_rerun_bridge\", \"wandelscript\", \"novax\", \"novapolicy\"]\n\n[tool.hatch.build.targets.wheel]\ninclude = [\"nova\", \"nova_rerun_bridge\", \"wandelscript\", \"novax\", \"novapolicy\"]\n\n\n[tool.pytest.ini_options]\nasyncio_mode = \"auto\"\nlog_cli = false\nlog_cli_level = \"DEBUG\"\nlog_cli_format = \"%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)\"\nlog_cli_date_format = \"%Y-%m-%d %H:%M:%S\"\naddopts = \"\"\"\n    --doctest-modules\n    --junitxml=reports/pytest.xml\n    --import-mode=importlib\n    --timeout=300\n    --timeout-method=thread\"\"\"\njunit_family = \"xunit2\"\nnorecursedirs = \"develop .ipynb_checkpoints .venv .tox *.egg\"\ntestpaths = \"\"\"\n    nova\n    wandelscript\n    tests\n\"\"\"\nmarkers = \"\"\"\n    integration: mark a test as requiring a running Nova instance\n    xdist_group(name): group tests that needs to run sequentially\n\"\"\"\n\n\n[tool.ty.environment]\npython-version = \"3.12\"\n\n[tool.ty.src]\ninclude = [\"nova\", \"examples\", \"tests\", \"wandelscript\", \"novax\", \"nova_rerun_bridge\"]\nexclude = [\n    \"wandelscript/grammar\",\n    \"wandelscript/motions.py\",\n    \"wandelscript/builtins/fs.py\",\n    \"wandelscript/metamodel.py\",\n]\n\n[tool.ty.terminal]\noutput-format = \"concise\"\npyproject.toml:79:    \"pytest>=8.4.1\",\npyproject.toml:80:    \"pytest-asyncio>=1.1.0\",\npyproject.toml:87:    \"pytest-xdist>=3.8.0\",\npyproject.toml:89:    \"pytest-timeout>=2.3.1\",\npyproject.toml:102:[tool.pytest.ini_options]\npyproject.toml:110:    --junitxml=reports/pytest.xml\npyproject.toml:143:# subclass-only members) that ty's static inference cannot follow but that mypy\npyproject.toml:160:# attributes that ty's static inference cannot follow (and which mypy already\n.github/workflows/nova-run-examples.yaml:120:          # NOTE: no `-s` — let pytest capture stdout/logs and only print them for\n.github/workflows/nova-run-examples.yaml:124:            run_cmd: \"pytest -rs -v -m integration\"\n.github/workflows/nova-dev.yaml:37:        run: uv run ty check\n.github/workflows/nova-dev.yaml:40:        run: PYTHONPATH=. LOG_LEVEL=WARNING uv run pytest -rs -v -m \"not integration\"\nfrom nova import api\n\n_MOTION_COMMANDS = (api.models.ExplicitPathMotionCommand, api.models.GeneratedPathMotionCommand)\n\n\ndef command_routine(\n    routine_id: str,\n    *,\n    commands: list[api.models.Command],\n    motion_group_setup: api.models.MotionGroupSetup | None = None,\n    tcp: str | None = None,\n    start_joint_position: list[float] | None = None,\n    default_motion_settings: api.models.MotionSettings | None = None,\n    name: str | None = None,\n    description: str | None = None,\n    dataset: str | None = None,\n    motion_group: api.models.MotionGroupReference | str | None = None,\n    metadata: dict[str, str] | None = None,\n) -> api.models.CommandRoutine:\n    \"\"\"Build a ``CommandRoutine`` from an ordered list of commands.\n\n    Args:\n        routine_id: The routine id (must start with a letter and contain only\n            letters, digits and hyphens).\n        commands: The ordered commands. Must contain at least one command.\n        motion_group_setup: The baseline motion group setup, or ``None`` for an\n            I/O-only routine.\n        tcp: The routine-level tool-center-point identifier.\n        start_joint_position: The starting joints a motion routine requires.\n        default_motion_settings: The routine-level baseline motion settings.\n        name: A human-readable routine name.\n        description: A routine description.\n        dataset: The owning dataset id.\n        motion_group: The executing motion group, given as a reference or an id.\n        metadata: String-valued annotations preserved on round-trip.\n\n    Examples:\n    >>> from nova.command_routines import set_io\n    >>> routine = command_routine(\n    ...     \"pick-and-place\",\n    ...     commands=[set_io(\"digital_out[0]\", True)],\n    ... )\n    >>> routine.command_routine, len(routine.commands)\n    ('pick-and-place', 1)\n    \"\"\"\n    return api.models.CommandRoutine(\n        command_routine=routine_id,\n        dataset=dataset,\n        name=name,\n        description=description,\n        motion_group=(\n            api.models.MotionGroupReference(id=motion_group)\n            if isinstance(motion_group, str)\n            else motion_group\n        ),\n        motion_group_setup=motion_group_setup,\n        tcp=tcp,\n        start_joint_position=start_joint_position,\n        default_motion_settings=default_motion_settings,\n        commands=commands,\n        metadata=metadata,\n    )\n\n\ndef with_settings(\n    settings: api.models.MotionSettings, commands: list[api.models.Command]\n) -> list[api.models.Command]:\n    \"\"\"Apply ``settings`` to motion commands in ``commands`` that lack their own.\n\n    Returns a new list; motion commands that already define ``motion_settings`` and\n    non-motion commands are passed through unchanged.\n\n    Examples:\n    >>> from nova.command_routines import move_linear\n    >>> commands_with_settings = with_settings(\n    ...     api.models.MotionSettings(),\n    ...     [move_linear(\"a\")],\n    ... )\n    >>> commands_with_settings[0].motion_settings is not None\n    True\n    \"\"\"\n    result: list[api.models.Command] = []\n    for command in commands:\n        if isinstance(command, _MOTION_COMMANDS) and command.motion_settings is None:\n            result.append(command.model_copy(update={\"motion_settings\": settings}))\n        else:\n            result.append(command)\n    return result\n\n\ndef motion(\n    target: api.models.PoseRef,\n    path_type: api.models.PathType,\n    *,\n    settings: api.models.MotionSettings | None = None,\n    intent: str | None = None,\n    metadata: dict[str, str] | None = None,\n) -> api.models.ExplicitPathMotionCommand:\n    \"\"\"A motion command whose path is authored explicitly.\"\"\"\n    return api.models.ExplicitPathMotionCommand(\n        target=target,\n        path_type=path_type,\n        motion_settings=settings,\n        intent=intent,\n        metadata=metadata,\n    )\n\n\ndef generated_motion(\n    target: api.models.PoseRef,\n    generator: api.models.MotionGenerator,\n    *,\n    settings: api.models.MotionSettings | None = None,\n    intent: str | None = None,\n    metadata: dict[str, str] | None = None,\n) -> api.models.GeneratedPathMotionCommand:\n    \"\"\"A motion command whose path the planner generates from ``generator``.\"\"\"\n    return api.models.GeneratedPathMotionCommand(\n        target=target,\n        generator=generator,\n        motion_settings=settings,\n        intent=intent,\n        metadata=metadata,\n    )\n\n\ndef move_linear(\n    target: api.models.PoseRef | str,\n    *,\n\n\ndef marker(\n    name: str,\n    *,\n    payload: dict[str, Any] | None = None,\n    at: api.models.AtTrigger | None = None,\n    intent: str | None = None,\n    metadata: dict[str, str] | None = None,\n) -> api.models.MarkerCommand:\n    \"\"\"Emit a named point of interest when execution crosses a trajectory location.\"\"\"\n    return api.models.MarkerCommand(\n        name=name, payload=payload, at=at, intent=intent, metadata=metadata\n    )\ntests/cell/fixtures:\nframes_50ms_edge_then_bare_standstill.json\nframes_step_pause_then_bare_standstill.json\n\ntests/nova/cell:\n__pycache__\nmotion_group\ntest_trajectory_executor_integration.py\n\ntests/nova/cell/motion_group:\n__pycache__\ntest_collision_check_planning.py\ntest_collision_free_planning.py\ntest_inverse_kinematics.py\ntest_motion_group_movement.py\ntest_motion_group_task_cancelation.py\ntest_pause_on_io.py\ntest_payload.py\ntest_trajectory_cursor_integration.py\n20:def multi_trajectory(*keys: str) -> api.models.MultiJointTrajectory:\n28:def state(\n44:def execute_detail(location: float, trajectory_state=None) -> api.models.Execute:\n55:def wait_for_io_state(at_milliseconds: int = 0) -> api.models.MotionGroupState:\n59:def running_state(location: float, at_milliseconds: int = 0) -> api.models.MotionGroupState:\n63:def ended_state(location: float, at_milliseconds: int = 0) -> api.models.MotionGroupState:\n67:def paused_state(location: float, at_milliseconds: int = 0) -> api.models.MotionGroupState:\n73:def watch_condition(io: str, value: bool = True) -> api.models.StartOnIO:\n81:def sync_driver(api_client, groups: tuple[str, ...] = (\"a\", \"b\")) -> IOSyncDriver:\n91:class IOGateway:\n109:def motion_group(\n110:@pytest.mark.asyncio\n111:@pytest.mark.integration\n112:async def test_circular_is_a_single_action_in_planned_trajectory(ur_mg):\n132:@pytest.mark.asyncio\n133:@pytest.mark.integration\n134:async def test_cursor_emits_source_span_for_current_action(ur_mg):\n218:@pytest.mark.asyncio\n219:@pytest.mark.integration\n220:async def test_cursor_forward_start_on_io_delays_movement_start(kuka_mg):\n271:@pytest.mark.asyncio\n272:@pytest.mark.integration\n273:async def test_cursor_forward_pause_on_io_stops_early_mid_trajectory(kuka_mg):\n334:@pytest.mark.asyncio\n335:@pytest.mark.integration\n336:async def test_cursor_detach_on_standstill_tears_down_on_pause_on_io(kuka_mg):\n420:@pytest.mark.asyncio\n421:@pytest.mark.integration\n422:async def test_cursor_set_outputs_fires_io_during_movement(kuka_mg):\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; sed -n 95,140p pyproject.toml; rg -n \"poe|typecheck|pytest|ty check|mypy\" pyproject.toml .github/workflows/*.y*ml 2>/dev/null| head -20; cat nova/command_routines/routine.py | sed -n 10,97p; sed -n 100,140p nova/command_routines/commands.py; sed -n 250,263p nova/command_routines/commands.py; python3 - <<'E'\nE\nrg -n \"class CommandRoutine\\b|class CommandRoutine\\(\" .venv/lib/python3*/site-packages/wandelbots_api_client/v2_pydantic/models/ | head; ls tests/cell/fixtures tests/nova/cell tests/nova/cell/motion_group; rg -n \"^class |^def |^async def |fixture\" tests/cell/multi_group_doubles.py | head -30; rg -n \"pytest.mark|^async def test|^def test\" tests/nova/cell/motion_group/test_trajectory_cursor_integration.py | head -20",
+            "time": {
+              "start": 1792072668940,
+              "end": 1792072669127
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_13fdacde6001GoysaGl27zsKgm",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdac9ae001dJKlfSDN7uzzJX"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-finish",
+          "tokens": {
+            "total": 12855,
+            "input": 2,
+            "output": 420,
+            "reasoning": 0,
+            "cache": {
+              "write": 5031,
+              "read": 7402
+            }
+          },
+          "cost": 0.0175217,
+          "id": "prt_13fdad829001oNrt38x42hR4u9",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdac9ae001dJKlfSDN7uzzJX"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_13fdaaf74001NZ5fWZx05GFoSr",
+        "role": "assistant",
+        "mode": "explore",
+        "agent": "explore",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0170073,
+        "tokens": {
+          "total": 17101,
+          "input": 2,
+          "output": 546,
+          "reasoning": 0,
+          "cache": {
+            "write": 4120,
+            "read": 12433
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792072669326,
+          "completed": 1792072673832
+        },
+        "finish": "tool-calls",
+        "id": "msg_13fdad88e001lEP3RtBMnf14ks",
+        "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu"
+      },
+      "parts": [
+        {
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-start",
+          "id": "prt_13fdadd3d001hTMjH3zoEaSPUk",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdad88e001lEP3RtBMnf14ks"
+        },
+        {
+          "type": "text",
+          "text": "Need API model fields, MotionGroup signatures, fixtures.",
+          "time": {
+            "start": 1792072670526,
+            "end": 1792072670528
+          },
+          "id": "prt_13fdadd3e001FLF7w8kq56sffe",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdad88e001lEP3RtBMnf14ks"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01SSk5GGYzCxz4zxxvaSDyAn",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; M=$(ls -d .venv/lib/python3*/site-packages/wandelbots_api_client/v2_pydantic/models | head -1); echo $M; ls $M | rg -i \"command|routine|path_type|motion_gen\"|head -30; rg -n \"^    [a-z_]+: \" $M/command_routine.py $M/explicit_path_motion_command.py | head -40\nrg -n \"ExplicitPathMotionCommand|class Command\\b|Command =\" $M/__init__.py | head -3\nrg -n \"^    (async )?def (plan|execute|stream_execute|_plan|_execute|_load)|^    def |^    async def \" -A8 nova/cell/motion_group.py | sed -n '/async def _plan(/,/-> /p;/async def _execute(/,/-> /p' | head -40\nrg -n \"def (plan|execute|stream|__call__)\" nova/core/*.py nova/cell/robot_cell.py | head\nrg -n \"fixture\" -A2 tests/conftest.py tests/nova/cell/motion_group/test_trajectory_cursor_integration.py tests/cell/test_trajectory_cursor.py | head -50\ncat nova/cell/movement_controller/README.md | head -5; rg -n \"^class |    async def |    def \" nova/cell/movement_controller/trajectory_cursor.py | head -50"
+            },
+            "output": ".venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models\nrg: .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/command_routine.py: No such file or directory (os error 2)\nrg: .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/explicit_path_motion_command.py: No such file or directory (os error 2)\n178:    ExplicitPathMotionCommand,\n697:    \"ExplicitPathMotionCommand\",\n922:    async def _plan(\n923-        self,\n924-        actions: list[Action],\n925-        tcp: str | None = None,\n926-        start_joint_position: tuple[float, ...] | None = None,\n927-        motion_group_setup: api.models.MotionGroupSetup | None = None,\n928-        payload_override: str | api.models.Payload | None = None,\n929-        singularity_handling: api.models.SingularityHandling | None = None,\n930-    ) -> api.models.JointTrajectory:\n1079:    async def _execute(\n1080-        self,\n1081-        joint_trajectory: api.models.JointTrajectory,\n1082-        tcp: str | None,\n1083-        actions: list[Action],\n1084-        movement_controller: MovementController | None,\n1085-        start_on_io: api.models.StartOnIO | None = None,\n1086-        pause_on_io: api.models.PauseOnIO | None = None,\n1087-        *,\n--\n1154:    async def _tune_trajectory(\n1155-        self,\n1156-        joint_trajectory: api.models.JointTrajectory,\n1157-        tcp: str | None,\n1158-        actions: list[Action],\n1159-        *,\n1160-        state_stream_rate_msecs: int | None = None,\n1161-    ) -> AsyncGenerator[api.models.MotionGroupState, None]:\nnova/cell/robot_cell.py:141:    async def __call__(self, *args, **kwargs) -> Awaitable[T]:\nnova/cell/robot_cell.py:201:    def stream_state(self, rate_msecs: int) -> AsyncIterable[AbstractDeviceState]:\nnova/cell/robot_cell.py:256:    async def plan(\nnova/cell/robot_cell.py:382:    async def stream_execute(\nnova/cell/robot_cell.py:426:    async def execute(\nnova/cell/robot_cell.py:465:    async def stream_plan_and_execute(\nnova/cell/robot_cell.py:523:    async def plan_and_execute(\nnova/cell/robot_cell.py:664:    async def __call__(self, duration: float) -> None:\nnova/cell/robot_cell.py:678:    async def __call__(self, duration: float):\nnova/cell/robot_cell.py:811:    async def stream_state(self, rate_msecs: int):\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py:47:@pytest.fixture\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py-48-async def ur_mg():\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py-49-    \"\"\"Virtual UR motion group ready for planning.\"\"\"\n--\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py:67:@pytest.fixture\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py-68-async def kuka_mg():\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py-69-    \"\"\"Virtual KUKA motion group + controller handle, for IO read/write.\"\"\"\n# Trajectory Execution State Machine\n\nThis module provides `TrajectoryExecutionMachine`, a finite-state machine that encapsulates the state handling logic for trajectory execution lifecycle, shared across movement controllers (`move_forward`, `TrajectoryCursor`, etc.).\n\n## How the controller publishes execution state\n108:class OperationType(Enum):\n130:class OperationState(Enum):\n156:class OperationResult:\n181:class Operation:\n206:class OperationHandler:\n217:    def __init__(self):\n220:    def start(\n257:    def set_commanded(self):\n282:    def set_running(self):\n306:    def complete(self, *, final_location: float, error: Optional[Exception] = None) -> None:\n330:    def in_progress(self) -> bool:\n338:    def is_commanded(self) -> bool:\n351:    def may_complete_as_paused(self) -> bool:\n369:    def current_operation(self) -> Optional[Operation]:\n373:    def _reset(self):\n378:class MovementOption(StrEnum):\n395:class MotionEventType(StrEnum):\n407:class MotionEvent(pydantic.BaseModel):\n438:class Intent:\n455:    def to_commands(self) -> list[ExecuteTrajectoryRequestCommand]:\n488:class _QueueSentinel:\n523:class TrajectoryCursor:\n561:    def __init__(\n677:    def _build_intent(\n701:    async def ainitialize(self):\n705:    async def _send_motion_started(self, *, forward: bool | None = None) -> None:\n712:    def end_location(self) -> float:\n728:    def current_location(self) -> float:\n733:    def current_action_start(self) -> float:\n738:    def current_action_end(self) -> float:\n743:    def next_action_start(self) -> float:\n748:    def previous_action_start(self) -> float:\n753:    def current_action_index(self) -> int | None:\n760:    def current_action(self) -> Action | None:\n769:    def next_action(self) -> Action | None:\n781:    def previous_action(self) -> Action | None:\n792:    def get_movement_options(self) -> set[MovementOption]:\n808:    def _set_intent(self, intent: Intent) -> None:\n823:    def forward(\n871:    def backward(\n919:    def forward_to(\n953:    def backward_to(\n987:    def forward_to_next_action(\n1031:    def backward_to_previous_action(\n1078:    def pause(self) -> asyncio.Future[OperationResult]:\n1105:    def detach(self):\n1121:    def _signal_first_dispatch(self) -> None:\n1126:    def _start_operation(\n1141:    def _complete_operation(self, error: Optional[Exception] = None):\n1145:    def _is_operation_in_progress(self) -> bool:\n",
+            "metadata": {
+              "output": ".venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models\nrg: .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/command_routine.py: No such file or directory (os error 2)\nrg: .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/explicit_path_motion_command.py: No such file or directory (os error 2)\n178:    ExplicitPathMotionCommand,\n697:    \"ExplicitPathMotionCommand\",\n922:    async def _plan(\n923-        self,\n924-        actions: list[Action],\n925-        tcp: str | None = None,\n926-        start_joint_position: tuple[float, ...] | None = None,\n927-        motion_group_setup: api.models.MotionGroupSetup | None = None,\n928-        payload_override: str | api.models.Payload | None = None,\n929-        singularity_handling: api.models.SingularityHandling | None = None,\n930-    ) -> api.models.JointTrajectory:\n1079:    async def _execute(\n1080-        self,\n1081-        joint_trajectory: api.models.JointTrajectory,\n1082-        tcp: str | None,\n1083-        actions: list[Action],\n1084-        movement_controller: MovementController | None,\n1085-        start_on_io: api.models.StartOnIO | None = None,\n1086-        pause_on_io: api.models.PauseOnIO | None = None,\n1087-        *,\n--\n1154:    async def _tune_trajectory(\n1155-        self,\n1156-        joint_trajectory: api.models.JointTrajectory,\n1157-        tcp: str | None,\n1158-        actions: list[Action],\n1159-        *,\n1160-        state_stream_rate_msecs: int | None = None,\n1161-    ) -> AsyncGenerator[api.models.MotionGroupState, None]:\nnova/cell/robot_cell.py:141:    async def __call__(self, *args, **kwargs) -> Awaitable[T]:\nnova/cell/robot_cell.py:201:    def stream_state(self, rate_msecs: int) -> AsyncIterable[AbstractDeviceState]:\nnova/cell/robot_cell.py:256:    async def plan(\nnova/cell/robot_cell.py:382:    async def stream_execute(\nnova/cell/robot_cell.py:426:    async def execute(\nnova/cell/robot_cell.py:465:    async def stream_plan_and_execute(\nnova/cell/robot_cell.py:523:    async def plan_and_execute(\nnova/cell/robot_cell.py:664:    async def __call__(self, duration: float) -> None:\nnova/cell/robot_cell.py:678:    async def __call__(self, duration: float):\nnova/cell/robot_cell.py:811:    async def stream_state(self, rate_msecs: int):\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py:47:@pytest.fixture\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py-48-async def ur_mg():\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py-49-    \"\"\"Virtual UR motion group ready for planning.\"\"\"\n--\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py:67:@pytest.fixture\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py-68-async def kuka_mg():\ntests/nova/cell/motion_group/test_trajectory_cursor_integration.py-69-    \"\"\"Virtual KUKA motion group + controller handle, for IO read/write.\"\"\"\n# Trajectory Execution State Machine\n\nThis module provides `TrajectoryExecutionMachine`, a finite-state machine that encapsulates the state handling logic for trajectory execution lifecycle, shared across movement controllers (`move_forward`, `TrajectoryCursor`, etc.).\n\n## How the controller publishes execution state\n108:class OperationType(Enum):\n130:class OperationState(Enum):\n156:class OperationResult:\n181:class Operation:\n206:class OperationHandler:\n217:    def __init__(self):\n220:    def start(\n257:    def set_commanded(self):\n282:    def set_running(self):\n306:    def complete(self, *, final_location: float, error: Optional[Exception] = None) -> None:\n330:    def in_progress(self) -> bool:\n338:    def is_commanded(self) -> bool:\n351:    def may_complete_as_paused(self) -> bool:\n369:    def current_operation(self) -> Optional[Operation]:\n373:    def _reset(self):\n378:class MovementOption(StrEnum):\n395:class MotionEventType(StrEnum):\n407:class MotionEvent(pydantic.BaseModel):\n438:class Intent:\n455:    def to_commands(self) -> list[ExecuteTrajectoryRequestCommand]:\n488:class _QueueSentinel:\n523:class TrajectoryCursor:\n561:    def __init__(\n677:    def _build_intent(\n701:    async def ainitialize(self):\n705:    async def _send_motion_started(self, *, forward: bool | None = None) -> None:\n712:    def end_location(self) -> float:\n728:    def current_location(self) -> float:\n733:    def current_action_start(self) -> float:\n738:    def current_action_end(self) -> float:\n743:    def next_action_start(self) -> float:\n748:    def previous_action_start(self) -> float:\n753:    def current_action_index(self) -> int | None:\n760:    def current_action(self) -> Action | None:\n769:    def next_action(self) -> Action | None:\n781:    def previous_action(self) -> Action | None:\n792:    def get_movement_options(self) -> set[MovementOption]:\n808:    def _set_intent(self, intent: Intent) -> None:\n823:    def forward(\n871:    def backward(\n919:    def forward_to(\n953:    def backward_to(\n987:    def forward_to_next_action(\n1031:    def backward_to_previous_action(\n1078:    def pause(self) -> asyncio.Future[OperationResult]:\n1105:    def detach(self):\n1121:    def _signal_first_dispatch(self) -> None:\n1126:    def _start_operation(\n1141:    def _complete_operation(self, error: Optional[Exception] = None):\n1145:    def _is_operation_in_progress(self) -> bool:\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; M=$(ls -d .venv/lib/python3*/site-packages/wandelbots_api_client/v2_pydantic/models | head -1); echo $M; ls $M | rg -i \"command|routine|path_type|motion_gen\"|head -30; rg -n \"^    [a-z_]+: \" $M/command_routine.py $M/explicit_path_motion_command.py | head -40\nrg -n \"ExplicitPathMotionCommand|class Command\\b|Command =\" $M/__init__.py | head -3\nrg -n \"^    (async )?def (plan|execute|stream_execute|_plan|_execute|_load)|^    def |^    async def \" -A8 nova/cell/motion_group.py | sed -n '/async def _plan(/,/-> /p;/async def _execute(/,/-> /p' | head -40\nrg -n \"def (plan|execute|stream|__call__)\" nova/core/*.py nova/cell/robot_cell.py | head\nrg -n \"fixture\" -A2 tests/conftest.py tests/nova/cell/motion_group/test_trajectory_cursor_integration.py tests/cell/test_trajectory_cursor.py | head -50\ncat nova/cell/movement_controller/README.md | head -5; rg -n \"^class |    async def |    def \" nova/cell/movement_controller/trajectory_cursor.py | head -50",
+            "time": {
+              "start": 1792072673556,
+              "end": 1792072673658
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_13fdadd410014dEAsJB8naYThn",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdad88e001lEP3RtBMnf14ks"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-finish",
+          "tokens": {
+            "total": 17101,
+            "input": 2,
+            "output": 546,
+            "reasoning": 0,
+            "cache": {
+              "write": 4120,
+              "read": 12433
+            }
+          },
+          "cost": 0.0170073,
+          "id": "prt_13fdae9d1001yI76EDd7xsHpJh",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdad88e001lEP3RtBMnf14ks"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_13fdaaf74001NZ5fWZx05GFoSr",
+        "role": "assistant",
+        "mode": "explore",
+        "agent": "explore",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0135618,
+        "tokens": {
+          "total": 19813,
+          "input": 2,
+          "output": 453,
+          "reasoning": 48,
+          "cache": {
+            "write": 2757,
+            "read": 16553
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792072673834,
+          "completed": 1792072677815
+        },
+        "finish": "tool-calls",
+        "id": "msg_13fdaea2a0017jKVPNzRnWss5g",
+        "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu"
+      },
+      "parts": [
+        {
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-start",
+          "id": "prt_13fdaee1d001fbsTUJWTfcDPLh",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaea2a0017jKVPNzRnWss5g"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "start": 1792072674982,
+            "end": 1792072675369
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "CAQSowYKEAgSGAI4AUIIdGhpbmtpbmcSDLK/20jHgrofKy0yeRoM2OYWwZ+QDwRxnPHbIjAPK4oimcTMW3rwbBl+TFg+5Q62YmMieyTIgdCng2n+q4NzKVY0Esq0AcRgaf1NMa4qwAXoEel3CdbkxhL+XAcR7MmY8Ey2bk36kas64KGaH1YDRHYyLLq8p0aC4n+YDOm14ac0Zb0bTq2u6XuYA50+LwTbjbRPwO2UBkpUiUhn5UhQOpoEZeuLy9SagIFZJp8v0i/c9KetEAWfXQLrLI588FoliWp68XWSIY8DxF0Jaj1jsD5UgWoD2S+1n8eepbjh4r0INy4JGjd26kjUyiJ+W245QSCTvrfSS+PxkV5ju07MJ8LQeddOcLp3qlLJY0UwyVUNnvfMuEQB53H+T4w4VQdVxsxNEvU0eDYyMi6lyho///G6X95LvyB3P+cP0uBPnn3UMJZZ/bKLGt/o1mFT7x4HCN7r4igtRlSB4hr1hUlKNYQ5DJmTk5B6rIxUS7d2QAs6QAfBHtP6/9RSs9cFKcy7dvyVRpRde6JeT3Q2iu6NaqKirqoAss/8O2A9jS6UM9shv8nn7F+emHwjzSSezUCAjWfK46sLNvMARZb3WJvyW3piaZcpP7YKbe4DANyuRXDrQjtHdMJrpgrYonA8wBxf3b2lv7akNQEtFVqUGc5tcGceg8XZryHk8sCyrkGL7sOSGUAdp1b5lkhQTF0MxS+ryBnxf46V19aAEYnIqD7xwRlFImM8FzYoXAEUoAaClp0f0j99xipPfc9d/jVWWqsTRhQrzCl7pUwLM8Pk3ntNM9zH6KSZAZBWwbrHA7UcO1vb2NbYZ4Qmvz++A1+rM0wPfxagWGzy67CRdcwxe/XRMMjocLxSZwKltQN4v0MtU27lG4RFZUb/pCILQBuU6RV9T70Bj1qO5Fqn4K2pEQ9Gm+cxx3o7YBl+Y3M7EbzInLejcYdCVhIyg73pW6yD1xCIaSGIQU4xZZiD5ZsYhqDf4TFqaYYlOcey2XHtK+NG533NxPJTvmzYWKwH07fVZd8lMSKcL/ZakUGVzUWN1xxV2hgB"
+            }
+          },
+          "id": "prt_13fdaeea6001LtsdpK9onuPy78",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaea2a0017jKVPNzRnWss5g"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_019uivFeazdwJSoUKPLpaj8Y",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; P=.venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic; rg -ln \"^class CommandRoutine\\b\" $P; F=$(rg -l \"^class CommandRoutine\\b\" $P|head -1); rg -n \"^class (CommandRoutine|ExplicitPathMotionCommand|GeneratedPathMotionCommand|MotionSettings|MotionGroupReference)\\b\" -A25 $P --glob '*.py' | rg -v '\"\"\"' | head -120\nsed -n 256,275p nova/cell/robot_cell.py; sed -n 382,395p nova/cell/robot_cell.py;sed -n 426,440p nova/cell/robot_cell.py; rg -n \"def (plan|execute|stream_execute|stream_plan_and_execute|plan_and_execute)\\b|def (stream_)?state_stream\" nova/cell/motion_group.py; sed -n 1,25p docs/architecture/adr/001*.md; ls docs docs/architecture; ls nova/actions/*.py; rg -n \"def \" nova/actions/trajectory_builder.py | head"
+            },
+            "output": "    async def plan(\n        self,\n        actions: ActionsLike,\n        tcp: str | None = None,\n        start_joint_position: tuple[float, ...] | None = None,\n        motion_group_setup: api.models.MotionGroupSetup | None = None,\n        payload_override: str | api.models.Payload | None = None,\n        singularity_handling: api.models.SingularityHandling | None = None,\n    ) -> api.models.JointTrajectory:\n        \"\"\"Plan a trajectory for the given actions.\n\n        Args:\n            actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.\n                Only motion actions are considered for planning.\n            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.\n            start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint\n                position of the robot is used.\n            motion_group_setup (api.models.MotionGroupSetup | None): The motion group setup to be used for planning.\n                 If None, the motion group setup will be fetched from the robot.\n            payload_override (str | api.models.Payload | None): Override for the dynamics payload\n    async def stream_execute(\n        self,\n        joint_trajectory: api.models.JointTrajectory,\n        tcp: str | None,\n        actions: ActionsLike,\n        movement_controller: MovementController | None = None,\n        start_on_io: api.models.StartOnIO | None = None,\n        pause_on_io: api.models.PauseOnIO | None = None,\n        *,\n        state_stream_rate_msecs: int | None = None,\n    ) -> AsyncGenerator[MotionState, None]:\n        \"\"\"Execute a planned motion\n\n        Note that if an error happens during the consuming of states from the returned async generator,\n    async def execute(\n        self,\n        joint_trajectory: api.models.JointTrajectory,\n        tcp: str | None,\n        actions: ActionsLike,\n        movement_controller: MovementController | None = None,\n        start_on_io: api.models.StartOnIO | None = None,\n        pause_on_io: api.models.PauseOnIO | None = None,\n        *,\n        state_stream_rate_msecs: int | None = None,\n    ) -> None:\n        \"\"\"Execute a planned motion\n\n        Args:\n            joint_trajectory (api.models.JointTrajectory): The planned joint trajectory\n# ADR 001: `move_forward` becomes a `TrajectoryCursor` adapter\n\n**Status**: Accepted\n**Date**: 2026-08-18\n**Authors**:\n**Supersedes**: —\n\n## Decision\n\nWe will have **one implementation of the `executeTrajectory` protocol**, owned by\n`TrajectoryCursor`. `move_forward` stays the default `MovementController` and\nkeeps its name and signature, but becomes a thin adapter: it configures a cursor\nfor one-shot execution, calls `forward()`, and returns `cursor.cntrl`.\n\n`MovementController` / `MovementControllerContext` remain the public plug-in\nseam, so no caller of `execute()` or `plan_and_execute()` changes.\n\n> In the context of two movement controllers implementing the same\n> `executeTrajectory` protocol, facing a loop that had forked five ways with bug\n> fixes landing on one fork only, we chose to reduce `move_forward` to a thin\n> adapter over `TrajectoryCursor`, to achieve a single protocol implementation\n> behind an unchanged plug-in seam, accepting that the default execution path\n> now runs substantially more code than the 172-line original.\n\n## Forces\ndocs:\narchitecture\ngetting_started.md\nprograms.md\n\ndocs/architecture:\nadr\nnova/actions/__init__.py\nnova/actions/base.py\nnova/actions/container.py\nnova/actions/io.py\nnova/actions/mock.py\nnova/actions/motions.py\nnova/actions/path_trigger_resolver.py\nnova/actions/path_trigger.py\nnova/actions/trajectory_builder.py\n10:    def __init__(self, settings: Optional[MotionSettings] = None):\n19:    def __enter__(self):\n22:    def __exit__(self, exc_type, exc_val, exc_tb):\n26:    def actions(self) -> list[Action]:\n30:    def _current_settings(self) -> MotionSettings:\n34:    def move(self, motion: Motion):\n41:    def trigger(self, action: Action):\n45:    def sequence(self, *args: Action | list[Action] | tuple[Action, ...]):\n68:    def set(self, settings: MotionSettings):\n76:    def __iter__(self):\n",
+            "metadata": {
+              "output": "    async def plan(\n        self,\n        actions: ActionsLike,\n        tcp: str | None = None,\n        start_joint_position: tuple[float, ...] | None = None,\n        motion_group_setup: api.models.MotionGroupSetup | None = None,\n        payload_override: str | api.models.Payload | None = None,\n        singularity_handling: api.models.SingularityHandling | None = None,\n    ) -> api.models.JointTrajectory:\n        \"\"\"Plan a trajectory for the given actions.\n\n        Args:\n            actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.\n                Only motion actions are considered for planning.\n            tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.\n            start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint\n                position of the robot is used.\n            motion_group_setup (api.models.MotionGroupSetup | None): The motion group setup to be used for planning.\n                 If None, the motion group setup will be fetched from the robot.\n            payload_override (str | api.models.Payload | None): Override for the dynamics payload\n    async def stream_execute(\n        self,\n        joint_trajectory: api.models.JointTrajectory,\n        tcp: str | None,\n        actions: ActionsLike,\n        movement_controller: MovementController | None = None,\n        start_on_io: api.models.StartOnIO | None = None,\n        pause_on_io: api.models.PauseOnIO | None = None,\n        *,\n        state_stream_rate_msecs: int | None = None,\n    ) -> AsyncGenerator[MotionState, None]:\n        \"\"\"Execute a planned motion\n\n        Note that if an error happens during the consuming of states from the returned async generator,\n    async def execute(\n        self,\n        joint_trajectory: api.models.JointTrajectory,\n        tcp: str | None,\n        actions: ActionsLike,\n        movement_controller: MovementController | None = None,\n        start_on_io: api.models.StartOnIO | None = None,\n        pause_on_io: api.models.PauseOnIO | None = None,\n        *,\n        state_stream_rate_msecs: int | None = None,\n    ) -> None:\n        \"\"\"Execute a planned motion\n\n        Args:\n            joint_trajectory (api.models.JointTrajectory): The planned joint trajectory\n# ADR 001: `move_forward` becomes a `TrajectoryCursor` adapter\n\n**Status**: Accepted\n**Date**: 2026-08-18\n**Authors**:\n**Supersedes**: —\n\n## Decision\n\nWe will have **one implementation of the `executeTrajectory` protocol**, owned by\n`TrajectoryCursor`. `move_forward` stays the default `MovementController` and\nkeeps its name and signature, but becomes a thin adapter: it configures a cursor\nfor one-shot execution, calls `forward()`, and returns `cursor.cntrl`.\n\n`MovementController` / `MovementControllerContext` remain the public plug-in\nseam, so no caller of `execute()` or `plan_and_execute()` changes.\n\n> In the context of two movement controllers implementing the same\n> `executeTrajectory` protocol, facing a loop that had forked five ways with bug\n> fixes landing on one fork only, we chose to reduce `move_forward` to a thin\n> adapter over `TrajectoryCursor`, to achieve a single protocol implementation\n> behind an unchanged plug-in seam, accepting that the default execution path\n> now runs substantially more code than the 172-line original.\n\n## Forces\ndocs:\narchitecture\ngetting_started.md\nprograms.md\n\ndocs/architecture:\nadr\nnova/actions/__init__.py\nnova/actions/base.py\nnova/actions/container.py\nnova/actions/io.py\nnova/actions/mock.py\nnova/actions/motions.py\nnova/actions/path_trigger_resolver.py\nnova/actions/path_trigger.py\nnova/actions/trajectory_builder.py\n10:    def __init__(self, settings: Optional[MotionSettings] = None):\n19:    def __enter__(self):\n22:    def __exit__(self, exc_type, exc_val, exc_tb):\n26:    def actions(self) -> list[Action]:\n30:    def _current_settings(self) -> MotionSettings:\n34:    def move(self, motion: Motion):\n41:    def trigger(self, action: Action):\n45:    def sequence(self, *args: Action | list[Action] | tuple[Action, ...]):\n68:    def set(self, settings: MotionSettings):\n76:    def __iter__(self):\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; P=.venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic; rg -ln \"^class CommandRoutine\\b\" $P; F=$(rg -l \"^class CommandRoutine\\b\" $P|head -1); rg -n \"^class (CommandRoutine|ExplicitPathMotionCommand|GeneratedPathMotionCommand|MotionSettings|MotionGroupReference)\\b\" -A25 $P --glob '*.py' | rg -v '\"\"\"' | head -120\nsed -n 256,275p nova/cell/robot_cell.py; sed -n 382,395p nova/cell/robot_cell.py;sed -n 426,440p nova/cell/robot_cell.py; rg -n \"def (plan|execute|stream_execute|stream_plan_and_execute|plan_and_execute)\\b|def (stream_)?state_stream\" nova/cell/motion_group.py; sed -n 1,25p docs/architecture/adr/001*.md; ls docs docs/architecture; ls nova/actions/*.py; rg -n \"def \" nova/actions/trajectory_builder.py | head",
+            "time": {
+              "start": 1792072677611,
+              "end": 1792072677676
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_13fdaf02a001Zzxn050O8gX3Ye",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaea2a0017jKVPNzRnWss5g"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-finish",
+          "tokens": {
+            "total": 19813,
+            "input": 2,
+            "output": 453,
+            "reasoning": 48,
+            "cache": {
+              "write": 2757,
+              "read": 16553
+            }
+          },
+          "cost": 0.0135618,
+          "id": "prt_13fdaf97a00147L0EDLy6j7jRw",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaea2a0017jKVPNzRnWss5g"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_13fdaaf74001NZ5fWZx05GFoSr",
+        "role": "assistant",
+        "mode": "explore",
+        "agent": "explore",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.011115,
+        "tokens": {
+          "total": 21772,
+          "input": 2,
+          "output": 379,
+          "reasoning": 25,
+          "cache": {
+            "write": 2056,
+            "read": 19310
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792072677817,
+          "completed": 1792072681629
+        },
+        "finish": "tool-calls",
+        "id": "msg_13fdaf9b9001PozAf9JN9KP2Ef",
+        "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu"
+      },
+      "parts": [
+        {
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-start",
+          "id": "prt_13fdb0089001QVcPg1t3CukxOu",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaf9b9001PozAf9JN9KP2Ef"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "start": 1792072679564,
+            "end": 1792072679690
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "CAQSzgYKEAgSGAI4AUIIdGhpbmtpbmcSDN/2H9ae6p7ebADYmBoM90qW+YE0aacqZEz7IjB9cS2i2+q7Nsw4OSf5Glr7rvslGfInflMnMlVsWyrZ3JexcEIIg4b8yQpq7j0pwgkq6wVw0qCGZPeYJlO3nRCm/SaPFWXfKHnXphZaqqIUYJDSE+KZ0mYQkDDJO/O6ifpLdw+3B12uLOfi3Fe1GtiTZK8T04Tb6Weopxz4Jiy7q3/iR2Di72Rx7sTmmVTL+iXPu58EFPB712BofGaO/oorADx+oanPgGeI+731VVfYYpaqnbOSzjbNB/QbGCfPoy/2A+sJj1cLrTNG7JhagLmlaMGt8W5OVmjHvKutJrrm/GjwYnLfDz2rH6xfL4I9HgULx8gA2Cx1OAdG2YuIaMS7iGpOtwh+y4pE3YFsKUFyTvxo3ztahOK7lMgrd+HU/r66+3guMnmInHH3RKZ25dgdLI+mxPQwoCpJN4+km5KSzCyu2iPQwlP7FNRzfc9IMfcFU+LdmvKth1fiI+r92/j6B9a+HTXhYImoXcdpNGPWRIzNxomgNtPCN+0+Blte5c5pSnTGs1PsZuxHNLF09bP9clsGVmyfegCc7TxP30Gry58rGCHKJwdHcQp8FhLTSdhGGfqwIVvB2qeBxlDgzutjkRLE8nuJ/WtjMza8JjeMPYXVyPQoQXZf+6nlByZ9urr7K6BgV3GaLVZ9L+aKUEqvuEHfa+4HDvNQPqgvnrRtV6ytssWu38Q7FYSgWXayyykSCZ2NSID11TJr2tKBai36EqQ803O8B/ZJiGhTTC2z6KTy3cBOESeSSwOvYpVPk1uIfrskxdBx7lSYT+BMjQX9Gfnmn4vG7NHCv4s7dGYzo19icApc80O9RdYYOgpsxUKXm1kMXnaBZ12tghau7xGvI7Dvvmv1VhhRuc12Xf48By0zHvPPHCh5P1xyGN2Q92vMrx8jhXJw5XTVOyCxWrKIDRcmLP3Jl6YfNOKc4nY2l8IW4tZYDvKz+3y6NgrI/IM9PEbYh2vsVUKux5nCbB1fkoxd1RVw9tz2C3zgTinJp6CIyCVPTDdJ0BLY11FRIwnmQoTWr0g5F6TLGQRt/YirIqAnO/PJ0fHhm8K2WngYAQ=="
+            }
+          },
+          "id": "prt_13fdb008c001VqTqVSOBJ1kkkn",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaf9b9001PozAf9JN9KP2Ef"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01A4M9JixQHjkEukzUj9smCW",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; P=.venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic; ls $P | head; rg -n \"^class (CommandRoutine|ExplicitPathMotionCommand|GeneratedPathMotionCommand|MotionGroupReference)\\b\" -A30 -g '*.py' .venv/lib/python3.12/site-packages/wandelbots_api_client | rg -v '^\\S+-\\s*(\"\"\"|$)' | head -110; rg -n \"action_to|to_api|def .*motion.*command|CommandRoutine\" nova/actions nova/cell/motion_group.py nova/core | head; rg -n \"_plan_.*|def _convert|api.models.Plan|CartesianPTP\\(\" nova/cell/motion_group.py | head -5; rg -n \"def to_api_model|def _to_api|def to_\" nova/actions/motions.py nova/actions/base.py"
+            },
+            "output": "__init__.py\n__pycache__\napi\napi_client.py\napi_response.py\nconfiguration.py\nexceptions.py\nmodels\npy.typed\nrest.py\nnova/cell/motion_group.py:202:                    cell=self._cell, io_value=[action.to_api_model()]\nnova/cell/motion_group.py:208:                    io_value=[action.to_api_model()],\nnova/cell/motion_group.py:433:                tcp_poses=[pose.to_api_model() for pose in poses],\nnova/cell/motion_group.py:434:                tcp_offset=tcp_offset.to_api_model(),\nnova/cell/motion_group.py:435:                mounting=mounting.to_api_model() if mounting is not None else None,\nnova/cell/motion_group.py:460:        tcp_offset = (await self.tcp_offset(tcp)).to_api_model() if tcp is not None else None\nnova/cell/motion_group.py:470:                mounting=mounting.to_api_model() if mounting is not None else None,\nnova/actions/motions.py:56:    def to_api_model(self):\nnova/actions/motions.py:60:        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10)).to_api_model()\nnova/actions/motions.py:64:            target_pose=self.target.to_api_model(), path_definition_name=\"PathLine\"\n730:        load_plan_response = await self._api_client.trajectory_caching_api.add_trajectory(\n738:        if load_plan_response.error is not None:\n739:            raise LoadPlanFailed(load_plan_response.error)\n741:        if load_plan_response.trajectory is None:\n744:        return load_plan_response.trajectory\nnova/actions/base.py:79:    def to_api_model(self):\nnova/actions/motions.py:56:    def to_api_model(self):\nnova/actions/motions.py:112:    def to_api_model(self) -> api.models.PathCartesianPTP:\nnova/actions/motions.py:182:    def to_api_model(self) -> api.models.PathCircle:\nnova/actions/motions.py:251:    def to_api_model(self) -> api.models.PathJointPTP:\nnova/actions/motions.py:309:    def to_api_model(self):\nnova/actions/motions.py:369:    def to_api_model(self) -> api.models.PlanCollisionFreeRequest:\nnova/actions/motions.py:405:    def to_api_model(self) -> api.models.MultiSearchCollisionFreeRequest:\n",
+            "metadata": {
+              "output": "__init__.py\n__pycache__\napi\napi_client.py\napi_response.py\nconfiguration.py\nexceptions.py\nmodels\npy.typed\nrest.py\nnova/cell/motion_group.py:202:                    cell=self._cell, io_value=[action.to_api_model()]\nnova/cell/motion_group.py:208:                    io_value=[action.to_api_model()],\nnova/cell/motion_group.py:433:                tcp_poses=[pose.to_api_model() for pose in poses],\nnova/cell/motion_group.py:434:                tcp_offset=tcp_offset.to_api_model(),\nnova/cell/motion_group.py:435:                mounting=mounting.to_api_model() if mounting is not None else None,\nnova/cell/motion_group.py:460:        tcp_offset = (await self.tcp_offset(tcp)).to_api_model() if tcp is not None else None\nnova/cell/motion_group.py:470:                mounting=mounting.to_api_model() if mounting is not None else None,\nnova/actions/motions.py:56:    def to_api_model(self):\nnova/actions/motions.py:60:        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10)).to_api_model()\nnova/actions/motions.py:64:            target_pose=self.target.to_api_model(), path_definition_name=\"PathLine\"\n730:        load_plan_response = await self._api_client.trajectory_caching_api.add_trajectory(\n738:        if load_plan_response.error is not None:\n739:            raise LoadPlanFailed(load_plan_response.error)\n741:        if load_plan_response.trajectory is None:\n744:        return load_plan_response.trajectory\nnova/actions/base.py:79:    def to_api_model(self):\nnova/actions/motions.py:56:    def to_api_model(self):\nnova/actions/motions.py:112:    def to_api_model(self) -> api.models.PathCartesianPTP:\nnova/actions/motions.py:182:    def to_api_model(self) -> api.models.PathCircle:\nnova/actions/motions.py:251:    def to_api_model(self) -> api.models.PathJointPTP:\nnova/actions/motions.py:309:    def to_api_model(self):\nnova/actions/motions.py:369:    def to_api_model(self) -> api.models.PlanCollisionFreeRequest:\nnova/actions/motions.py:405:    def to_api_model(self) -> api.models.MultiSearchCollisionFreeRequest:\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; P=.venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic; ls $P | head; rg -n \"^class (CommandRoutine|ExplicitPathMotionCommand|GeneratedPathMotionCommand|MotionGroupReference)\\b\" -A30 -g '*.py' .venv/lib/python3.12/site-packages/wandelbots_api_client | rg -v '^\\S+-\\s*(\"\"\"|$)' | head -110; rg -n \"action_to|to_api|def .*motion.*command|CommandRoutine\" nova/actions nova/cell/motion_group.py nova/core | head; rg -n \"_plan_.*|def _convert|api.models.Plan|CartesianPTP\\(\" nova/cell/motion_group.py | head -5; rg -n \"def to_api_model|def _to_api|def to_\" nova/actions/motions.py nova/actions/base.py",
+            "time": {
+              "start": 1792072681354,
+              "end": 1792072681449
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_13fdb010b001rQUoiYEw2zYPdb",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaf9b9001PozAf9JN9KP2Ef"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-finish",
+          "tokens": {
+            "total": 21772,
+            "input": 2,
+            "output": 379,
+            "reasoning": 25,
+            "cache": {
+              "write": 2056,
+              "read": 19310
+            }
+          },
+          "cost": 0.011115,
+          "id": "prt_13fdb0842001RCDnDV2rhygGyP",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdaf9b9001PozAf9JN9KP2Ef"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_13fdaaf74001NZ5fWZx05GFoSr",
+        "role": "assistant",
+        "mode": "explore",
+        "agent": "explore",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0095881,
+        "tokens": {
+          "total": 23072,
+          "input": 2,
+          "output": 425,
+          "reasoning": 0,
+          "cache": {
+            "write": 1279,
+            "read": 21366
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792072681631,
+          "completed": 1792072684987
+        },
+        "finish": "tool-calls",
+        "id": "msg_13fdb089f001IWeT03qnTGnG7s",
+        "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu"
+      },
+      "parts": [
+        {
+          "snapshot": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "type": "step-start",
+          "id": "prt_13fdb0cd7001yOUBHjlxUNx1Qm",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb089f001IWeT03qnTGnG7s"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_016HaL25NeuF2ZMrNwgFbxKn",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; P=.venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models; rg -n \"CommandRoutine\\b\" $P/__init__.py | head -3; ls $P | rg -i \"command_routine|explicit_path|generated_path|motion_group_reference|^command\"; for f in command_routine explicit_path_motion_command generated_path_motion_command; do echo == $f; rg -n \"^    [a-z_]+: \" $P/$f.py 2>/dev/null; done; rg -n \"^    (async )?def |^class \" nova/actions/trajectory_builder.py | head -3; grep -n \"plan_and_execute\\|stream_plan_and_execute\" nova/cell/robot_cell.py | head -3; sed -n 56,70p nova/actions/motions.py; sed -n 22,43p nova/actions/motions.py; sed -n 45,70p tests/nova/cell/motion_group/test_trajectory_cursor_integration.py; sed -n 1,25p tests/command_routines/test_command_routine.py"
+            },
+            "output": "102:    CommandRoutine,\n621:    \"CommandRoutine\",\nzsh:1: = not found\n",
+            "metadata": {
+              "output": "102:    CommandRoutine,\n621:    \"CommandRoutine\",\nzsh:1: = not found\n",
+              "exit": 1,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; P=.venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models; rg -n \"CommandRoutine\\b\" $P/__init__.py | head -3; ls $P | rg -i \"command_routine|explicit_path|generated_path|motion_group_reference|^command\"; for f in command_routine explicit_path_motion_command generated_path_motion_command; do echo == $f; rg -n \"^    [a-z_]+: \" $P/$f.py 2>/dev/null; done; rg -n \"^    (async )?def |^class \" nova/actions/trajectory_builder.py | head -3; grep -n \"plan_and_execute\\|stream_plan_and_execute\" nova/cell/robot_cell.py | head -3; sed -n 56,70p nova/actions/motions.py; sed -n 22,43p nova/actions/motions.py; sed -n 45,70p tests/nova/cell/motion_group/test_trajectory_cursor_integration.py; sed -n 1,25p tests/command_routines/test_command_routine.py",
+            "time": {
+              "start": 1792072684630,
+              "end": 1792072684711
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_13fdb0cd800188x296JuTxYq3z",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb089f001IWeT03qnTGnG7s"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "6a77c967775515e59bf16c21814ec28923246f77",
+          "type": "step-finish",
+          "tokens": {
+            "total": 23072,
+            "input": 2,
+            "output": 425,
+            "reasoning": 0,
+            "cache": {
+              "write": 1279,
+              "read": 21366
+            }
+          },
+          "cost": 0.0095881,
+          "id": "prt_13fdb1537001FEHrrp5fST7NNf",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb089f001IWeT03qnTGnG7s"
+        },
+        {
+          "type": "patch",
+          "hash": "2ea95c4c9e246ecbc58b191ec1c36710a324c06f",
+          "files": [
+            "/Users/mkhe/NDX/wandelbots-nova/examples/start_here_cr.py"
+          ],
+          "id": "prt_13fdb15b9001lJpRIasvIAmhUf",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb089f001IWeT03qnTGnG7s"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_13fdaaf74001NZ5fWZx05GFoSr",
+        "role": "assistant",
+        "mode": "explore",
+        "agent": "explore",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.007741,
+        "tokens": {
+          "total": 23543,
+          "input": 2,
+          "output": 403,
+          "reasoning": 28,
+          "cache": {
+            "write": 465,
+            "read": 22645
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792072684990,
+          "completed": 1792072688296
+        },
+        "finish": "tool-calls",
+        "id": "msg_13fdb15be001cIBw43Hknqjfre",
+        "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu"
+      },
+      "parts": [
+        {
+          "snapshot": "6a77c967775515e59bf16c21814ec28923246f77",
+          "type": "step-start",
+          "id": "prt_13fdb199b001G5O5WxrtiIKYng",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb15be001cIBw43Hknqjfre"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "start": 1792072686450,
+            "end": 1792072686565
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "CAQS4AYKEAgSGAI4AUIIdGhpbmtpbmcSDC2BI8oQJJRNq7AeGhoM2YtB4CkTkhR4Zho2IjAnwy5H+ZSwjJrxizBrk2dolAiSdYc9Tw4TtRLfi5SI5jVtaoltdmrPWRRaUscnz4oq/QWFh8Sy05nfwriTUb3AUJuheEYTGogGxRAIo5LyWaZYSEJMGN+tIxSSDbpcDLOgl+j5rrEBeIQc4MsJJRRiY3Tb0E6G0d+5p6AbSzudjwJA5T1GqhqQw2gQWM6xit6F407a/MhnGvJCoDv+34oQYgRr6//d8Xh3X9MfFE2Pe1kR5npah+ts0bBAQuWD2J7CLxR3jRoavb3Y4dL/Ga2cIOKbFkmn2GmzkHDmeANIsYqHg4dY+q5adIjHPS2eVIDypTEDbuNrHQ/ynGjKMcdKuYNde5g/aoOe5qsPWYkjpqQQrfwUu8y6vxfiImPeBo3QroS1CYux0dlBZSo+vh14/UZzuh8kr+LA1onDZXKRu5xtMCWCDCb46ILC1u+kPm8RLesUxWER45ozSIB/9jm+CplxW9+Z54cI4d0OEavmqqPFflFT46Uv4Dpjylb/LGHrclumDx5L2cXPkwsAtRrZL8pHD++zEa8crQGknI8Kh0838Oc4sdjHo9J/xUg7QRagdfZcBzeFTnlc0dqJhDbqarEHwimvGIU4GLWl8nfiWuKWffHOApCbTo84NQyabtwIxVxz5sn56CaEZzE0Rjq0wAMnfaH1Bfd+7RL9Lhs5e2vC1CxfaN3pPczcG2vow3m/4LTJwNAVxNuGeI6hN94OcvitmmGTnIpud2gQ5ppUNyNSHuFqpurYrZYmjcZgDX1UdexvMHWx/laDjbkvr1ANisIkdWbV6KSXrEAn3Zg6JKwG57XDTxGeHEaVu89oXuH+wHLYm+pEfPr8lJKjDwSDWuiIVA1yf2a4epUhYIiUlddssHqHDJdLqCZtHPQ0t6i1YA3aXf78hRQrylC7R8UOJg8ACi6CqNxf5/WGSB1eU/JdUB5L+OY0J5g2bxMyLjqvFKmjXCcpgH5EqcFip8ecK2/qp5LO2+t8ma784xotX5TNQ5CgpGzQjsg6qlqR+t3cOlezgrPU8I0REFt0fO4rtfLqT6zJ9dGX7IXI8rpXO3GP5BamLNRHcLH3IAum/KsYAQ=="
+            }
+          },
+          "id": "prt_13fdb1b72001CNlL1RkTotiTmI",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb15be001cIBw43Hknqjfre"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01UaxwcsjF7zzUx5ap1ZqAzi",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; P=.venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models; sed -n 1,5p $P/__init__.py; ls $P | head -3; rg -n \"^class (CommandRoutine|ExplicitPathMotionCommand|GeneratedPathMotionCommand|MotionGroupReference)\\b\" $P | head"
+            },
+            "output": "# generated by datamodel-codegen:\n#   filename: __init__.py\n\nfrom __future__ import annotations\n\n__init__.py\n__pycache__\nmodels.py\n",
+            "metadata": {
+              "output": "# generated by datamodel-codegen:\n#   filename: __init__.py\n\nfrom __future__ import annotations\n\n__init__.py\n__pycache__\nmodels.py\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; P=.venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models; sed -n 1,5p $P/__init__.py; ls $P | head -3; rg -n \"^class (CommandRoutine|ExplicitPathMotionCommand|GeneratedPathMotionCommand|MotionGroupReference)\\b\" $P | head",
+            "time": {
+              "start": 1792072687166,
+              "end": 1792072687232
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_13fdb1be6001y4G1Cc5FVUdPde",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb15be001cIBw43Hknqjfre"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01J26sajqyQVggycQT8JUJun",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; sed -n 56,70p nova/actions/motions.py; sed -n 22,43p nova/actions/motions.py; sed -n 45,66p tests/nova/cell/motion_group/test_trajectory_cursor_integration.py; sed -n 1,25p tests/command_routines/test_command_routine.py; grep -n \"def plan_and_execute\\|def stream_plan_and_execute\" nova/cell/*.py"
+            },
+            "output": "    def to_api_model(self):\n        \"\"\"Serialize the model to the API model\n\n        Examples:\n        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10)).to_api_model()\n        PathLine(target_pose=Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)), path_definition_name='PathLine')\n        \"\"\"\n        return api.models.PathLine(\n            target_pose=self.target.to_api_model(), path_definition_name=\"PathLine\"\n        )\n\n\ndef linear(\n    target: PoseLike,\n    settings: MotionSettings = MotionSettings(),\nclass Motion(Action, ABC):\n    \"\"\"Base model of a motion\n\n    Args:\n        type: the type of the motion\n        settings: the settings of the motion\n\n    \"\"\"\n\n    type: Literal[\"linear\", \"cartesian_ptp\", \"circular\", \"joint_ptp\", \"spline\", \"collision_free\"]\n    target: Pose | tuple[float, ...]\n    settings: MotionSettings = MotionSettings()\n    collision_setup: api.models.CollisionSetup | None = None\n\n    @property\n    def is_cartesian(self):\n        return isinstance(self.target, Pose)\n\n    def is_motion(self) -> bool:\n        return True\n\n\n\n\n@pytest.fixture\nasync def ur_mg():\n    \"\"\"Virtual UR motion group ready for planning.\"\"\"\n    controller_name = \"ur-cursor-integration\"\n\n    async with Nova() as nova:\n        cell = nova.cell()\n        await cell.ensure_controller(\n            virtual_controller(\n                name=controller_name,\n                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,\n                type=\"universalrobots-ur10e\",\n                position=[*initial_joint_positions, 0],\n            )\n        )\n        ur = await cell.controller(controller_name)\n        async with ur[0] as mg:\n            yield mg\n\n\nimport pytest\nfrom pydantic import ValidationError\n\nfrom nova import api\nfrom nova.command_routines import (\n    at_path_fraction,\n    command_routine,\n    io_value,\n    marker,\n    move_joint_ptp,\n    move_linear,\n    set_io,\n    wait_for_time,\n    with_settings,\n)\n\n\ndef test_builds_mixed_routine():\n    routine = command_routine(\n        \"pick-and-place\",\n        motion_group_setup=None,\n        tcp=\"flange\",\n        commands=[\n            move_linear(\"approach\"),\n            set_io(\"digital_out[0]\", True),\nnova/cell/multi_motion_group.py:122:    async def plan_and_execute(\nnova/cell/robot_cell.py:465:    async def stream_plan_and_execute(\nnova/cell/robot_cell.py:523:    async def plan_and_execute(\n",
+            "metadata": {
+              "output": "    def to_api_model(self):\n        \"\"\"Serialize the model to the API model\n\n        Examples:\n        >>> Linear(target=Pose((1, 2, 3, 4, 5, 6)), settings=MotionSettings(tcp_velocity_limit=10)).to_api_model()\n        PathLine(target_pose=Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)), path_definition_name='PathLine')\n        \"\"\"\n        return api.models.PathLine(\n            target_pose=self.target.to_api_model(), path_definition_name=\"PathLine\"\n        )\n\n\ndef linear(\n    target: PoseLike,\n    settings: MotionSettings = MotionSettings(),\nclass Motion(Action, ABC):\n    \"\"\"Base model of a motion\n\n    Args:\n        type: the type of the motion\n        settings: the settings of the motion\n\n    \"\"\"\n\n    type: Literal[\"linear\", \"cartesian_ptp\", \"circular\", \"joint_ptp\", \"spline\", \"collision_free\"]\n    target: Pose | tuple[float, ...]\n    settings: MotionSettings = MotionSettings()\n    collision_setup: api.models.CollisionSetup | None = None\n\n    @property\n    def is_cartesian(self):\n        return isinstance(self.target, Pose)\n\n    def is_motion(self) -> bool:\n        return True\n\n\n\n\n@pytest.fixture\nasync def ur_mg():\n    \"\"\"Virtual UR motion group ready for planning.\"\"\"\n    controller_name = \"ur-cursor-integration\"\n\n    async with Nova() as nova:\n        cell = nova.cell()\n        await cell.ensure_controller(\n            virtual_controller(\n                name=controller_name,\n                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,\n                type=\"universalrobots-ur10e\",\n                position=[*initial_joint_positions, 0],\n            )\n        )\n        ur = await cell.controller(controller_name)\n        async with ur[0] as mg:\n            yield mg\n\n\nimport pytest\nfrom pydantic import ValidationError\n\nfrom nova import api\nfrom nova.command_routines import (\n    at_path_fraction,\n    command_routine,\n    io_value,\n    marker,\n    move_joint_ptp,\n    move_linear,\n    set_io,\n    wait_for_time,\n    with_settings,\n)\n\n\ndef test_builds_mixed_routine():\n    routine = command_routine(\n        \"pick-and-place\",\n        motion_group_setup=None,\n        tcp=\"flange\",\n        commands=[\n            move_linear(\"approach\"),\n            set_io(\"digital_out[0]\", True),\nnova/cell/multi_motion_group.py:122:    async def plan_and_execute(\nnova/cell/robot_cell.py:465:    async def stream_plan_and_execute(\nnova/cell/robot_cell.py:523:    async def plan_and_execute(\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; sed -n 56,70p nova/actions/motions.py; sed -n 22,43p nova/actions/motions.py; sed -n 45,66p tests/nova/cell/motion_group/test_trajectory_cursor_integration.py; sed -n 1,25p tests/command_routines/test_command_routine.py; grep -n \"def plan_and_execute\\|def stream_plan_and_execute\" nova/cell/*.py",
+            "time": {
+              "start": 1792072688090,
+              "end": 1792072688173
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_13fdb1e42001Y9q4n77GECte89",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb15be001cIBw43Hknqjfre"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "6a77c967775515e59bf16c21814ec28923246f77",
+          "type": "step-finish",
+          "tokens": {
+            "total": 23543,
+            "input": 2,
+            "output": 403,
+            "reasoning": 28,
+            "cache": {
+              "write": 465,
+              "read": 22645
+            }
+          },
+          "cost": 0.007741,
+          "id": "prt_13fdb2266001I8Sg0xGXs5M2NA",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb15be001cIBw43Hknqjfre"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_13fdaaf74001NZ5fWZx05GFoSr",
+        "role": "assistant",
+        "mode": "explore",
+        "agent": "explore",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.008675,
+        "tokens": {
+          "total": 24858,
+          "input": 2,
+          "output": 266,
+          "reasoning": 0,
+          "cache": {
+            "write": 1480,
+            "read": 23110
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792072688299,
+          "completed": 1792072690737
+        },
+        "finish": "tool-calls",
+        "id": "msg_13fdb22aa001eXiGRrGvEiKlTv",
+        "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu"
+      },
+      "parts": [
+        {
+          "snapshot": "6a77c967775515e59bf16c21814ec28923246f77",
+          "type": "step-start",
+          "id": "prt_13fdb26a50015M9d2Pmvp21bCJ",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb22aa001eXiGRrGvEiKlTv"
+        },
+        {
+          "type": "tool",
+          "tool": "bash",
+          "callID": "toolu_01DfM3Gf1XwPpAxW8ZUPc5wM",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "cd /Users/mkhe/NDX/wandelbots-nova; P=.venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/models.py; for c in CommandRoutine ExplicitPathMotionCommand GeneratedPathMotionCommand MotionGroupReference; do n=$(rg -n \"^class $c\\b\" $P | cut -d: -f1); echo \"== $c @ $P:$n\"; sed -n \"$n,$((n+90))p\" $P | rg -n \"^    [a-z_]+: \" | head -14; done; sed -n 1079,1100p nova/cell/motion_group.py"
+            },
+            "output": "== CommandRoutine @ .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/models.py:7655\n6:    command_routine: CommandRoutineId\n7:    dataset: DatasetId | None = None\n11:    name: str | None = None\n15:    description: str | None = None\n19:    motion_group: MotionGroupReference | None = None\n23:    motion_group_setup: MotionGroupSetup | None\n27:    tcp: str | None = None\n31:    start_joint_position: DoubleArray | None = None\n35:    default_motion_settings: MotionSettings | None = None\n36:    commands: list[Command] = Field(..., min_length=1)\n40:    metadata: dict[str, str] | None = None\n44:    created_at: AwareDatetime | None = None\n48:    updated_at: AwareDatetime | None = None\n60:    dataset: DatasetId\n== ExplicitPathMotionCommand @ .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/models.py:6875\n6:    type: Literal[\"motion_command\"] = \"motion_command\"\n10:    target: PoseRef\n11:    path_type: PathType\n12:    motion_settings: MotionSettings | None = None\n13:    intent: str | None = None\n17:    metadata: dict[str, str] | None = None\n28:    algorithm: CollisionFreeAlgorithm\n29:    constraint: DirectionConstraint | None = None\n37:    type: Literal[\"motion_command\"] = \"motion_command\"\n41:    target: PoseRef\n42:    generator: MotionGenerator\n43:    motion_settings: MotionSettings | None = None\n44:    intent: str | None = None\n48:    metadata: dict[str, str] | None = None\n== GeneratedPathMotionCommand @ .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/models.py:6906\n6:    type: Literal[\"motion_command\"] = \"motion_command\"\n10:    target: PoseRef\n11:    generator: MotionGenerator\n12:    motion_settings: MotionSettings | None = None\n13:    intent: str | None = None\n17:    metadata: dict[str, str] | None = None\n28:    type: Literal[\"path_fraction\"] = \"path_fraction\"\n32:    value: float = Field(..., ge=0.0, lt=1.0)\n52:    type: Literal[\"distance\"] = \"distance\"\n56:    millimeters: float = Field(..., ge=0.0)\n60:    reference: AtReference\n68:    type: Literal[\"time\"] = \"time\"\n72:    seconds: float = Field(..., ge=0.0)\n76:    reference: AtReference\n== MotionGroupReference @ .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/models.py:6615\n6:    type: Literal[\"id\"] = \"id\"\n10:    id: str\n29:    blending: Blending | None = None\n33:    limits_override: LimitsOverride | None = None\n44:    type: Literal[\"dataset_pose\"] = \"dataset_pose\"\n48:    cell: str\n52:    dataset: DatasetId\n53:    dataset_pose: DatasetPoseId\n54:    resolved_pose: ConfiguredPose | None = None\n55:    resolved_at: AwareDatetime | None = None\n59:    source_revision: str | None = None\n63:    metadata: dict[str, str] | None = None\n74:    type: Literal[\"local_pose\"] = \"local_pose\"\n78:    pose_id: str\n    async def _execute(\n        self,\n        joint_trajectory: api.models.JointTrajectory,\n        tcp: str | None,\n        actions: list[Action],\n        movement_controller: MovementController | None,\n        start_on_io: api.models.StartOnIO | None = None,\n        pause_on_io: api.models.PauseOnIO | None = None,\n        *,\n        state_stream_rate_msecs: int | None = None,\n    ) -> AsyncGenerator[MotionState, None]:\n        state_stream_rate = self._resolve_state_stream_rate(state_stream_rate_msecs)\n        # This is the entrypoint for the trajectory tuning mode\n        if ENABLE_TRAJECTORY_TUNING:\n            logger.info(\"Entering trajectory tuning mode...\")\n            try:\n                async for motion_group_state in self._tune_trajectory(\n                    joint_trajectory, tcp, actions, state_stream_rate_msecs=state_stream_rate\n                ):\n                    yield motion_group_state_to_motion_state(motion_group_state)\n            except (Exception, BaseException) as e:\n                logger.error(f\"Trajectory tuning failed: {e}\")\n",
+            "metadata": {
+              "output": "== CommandRoutine @ .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/models.py:7655\n6:    command_routine: CommandRoutineId\n7:    dataset: DatasetId | None = None\n11:    name: str | None = None\n15:    description: str | None = None\n19:    motion_group: MotionGroupReference | None = None\n23:    motion_group_setup: MotionGroupSetup | None\n27:    tcp: str | None = None\n31:    start_joint_position: DoubleArray | None = None\n35:    default_motion_settings: MotionSettings | None = None\n36:    commands: list[Command] = Field(..., min_length=1)\n40:    metadata: dict[str, str] | None = None\n44:    created_at: AwareDatetime | None = None\n48:    updated_at: AwareDatetime | None = None\n60:    dataset: DatasetId\n== ExplicitPathMotionCommand @ .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/models.py:6875\n6:    type: Literal[\"motion_command\"] = \"motion_command\"\n10:    target: PoseRef\n11:    path_type: PathType\n12:    motion_settings: MotionSettings | None = None\n13:    intent: str | None = None\n17:    metadata: dict[str, str] | None = None\n28:    algorithm: CollisionFreeAlgorithm\n29:    constraint: DirectionConstraint | None = None\n37:    type: Literal[\"motion_command\"] = \"motion_command\"\n41:    target: PoseRef\n42:    generator: MotionGenerator\n43:    motion_settings: MotionSettings | None = None\n44:    intent: str | None = None\n48:    metadata: dict[str, str] | None = None\n== GeneratedPathMotionCommand @ .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/models.py:6906\n6:    type: Literal[\"motion_command\"] = \"motion_command\"\n10:    target: PoseRef\n11:    generator: MotionGenerator\n12:    motion_settings: MotionSettings | None = None\n13:    intent: str | None = None\n17:    metadata: dict[str, str] | None = None\n28:    type: Literal[\"path_fraction\"] = \"path_fraction\"\n32:    value: float = Field(..., ge=0.0, lt=1.0)\n52:    type: Literal[\"distance\"] = \"distance\"\n56:    millimeters: float = Field(..., ge=0.0)\n60:    reference: AtReference\n68:    type: Literal[\"time\"] = \"time\"\n72:    seconds: float = Field(..., ge=0.0)\n76:    reference: AtReference\n== MotionGroupReference @ .venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/models.py:6615\n6:    type: Literal[\"id\"] = \"id\"\n10:    id: str\n29:    blending: Blending | None = None\n33:    limits_override: LimitsOverride | None = None\n44:    type: Literal[\"dataset_pose\"] = \"dataset_pose\"\n48:    cell: str\n52:    dataset: DatasetId\n53:    dataset_pose: DatasetPoseId\n54:    resolved_pose: ConfiguredPose | None = None\n55:    resolved_at: AwareDatetime | None = None\n59:    source_revision: str | None = None\n63:    metadata: dict[str, str] | None = None\n74:    type: Literal[\"local_pose\"] = \"local_pose\"\n78:    pose_id: str\n    async def _execute(\n        self,\n        joint_trajectory: api.models.JointTrajectory,\n        tcp: str | None,\n        actions: list[Action],\n        movement_controller: MovementController | None,\n        start_on_io: api.models.StartOnIO | None = None,\n        pause_on_io: api.models.PauseOnIO | None = None,\n        *,\n        state_stream_rate_msecs: int | None = None,\n    ) -> AsyncGenerator[MotionState, None]:\n        state_stream_rate = self._resolve_state_stream_rate(state_stream_rate_msecs)\n        # This is the entrypoint for the trajectory tuning mode\n        if ENABLE_TRAJECTORY_TUNING:\n            logger.info(\"Entering trajectory tuning mode...\")\n            try:\n                async for motion_group_state in self._tune_trajectory(\n                    joint_trajectory, tcp, actions, state_stream_rate_msecs=state_stream_rate\n                ):\n                    yield motion_group_state_to_motion_state(motion_group_state)\n            except (Exception, BaseException) as e:\n                logger.error(f\"Trajectory tuning failed: {e}\")\n",
+              "exit": 0,
+              "truncated": false
+            },
+            "title": "cd /Users/mkhe/NDX/wandelbots-nova; P=.venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/models.py; for c in CommandRoutine ExplicitPathMotionCommand GeneratedPathMotionCommand MotionGroupReference; do n=$(rg -n \"^class $c\\b\" $P | cut -d: -f1); echo \"== $c @ $P:$n\"; sed -n \"$n,$((n+90))p\" $P | rg -n \"^    [a-z_]+: \" | head -14; done; sed -n 1079,1100p nova/cell/motion_group.py",
+            "time": {
+              "start": 1792072690491,
+              "end": 1792072690556
+            }
+          },
+          "metadata": {
+            "anthropic": {
+              "caller": {
+                "type": "direct"
+              }
+            }
+          },
+          "id": "prt_13fdb26a7001c33iEmPLOG3zhM",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb22aa001eXiGRrGvEiKlTv"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "6a77c967775515e59bf16c21814ec28923246f77",
+          "type": "step-finish",
+          "tokens": {
+            "total": 24858,
+            "input": 2,
+            "output": 266,
+            "reasoning": 0,
+            "cache": {
+              "write": 1480,
+              "read": 23110
+            }
+          },
+          "cost": 0.008675,
+          "id": "prt_13fdb2bd70019rzLSc4ORznzsp",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb22aa001eXiGRrGvEiKlTv"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_13fdaaf74001NZ5fWZx05GFoSr",
+        "role": "assistant",
+        "mode": "explore",
+        "agent": "explore",
+        "path": {
+          "cwd": "/Users/mkhe/NDX/wandelbots-nova",
+          "root": "/Users/mkhe/NDX/wandelbots-nova"
+        },
+        "cost": 0.0468405,
+        "tokens": {
+          "total": 30436,
+          "input": 2,
+          "output": 3969,
+          "reasoning": 0,
+          "cache": {
+            "write": 1875,
+            "read": 24590
+          }
+        },
+        "modelID": "claude-sonnet-5.5",
+        "providerID": "github-copilot",
+        "time": {
+          "created": 1792072690741,
+          "completed": 1792072712734
+        },
+        "finish": "stop",
+        "id": "msg_13fdb2c35001wbrC19lJZF32iQ",
+        "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu"
+      },
+      "parts": [
+        {
+          "snapshot": "6a77c967775515e59bf16c21814ec28923246f77",
+          "type": "step-start",
+          "id": "prt_13fdb4122001qVW3h1rNLYMFZp",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb2c35001wbrC19lJZF32iQ"
+        },
+        {
+          "type": "text",
+          "text": "Findings are from read-only research; nothing was run or modified. Paths are relative to `/Users/mkhe/NDX/wandelbots-nova`.\n\n## 1) CommandRoutine builders (NDX-844) and API models\n\n**Builders** are in the `nova/command_routines/` package:\n- `nova/command_routines/__init__.py` re-exports all builders. The module docstring says it assembles NOVA CommandRoutine objects.\n- `nova/command_routines/routine.py:15` has `command_routine(routine_id, *, commands: list[api.models.Command], motion_group_setup=None, tcp=None, start_joint_position: list[float]|None=None, default_motion_settings=None, name=None, description=None, dataset=None, motion_group: MotionGroupReference|str|None=None, metadata=None) -> api.models.CommandRoutine`.\n  - A string `motion_group` is wrapped as `MotionGroupReference(id=...)`.\n- `nova/command_routines/routine.py:74` has `with_settings(settings: MotionSettings, commands) -> list[Command]`.\n  - It fills `motion_settings` only on `ExplicitPathMotionCommand` and `GeneratedPathMotionCommand` that have none.\n  - It does this through `model_copy`.\n- `nova/command_routines/commands.py` contains the rest:\n  - Refs: `io_value` (:17), `local_pose` (:36), `joint_position` (:41); the private `_as_pose_ref` (:46) and `_as_joint_ref` (:51) coerce strings and joint lists to refs.\n  - Path types: `path_line` (:59), `path_cartesian_ptp` (:64), `path_joint_ptp` (:69), `path_circle(via_pose)` (:74).\n  - Triggers: `at_path_fraction` (:82), `at_distance` (:87), `at_time` (:94).\n  - Motions: `motion(target, path_type, *, settings, intent, metadata)` (:102) returns `ExplicitPathMotionCommand`. `generated_motion(target, generator, ...)` (:120) returns `GeneratedPathMotionCommand`.\n  - Convenience motions: `move_linear` (:138), `move_cartesian_ptp` (:151), `move_joint_ptp` (:168), `move_circular` (:181).\n  - Non-motion commands: `set_io` (:199), `wait_for_time` (:214), `wait_for_io` (:227), `pause_on_io` (:241), `marker(name, *, payload, at, intent, metadata)` (:252) returns `MarkerCommand`.\n- The only existing test is `tests/command_routines/test_command_routine.py`. `nova/datasets/types.py` also mentions CommandRoutine.\n\n**API models** are in `.venv/lib/python3.12/site-packages/wandelbots_api_client/v2_pydantic/models/models.py`, exposed as `nova.api.models.*`:\n- `CommandRoutine` (:7655). Fields:\n  - `command_routine: CommandRoutineId`\n  - `dataset`, `name`, `description`\n  - `motion_group: MotionGroupReference | None`\n  - `motion_group_setup: MotionGroupSetup | None` (required, nullable)\n  - `tcp: str | None`\n  - `start_joint_position: DoubleArray | None`\n  - `default_motion_settings: MotionSettings | None`\n  - `commands: list[Command]` (min length 1)\n  - `metadata`, `created_at`, `updated_at`\n- `ExplicitPathMotionCommand` (:6875). Fields: `type=\"motion_command\"`, `target: PoseRef`, `path_type: PathType`, `motion_settings`, `intent`, `metadata`.\n- `GeneratedPathMotionCommand` (:6906). Same fields, but `generator: MotionGenerator` instead of `path_type`.\n- `MotionGroupReference` (:6615). Fields: `type=\"id\"`, `id`.\n- Per-command settings are the optional `motion_settings: MotionSettings` on each motion command.\n\n## 2) MotionGroup, trajectory cursor, ADR 001\n\n- `nova/cell/motion_group.py:144` defines `class MotionGroup(AbstractRobot)`. It has `get_setup` (:234), `stream_state` (:566), `_plan` (:922), `_resolve_setup_for_plan` (:992), `_execute` (:1079) and `_tune_trajectory` (:1154).\n- The public API lives on `AbstractRobot` in `nova/cell/robot_cell.py`:\n  - `plan(actions: ActionsLike, tcp=None, start_joint_position: tuple[float,...]|None=None, motion_group_setup=None, payload_override=None, singularity_handling=None) -> api.models.JointTrajectory` (:256).\n  - `stream_execute(joint_trajectory, tcp, actions, movement_controller=None, start_on_io=None, pause_on_io=None, *, state_stream_rate_msecs=None) -> AsyncGenerator[MotionState, None]` (:382).\n  - `execute(...)` takes the same arguments and returns `None` (:426).\n  - `stream_plan_and_execute` (:465) and `plan_and_execute` (:523).\n- `MotionGroup._execute` (`motion_group.py:1079`) is an async generator yielding `MotionState`. Each `MotionGroupState` is passed through `motion_group_state_to_motion_state`. In trajectory-tuning mode it uses `_tune_trajectory`.\n- `nova/cell/movement_controller/` contains:\n  - `trajectory_cursor.py`: `TrajectoryCursor` (:523), with `forward`, `backward`, `forward_to`, `backward_to`, `forward_to_next_action`, `backward_to_previous_action`, `pause` (:1078) and `detach` (:1105). Helper types are `Operation`, `OperationHandler`, `MovementOption`, `MotionEvent` and `Intent`.\n  - `move_forward.py`: the default movement controller, now an adapter over the cursor.\n  - `trajectory_state_machine.py` and a `README.md`.\n- `nova/cell/trajectory_executor.py` has `GroupArgs` (:54) and `TrajectoryExecutor` (:89), with `execute` (:145), `attach` (:165) and `apply_non_motion_actions` (:283).\n- Related files: `nova/cell/multi_trajectory_cursor.py`, `multi_motion_group.py`, `multi_motion_group_planner.py`.\n- ADR 001 is `docs/architecture/adr/001-merge-movement-controllers-into-trajectory-cursor.md`. It is titled \"`move_forward` becomes a `TrajectoryCursor` adapter\", status Accepted. `trajectory_cursor_overview.md` is at the repo root.\n\n## 3) Tests\n\n**Unit tests in `tests/cell/`:**\n- Cursor: `test_trajectory_cursor.py`, `_concurrency.py`, `_parity.py`, `_level_states.py`, `test_trajectory_state_machine.py`.\n- Executor: `test_trajectory_executor.py`, `test_trajectory_executor_session.py`.\n- Other: `test_move_forward_adapter.py`, `test_execute_shared_stream.py`, `test_motion_group.py`, `test_plan_limits.py`, `test_controller_api_gateway.py`, `test_state_stream*.py`.\n- Fixtures: `tests/cell/fixtures/*.json` (two recorded frame files).\n- The shared gateway test doubles are in `tests/cell/multi_group_doubles.py`:\n  - `multi_trajectory` (:20), `state` (:28), `execute_detail` (:44), `running_state`, `ended_state`, `paused_state`, `wait_for_io_state`.\n  - `watch_condition` (:73), `sync_driver` (:81), `class IOGateway` (:91), `motion_group(...)` (:109).\n- `tests/conftest.py` holds the global fixtures; I did not read it.\n\n**Integration tests (virtual controller)** are in `tests/nova/cell/`:\n- `test_trajectory_executor_integration.py`\n- `motion_group/test_trajectory_cursor_integration.py`. The `ur_mg` fixture (:47) uses a virtual UR10e and `kuka_mg` (:67) uses a virtual KUKA. Tests carry `@pytest.mark.asyncio` and `@pytest.mark.integration`.\n- Other files in `tests/nova/cell/motion_group/`: `test_motion_group_movement.py`, `test_pause_on_io.py`, `test_collision_*_planning.py`, `test_inverse_kinematics.py`, `test_payload.py`, `test_motion_group_task_cancelation.py`.\n\n## 4) Motions to Actions\n\n- `nova/actions/motions.py` has the `Motion(Action)` base (:22), with fields `type`, `target`, `settings`, `collision_setup`.\n- Its subclasses and helper functions:\n  - `Linear` (:44), `linear()` (:68)\n  - `CartesianPTP` (:101), `cartesian_ptp()` (:136)\n  - `Circular` (:171), `circular()` (:200)\n  - `JointPTP` (:240), `joint_ptp()` (:265)\n  - `Spline` (:296), `spline()` (:313)\n  - `CollisionFreeMotion` (:354), `MultiCollisionFreeMotion` (:376)\n  - `collision_free()` (:439), `multi_collision_free()` (:411)\n- Each subclass has `to_api_model()` at :56 (Linear, returns `PathLine`), :112, :182, :251, :309, :369 and :405.\n- `nova/actions/trajectory_builder.py:9` has `TrajectoryBuilder`, with `move`, `trigger`, `sequence`, `set` and `actions`.\n- Related files: `nova/actions/base.py` (:79 `to_api_model`), `io.py`, `path_trigger.py`, `path_trigger_resolver.py`, `container.py`, `mock.py`.\n- I found no existing code that converts commands to Actions or back. A grep for `CommandRoutine` and `command_routine` under `nova/actions` and `nova/cell` returned nothing.\n\n## Docs, typecheck and tests\n\n- Docs: `docs/getting_started.md`, `docs/programs.md` and `docs/architecture/adr/` (only ADR 001 exists). `AGENTS.md` and `CLAUDE.md` are at the repo root.\n- Type check: `uv run ty check`, from `.github/workflows/nova-dev.yaml:37`. The config is `[tool.ty.*]` in `pyproject.toml` (~line 133). I found no Makefile.\n- Unit tests: `PYTHONPATH=. LOG_LEVEL=WARNING uv run pytest -rs -v -m \"not integration\"` (`nova-dev.yaml:40`).\n- Integration tests: `pytest -rs -v -m integration`, which needs a running NOVA instance (`.github/workflows/nova-run-examples.yaml:124`).\n- Pytest config (`pyproject.toml:102`):\n  - `asyncio_mode=\"auto\"`\n  - `--doctest-modules`, so the builder docstring examples run as tests\n  - `--import-mode=importlib`\n  - `--timeout=300`\n  - markers `integration` and `xdist_group`\n  - `testpaths = nova wandelscript tests`\n- Lint config is in `ruff.toml`.",
+          "time": {
+            "start": 1792072696099,
+            "end": 1792072712369
+          },
+          "id": "prt_13fdb41230015pz3mBBJn8K0vg",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb2c35001wbrC19lJZF32iQ"
+        },
+        {
+          "reason": "stop",
+          "snapshot": "dd826c4e3cedc80535172c4fa8a2c7e2f9d0f887",
+          "type": "step-finish",
+          "tokens": {
+            "total": 30436,
+            "input": 2,
+            "output": 3969,
+            "reasoning": 0,
+            "cache": {
+              "write": 1875,
+              "read": 24590
+            }
+          },
+          "cost": 0.0468405,
+          "id": "prt_13fdb818a001p5cWJAnrKL52US",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb2c35001wbrC19lJZF32iQ"
+        },
+        {
+          "type": "patch",
+          "hash": "6a77c967775515e59bf16c21814ec28923246f77",
+          "files": [
+            "/Users/mkhe/NDX/wandelbots-nova/examples/start_here_cr.py"
+          ],
+          "id": "prt_13fdb821b001HEcWdvhRgCY6yx",
+          "sessionID": "ses_ec0255093ffernmjgWQeaAs8Eu",
+          "messageID": "msg_13fdb2c35001wbrC19lJZF32iQ"
+        }
+      ]
+    }
+  ]
+}
