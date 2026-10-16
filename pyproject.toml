@@ -33,6 +33,7 @@ dependencies = [
     "msgpack>=1.2.1",
     "pillow>=12.3.0",
     "urllib3>=2.8.0",
+    "multidict>=6.9.1",
 ]
 
 [project.optional-dependencies]
