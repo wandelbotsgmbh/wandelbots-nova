@@ -16,7 +16,13 @@ from nova import datasets as ds
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
 from nova.cell.routine_execution import resolve_routine
-from nova.command_routines import at_path_fraction, move_cartesian_ptp, move_linear, set_io
+from nova.command_routines import (
+    at_path_fraction,
+    move_cartesian_ptp,
+    move_linear,
+    set_io,
+    with_settings,
+)
 
 # Output that exists on the virtual KUKA controller.
 OUTPUT = "OUT#1"
@@ -48,6 +54,14 @@ async def start(ctx: nova.ProgramContext):
     tcp = (await motion_group.tcp_names())[0]
     home = tuple(await motion_group.joints())
 
+    slow = api.models.MotionSettings(
+        limits_override=api.models.LimitsOverride(tcp_velocity_limit=50)
+    )
+
+    fast = api.models.MotionSettings(
+        limits_override=api.models.LimitsOverride(tcp_velocity_limit=250)
+    )
+
     dataset_routine = ctx.dataset.command_routines["startup-routine"]
     supported = [c for c in dataset_routine.commands if c.type not in UNSUPPORTED]
 
@@ -57,9 +71,9 @@ async def start(ctx: nova.ProgramContext):
                 *supported,
                 move_cartesian_ptp("pick"),  # dataset poses are resolved through the dataset
                 set_io(OUTPUT, True),  # without trigger: at the motion boundary
-                move_linear("place"),
+                *with_settings(slow, [move_linear("place")]),
                 set_io(OUTPUT, False, at=at_path_fraction(0.5)),  # with trigger
-                move_cartesian_ptp("pick"),
+                *with_settings(fast, [move_cartesian_ptp("pick")]),
             ],
             # The seed routine carries no context, so take it from the motion group.
             "tcp": tcp,
