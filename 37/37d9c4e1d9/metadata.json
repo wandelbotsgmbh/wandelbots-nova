@@ -3,7 +3,7 @@
   "checkpoint_id": "3737d9c4e1d9",
   "strategy": "manual-commit",
   "branch": "feat/command-routine-execution",
-  "checkpoints_count": 9,
+  "checkpoints_count": 10,
   "files_touched": [
     "examples/command_routine.py",
     "tests/cell/test_execute_routine.py",
@@ -23,6 +23,13 @@
       "compact_transcript": "/37/37d9c4e1d9/1/transcript.jsonl",
       "content_hash": "/37/37d9c4e1d9/1/content_hash.txt",
       "prompt": "/37/37d9c4e1d9/1/prompt.txt"
+    },
+    {
+      "metadata": "/37/37d9c4e1d9/2/metadata.json",
+      "transcript": "/37/37d9c4e1d9/2/full.jsonl",
+      "compact_transcript": "/37/37d9c4e1d9/2/transcript.jsonl",
+      "content_hash": "/37/37d9c4e1d9/2/content_hash.txt",
+      "prompt": "/37/37d9c4e1d9/2/prompt.txt"
     }
   ],
   "token_usage": {
