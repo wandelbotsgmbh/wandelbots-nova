@@ -12,11 +12,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from nova.cell.routine_execution import resolve_routine
 from nova import api
 from nova.cell.motion_group import MotionGroup
+from nova.cell.routine_execution import resolve_routine
 from nova.cell.state_stream import MotionGroupStateStreamRegistry
 from nova.command_routines import (
+    at_path_fraction,
+    at_time,
     command_routine,
     marker,
     move_cartesian_ptp,
@@ -24,8 +26,6 @@ from nova.command_routines import (
     move_joint_ptp,
     move_linear,
     set_io,
-    at_path_fraction,
-    at_time,
 )
 from nova.core.gateway import ApiGateway
 from nova.datasets import Dataset, DatasetFrame, DatasetPose

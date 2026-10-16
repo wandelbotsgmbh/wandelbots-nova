@@ -3,9 +3,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from nova.cell.routine_execution import resolve_routine
 from nova import Nova, api
 from nova.cell.controllers import virtual_controller
+from nova.cell.routine_execution import resolve_routine
 from nova.command_routines import (
     command_routine,
     marker,

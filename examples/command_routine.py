@@ -11,11 +11,11 @@ Which commands are supported: see `docs/command_routines.md` ("Supported command
 """
 
 import nova
-from nova.cell.routine_execution import resolve_routine
 from nova import api, run_program
 from nova import datasets as ds
 from nova.actions import joint_ptp
 from nova.cell import virtual_controller
+from nova.cell.routine_execution import resolve_routine
 from nova.command_routines import at_path_fraction, move_cartesian_ptp, move_linear, set_io
 
 # Output that exists on the virtual KUKA controller.
