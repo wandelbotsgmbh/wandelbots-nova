@@ -3,7 +3,7 @@
   "checkpoint_id": "76b936ec2a25",
   "strategy": "manual-commit",
   "branch": "feat/command-routine-execution",
-  "checkpoints_count": 4,
+  "checkpoints_count": 5,
   "files_touched": [
     "pyproject.toml",
     "uv.lock"
@@ -22,6 +22,13 @@
       "compact_transcript": "/76/b936ec2a25/1/transcript.jsonl",
       "content_hash": "/76/b936ec2a25/1/content_hash.txt",
       "prompt": "/76/b936ec2a25/1/prompt.txt"
+    },
+    {
+      "metadata": "/76/b936ec2a25/2/metadata.json",
+      "transcript": "/76/b936ec2a25/2/full.jsonl",
+      "compact_transcript": "/76/b936ec2a25/2/transcript.jsonl",
+      "content_hash": "/76/b936ec2a25/2/content_hash.txt",
+      "prompt": "/76/b936ec2a25/2/prompt.txt"
     }
   ],
   "token_usage": {
