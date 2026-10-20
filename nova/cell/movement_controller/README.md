@@ -74,7 +74,11 @@ Three regimes decide how a frame is read (ADR 003):
   `forward()` resolved at 1.0 while the robot ran on to the end). A genuine new terminal state
   is always preceded by `WAIT_FOR_IO` or `RUNNING`, which lifts the filter — including a start
   issued at the very end of the trajectory. A pause requested on the resume is concluded by the
-  very `PAUSED_BY_USER` frame the filter would otherwise ignore.
+  very `PAUSED_BY_USER` frame the filter would otherwise ignore. When the cursor is *certain* the
+  new movement has nowhere to go (`forward()` at the end, `backward()` at the start, a target equal
+  to the current location) it arms with `accept_repeated_terminal=True` and the repeated stop
+  concludes the operation at once, without waiting for the controller's `WAIT_FOR_IO`; with an
+  unknown trajectory length the cursor makes no such claim.
 - `request_pause()` — the owner sent a `PauseMovementRequest`; the next `PAUSED_BY_USER` at
   standstill is a real pause even while `armed`.
 - `fail` — signal an error from any non-error state
@@ -129,8 +133,8 @@ The cursor derives *operation* completion from the machine:
 - `ended` and `paused` conclude any **commanded** operation. A `paused` machine with
   `pause_reason = IO` completes it with `OperationResult.paused_on_io = True`
   (`final_location` is the pause location); the cursor stays attached so the movement can be
-  resumed with another start. `move_forward` (the `execute()` path) cannot observe the IO yet
-  and ends the execution there with a warning.
+  resumed with another start. `move_forward` (the `execute()` path) waits for the signal to clear
+  and starts again (ADR 002); without a release waiter it ends the execution early, with a warning.
 - One-shot mode (`detach_on_standstill`, i.e. `move_forward`): `ended` detaches the cursor,
   which closes the execution websocket. A `paused` with `pause_reason = USER` that this cursor
   did not request (pendant, another client) fails the operation and the protocol loop with

@@ -143,18 +143,15 @@ async def test_pause_on_io_parameter_accepted_by_execution_api():
             assert abs(final_joints[0] - target_joints[0]) < 0.01
 
 
-# TODO: this test is consistently flaky in the pipeline but works on local
-# @pytest.mark.asyncio
-# @pytest.mark.integration
-async def _test_pause_on_io_stops_motion_early_when_triggered():
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_pause_on_io_pauses_the_motion_and_resumes_when_the_signal_clears():
     """
-    Tests that pause_on_io stops motion early when IO condition is met during execution.
+    plan_and_execute(pause_on_io=...) must block through a controller-side IO pause:
 
-    Verifies:
-    - Motion starts and robot begins moving
-    - Triggering IO during motion stops trajectory early
-    - No exception is raised (TrajectoryPausedOnIO treated as successful completion)
-    - Robot stops between start and target positions
+    - once moving, setting the IO pauses the robot on path (PAUSED_ON_IO)
+    - execute() does not return while the signal holds (ADR 002)
+    - clearing the IO resumes the motion; execute() returns at the target
     """
     initial_joint_positions = [0.0, -pi / 2, -pi / 2, 0.0, 0.0, 0.0, 0.0]
     controller_name = "kuka-pause-behavior-test"
@@ -174,15 +171,9 @@ async def _test_pause_on_io_stops_motion_early_when_triggered():
 
         async with kuka[0] as mg:
             await kuka.write("OUT#900", False)
-
-            start_time = datetime.now()
-            while True:
-                io_value = await kuka.read("OUT#900")
-                if not io_value:
-                    break
-                if (datetime.now() - start_time).total_seconds() > 2.0:
-                    raise TimeoutError("Timed out waiting for OUT#900 to become False")
-                await asyncio.sleep(0.05)
+            # The run traverses the full 1.5 rad; start from home so repeated runs on
+            # the shared virtual controller stay inside the joint limits.
+            await mg.plan_and_execute([jnt(initial_joint_positions[:6])], tcp="Flange")
 
             current_joints = await mg.joints()
             target_joints = list(current_joints)
@@ -193,39 +184,63 @@ async def _test_pause_on_io_stops_motion_early_when_triggered():
                 comparator=api.models.Comparator.COMPARATOR_EQUALS,
                 io_origin=api.models.IOOrigin.CONTROLLER,
             )
-
             actions = [jnt(target_joints, settings=MotionSettings(tcp_velocity_limit=30))]
 
-            async def trigger_io_after_motion_starts():
-                start_time = datetime.now()
-                while True:
-                    current = await mg.joints()
-                    movement = abs(current[0] - current_joints[0])
-                    if movement > 0.01:
-                        await kuka.write("OUT#900", True)
-                        break
-                    await asyncio.sleep(0.1)
-                    if (datetime.now() - start_time).total_seconds() > 5.0:
-                        raise TimeoutError("Motion never started")
+            async def wait_for_trajectory_state(kind: type, *, standstill: bool | None = None):
+                # Observe the pause on the state stream instead of polling joints —
+                # the level-based PAUSED_ON_IO is re-published every step.
+                async for state in mg.stream_state(None):
+                    details = state.execute.details if state.execute else None
+                    if isinstance(details, api.models.TrajectoryDetails) and isinstance(
+                        details.state, kind
+                    ):
+                        if standstill is None or state.standstill == standstill:
+                            return state
+
+            motion_task = asyncio.create_task(
+                mg.plan_and_execute(actions=actions, tcp="Flange", pause_on_io=pause_io)
+            )
+
+            async def observe(kind: type, *, standstill: bool, timeout: float):
+                """Wait for a trajectory state, surfacing a failed execute() instead of
+                timing out on a state that will never come."""
+                waiter = asyncio.ensure_future(
+                    wait_for_trajectory_state(kind, standstill=standstill)
+                )
+                done, _ = await asyncio.wait(
+                    {waiter, motion_task}, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+                )
+                if waiter not in done:
+                    waiter.cancel()
+                    if motion_task in done:
+                        motion_task.result()  # raises the execute() error
+                    raise TimeoutError(
+                        f"no {kind.__name__} (standstill={standstill}) in {timeout}s"
+                    )
+                return waiter.result()
 
             try:
-                motion_task = asyncio.create_task(
-                    mg.plan_and_execute(actions=actions, tcp="Flange", pause_on_io=pause_io)
-                )
-                trigger_task = asyncio.create_task(trigger_io_after_motion_starts())
+                await observe(api.models.TrajectoryRunning, standstill=False, timeout=20.0)
+                await asyncio.sleep(0.5)
+                await kuka.write("OUT#900", True)
 
-                await asyncio.wait_for(asyncio.gather(motion_task, trigger_task), timeout=30.0)
+                paused = await observe(
+                    api.models.TrajectoryPausedOnIO, standstill=True, timeout=10.0
+                )
+                paused_joints = list(paused.joint_position)
+                assert abs(paused_joints[0] - current_joints[0]) > 0.01, "robot didn't move"
+                assert abs(paused_joints[0] - target_joints[0]) > 0.5, "motion wasn't paused early"
+
+                # The pause holds: execute() must still be pending.
+                await asyncio.sleep(1.0)
+                assert not motion_task.done(), "execute() returned on a resumable IO pause"
+
+                await kuka.write("OUT#900", False)
+                await asyncio.wait_for(motion_task, timeout=60.0)
 
                 final_joints = await mg.joints()
-
-                movement_amount = abs(final_joints[0] - current_joints[0])
-                distance_to_target = abs(final_joints[0] - target_joints[0])
-
-                assert movement_amount > 0.01, (
-                    f"Robot didn't move (moved only {movement_amount:.3f} rad)"
-                )
-                assert distance_to_target > 0.5, (
-                    f"Motion wasn't interrupted (only {distance_to_target:.3f} rad from target)"
-                )
+                assert abs(final_joints[0] - target_joints[0]) < 0.01
             finally:
                 await kuka.write("OUT#900", False)
+                if not motion_task.done():
+                    motion_task.cancel()
