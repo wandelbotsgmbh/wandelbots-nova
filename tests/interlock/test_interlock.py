@@ -110,13 +110,13 @@ class FakeKV:
 
 def make_client(kv: FakeKV, robot: str) -> InterlockClient:
     client = InterlockClient.__new__(InterlockClient)
-    client._nats = None
+    client._nats = None  # ty: ignore[invalid-assignment]
     client._cell = "testcell"
     client._robot = robot
     client._run_id = f"run-{robot}"
     client._bucket_name = "nova_cells_testcell_interlocks"
     client._create_bucket = False
-    client._kv = kv
+    client._kv = kv  # ty: ignore[invalid-assignment]
     client._kv_lock = asyncio.Lock()
     client._held = {}
     return client
@@ -505,4 +505,4 @@ async def test_empty_acquire_is_a_noop():
 async def test_grant_is_immutable():
     grant = Grant(holder="ir340r01", run_id="x", revisions={"k": 1})
     with pytest.raises(Exception):
-        grant.holder = "ir340r02"
+        grant.holder = "ir340r02"  # ty: ignore[invalid-assignment]
