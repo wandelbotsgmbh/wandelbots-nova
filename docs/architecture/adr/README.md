@@ -37,3 +37,4 @@ Status legend: 🕒 Proposed · ✅ Accepted · ⚠ Superseded / deprecated
 ### Execution
 
 - [001](./001-merge-movement-controllers-into-trajectory-cursor.md) — `move_forward` becomes a `TrajectoryCursor` adapter ✅
+- [002](./002-command-routine-cursor.md) — Execute command routines with an SDK-native `CommandRoutineCursor` 🕒
