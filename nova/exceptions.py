@@ -107,3 +107,11 @@ class NoInverseKinematicsSolutionFound(ValueError):
     def pose(self) -> Pose:
         """Return the target pose that could not be solved."""
         return self._pose
+
+
+class UnsupportedRoutineCommand(ValueError):
+    """A CommandRoutine contains a command the SDK cannot execute (yet)."""
+
+
+class PoseResolutionError(ValueError):
+    """A pose referenced by a CommandRoutine cannot be resolved to a world pose."""
