@@ -21,6 +21,71 @@
     "output_tokens": 2446,
     "api_call_count": 5
   },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01NmvMpChEdUkjCBbGBMyzQg",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": ".claude/worktrees/zone-interlock-nats:pr"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "3fb63c1d8a7b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1164,
+        "end": 1165,
+        "entry_ids": [
+          "4740eb81-2e74-43d6-a097-9df5d1bb754a"
+        ],
+        "tool_use_id": "toolu_01NmvMpChEdUkjCBbGBMyzQg"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01NmvMpChEdUkjCBbGBMyzQg"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: .claude/worktrees/zone-interlock-nats:pr",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01VZSnht4XgP7C9FTCvct1qo",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "pr"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "3fb63c1d8a7b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1172,
+        "end": 1173,
+        "entry_ids": [
+          "6eae6963-d6f9-4d17-8b28-0c331b89e2ca"
+        ],
+        "tool_use_id": "toolu_01VZSnht4XgP7C9FTCvct1qo"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01VZSnht4XgP7C9FTCvct1qo"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: pr",
+        "default_collapsed": true
+      }
+    }
+  ],
   "session_metrics": {
     "turn_count": 7
   },
