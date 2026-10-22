@@ -1,0 +1,47 @@
+name: "Secret output"
+description: >-
+  Pass a secret between jobs as a GPG-encrypted job output. Drop-in replacement for
+  cloudposse/github-action-secret-outputs (same inputs, output and ciphertext format) that runs
+  gpg on the runner instead of building a Docker image, whose alpine base pull from
+  public.ecr.aws is rate-limited (429 "Data limit exceeded").
+inputs:
+  op:
+    description: "encode or decode"
+    required: true
+    default: "encode"
+  in:
+    description: "Input data"
+    required: true
+  secret:
+    description: "Passphrase to encrypt/decrypt with"
+    required: true
+outputs:
+  out:
+    description: "Result of the encryption/decryption"
+    value: ${{ steps.run.outputs.out }}
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        OPERATION: ${{ inputs.op }}
+        IN: ${{ inputs.in }}
+        SECRET: ${{ inputs.secret }}
+      run: |
+        set -euo pipefail
+        gpg_opts=(--batch --quiet --pinentry-mode loopback --passphrase "${SECRET}" --output -)
+        case "${OPERATION}" in
+          encode)
+            result=$(echo "${IN}" | gpg "${gpg_opts[@]}" --symmetric | base64 -w0)
+            ;;
+          decode)
+            result=$(echo "${IN}" | base64 -d | gpg "${gpg_opts[@]}" --decrypt)
+            echo "::add-mask::${result}"
+            ;;
+          *)
+            echo "op input can be only encode or decode" >&2
+            exit 1
+            ;;
+        esac
+        echo "out=${result}" >> "${GITHUB_OUTPUT}"
