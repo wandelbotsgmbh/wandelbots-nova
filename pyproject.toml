@@ -1,6 +1,6 @@
 [project]
 name = "wandelbots-nova"
-version = "6.0.0"
+version = "6.1.0"
 description = "Official Python SDK for the Wandelbots Nova"
 authors = [
     { name = "Wandelbots GmbH" },
@@ -34,7 +34,8 @@ dependencies = [
     "blinker>=1.9.0",
     "python-statemachine==3.2.0",
     "msgpack>=1.2.1",
-    "pillow>=12.3.0",
+    "pillow>=13.0.0",
+    "urllib3>=2.8.0",
 ]
 
 [project.optional-dependencies]
@@ -74,6 +75,7 @@ create-motion-group-models = "nova.helper_scripts.create_motion_group_models:upd
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
 dev-wheel = "nova.helper_scripts.trigger_dev_wheel:main"
+nova-skills = "nova.helper_scripts.install_agent_skills:main"
 
 [dependency-groups]
 dev = [

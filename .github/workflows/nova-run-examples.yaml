@@ -47,7 +47,7 @@ jobs:
           cat $GITHUB_OUTPUT
 
       - name: Store secret ouput
-        uses: cloudposse/github-action-secret-outputs@main
+        uses: ./.github/actions/secret-output
         id: role
         with:
           ## PASSWORD is a gpg passphrase stored in Github Secrets.
@@ -82,7 +82,7 @@ jobs:
           uv sync
 
       - name: Decode output secrets
-        uses: cloudposse/github-action-secret-outputs@main
+        uses: ./.github/actions/secret-output
         id: role
         with:
           secret: ${{ secrets.GPG_PASSWORD }}
@@ -143,6 +143,10 @@ jobs:
             run_cmd: "python examples/welding.py"
           - id: datasets
             run_cmd: "python examples/datasets.py"
+          - id: palletizing
+            run_cmd: "python examples/palletizing.py"
+          - id: pose_transformations
+            run_cmd: "python examples/pose_transformations.py"
           # TODO: starting rerun in the CI is flaky
           # - id: collision_setup
           #   run_cmd: "python examples/collision_setup.py"
@@ -161,7 +165,7 @@ jobs:
           uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
 
       - name: Decode output secrets
-        uses: cloudposse/github-action-secret-outputs@main
+        uses: ./.github/actions/secret-output
         id: role
         with:
           secret: ${{ secrets.GPG_PASSWORD }}
@@ -236,7 +240,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Decode output secrets
-        uses: cloudposse/github-action-secret-outputs@main
+        uses: ./.github/actions/secret-output
         id: role
         with:
           secret: ${{ secrets.GPG_PASSWORD }}

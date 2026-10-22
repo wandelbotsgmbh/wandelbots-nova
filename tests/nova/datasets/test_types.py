@@ -62,6 +62,22 @@ class TestDataset:
         assert dataset.poses["pick"].dataset_pose == "pick"
         assert set(dataset.frames) == {"fixture"}
 
+    def test_poses_and_frames_expose_sdk_poses(self):
+        """The API's wire `Pose` is confusing to work with, so entries carry an SDK `Pose`."""
+        dataset = _dataset(
+            poses={"pick": _pose("pick")},
+            frames={
+                "fixture": api.models.DatasetFrame(
+                    frame="fixture",
+                    pose=api.models.Pose(position=[0, 0, 0], orientation=[0, 0, 0]),
+                    dataset="default",
+                )
+            },
+        )
+
+        assert dataset.poses["pick"].pose == nova.types.Pose((1, 2, 3, 0, 0, 0))
+        assert dataset.frames["fixture"].pose == nova.types.Pose((0, 0, 0, 0, 0, 0))
+
 
 class TestLoadRequests:
     def test_remote_request_defaults(self):

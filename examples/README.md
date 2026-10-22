@@ -16,7 +16,9 @@ Examples on how to use the wandelbots-nova library.
 10. [Path triggers (IO writes between motions)](path_triggers.py)
 11. [Use datasets in a program](datasets.py)
 12. [Blend between motion commands](blending.py)
-13. [Robot-robot interlock: two robots, one shared zone](interlock_two_robots.py)
+13. [Palletizing with a dataset frame](palletizing.py)
+14. [Pose transformations with `@` and `~`](pose_transformations.py)
+15. [Robot-robot interlock: two robots, one shared zone](interlock_two_robots.py)
 
 ## Usage
 
