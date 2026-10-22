@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "300bafa72628",
+  "strategy": "manual-commit",
+  "branch": "ci/uv-audit-python-312",
+  "checkpoints_count": 3,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/30/0bafa72628/0/metadata.json",
+      "transcript": "/30/0bafa72628/0/full.jsonl",
+      "compact_transcript": "/30/0bafa72628/0/transcript.jsonl",
+      "content_hash": "/30/0bafa72628/0/content_hash.txt",
+      "prompt": "/30/0bafa72628/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 8,
+    "cache_creation_tokens": 4025,
+    "cache_read_tokens": 896453,
+    "output_tokens": 2461,
+    "api_call_count": 4
+  }
+}
