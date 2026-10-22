@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "da26f8c7417e",
+  "strategy": "manual-commit",
+  "branch": "feat/rerun-wall-clock",
+  "checkpoints_count": 12,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/da/26f8c7417e/0/metadata.json",
+      "transcript": "/da/26f8c7417e/0/full.jsonl",
+      "compact_transcript": "/da/26f8c7417e/0/transcript.jsonl",
+      "content_hash": "/da/26f8c7417e/0/content_hash.txt",
+      "prompt": "/da/26f8c7417e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 120,
+    "cache_creation_tokens": 49733,
+    "cache_read_tokens": 14554988,
+    "output_tokens": 29857,
+    "api_call_count": 54
+  }
+}
