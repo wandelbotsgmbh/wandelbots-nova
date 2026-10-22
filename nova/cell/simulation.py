@@ -252,6 +252,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
+        external_tcp: str | None,
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -303,7 +304,9 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             motion_state = MotionState(
                 motion_group_id=self.id,
                 path_parameter=float(location),
-                state=RobotState(pose=current_pose, tcp=tcp, joints=tuple(joints)),
+                state=RobotState(
+                    pose=current_pose, tcp=tcp, external_tcp=external_tcp, joints=tuple(joints)
+                ),
             )
 
             # Append this Pose to self._trajectory while moving
