@@ -235,7 +235,7 @@ class AbstractRobot(Device):
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
-        external_tool_offset_name: str | None = None,
+        external_tcp: str | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -249,7 +249,7 @@ class AbstractRobot(Device):
                 Only use this when you are certain the physical controller is configured with the same payload.
             singularity_handling (api.models.SingularityHandling | None): Strategy for handling wrist singularities
                 along a cartesian path. If None, the API default (NONE) is used. Experimental.
-            external_tool_offset_name (str | None): If set, the (moving) coordinate system defined by the root's kinematic chain
+            external_tcp (str | None): If set, the (moving) coordinate system defined by the root's kinematic chain
                 is used as reference and the fixed tool is moving relative to it
 
         Returns:
@@ -264,7 +264,7 @@ class AbstractRobot(Device):
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
-        external_tool_offset_name: str | None = None,
+        external_tcp: str | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions.
 
@@ -311,7 +311,7 @@ class AbstractRobot(Device):
                 motion_group_setup=motion_group_setup,
                 payload_override=payload_override,
                 singularity_handling=singularity_handling,
-                external_tool_offset_name=external_tool_offset_name,
+                external_tcp=external_tcp,
             )
 
             # Automatic viewer integration - log planning results if viewers are active
@@ -362,6 +362,7 @@ class AbstractRobot(Device):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
+        external_tcp: str | None,
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -388,6 +389,7 @@ class AbstractRobot(Device):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
+        external_tcp: str | None,
         actions: ActionsLike,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -417,6 +419,7 @@ class AbstractRobot(Device):
         motion_state_stream = self._execute(
             joint_trajectory=joint_trajectory,
             tcp=tcp,
+            external_tcp=external_tcp,
             actions=actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
@@ -432,6 +435,7 @@ class AbstractRobot(Device):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
+        external_tcp: str | None,
         actions: ActionsLike,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -457,6 +461,7 @@ class AbstractRobot(Device):
         motion_state_stream = self.stream_execute(
             joint_trajectory,
             tcp,
+            external_tcp,
             actions,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
@@ -471,6 +476,7 @@ class AbstractRobot(Device):
         self,
         actions: ActionsLike,
         tcp: str | None = None,
+        external_tcp: str | None,
         start_joint_position: tuple[float, ...] | None = None,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -515,6 +521,7 @@ class AbstractRobot(Device):
         motion_state_stream = self.stream_execute(
             joint_trajectory,
             tcp,
+            external_tcp,
             actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
@@ -529,6 +536,7 @@ class AbstractRobot(Device):
         self,
         actions: ActionsLike,
         tcp: str | None = None,
+        external_tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -568,16 +576,18 @@ class AbstractRobot(Device):
             return
 
         joint_trajectory = await self.plan(
-            actions_list,
-            tcp,
+            actions=actions_list,
+            tcp=tcp,
             start_joint_position=start_joint_position,
             payload_override=payload_override,
             singularity_handling=singularity_handling,
+            external_tcp=external_tcp
         )
         await self.execute(
-            joint_trajectory,
-            tcp,
-            actions_list,
+            joint_trajectory=joint_trajectory,
+            tcp=tcp,
+            external_tcp=external_tcp,
+            actions=actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
