@@ -733,7 +733,7 @@ class MotionGroup(AbstractRobot):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
-        external_tcp: str | None,
+        external_tcp: str | None = None,
     ) -> str:
         load_plan_response = await self._api_client.trajectory_caching_api.add_trajectory(
             cell=self._cell,
@@ -962,7 +962,7 @@ class MotionGroup(AbstractRobot):
             tcp=tcp,
             motion_group_setup=motion_group_setup,
             payload_override=payload_override,
-            external_tcp_name=external_tcp_name,
+            external_tcp=external_tcp,
         )
 
         # TODO: can be done in parallel, would be a big performance boost
@@ -1103,13 +1103,13 @@ class MotionGroup(AbstractRobot):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
-        external_tcp: str | None,
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tcp: str | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         state_stream_rate = self._resolve_state_stream_rate(state_stream_rate_msecs)
         # This is the entrypoint for the trajectory tuning mode
@@ -1119,9 +1119,9 @@ class MotionGroup(AbstractRobot):
                 async for motion_group_state in self._tune_trajectory(
                     joint_trajectory,
                     tcp,
-                    external_tcp,
                     actions,
                     state_stream_rate_msecs=state_stream_rate,
+                    external_tcp=external_tcp,
                 ):
                     yield motion_group_state_to_motion_state(motion_group_state)
             except (Exception, BaseException) as e:
@@ -1185,10 +1185,10 @@ class MotionGroup(AbstractRobot):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
-        external_tcp: str | None,
         actions: list[Action],
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tcp: str | None,
     ) -> AsyncGenerator[api.models.MotionGroupState, None]:
         start_joints = await self.joints()
 
@@ -1199,10 +1199,12 @@ class MotionGroup(AbstractRobot):
             joint_trajectory = await self._plan(
                 actions=actions,
                 tcp=tcp,
-                external_tcp=external_tcp,
                 start_joint_position=start_joints,
+                external_tcp=external_tcp,
             )
-            load_planned_motion_response = await self._load_planned_motion(joint_trajectory, tcp)
+            load_planned_motion_response = await self._load_planned_motion(
+                joint_trajectory, tcp, external_tcp
+            )
             return load_planned_motion_response, joint_trajectory
 
         execute_fn = partial(
