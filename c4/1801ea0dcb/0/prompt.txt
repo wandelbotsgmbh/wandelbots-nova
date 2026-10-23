@@ -40,3 +40,9 @@ show me the table of steps again
 ---
 
 create pr for #1 now
+
+---
+
+check how his commits would apply to main
+there is a client version already specified in PR #538 which has the relevant external tcp additions
+what we need is the same main additions (datasets) we pulled into lab/pause-auto-resume-main
