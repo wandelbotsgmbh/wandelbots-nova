@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "fde726174578",
+  "strategy": "manual-commit",
+  "branch": "wip/lab-main-fixes",
+  "checkpoints_count": 2,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/fd/e726174578/0/metadata.json",
+      "transcript": "/fd/e726174578/0/full.jsonl",
+      "compact_transcript": "/fd/e726174578/0/transcript.jsonl",
+      "content_hash": "/fd/e726174578/0/content_hash.txt",
+      "prompt": "/fd/e726174578/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 586,
+    "cache_creation_tokens": 1639451,
+    "cache_read_tokens": 61385527,
+    "output_tokens": 182285,
+    "api_call_count": 286
+  }
+}
