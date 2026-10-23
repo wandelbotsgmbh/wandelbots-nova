@@ -274,7 +274,7 @@ class MotionGroup(AbstractRobot):
         self,
         tcp_name: str | None = None,
         payload_override: str | api.models.Payload | None = None,
-        external_tool_offset_name: str | None = None,
+        external_tcp_name: str | None = None,
     ) -> api.models.MotionGroupSetup:
         """Get the motion group setup.
 
@@ -327,7 +327,7 @@ class MotionGroup(AbstractRobot):
             motion_group_description=motion_group_description,
             tcp_name=tcp_name,
             payload=resolved_payload,
-            external_tool_offset_name=external_tool_offset_name,
+            external_tcp_name=external_tcp_name,
         )
 
     @staticmethod
@@ -769,13 +769,19 @@ class MotionGroup(AbstractRobot):
         )
 
     async def _load_planned_motion(
-        self, joint_trajectory: api.models.JointTrajectory, tcp: str | None
+        self,
+        joint_trajectory: api.models.JointTrajectory,
+        tcp: str | None,
+        external_tcp: str | None = None,
     ) -> str:
         load_plan_response = await self._api_client.trajectory_caching_api.add_trajectory(
             cell=self._cell,
             controller=self._controller_id,
             add_trajectory_request=api.models.AddTrajectoryRequest(
-                motion_group=self.id, trajectory=joint_trajectory, tcp=tcp
+                motion_group=self.id,
+                trajectory=joint_trajectory,
+                tcp=tcp,
+                external_tcp=external_tcp,
             ),
         )
 
@@ -971,7 +977,7 @@ class MotionGroup(AbstractRobot):
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
-        external_tool_offset_name: str | None = None,
+        external_tcp: str | None = None,
     ) -> api.models.JointTrajectory:
         if not actions:
             raise ValueError("No actions provided")
@@ -995,7 +1001,7 @@ class MotionGroup(AbstractRobot):
             tcp=tcp,
             motion_group_setup=motion_group_setup,
             payload_override=payload_override,
-            external_tool_offset_name=external_tool_offset_name,
+            external_tcp=external_tcp,
         )
 
         # TODO: can be done in parallel, would be a big performance boost
@@ -1042,14 +1048,12 @@ class MotionGroup(AbstractRobot):
         tcp: str | None,
         motion_group_setup: api.models.MotionGroupSetup | None,
         payload_override: str | api.models.Payload | None,
-        external_tool_offset_name: str | None,
+        external_tcp: str | None,
     ) -> api.models.MotionGroupSetup:
         """Return the motion group setup to plan with, applying any payload override."""
         if motion_group_setup is None:
             return await self.get_setup(
-                tcp_name=tcp,
-                payload_override=payload_override,
-                external_tool_offset_name=external_tool_offset_name,
+                tcp_name=tcp, payload_override=payload_override, external_tcp_name=external_tcp
             )
 
         # Do not mutate the caller's setup.
@@ -1068,12 +1072,10 @@ class MotionGroup(AbstractRobot):
                     motion_group_description=description,
                 )
 
-        if external_tool_offset_name is not None:
+        if external_tcp is not None:
             description = await self._fetch_motion_group_description()
             motion_group_setup.external_tool_offset = (
-                description.tcps[external_tool_offset_name].pose
-                if description.tcps is not None
-                else None
+                description.tcps[external_tcp].pose if description.tcps is not None else None
             )
 
         return motion_group_setup
@@ -1146,6 +1148,7 @@ class MotionGroup(AbstractRobot):
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tcp: str | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         state_stream_rate = self._resolve_state_stream_rate(state_stream_rate_msecs)
         # This is the entrypoint for the trajectory tuning mode
@@ -1153,7 +1156,11 @@ class MotionGroup(AbstractRobot):
             logger.info("Entering trajectory tuning mode...")
             try:
                 async for motion_group_state in self._tune_trajectory(
-                    joint_trajectory, tcp, actions, state_stream_rate_msecs=state_stream_rate
+                    joint_trajectory,
+                    tcp,
+                    actions,
+                    state_stream_rate_msecs=state_stream_rate,
+                    external_tcp=external_tcp,
                 ):
                     yield motion_group_state_to_motion_state(motion_group_state)
             except (Exception, BaseException) as e:
@@ -1165,7 +1172,9 @@ class MotionGroup(AbstractRobot):
             movement_controller = move_forward
 
         # Load planned trajectory
-        trajectory_id = await self._load_planned_motion(joint_trajectory, tcp)
+        trajectory_id = await self._load_planned_motion(
+            joint_trajectory=joint_trajectory, tcp=tcp, external_tcp=external_tcp
+        )
 
         combined_actions = CombinedActions(items=tuple(actions))  # ty: ignore[invalid-argument-type]
         set_outputs = await self._resolve_set_outputs(combined_actions, joint_trajectory, tcp)
@@ -1240,6 +1249,7 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tcp: str | None,
     ) -> AsyncGenerator[api.models.MotionGroupState, None]:
         start_joints = await self.joints()
 
@@ -1247,8 +1257,15 @@ class MotionGroup(AbstractRobot):
             # we fix the start joints here because the tuner might call plan multiple times whilst tuning
             # and the start joints would change to the respective joint positions at the time of planning
             # which is not what we want
-            joint_trajectory = await self._plan(actions, tcp, start_joints)
-            load_planned_motion_response = await self._load_planned_motion(joint_trajectory, tcp)
+            joint_trajectory = await self._plan(
+                actions=actions,
+                tcp=tcp,
+                start_joint_position=start_joints,
+                external_tcp=external_tcp,
+            )
+            load_planned_motion_response = await self._load_planned_motion(
+                joint_trajectory, tcp, external_tcp
+            )
             return load_planned_motion_response, joint_trajectory
 
         execute_fn = partial(

@@ -449,7 +449,9 @@ class TrajectoryExecutionMachine(StateMachine):
         """
         self._pause_requested = True
 
-    def process_motion_state(self, state: api.models.MotionGroupState) -> StateUpdate:
+    def process_motion_state(
+        self, state: api.models.MotionGroupState, motion_id: str | None = None
+    ) -> StateUpdate:
         """Feed a :class:`~nova.api.models.MotionGroupState` into the machine.
 
         This is the **main entry point** for movement controllers.  It
@@ -496,7 +498,9 @@ class TrajectoryExecutionMachine(StateMachine):
 
         # Execute *is* present ------------------------------------------------
         assert state.execute is not None  # mypy
-        if isinstance(state.execute.details, api.models.TrajectoryDetails):
+        if isinstance(state.execute.details, api.models.TrajectoryDetails) and (
+            motion_id is None or state.execute.details.trajectory == motion_id
+        ):
             location = state.execute.details.location
             self.location = location
             trajectory_state = state.execute.details.state

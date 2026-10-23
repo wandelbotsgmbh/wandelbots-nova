@@ -1474,7 +1474,9 @@ class TrajectoryCursor:
                 # Tee every state to consumers of __aiter__ regardless of whether an
                 # operation is active: observers (guards, overlays, UIs) need states
                 # from before movement starts, not only once it is under way.
-                result = self._state_machine.process_motion_state(motion_group_state)
+                result = self._state_machine.process_motion_state(
+                    motion_group_state, self.motion_id
+                )
                 if logger.isEnabledFor(logging.DEBUG):
                     frame_state = _frame_execute_state(motion_group_state)
                     exec_state = type(frame_state).__name__ if frame_state is not None else None
