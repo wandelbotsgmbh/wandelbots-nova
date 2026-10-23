@@ -362,13 +362,13 @@ class AbstractRobot(Device):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
-        external_tcp: str | None,
         actions: list[Action],
         movement_controller: MovementController | None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tcp: str | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -389,13 +389,13 @@ class AbstractRobot(Device):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
-        external_tcp: str | None,
         actions: ActionsLike,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tcp: str | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -419,12 +419,12 @@ class AbstractRobot(Device):
         motion_state_stream = self._execute(
             joint_trajectory=joint_trajectory,
             tcp=tcp,
-            external_tcp=external_tcp,
             actions=actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            external_tcp=external_tcp,
         )
 
         async with aclosing(motion_state_stream) as motion_state_stream:
@@ -435,13 +435,13 @@ class AbstractRobot(Device):
         self,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
-        external_tcp: str | None,
         actions: ActionsLike,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tcp: str | None = None,
     ) -> None:
         """Execute a planned motion
 
@@ -461,12 +461,12 @@ class AbstractRobot(Device):
         motion_state_stream = self.stream_execute(
             joint_trajectory,
             tcp,
-            external_tcp,
             actions,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            external_tcp=external_tcp,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for _ in motion_state_stream:
@@ -476,7 +476,6 @@ class AbstractRobot(Device):
         self,
         actions: ActionsLike,
         tcp: str | None = None,
-        external_tcp: str | None,
         start_joint_position: tuple[float, ...] | None = None,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -485,6 +484,7 @@ class AbstractRobot(Device):
         singularity_handling: api.models.SingularityHandling | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tcp: str | None = None,
     ) -> AsyncIterable[MotionState]:
         """Plan and execute a trajectory for the given actions.
 
@@ -521,12 +521,12 @@ class AbstractRobot(Device):
         motion_state_stream = self.stream_execute(
             joint_trajectory,
             tcp,
-            external_tcp,
             actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            external_tcp=external_tcp,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for motion_state in motion_state_stream:
@@ -536,7 +536,6 @@ class AbstractRobot(Device):
         self,
         actions: ActionsLike,
         tcp: str | None = None,
-        external_tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         movement_controller: MovementController | None = None,
         start_on_io: api.models.StartOnIO | None = None,
@@ -545,6 +544,7 @@ class AbstractRobot(Device):
         singularity_handling: api.models.SingularityHandling | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tcp: str | None = None,
     ) -> None:
         """Plan and execute a trajectory for the given actions.
 
@@ -581,17 +581,17 @@ class AbstractRobot(Device):
             start_joint_position=start_joint_position,
             payload_override=payload_override,
             singularity_handling=singularity_handling,
-            external_tcp=external_tcp
+            external_tcp=external_tcp,
         )
         await self.execute(
             joint_trajectory=joint_trajectory,
             tcp=tcp,
-            external_tcp=external_tcp,
             actions=actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            external_tcp=external_tcp,
         )
 
     @abstractmethod
