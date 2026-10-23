@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [[package]]
@@ -2374,7 +2374,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-api-client"
-version = "26.7.0"
+version = "26.9.0.dev23"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2389,9 +2389,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e1/59/2fc434b1801692aab00acbf19a0f50e550340e4f72cafa99096dffdb5fbe/wandelbots_api_client-26.7.0.tar.gz", hash = "sha256:4ee9bdb54e8d1327c6a250bfcabc260744a53b835e3df14d1000dde3905bdeeb", size = 495183, upload-time = "2026-09-17T13:59:54.084Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/cc/ba390a75fe4ddb990321a03f68ea8ba90bb20808a924b14da04a8345db57/wandelbots_api_client-26.9.0.dev23.tar.gz", hash = "sha256:c764b856195931c19d3d19b8b99f35c2b14fc4c62fec96ef5eac40eb39130318", size = 498963, upload-time = "2026-10-22T06:37:21.482Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/0f/9587d06af3c7b8d65cfbe4e6f924bf47082d00e070c99a38dea1f22b61f2/wandelbots_api_client-26.7.0-py3-none-any.whl", hash = "sha256:22e8a2737499c6cc958c84c2273e02cc45acdc4ed45e0a8b731c1f64e3abc094", size = 1114338, upload-time = "2026-09-17T13:59:57.516Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/1f/a90f7054057b1be24295fa2da2b1b8e36b608937eb019656b5599eb1a27b/wandelbots_api_client-26.9.0.dev23-py3-none-any.whl", hash = "sha256:f5e87bf755c677ad7e91ab44179f74e2c5c1233d898c0c82fcef23ce9d204b06", size = 1119521, upload-time = "2026-10-22T06:37:18.551Z" },
 ]
 
 [[package]]
@@ -2515,7 +2515,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'wandelscript'", specifier = ">=0.12,<0.20" },
     { name = "urllib3", specifier = ">=2.8.0" },
     { name = "uvicorn", marker = "extra == 'novax'", specifier = ">=0.34.0" },
-    { name = "wandelbots-api-client", specifier = "==26.7.0" },
+    { name = "wandelbots-api-client", specifier = "==26.9.0.dev23" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
 provides-extras = ["nova-rerun-bridge", "wandelscript", "novax", "novapolicy", "benchmark"]
