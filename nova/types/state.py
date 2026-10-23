@@ -20,7 +20,6 @@ class RobotState(pydantic.BaseModel):
     tcp: str | None
     joints: tuple[float, ...]
     commanded_joints: tuple[float, ...] | None = None
-    external_tcp: str | None
 
 
 class MotionState(pydantic.BaseModel):
