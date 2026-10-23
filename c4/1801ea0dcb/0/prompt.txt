@@ -1,0 +1,42 @@
+Have a look at https://code.wabo.run/customer-projects/audi/cell-plc-simulation/-/blob/main/nova/sdk_fix/interlock_release_fix.py?ref_type=heads which is a wrapper some user build to fix an issue with the interlocks can you verify and compare this to the current state
+
+---
+
+put it into feat/zone-interlock-nats
+
+---
+
+what is the current state of affairs in this session?
+
+---
+
+push it and merge into lab/pause-auto-resume
+
+---
+
+Yes, do the analysis but also maybe have a look at the existing sessions and whether is one where we already did that.
+
+---
+
+pr #516 is close to being merged
+let's continue with step 2 in the list
+
+---
+
+did you find https://github.com/linuxcontainers/alpine
+
+---
+
+go with the composite action
+
+---
+
+rebase #516 and #544 on main
+
+---
+
+show me the table of steps again
+
+---
+
+create pr for #1 now
