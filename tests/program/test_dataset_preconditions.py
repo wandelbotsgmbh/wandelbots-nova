@@ -40,6 +40,9 @@ def _dataset_file(tmp_path: Path, dataset_id: str = "default") -> Path:
                 pose=api.models.Pose(position=[1, 2, 3], orientation=[0, 0, 0]),
                 dataset_pose="pick",
                 dataset=dataset_id,
+                frame=api.models.WorldFrameReference(),
+                tcp="Flange",
+                kinematic_configuration=api.models.UnspecifiedKinematicConfiguration(),
             )
         ],
         frames=[],
