@@ -1,28 +1,48 @@
-"""Live-broker tests for the interlock (marked ``nats``).
+"""Live-broker tests for the interlock.
 
 These verify the JetStream semantics the unit-test FakeKV merely assumes:
-atomic create-if-absent, revision-guarded delete, recreate after a delete
-tombstone, watch-based wake-up, and the bucket-creation race between
-concurrently starting robot processes.  They spin up a throwaway
-``nats-server -js`` on a free port; if the binary is not installed the whole
-module is skipped.
+atomic create-if-absent, revision-guarded delete (and the error nats-py raises
+when it fails), recreate after a delete tombstone, watch-based wake-up, and the
+bucket-creation race between concurrently starting robot processes.
+
+Two backends, picked per run:
+
+- **NOVA** — when ``NOVA_API`` is set (the CI ``integration`` job, or a local
+  ``.env``), every connection is a ``Nova()`` client's ``nats``: the same NATS a
+  robot program reaches through ``ctx.nova.nats``.
+- **local** — otherwise a throwaway ``nats-server -js`` on a free port, if the
+  binary is installed; without it the module is skipped.
+
+Each test uses a fresh cell name, hence its own KV bucket, deleted afterwards.
 """
 
 import asyncio
+import contextlib
+import os
 import shutil
 import socket
 import subprocess
 import time
 import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 import nats
 import pytest
 
-from nova.interlock import ForeignRelease, InterlockClient, InterlockTimeout, LockId
+from nova import Nova
+from nova.interlock import (
+    BUCKET_TEMPLATE,
+    ForeignRelease,
+    InterlockClient,
+    InterlockTimeout,
+    LockId,
+)
 
-pytestmark = pytest.mark.nats
+pytestmark = [pytest.mark.integration, pytest.mark.nats]
 
 NATS_SERVER = shutil.which("nats-server")
+
+Connect = Callable[[], Awaitable[nats.NATS]]
 
 
 def _free_port() -> int:
@@ -32,9 +52,13 @@ def _free_port() -> int:
 
 
 @pytest.fixture(scope="module")
-def nats_url(tmp_path_factory):
+def local_nats_url(tmp_path_factory):
+    """A throwaway JetStream server, only started when no NOVA instance is configured."""
+    if os.environ.get("NOVA_API"):
+        yield None
+        return
     if NATS_SERVER is None:
-        pytest.skip("nats-server binary not installed")
+        pytest.skip("neither NOVA_API nor a nats-server binary is available")
     port = _free_port()
     store = tmp_path_factory.mktemp("jetstream")
     proc = subprocess.Popen(
@@ -59,16 +83,42 @@ def nats_url(tmp_path_factory):
 
 
 @pytest.fixture
-def cell() -> str:
-    """A fresh cell (hence a fresh KV bucket) per test."""
-    return f"livetest-{uuid.uuid4().hex[:8]}"
+async def connect(local_nats_url) -> AsyncIterator[Connect]:
+    """Factory for NATS connections — one per simulated robot process."""
+    novas: list[Nova] = []
+    clients: list[nats.NATS] = []
+
+    async def open_connection() -> nats.NATS:
+        if local_nats_url is None:
+            nova = Nova()
+            await nova.open()
+            novas.append(nova)
+            return nova.nats
+        client = await nats.connect(local_nats_url)
+        clients.append(client)
+        return client
+
+    yield open_connection
+    for client in clients:
+        with contextlib.suppress(Exception):
+            await client.drain()
+    for nova in novas:
+        with contextlib.suppress(Exception):
+            await nova.close()
 
 
 @pytest.fixture
-async def nc(nats_url):
-    client = await nats.connect(nats_url)
-    yield client
-    await client.drain()
+async def cell(connect) -> AsyncIterator[str]:
+    """A fresh cell (hence a fresh KV bucket) per test; the bucket is removed afterwards."""
+    name = f"livetest-{uuid.uuid4().hex[:8]}"
+    yield name
+    with contextlib.suppress(Exception):
+        await (await connect()).jetstream().delete_key_value(BUCKET_TEMPLATE.format(cell=name))
+
+
+@pytest.fixture
+async def nc(connect) -> nats.NATS:
+    return await connect()
 
 
 async def test_roundtrip_against_jetstream(nc, cell):
@@ -137,47 +187,37 @@ async def test_lock_changing_hands_mid_release_is_foreign(nc, cell, monkeypatch)
     assert (await r01.inspect())[lock.key].holder == "ir340r02"
 
 
-async def test_bucket_creation_race(nats_url, cell):
+async def test_bucket_creation_race(connect, cell):
     """The cell starts up to 13 robot processes at once; concurrent first use
     must not crash on 'stream name already in use'."""
-    conns: list[nats.NATS] = []
 
     async def first_use(robot: str) -> None:
-        client = await nats.connect(nats_url)
-        conns.append(client)
-        locks = InterlockClient(client, cell=cell, robot=robot)
+        locks = InterlockClient(await connect(), cell=cell, robot=robot)
         grant = await locks.acquire([LockId.of(robot, "partner", 1)])
         await locks.release(grant)
 
-    try:
-        await asyncio.gather(*(first_use(f"rob{i:02d}") for i in range(8)))
-    finally:
-        for client in conns:
-            await client.drain()
+    await asyncio.gather(*(first_use(f"rob{i:02d}") for i in range(8)))
 
 
-async def test_crashed_holder_lock_survives_disconnect(nats_url, cell):
+async def test_crashed_holder_lock_survives_disconnect(connect, cell):
     """A holder that vanishes without releasing must keep blocking its partner
     (no TTL), and the restarted process recovers via include_previous_runs."""
     lock = LockId.of("ir340r01", "ir340r02", 9)
 
-    nc1 = await nats.connect(nats_url)
+    nc1 = await connect()
     r01 = InterlockClient(nc1, cell=cell, robot="ir340r01")
     await r01.acquire([lock])
     await nc1.close()  # process dies without releasing
 
-    nc2 = await nats.connect(nats_url)
-    try:
-        r02 = InterlockClient(nc2, cell=cell, robot="ir340r02")
-        with pytest.raises(InterlockTimeout):
-            await r02.acquire([lock], timeout=1.0, poll_interval=0.05)
+    nc2 = await connect()
+    r02 = InterlockClient(nc2, cell=cell, robot="ir340r02")
+    with pytest.raises(InterlockTimeout):
+        await r02.acquire([lock], timeout=1.0, poll_interval=0.05)
 
-        # recovery: the restarted r01 asserts the robot is physically clear
-        r01_restarted = InterlockClient(nc2, cell=cell, robot="ir340r01")
-        released = await r01_restarted.release_all(include_previous_runs=True)
-        assert released == [lock.key]
+    # recovery: the restarted r01 asserts the robot is physically clear
+    r01_restarted = InterlockClient(nc2, cell=cell, robot="ir340r01")
+    released = await r01_restarted.release_all(include_previous_runs=True)
+    assert released == [lock.key]
 
-        grant = await r02.acquire([lock], timeout=5)
-        assert grant.holder == "ir340r02"
-    finally:
-        await nc2.drain()
+    grant = await r02.acquire([lock], timeout=5)
+    assert grant.holder == "ir340r02"
