@@ -1,0 +1,75 @@
+yes push it
+
+---
+
+is lab/pause-auto-resume branched off of lab/interlock-with-armed-machine?
+
+---
+
+did we analyze how to get all the features of lab/pause-auto-resume into main in separate MRs per feature in this session?
+
+---
+
+create an jira description text for that as well
+
+---
+
+have a look at the pipeline errors for #516 the rate limiting can be circumvented if the alpine image is pulled from what alpine actually recommends; there should be images on github
+
+---
+
+<task-notification>
+<task-id>bwkwv6bi0</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/a7d5adb5-e4f7-4c8c-bc56-5c9b3b0003ec/tasks/bwkwv6bi0.output</output-file>
+<status>completed</status>
+<summary>Background command "Watch all CI runs on PRs 516 and 544" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+if 546 landed with the dependency updates are the depandabot mrs now obsolete?
+
+---
+
+<task-notification>
+<task-id>bmme6odlj</task-id>
+<tool-use-id>toolu_01U81MigD2jsNPPvUt1mhdKx</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/a7d5adb5-e4f7-4c8c-bc56-5c9b3b0003ec/tasks/bmme6odlj.output</output-file>
+<status>completed</status>
+<summary>Background command "Sequence integration runs and watch all to completion" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+516 got merged, what is the state now
+
+---
+
+<task-notification>
+<task-id>bxycju8p1</task-id>
+<tool-use-id>toolu_01BkVMAZAaQo4PH77geC54KB</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/a7d5adb5-e4f7-4c8c-bc56-5c9b3b0003ec/tasks/bxycju8p1.output</output-file>
+<status>completed</status>
+<summary>Background command "Re-run integration runs for 516, 544, 536 in sequence" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+first some question: do the failed tests need a live instance? Against which NATS and API did you run tests?
+
+---
+
+on the ci the test against nats can be part of the integration tests because the use a live instace with a nova cluster and API, would that change a lot for you?
+
+---
+
+yes, do it in #544 and push and right now you can check against 172.31.11.225 which I already put in the .env of the main worktree but forgot in the current interlock worktree
+
+---
+
+Is there a reason that what is usually called home in the examples is called rest in the interlock example? or did i overlook something?
+
+---
+
+yes, rename it to home and push
