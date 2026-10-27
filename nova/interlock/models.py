@@ -47,9 +47,12 @@ class LockId(pydantic.BaseModel):
 
     @pydantic.model_validator(mode="after")
     def _order_and_check(self) -> "LockId":
-        if self.robot_a == self.robot_b:
+        # Compare what the key is built from: two spellings of one robot that differ
+        # only in characters _clean maps to "-" must sort — and collide — the same way.
+        a, b = _clean(self.robot_a), _clean(self.robot_b)
+        if a == b:
             raise ValueError(f"interlock slot {self.slot}: a robot cannot interlock with itself")
-        if self.robot_a > self.robot_b:
+        if a > b:
             # Normalise to a canonical order so both partners derive the same key.
             # Bind both values first — assigning in place would alias.
             lo, hi = self.robot_b, self.robot_a

@@ -66,6 +66,7 @@ import nats
 from nats.js.api import KeyValueConfig
 from nats.js.client import KeyValue
 from nats.js.errors import (
+    APIError,
     BadRequestError,
     KeyNotFoundError,
     KeyWrongLastSequenceError,
@@ -98,6 +99,20 @@ _WATCH_WAIT_CAP = 5.0
 #: :meth:`InterlockClient.inspect` so an operator can ``force_release`` it.
 CORRUPT_HOLDER = "<unparseable>"
 
+#: JetStream "wrong last sequence" error codes.  nats-py translates them to
+#: ``KeyWrongLastSequenceError`` for ``create``/``update`` only; a revision-guarded
+#: ``delete`` raises the untranslated ``BadRequestError`` (err_code 10071).
+_WRONG_LAST_SEQUENCE = (10071, 10164)
+
+
+def _is_wrong_last_sequence(exc: BaseException) -> bool:
+    """True if *exc* means the key's revision was not the expected one."""
+    if isinstance(exc, KeyWrongLastSequenceError):
+        return True
+    if isinstance(exc, APIError) and exc.err_code in _WRONG_LAST_SEQUENCE:
+        return True
+    return "wrong last sequence" in str(exc).lower()
+
 
 class InterlockClient:
     """Per-robot client for the cell's interlock bucket.
@@ -124,6 +139,10 @@ class InterlockClient:
         self._create_bucket = create_bucket
         self._kv: KeyValue | None = None
         self._kv_lock = asyncio.Lock()
+        # Serialises acquire() so the "nothing held" check and the creates are one step
+        # for tasks sharing this client; otherwise a second task would adopt the first
+        # task's fresh lock as "our own" and both would get a grant.
+        self._acquire_lock = asyncio.Lock()
         self._held: dict[str, int] = {}
 
     @property
@@ -225,6 +244,14 @@ class InterlockClient:
         """
         if not locks:
             return Grant(holder=self._robot, run_id=self._run_id, revisions={})
+        async with self._acquire_lock:
+            return await self._acquire(
+                locks, timeout=timeout, label=label, poll_interval=poll_interval
+            )
+
+    async def _acquire(
+        self, locks: Sequence[LockId], *, timeout: float, label: str, poll_interval: float
+    ) -> Grant:
         if self._held:
             raise AlreadyHeldError(
                 self._robot, sorted(self._held), sorted({lock.key for lock in locks})
@@ -240,18 +267,18 @@ class InterlockClient:
             taken: dict[str, int] = {}
             blocked_key: str | None = None
 
-            for key in ordered:
-                record = LockRecord(
-                    holder=self._robot, run_id=self._run_id, slot=by_key[key].slot, label=label
-                )
-                payload = record.model_dump_json().encode()
-                try:
-                    taken[key] = await kv.create(key, payload)
-                except (KeyWrongLastSequenceError, Exception) as exc:  # noqa: B014
-                    if (
-                        isinstance(exc, KeyWrongLastSequenceError)
-                        or "wrong last sequence" in str(exc).lower()
-                    ):
+            key = ordered[0]
+            try:
+                for key in ordered:
+                    record = LockRecord(
+                        holder=self._robot, run_id=self._run_id, slot=by_key[key].slot, label=label
+                    )
+                    payload = record.model_dump_json().encode()
+                    try:
+                        taken[key] = await kv.create(key, payload)
+                    except Exception as exc:
+                        if not _is_wrong_last_sequence(exc):
+                            raise
                         existing, revision = await self._read(kv, key)
                         if (
                             existing is not None
@@ -263,7 +290,15 @@ class InterlockClient:
                             continue
                         blocked_key = key
                         break
-                    raise
+            except BaseException:
+                # A create failed for another reason (transport error, bucket full) or
+                # the task was cancelled.  The keys created so far exist in the bucket
+                # but nowhere else: undo them before propagating, or the partner waits
+                # on locks this robot does not know it holds.  The original error wins
+                # over one from the cleanup.
+                with contextlib.suppress(Exception):
+                    await self._abandon_attempt(kv, taken, in_flight=key)
+                raise
 
             if blocked_key is None:
                 self._held.update(taken)
@@ -275,8 +310,9 @@ class InterlockClient:
                 )
                 return Grant(holder=self._robot, run_id=self._run_id, revisions=taken)
 
-            # Roll back completely.  Safe: the robot has not moved.
-            await self._rollback(kv, taken)
+            # Roll back completely.  Safe: the robot has not moved.  Shielded like
+            # the error path: a cancellation here must not orphan the keys.
+            await self._abandon_attempt(kv, taken, in_flight=None)
 
             if asyncio.get_running_loop().time() >= deadline:
                 blocked: dict[str, LockRecord | None] = {}
@@ -353,13 +389,69 @@ class InterlockClient:
             with contextlib.suppress(Exception):
                 await watcher.stop()
 
-    async def _rollback(self, kv: KeyValue, taken: dict[str, int]) -> None:
-        # Guarded on the revision we created: if the entry changed hands in the
-        # meantime (operator force_release + partner acquire) it is not ours to
-        # delete, and the guard makes the delete a no-op instead of a clobber.
+    async def _rollback(self, kv: KeyValue, taken: dict[str, int]) -> dict[str, int]:
+        """Delete the keys of an abandoned attempt.  Returns those still in the bucket.
+
+        Guarded on the revision we created: if the entry changed hands in the
+        meantime (operator force_release + partner acquire) it is not ours to
+        delete, and the guard makes the delete a no-op instead of a clobber.
+        """
+        leftovers: dict[str, int] = {}
         for key, revision in taken.items():
-            with contextlib.suppress(Exception):
+            try:
                 await kv.delete(key, last=revision)
+            except Exception as exc:
+                if not _is_wrong_last_sequence(exc):
+                    leftovers[key] = revision
+        return leftovers
+
+    async def _abandon_attempt(
+        self, kv: KeyValue, taken: dict[str, int], *, in_flight: str | None
+    ) -> None:
+        """Roll back the keys of an acquire attempt that is being abandoned.
+
+        Shielded: a cancellation arriving meanwhile is held back until the rollback
+        has finished, then re-raised, so cancelling a waiting acquire neither
+        orphans keys nor leaves phantom ones in ``held``.  A create that failed
+        (*in_flight*) may still have reached the server — a timeout on the reply —
+        so that key is checked too.  Anything that cannot be deleted stays in
+        ``held`` for :meth:`release_all`.
+        """
+
+        async def undo() -> dict[str, int]:
+            if in_flight is not None and in_flight not in taken:
+                record, revision = await self._read(kv, in_flight)
+                if record is not None and (record.holder, record.run_id) == (
+                    self._robot,
+                    self._run_id,
+                ):
+                    taken[in_flight] = revision
+            return await self._rollback(kv, taken)
+
+        task = asyncio.ensure_future(undo())
+        try:
+            leftovers = await asyncio.shield(task)
+        except asyncio.CancelledError:
+            try:
+                leftovers = await task  # a second cancellation aborts the wait
+            except BaseException:
+                leftovers = dict(taken)
+            self._track_leftovers(leftovers)
+            raise
+        except Exception:
+            leftovers = dict(taken)  # no answer from the bucket: assume nothing was undone
+        self._track_leftovers(leftovers)
+
+    def _track_leftovers(self, leftovers: dict[str, int]) -> None:
+        if not leftovers:
+            return
+        logger.error(
+            "[%s] could not roll back %s; keeping them tracked — release_all() once "
+            "NATS is reachable (the robot has not moved)",
+            self._robot,
+            sorted(leftovers),
+        )
+        self._held.update(leftovers)
 
     # ------------------------------------------------------------------ release
 
@@ -397,7 +489,7 @@ class InterlockClient:
         # earlier under it (a partial release) — a partner may legitimately hold
         # them by now, so they are skipped.  A spent grant is re-examined in
         # full: releasing it again is a stale handle, loud if anyone took over.
-        live = any(self._held.get(key) == rev for key, rev in grant.revisions.items())
+        live = self._is_live(grant)
 
         for key, rev in sorted(grant.revisions.items()):
             if live and self._held.get(key) != rev:
@@ -424,7 +516,9 @@ class InterlockClient:
                 continue
             try:
                 await kv.delete(key, last=current_rev)
-            except KeyWrongLastSequenceError:
+            except Exception as exc:
+                if not _is_wrong_last_sequence(exc):
+                    raise
                 # Changed hands between read and delete — re-classify.
                 current, _ = await self._read(kv, key)
                 if current is not None:
@@ -435,6 +529,10 @@ class InterlockClient:
 
         if foreign:
             raise ForeignRelease(grant.holder, foreign)
+
+    def _is_live(self, grant: Grant) -> bool:
+        """A grant is live while any of its keys is still held at the revision it took."""
+        return any(self._held.get(key) == rev for key, rev in grant.revisions.items())
 
     async def release_all(self, *, include_previous_runs: bool = False) -> list[str]:
         """Release everything this robot holds.  Returns the released keys.
@@ -471,8 +569,22 @@ class InterlockClient:
                 continue
             if not include_previous_runs and record.run_id != self._run_id:
                 continue
-            with contextlib.suppress(Exception):
+            try:
                 await kv.delete(key, last=revision)
+            except Exception as exc:
+                if _is_wrong_last_sequence(exc):
+                    current, _ = await self._read(kv, key)
+                    if current is None or current.holder != self._robot:
+                        # Changed hands since the read: no longer ours to release.
+                        self._held.pop(key, None)
+                        logger.warning(
+                            "[%s] release_all skipped %s: it changed hands", self._robot, key
+                        )
+                        continue
+                logger.error(
+                    "[%s] release_all could not release %s (%s) — still held", self._robot, key, exc
+                )
+                continue
             self._held.pop(key, None)
             released.append(key)
             logger.info("[%s] interlock released %s (release_all)", self._robot, key)
@@ -510,7 +622,11 @@ class InterlockClient:
             )
             raise
         else:
-            await self.release(grant)
+            # The block may already have released everything early (a robot that
+            # frees the zone as soon as it has retreated); the partner may hold it
+            # by now, so a spent grant must not be re-examined as foreign.
+            if self._is_live(grant):
+                await self.release(grant)
 
     # ---------------------------------------------------------------- admin
 
@@ -552,7 +668,9 @@ class InterlockClient:
         )
         try:
             await kv.delete(key, last=revision)
-        except (KeyNotFoundError, KeyWrongLastSequenceError):
+        except Exception as exc:
+            if not (isinstance(exc, KeyNotFoundError) or _is_wrong_last_sequence(exc)):
+                raise
             logger.warning("[%s] force release of %s aborted: lock changed hands", self._robot, key)
             return False
         self._held.pop(key, None)

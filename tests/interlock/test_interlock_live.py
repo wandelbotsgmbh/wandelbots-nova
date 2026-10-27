@@ -18,7 +18,7 @@ import uuid
 import nats
 import pytest
 
-from nova.interlock import InterlockClient, InterlockTimeout, LockId
+from nova.interlock import ForeignRelease, InterlockClient, InterlockTimeout, LockId
 
 pytestmark = pytest.mark.nats
 
@@ -110,6 +110,31 @@ async def test_recreate_after_delete_tombstone(nc, cell):
     for _ in range(5):
         grant = await r01.acquire([lock])
         await r01.release(grant)
+
+
+async def test_lock_changing_hands_mid_release_is_foreign(nc, cell, monkeypatch):
+    """Against a real server a revision-guarded delete on a changed key raises
+    nats-py's untranslated BadRequestError (err_code 10071), not
+    KeyWrongLastSequenceError; release() must still report ForeignRelease."""
+    r01 = InterlockClient(nc, cell=cell, robot="ir340r01")
+    r02 = InterlockClient(nc, cell=cell, robot="ir340r02")
+    operator = InterlockClient(nc, cell=cell, robot="operator")
+    lock = LockId.of("ir340r01", "ir340r02", 9)
+    grant = await r01.acquire([lock])
+
+    read = r01._read
+
+    async def read_then_hand_over(kv, key):
+        result = await read(kv, key)
+        monkeypatch.setattr(r01, "_read", read)
+        assert await operator.force_release(key, reason="live test")
+        await r02.acquire([lock], timeout=5)
+        return result
+
+    monkeypatch.setattr(r01, "_read", read_then_hand_over)
+    with pytest.raises(ForeignRelease):
+        await r01.release(grant)
+    assert (await r01.inspect())[lock.key].holder == "ir340r02"
 
 
 async def test_bucket_creation_race(nats_url, cell):

@@ -3,15 +3,19 @@
 The unit tests run against an in-memory fake KV that reproduces the JetStream
 semantics we rely on: ``create`` fails if the key exists, ``get`` raises
 ``KeyNotFoundError`` if it does not, ``delete(last=...)`` is revision-guarded,
-and ``watch`` delivers DEL notifications.  ``test_interlock_live.py`` runs the
-same protocol against a real broker (marked ``nats``; needs a local
+and ``watch`` delivers DEL notifications.  The errors are the ones nats-py
+raises against a real server: ``create`` on an existing key gives
+``KeyWrongLastSequenceError``, but ``delete(last=...)`` on a changed key gives
+the untranslated ``BadRequestError`` (err_code 10071).  ``test_interlock_live.py``
+runs the same protocol against a real broker (marked ``nats``; needs a local
 ``nats-server`` binary).
 """
 
 import asyncio
+from collections.abc import Callable
 
 import pytest
-from nats.js.errors import KeyNotFoundError, KeyWrongLastSequenceError
+from nats.js.errors import BadRequestError, KeyNotFoundError, KeyWrongLastSequenceError
 
 from nova.interlock import (
     CORRUPT_HOLDER,
@@ -66,10 +70,23 @@ class FakeKV:
         self._rev = 0
         self.create_calls = 0
         self._watchers: dict[str, list[_FakeWatcher]] = {}
+        # Fault injection: raise on create of a key, block a create until an
+        # event is set, raise on every delete, or run a hook just before a delete.
+        self.fail_create: dict[str, BaseException] = {}
+        self.block_create: dict[str, asyncio.Event] = {}
+        self.fail_delete: BaseException | None = None
+        self.before_delete: Callable[[str], None] | None = None
 
     def _notify(self, key: str, entry: _Entry) -> None:
         for watcher in self._watchers.get(key, []):
             watcher.push(entry)
+
+    def put(self, key: str, value: bytes) -> int:
+        """Overwrite an entry directly — another client acting between our calls."""
+        self._rev += 1
+        self._data[key] = _Entry(value, self._rev)
+        self._notify(key, self._data[key])
+        return self._rev
 
     async def get(self, key: str) -> _Entry:
         if key not in self._data:
@@ -78,17 +95,24 @@ class FakeKV:
 
     async def create(self, key: str, value: bytes, **_) -> int:
         self.create_calls += 1
+        await asyncio.sleep(0)  # a real create is a network round trip: let others run
+        if key in self.block_create:
+            await self.block_create[key].wait()
+        if key in self.fail_create:
+            raise self.fail_create[key]
         if key in self._data:
             raise KeyWrongLastSequenceError()
-        self._rev += 1
-        self._data[key] = _Entry(value, self._rev)
-        self._notify(key, self._data[key])
-        return self._rev
+        return self.put(key, value)
 
     async def delete(self, key: str, last: int | None = None, **_) -> bool:
+        if self.fail_delete is not None:
+            raise self.fail_delete
+        if self.before_delete is not None:
+            self.before_delete(key)
         entry = self._data.get(key)
         if last is not None and (entry is None or entry.revision != last):
-            raise KeyWrongLastSequenceError()
+            # What nats-py raises: KeyValue.delete does not translate 10071.
+            raise BadRequestError(code=400, err_code=10071, description="wrong last sequence")
         if entry is None:
             return False
         del self._data[key]
@@ -109,16 +133,9 @@ class FakeKV:
 
 
 def make_client(kv: FakeKV, robot: str) -> InterlockClient:
-    client = InterlockClient.__new__(InterlockClient)
-    client._nats = None  # ty: ignore[invalid-assignment]
-    client._cell = "testcell"
-    client._robot = robot
+    client = InterlockClient(None, cell="testcell", robot=robot, create_bucket=False)
     client._run_id = f"run-{robot}"
-    client._bucket_name = "nova_cells_testcell_interlocks"
-    client._create_bucket = False
     client._kv = kv  # ty: ignore[invalid-assignment]
-    client._kv_lock = asyncio.Lock()
-    client._held = {}
     return client
 
 
@@ -149,6 +166,18 @@ def test_lock_id_rejects_out_of_range_slot():
 
 def test_geo40_keys_are_distinct():
     assert len({lock.key for lock in GEO40.values()}) == 3
+
+
+def test_lock_id_key_does_not_depend_on_how_each_side_spells_the_ids():
+    """One side may use the raw NOVA id ("0@a"), the other the cleaned id it read
+    from a key ("0-a"). The canonical order must follow the cleaned ids, or the two
+    partners derive different keys, both get a grant and neither waits."""
+    assert LockId.of("0@a", "0-b", 1).key == LockId.of("0@b", "0-a", 1).key
+
+
+def test_lock_id_rejects_a_pair_that_cleans_to_the_same_robot():
+    with pytest.raises(ValueError):
+        LockId.of("0@a", "0-a", 1)
 
 
 # -------------------------------------------------------------- acquire/release
@@ -506,3 +535,159 @@ async def test_grant_is_immutable():
     grant = Grant(holder="ir340r01", run_id="x", revisions={"k": 1})
     with pytest.raises(Exception):
         grant.holder = "ir340r02"  # ty: ignore[invalid-assignment]
+
+
+# --------------------------------------------------- failure paths (PR #544 review)
+
+
+async def test_acquire_rolls_back_keys_created_before_a_transport_error():
+    """A NATS error partway through a multi-key acquire must not leave the keys
+    created so far in the bucket: nothing tracks them, so the partner would wait
+    forever and release_all() could not find them."""
+    kv = FakeKV()
+    r01 = make_client(kv, "ir340r01")
+    locks = [GEO40["r01_r02"], GEO40["r01_r03"]]
+    kv.fail_create[max(lock.key for lock in locks)] = ConnectionError("nats: connection closed")
+
+    with pytest.raises(ConnectionError):
+        await r01.acquire(locks)
+
+    assert kv._data == {}, "the key created before the error must be rolled back"
+    assert r01.held == []
+
+
+async def test_acquire_rolls_back_keys_created_before_a_cancellation():
+    kv = FakeKV()
+    r01 = make_client(kv, "ir340r01")
+    locks = [GEO40["r01_r02"], GEO40["r01_r03"]]
+    second = max(lock.key for lock in locks)
+    kv.block_create[second] = asyncio.Event()  # never set: the create hangs
+
+    task = asyncio.create_task(r01.acquire(locks))
+    while kv.create_calls < 2:
+        await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert kv._data == {}, "a cancelled acquire must roll back what it created"
+    assert r01.held == []
+
+
+async def test_acquire_keeps_tracking_keys_it_could_not_roll_back():
+    """If the rollback itself fails, the leftover keys stay in ``held`` so
+    release_all() can still free them — never silently orphaned."""
+    kv = FakeKV()
+    r01 = make_client(kv, "ir340r01")
+    locks = [GEO40["r01_r02"], GEO40["r01_r03"]]
+    first, second = sorted(lock.key for lock in locks)
+    kv.fail_create[second] = ConnectionError("nats: connection closed")
+    kv.fail_delete = ConnectionError("nats: connection closed")
+
+    with pytest.raises(ConnectionError):
+        await r01.acquire(locks)
+
+    assert first in kv._data
+    assert r01.held == [first]
+    kv.fail_delete = None
+    assert await r01.release_all() == [first]
+    assert kv._data == {}
+
+
+async def test_hold_after_releasing_everything_early_exits_cleanly():
+    """A Folge that frees the zone as soon as it has retreated, then keeps moving
+    inside the block: the partner moves in meanwhile, and the clean exit of the
+    block must not turn that into ForeignRelease."""
+    kv = FakeKV()
+    r01, r02 = make_client(kv, "ir340r01"), make_client(kv, "ir340r02")
+    async with r01.hold([GEO40["r01_r02"]]) as grant:
+        await r01.release(grant)
+        await asyncio.wait_for(r02.acquire([GEO40["r01_r02"]], timeout=2), timeout=3)
+
+    record = LockRecord.model_validate_json((await kv.get(GEO40["r01_r02"].key)).value)
+    assert record.holder == "ir340r02", "the partner's lock must be untouched"
+    assert r01.held == []
+
+
+async def test_release_all_reports_only_what_it_actually_deleted():
+    kv = FakeKV()
+    r01 = make_client(kv, "ir340r01")
+    await r01.acquire([GEO40["r01_r02"]])
+    kv.fail_delete = ConnectionError("nats: connection closed")
+
+    assert await r01.release_all() == []
+    assert r01.held == [GEO40["r01_r02"].key], "a lock still in the bucket stays tracked"
+    assert GEO40["r01_r02"].key in kv._data
+
+
+async def test_release_reports_a_lock_that_changes_hands_mid_release_as_foreign():
+    """Operator force_release plus partner acquire between our read and our delete:
+    the revision-guarded delete fails with nats-py's untranslated BadRequestError
+    (err_code 10071), which must become ForeignRelease, not escape as-is."""
+    kv = FakeKV()
+    r01 = make_client(kv, "ir340r01")
+    grant = await r01.acquire([GEO40["r01_r02"]])
+    partner = LockRecord(holder="ir340r02", run_id="run-ir340r02", slot=9)
+
+    def hand_over(key: str) -> None:
+        kv.before_delete = None
+        kv.put(key, partner.model_dump_json().encode())
+
+    kv.before_delete = hand_over
+    with pytest.raises(ForeignRelease):
+        await r01.release(grant)
+    record = LockRecord.model_validate_json((await kv.get(GEO40["r01_r02"].key)).value)
+    assert record.holder == "ir340r02"
+
+
+async def test_force_release_returns_false_when_the_lock_changes_hands():
+    kv = FakeKV()
+    await make_client(kv, "ir340r01").acquire([GEO40["r01_r02"]])
+    partner = LockRecord(holder="ir340r02", run_id="run-ir340r02", slot=9)
+
+    def hand_over(key: str) -> None:
+        kv.before_delete = None
+        kv.put(key, partner.model_dump_json().encode())
+
+    kv.before_delete = hand_over
+    admin = make_client(kv, "operator")
+    assert await admin.force_release(GEO40["r01_r02"].key, reason="test") is False
+    assert GEO40["r01_r02"].key in kv._data
+
+
+async def test_concurrent_acquires_on_one_client_grant_once():
+    """Two coroutines sharing a client must not both get a grant for the same
+    lock: the second sees the first's hold and is refused."""
+    kv = FakeKV()
+    r01 = make_client(kv, "ir340r01")
+    results = await asyncio.gather(
+        r01.acquire([GEO40["r01_r02"]], timeout=0.3, poll_interval=0.01),
+        r01.acquire([GEO40["r01_r02"]], timeout=0.3, poll_interval=0.01),
+        return_exceptions=True,
+    )
+    grants = [r for r in results if isinstance(r, Grant)]
+    refused = [r for r in results if isinstance(r, AlreadyHeldError)]
+    assert len(grants) == 1 and len(refused) == 1, results
+
+
+async def test_cancelling_a_waiting_acquire_leaves_nothing_behind():
+    """A program cancels an acquire that is waiting for the partner: the keys it
+    took and rolled back must be gone, nothing phantom may stay in ``held``, and
+    the next acquire must work."""
+    kv = FakeKV()
+    r01, r02 = make_client(kv, "ir340r01"), make_client(kv, "ir340r02")
+    partner = await r02.acquire([GEO40["r01_r02"]])
+
+    waiting = asyncio.create_task(
+        r01.acquire([GEO40["r01_r02"], GEO40["r01_r03"]], timeout=10, poll_interval=0.01)
+    )
+    await asyncio.sleep(0.05)
+    waiting.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+
+    assert r01.held == []
+    assert set(kv._data) == {GEO40["r01_r02"].key}, "only the partner's lock may remain"
+    await r02.release(partner)
+    grant = await asyncio.wait_for(r01.acquire([GEO40["r01_r02"]], timeout=2), timeout=3)
+    assert grant.holder == "ir340r01"
