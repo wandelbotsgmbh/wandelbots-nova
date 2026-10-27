@@ -1,7 +1,7 @@
 """Two robots sharing one workspace zone, arbitrated by ``nova.interlock``.
 
 Two virtual KUKA robots stand 2 m apart on the X axis, both facing +Y, so at
-rest their envelopes do not overlap.  Each cycle a robot brings its flange to
+home their envelopes do not overlap.  Each cycle a robot brings its flange to
 the meeting point midway between the two bases, (0, 0, 1500) mm, flange down —
 a point both robots can reach, so that is the shared zone.  It gets there in
 two stages: first it turns its base joint 45° toward the partner, to the
@@ -77,7 +77,7 @@ TOWARD_PARTNER = {ROBOT_A: 1.0, ROBOT_B: -1.0}
 APPROACH_ANGLE = math.radians(45)
 
 # The meeting point, world frame, mm: midway between the bases, 1.5 m up.  Its
-# orientation is taken from the rest pose at runtime (flange pointing down).
+# orientation is taken from the home pose at runtime (flange pointing down).
 MEETING_POINT = (0.0, 0.0, 1500.0)
 
 # The zone shared by the two robots.  A lock is a *pair* relationship — "the
@@ -165,27 +165,27 @@ async def robot_cycle(controller: Controller, locks: InterlockClient) -> None:
     """One robot's program: approach, visit the meeting point, retreat, repeated."""
     motion_group = controller[0]
     tcp = (await motion_group.tcp_names())[0]
-    # Rest = base joint at 0, arm along the base X axis, i.e. along world +Y,
+    # Home = base joint at 0, arm along the base X axis, i.e. along world +Y,
     # away from the partner.  Defined, not measured: the robot may still be
-    # turned from an earlier run, and "wherever I am now" is not a rest pose.
-    rest = list(await motion_group.joints())
-    rest[0] = 0.0
+    # turned from an earlier run, and "wherever I am now" is not a home pose.
+    home = list(await motion_group.joints())
+    home[0] = 0.0
     direction = TOWARD_PARTNER[locks.robot]
 
     def turned_by(angle: float) -> list[float]:
-        joints = list(rest)
-        joints[0] = rest[0] + direction * angle
+        joints = list(home)
+        joints[0] = home[0] + direction * angle
         return joints
 
     approach = turned_by(APPROACH_ANGLE)  # 45° toward the partner, still clear of the zone
 
-    await motion_group.plan_and_execute([joint_ptp(rest, settings=SPEED)], tcp=tcp)
+    await motion_group.plan_and_execute([joint_ptp(home, settings=SPEED)], tcp=tcp)
 
-    # The meeting point keeps the rest pose's orientation — flange pointing down.
+    # The meeting point keeps the home pose's orientation — flange pointing down.
     orientation = (await motion_group.tcp_pose(tcp)).to_tuple()[3:]
     meeting_point = Pose((*MEETING_POINT, *orientation))
 
-    # Rule 3 — at rest the arm points away from the partner, i.e. is known to
+    # Rule 3 — at home the arm points away from the partner, i.e. is known to
     # be outside the zone, so any lock a previous run of this robot left behind
     # (it crashed, was killed …) is safe to drop now.  Anywhere else this would
     # be wrong.
@@ -216,7 +216,7 @@ async def robot_cycle(controller: Controller, locks: InterlockClient) -> None:
         # Rule 2 — the clean exit above is the release.  Had anything raised
         # inside the block, the lock would still be held now.
 
-        await motion_group.plan_and_execute([joint_ptp(rest, settings=SPEED)], tcp=tcp)
+        await motion_group.plan_and_execute([joint_ptp(home, settings=SPEED)], tcp=tcp)
 
     log.info("[%s] done, holding %s", locks.robot, locks.held or "nothing")
 
