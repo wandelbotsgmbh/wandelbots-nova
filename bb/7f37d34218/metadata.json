@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "bb7f37d34218",
+  "strategy": "manual-commit",
+  "branch": "feat/add-external-tcp-to-execution-commands",
+  "checkpoints_count": 5,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/bb/7f37d34218/0/metadata.json",
+      "transcript": "/bb/7f37d34218/0/full.jsonl",
+      "compact_transcript": "/bb/7f37d34218/0/transcript.jsonl",
+      "content_hash": "/bb/7f37d34218/0/content_hash.txt",
+      "prompt": "/bb/7f37d34218/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2478,
+    "cache_creation_tokens": 199206,
+    "cache_read_tokens": 11780708,
+    "output_tokens": 90576,
+    "api_call_count": 83
+  }
+}

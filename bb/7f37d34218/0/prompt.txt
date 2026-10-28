@@ -1,0 +1,81 @@
+We got the error message 
+
+<pasted_content id="af2a">
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]   +-+---------------- 1 ----------------
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     | Traceback (most recent call last):
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/io_condition.py", line 231, in wait_until_bus_io_lost
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     if not _bus_io_state_connected(await queue.get()):
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |                                    ^^^^^^^^^^^^^^^^^
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/usr/local/lib/python3.13/asyncio/queues.py", line 186, in get
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     await getter
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     | asyncio.exceptions.CancelledError
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     | During handling of the above exception, another exception occurred:
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     | Traceback (most recent call last):
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/motion_group.py", line 1230, in execution
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     await self._api_client.trajectory_execution_api.execute_trajectory(
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     ...<3 lines>...
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     )
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 41, in async_wrapper
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     raise e
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/app/.venv/lib/python3.13/site-packages/nova/core/gateway.py", line 37, in async_wrapper
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     return await original_attr(*args, **kwargs)
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/app/.venv/lib/python3.13/site-packages/pydantic/_internal/_validate_call.py", line 35, in wrapper_function
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     return await wrapper(*args, **kwargs)
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/app/.venv/lib/python3.13/site-packages/wandelbots_api_client/v2_pydantic/api/trajectory_execution_api.py", line 136, in execute_trajectory
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     async for request in client_request_generator(iterate_responses(websocket)):
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |         await websocket.send(request.model_dump_json(exclude_none=True))
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/app/sdk_fix/playback_speed_on_execute_fix.py", line 225, in controller
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     await supervisor
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/app/sdk_fix/playback_speed_on_execute_fix.py", line 285, in run
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     await guard
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/app/sdk_fix/playback_speed_on_execute_fix.py", line 339, in _guard
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     await self._wait_for_signal_loss()
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/app/.venv/lib/python3.13/site-packages/nova/cell/io_condition.py", line 234, in wait_until_bus_io_lost
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     await subscription.unsubscribe()
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |   File "/app/.venv/lib/python3.13/site-packages/nats/aio/subscription.py", line 272, in unsubscribe
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     |     raise errors.ConnectionClosedError
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     | nats.errors.ConnectionClosedError: nats: connection closed
+[app]: 2026-10-28 10:52:48 [INFO] cell_app.production: [ir340r01]     +------------------------------------
+</pasted_content id="af2a">
+
+ for multiple processes in an ap which run 12 controllers simultaneously. Under which circumstance would this happen when using the SDK?
+
+---
+
+More context: 
+
+<pasted_content id="af2a">
+The NATS server closed the robot programs' sessions exactly one hour after they started. That points to an expiring authentication session, not a network fault and not anything in the Folgen.
+
+Evidence
+- Start and failure times. Every robot program except ir450r01 started at 2026-10-28 09:52:17 (log times are UTC). Nine of them crashed between 10:52:19 and 10:52:22 with nats: connection closed / NATS client is not connected (exit code 1). ir340r01 followed at 10:52:48, which is when its running trajectory call came back.
+- The control case. ir450r01 was restarted at 10:03:24 and was still running fine at 10:52. Its one hour would run out at 11:03, after the log ends.
+- No program had been up that long before. The longest earlier run was about 48 minutes, so this was the first time one reached the hour.
+- It wasn't the steps they were on. The robots failed in different places: idle at cell.py waiting for E1, in a clinch handshake, requesting interlocks, or mid trajectory. The only thing they share is their age.
+- The client was told to stop, not cut off. In nats-py 2.16, a dropped socket puts the client into reconnecting mode with 60 retries. It goes straight to "closed" with no retry only if the client closes itself or the server sends an error message. The robot programs are separate processes and nothing in them closes NATS. So the server ended the sessions, most likely with a "User Authentication Expired" error. The robots log in through NOVA-Auth (v2.11.0), the server's external login service, and its login tokens apparently last one hour.
+- ir340r02 and ir360r02 have no error in their logs only because they were inside a motion or websocket call when the logs end, and that call doesn't touch NATS. ir450r01 hadn't reached its hour.
+</pasted_content id="af2a">
+
+---
+
+More context in the diagnosis package with the logs for the nats and nats auth services:
+@/Users/q/Downloads/diagnosis-2026-10-28T10_56_05.317Z
+
+---
+
+A colleage will push a commit with a potential fix onto the branch feat/add-external-tcp-to-execution-commands which is used by the customer app please monitor github and as soon as the commit appears verify with your context here whether it fixes the the issue
+
+---
+
+<task-notification>
+<task-id>baeriy2g2</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/64b84f1a-80d4-43c5-9357-63be6b9dbdd6/tasks/baeriy2g2.output</output-file>
+<status>completed</status>
+<summary>Monitor "new commit on feat/add-external-tcp-to-execution-commands" stream ended</summary>
+<event>NEW_HEAD be27406cce0f7b75e917ae1b6ae451bd3b328d5d (was 02a92ee26cabada53707a4313434d72d64a7df90)</event>
+</task-notification>
