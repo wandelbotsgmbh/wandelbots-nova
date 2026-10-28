@@ -74,6 +74,7 @@ from nats.js.errors import (
 from nats.js.kv import KV_DEL, KV_PURGE
 from pydantic import ValidationError
 
+from nova.core.nats_state import nats_usable
 from nova.interlock.models import (
     BUCKET_TEMPLATE,
     AlreadyHeldError,
@@ -143,7 +144,7 @@ class InterlockClient:
         async with self._kv_lock:
             if self._kv is not None:
                 return self._kv
-            if not self._nats.is_connected:
+            if not nats_usable(self._nats):
                 raise RuntimeError(f"NATS client is not connected for: {self._nats.connected_url}")
             js = self._nats.jetstream()
             try:

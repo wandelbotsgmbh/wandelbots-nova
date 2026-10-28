@@ -280,3 +280,96 @@ async def test_bus_io_loss_is_immediate_when_the_bus_is_already_down():
     watcher = IOConditionWatcher(gateway, "cell", "ctrl", nats_client=nats)
     async with asyncio.timeout(2):
         await watcher.wait_until_bus_io_lost()
+
+
+# -- NATS reconnects --------------------------------------------------------------
+
+
+async def test_bus_io_release_re_reads_once_after_a_nats_reconnect():
+    """Values pushed while our connection was down are gone, so a completed reconnect
+    triggers the same one-shot read a returning bus does."""
+    nats = FakeNats()
+    gateway = _gateway(bus_values=[_value("enable", False), _value("enable", True)])
+    watcher = IOConditionWatcher(gateway, "cell", "ctrl", nats_client=nats)
+
+    wait = asyncio.create_task(watcher.wait_until_released(motion_enable_signal("enable")))
+    await nats.subscribed.wait()
+    await _settle()
+    assert not wait.done()
+
+    await nats.reconnect()  # the PLC flipped the signal in between; nobody saw it
+    async with asyncio.timeout(2):
+        await wait
+    assert gateway.bus_ios_api.get_bus_io_values.await_count == 2
+    assert nats.subscriptions == []
+
+
+async def test_bus_io_release_keeps_waiting_when_the_re_read_still_pauses():
+    nats = FakeNats()
+    gateway = _gateway(bus_values=[_value("enable", False), _value("enable", False)])
+    watcher = IOConditionWatcher(gateway, "cell", "ctrl", nats_client=nats)
+
+    wait = asyncio.create_task(watcher.wait_until_released(motion_enable_signal("enable")))
+    await nats.subscribed.wait()
+    await nats.reconnect()
+    await _settle()
+    assert not wait.done()
+    assert gateway.bus_ios_api.get_bus_io_values.await_count == 2
+
+    await nats.publish(VALUES, _pushed("enable", True))
+    async with asyncio.timeout(2):
+        await wait
+
+
+async def test_bus_io_condition_accepts_a_reconnecting_client():
+    """nats-py queues the subscribe while reconnecting; a wait that starts in that window
+    must not fail (the server expires logins hourly, so the window recurs)."""
+    nats = FakeNats(connected=False, reconnecting=True)
+    gateway = _gateway(bus_values=[_value("enable", False)])
+    watcher = IOConditionWatcher(gateway, "cell", "ctrl", nats_client=nats)
+
+    wait = asyncio.create_task(watcher.wait_until_released(motion_enable_signal("enable")))
+    await nats.subscribed.wait()
+    await _settle()
+    assert not wait.done()
+
+    await nats.publish(VALUES, _pushed("enable", True))
+    async with asyncio.timeout(2):
+        await wait
+
+
+async def test_bus_io_loss_is_re_checked_after_a_nats_reconnect():
+    nats = FakeNats()
+    gateway = _gateway(bus_states=[_bus_state(CONNECTED), _bus_state(DISCONNECTED)])
+    watcher = IOConditionWatcher(gateway, "cell", "ctrl", nats_client=nats)
+
+    wait = asyncio.create_task(watcher.wait_until_bus_io_lost())
+    await nats.subscribed.wait()
+    await _settle()
+    assert not wait.done()
+
+    await nats.reconnect()  # the bus went away while we were not subscribed
+    async with asyncio.timeout(2):
+        await wait
+    assert gateway.bus_ios_api.get_bus_io_state.await_count == 2
+
+
+async def test_bus_io_loss_wait_survives_a_failing_unsubscribe():
+    """nats-py raises on unsubscribe once the connection is closed; that must not replace
+    the wait's own outcome (or the cancellation that ended it)."""
+    nats = FakeNats()
+    nats.unsubscribe_error = RuntimeError("nats: connection closed")
+    gateway = _gateway(bus_states=[_bus_state(CONNECTED), _bus_state(CONNECTED)])
+    watcher = IOConditionWatcher(gateway, "cell", "ctrl", nats_client=nats)
+
+    wait = asyncio.create_task(watcher.wait_until_bus_io_lost())
+    await nats.subscribed.wait()
+    await nats.publish(STATUS, _status(""))
+    async with asyncio.timeout(2):
+        await wait  # returns, does not raise
+
+    wait = asyncio.create_task(watcher.wait_until_bus_io_lost())
+    await _settle()
+    wait.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await wait

@@ -29,6 +29,7 @@ from typing import Any, Protocol
 from pydantic import TypeAdapter
 
 from nova import api
+from nova.core.nats_state import nats_usable
 
 logger = logging.getLogger(__name__)
 
@@ -210,28 +211,44 @@ class IOConditionWatcher:
         """Return once the bus-IO service is not ``CONNECTED`` (or is gone entirely).
 
         The state is taken from the ``bus-ios.status`` NATS subject after one initial
-        request; a service that cannot even be asked counts as lost.
+        request, and asked for once more after every NATS reconnect (a status change
+        pushed while our connection was down is not replayed); a service that cannot
+        even be asked counts as lost.
         """
         nats_client = self._require_nats()
-        queue: asyncio.Queue[bytes] = asyncio.Queue()
+        queue: asyncio.Queue[bytes | None] = asyncio.Queue()
 
         async def on_status(message) -> None:
             await queue.put(message.data)
 
+        reconnects = self._relay_reconnects(nats_client, queue, None)
         subscription = await nats_client.subscribe(self._subject("status"), cb=on_status)
         try:
-            try:
-                state = await self._api_client.bus_ios_api.get_bus_io_state(self._cell)
-            except Exception as error:  # noqa: BLE001 — a service that cannot be asked is lost
-                logger.debug(f"Bus-IO state unavailable: {error!r}")
-                return
-            if state.state != api.models.BusIOsStateEnum.BUS_IOS_STATE_CONNECTED:
+            if not await self._bus_io_connected_now():
                 return
             while True:
-                if not _bus_io_state_connected(await queue.get()):
+                payload = await queue.get()
+                if payload is None:  # our connection came back
+                    if not await self._bus_io_connected_now():
+                        return
+                elif not _bus_io_state_connected(payload):
                     return
         finally:
-            await subscription.unsubscribe()
+            if reconnects is not None:
+                reconnects.cancel()
+            with contextlib.suppress(Exception):
+                await subscription.unsubscribe()
+
+    async def _bus_io_connected_now(self) -> bool:
+        """One request for the bus-IO state; a service that cannot be asked counts as lost."""
+        try:
+            state = await self._api_client.bus_ios_api.get_bus_io_state(self._cell)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 — a service that cannot be asked is lost
+            logger.debug(f"Bus-IO state unavailable: {error!r}")
+            return False
+        return state.state == api.models.BusIOsStateEnum.BUS_IOS_STATE_CONNECTED
 
     # -- controller IOs: value-stream websocket --------------------------------
 
@@ -280,7 +297,10 @@ class IOConditionWatcher:
             await queue.put(("status", message.data))
 
         # Subscribe first, read once afterwards: an edge in between is then seen
-        # either by the read or by a queued message, never lost.
+        # either by the read or by a queued message, never lost. The one hole is a
+        # NATS reconnect (nothing is subscribed server-side while it lasts), which
+        # is why a completed reconnect triggers the same one-shot read.
+        reconnects = self._relay_reconnects(nats_client, queue, ("reconnected", b""))
         subscriptions = [
             await nats_client.subscribe(self._subject("ios"), cb=on_values),
             await nats_client.subscribe(self._subject("status"), cb=on_status),
@@ -296,15 +316,39 @@ class IOConditionWatcher:
                         condition_holds(measured, condition.comparator, expected) == holds
                     ):
                         return
-                elif _bus_io_state_connected(payload):
-                    # The bus came (back) up: its values are not necessarily
-                    # re-published, so ask once.
+                elif kind == "reconnected" or _bus_io_state_connected(payload):
+                    # The bus came (back) up, or our own connection did: values pushed
+                    # in between are gone and not re-published, so ask once.
                     if await self._holds_or_none(condition) == holds:
                         return
         finally:
+            if reconnects is not None:
+                reconnects.cancel()
             for subscription in subscriptions:
                 with contextlib.suppress(Exception):
                     await subscription.unsubscribe()
+
+    @staticmethod
+    def _relay_reconnects(nats_client, queue: asyncio.Queue, item) -> asyncio.Task | None:
+        """Start a task that puts ``item`` on ``queue`` after every reconnect from now on.
+
+        Called before subscribing, so a reconnect that lands while the subscriptions
+        are being set up is relayed too. Clients without a ``reconnected`` signal (plain
+        ``nats.NATS``, test doubles) get no relay.
+        """
+        signal = getattr(nats_client, "reconnected", None)
+        if signal is None:
+            return None
+        since = signal.generation
+
+        async def relay() -> None:
+            nonlocal since
+            while True:
+                await signal.wait(since)
+                since = signal.generation
+                await queue.put(item)
+
+        return asyncio.create_task(relay())
 
     async def _holds_or_none(self, condition: IOCondition) -> bool | None:
         """``holds()`` for a bus that may be gone: ``None`` when it cannot be read."""
@@ -342,7 +386,7 @@ class IOConditionWatcher:
 
             context = get_current_program_context()
             nats_client = context.nova.nats if context is not None else None
-        if nats_client is None or not getattr(nats_client, "is_connected", False):
+        if not nats_usable(nats_client):
             raise IOConditionUnavailable(
                 "Bus IO conditions need a connected NATS client (create motion groups "
                 "through Nova / Cell, or run inside a program)"
