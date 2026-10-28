@@ -3,7 +3,7 @@
   "checkpoint_id": "40ee4052f538",
   "strategy": "manual-commit",
   "branch": "feat/add-external-tcp-to-execution-commands",
-  "checkpoints_count": 1,
+  "checkpoints_count": 8,
   "files_touched": [
     "nova/cell/io_condition.py",
     "nova/interlock/client.py",
@@ -18,6 +18,13 @@
       "compact_transcript": "/40/ee4052f538/0/transcript.jsonl",
       "content_hash": "/40/ee4052f538/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/40/ee4052f538/1/metadata.json",
+      "transcript": "/40/ee4052f538/1/full.jsonl",
+      "compact_transcript": "/40/ee4052f538/1/transcript.jsonl",
+      "content_hash": "/40/ee4052f538/1/content_hash.txt",
+      "prompt": "/40/ee4052f538/1/prompt.txt"
     }
   ],
   "token_usage": {
