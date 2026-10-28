@@ -87,3 +87,15 @@ async def test_close_prevents_reopen_after_closed_callback(connected_flag, monke
 
     assert nova._nats_reopen_task is None
     assert nova.nats.connect.call_count == 1
+
+
+async def test_is_connected_holds_while_nats_py_reconnects(monkeypatch):
+    """A reconnecting client queues calls, so the SDK keeps using it instead of failing."""
+    nova = _make_nova()
+    monkeypatch.setattr(type(nova.nats), "is_connected", property(lambda self: False))
+    monkeypatch.setattr(type(nova.nats), "is_reconnecting", property(lambda self: True))
+
+    assert nova.is_connected()
+
+    monkeypatch.setattr(type(nova.nats), "is_closed", property(lambda self: True))
+    assert not nova.is_connected()

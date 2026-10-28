@@ -10,6 +10,7 @@ from nova.config import CELL_NAME, NovaConfig, default_config
 from nova.logging import logger
 
 from .gateway import ApiGateway
+from .nats_state import ReconnectSignal, nats_usable
 
 # Backoff for re-establishing the NATS connection after nats-py has exhausted its own
 # built-in reconnect attempts (e.g. when the server keeps closing the connection, as
@@ -33,7 +34,24 @@ class _ReconnectingNATS(nats.NATS):
     NATS clients in a cell reconnect and re-authenticate in that case; this routes the
     error into nats-py's reconnect path so it does the same, keeping subscriptions and
     buffering publishes across the re-login, exactly like a dropped socket.
+
+    ``reconnected`` fires after every completed reconnect, whatever ``reconnected_cb`` the
+    connection was opened with. Consumers whose state comes from pushed messages wait on
+    it to re-read that state, since messages published while the connection was down are
+    not replayed.
     """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.reconnected = ReconnectSignal()
+
+    async def connect(self, *args, reconnected_cb=None, **kwargs) -> None:
+        async def on_reconnected() -> None:
+            await self.reconnected.fire()
+            if reconnected_cb is not None:
+                await reconnected_cb()
+
+        await super().connect(*args, reconnected_cb=on_reconnected, **kwargs)
 
     async def _process_err(self, err_msg: str) -> None:
         if _NATS_AUTH_EXPIRED not in err_msg.lower():
@@ -79,7 +97,13 @@ class Nova:
         return Cell(self._api_client, cell_id, nats_client=self.nats)
 
     def is_connected(self) -> bool:
-        return self.nats is not None and self.nats.is_connected
+        """Whether NATS calls can go through.
+
+        True while connected, and while the client is reconnecting (nats-py queues calls
+        until the connection is back, e.g. across the server expiring the login). False
+        before ``open()`` and once the client is closed.
+        """
+        return nats_usable(self.nats)
 
     async def open(self):
         """
