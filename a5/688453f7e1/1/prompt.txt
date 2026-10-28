@@ -1,0 +1,25 @@
+is the wait_until_bus_io_lost fix necessary for fixing the issue we had?
+
+---
+
+let's push now so we can test on the real robot cell and deal with it in a follow up
+
+---
+
+And the subscriptions will work after the reconnect?
+
+---
+
+From the perspectiv of a program awaiting a wait_for_bus_io call how would the play out with the current fix
+
+---
+
+Explain both gap closers in more detail
+
+---
+
+Before we implement anything I want to evaluate another idea. What if we hide two Nats connections established with a time difference big enough to be longer than a reconnect (maybe also customisable) and hide them behinde a faced for the consumers in the SDK. Like a failover redundancy The facede always selects the received message from one connections subscription(s) and if that runs into an error it can try to take messages from the same subscription in the other connection. it should ofcourse be ensured we only ever show messages once to the consumers in front of the facade. Would that be a feasable solution or would this add other more dangerous complexity? What are the pros and cons?
+
+---
+
+okay build the two gap closers suggested before on the branch; then also create a new brenach from main to have the commits we (and the colleague) added for the nats reconnects, so we can have an PR to main with only these nats fixes
