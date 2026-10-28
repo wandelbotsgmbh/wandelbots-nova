@@ -32,11 +32,12 @@ jobs:
         run: |
           uv sync --extra "nova-rerun-bridge" --extra "wandelscript" --extra "novax"
 
-      # LeRobot 0.6.0 requires torch<2.12 and setuptools<81. PyTorch has no
-      # patched release; setuptools cannot reach its fixed version (83) until
-      # LeRobot relaxes its upper bound. Continue auditing every other package.
+      # LeRobot 0.6 requires torch<2.12 and setuptools<82. PyTorch has no
+      # patched release; setuptools cannot reach its fixed versions (83, 84.1)
+      # until LeRobot relaxes its upper bound. Continue auditing every other package.
       - name: Audit dependencies (experimental with uv audit)
         run: |
           uv audit --preview-features audit-command \
             --ignore GHSA-rrmf-rvhw-rf47 \
-            --ignore PYSEC-2026-3447
+            --ignore PYSEC-2026-3447 \
+            --ignore GHSA-xmj3-9gf7-h52w
