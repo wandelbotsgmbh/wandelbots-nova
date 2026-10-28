@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import nats
+from nats import errors as nats_errors
 
 from nova.cell.cell import Cell
 from nova.config import CELL_NAME, NovaConfig, default_config
@@ -16,6 +17,32 @@ from .gateway import ApiGateway
 # for longer than nats-py's reconnect window).
 _NATS_REOPEN_INITIAL_DELAY_SECS = 2.0
 _NATS_REOPEN_MAX_DELAY_SECS = 60.0
+
+# The server's ``-ERR`` when the user JWT the auth callout issued for this connection
+# runs out (nats-server ``ErrAuthExpired``: "User Authentication Expired").
+_NATS_AUTH_EXPIRED = "authentication expired"
+
+
+class _ReconnectingNATS(nats.NATS):
+    """``nats.NATS`` that reconnects when the server expires the connection's credentials.
+
+    nats-py treats every server ``-ERR`` other than a stale connection as fatal: it closes
+    the client for good, drops every subscription and fails every call until someone
+    reopens it. NOVA's auth callout issues user JWTs with a lifetime, and the server ends
+    the connection with ``-ERR 'User Authentication Expired'`` when it runs out. The other
+    NATS clients in a cell reconnect and re-authenticate in that case; this routes the
+    error into nats-py's reconnect path so it does the same, keeping subscriptions and
+    buffering publishes across the re-login, exactly like a dropped socket.
+    """
+
+    async def _process_err(self, err_msg: str) -> None:
+        if _NATS_AUTH_EXPIRED not in err_msg.lower():
+            await super()._process_err(err_msg)
+            return
+        err = nats_errors.Error(f"nats: {err_msg.strip(chr(39))}")
+        self._err = err
+        await self._error_cb(err)
+        await self._process_op_err(err)
 
 
 class Nova:
@@ -35,7 +62,7 @@ class Nova:
         self._api_client = ApiGateway(self._config)
         self.apis = self._api_client
 
-        self.nats = nats.NATS()
+        self.nats: nats.NATS = _ReconnectingNATS()
         self._nats_reopen_task: asyncio.Task | None = None
         self._closing = False
 

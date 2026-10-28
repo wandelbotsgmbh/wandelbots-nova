@@ -20,9 +20,11 @@ def connected_flag():
     return {"value": False}
 
 
-async def test_open_registers_default_connection_callbacks(connected_flag):
+async def test_open_registers_default_connection_callbacks(connected_flag, monkeypatch):
     nova = _make_nova()
-    type(nova.nats).is_connected = property(lambda self: connected_flag["value"])
+    monkeypatch.setattr(
+        type(nova.nats), "is_connected", property(lambda self: connected_flag["value"])
+    )
 
     await nova.open()
 
@@ -33,21 +35,25 @@ async def test_open_registers_default_connection_callbacks(connected_flag):
     assert kwargs["closed_cb"] == nova._on_nats_closed
 
 
-async def test_open_does_not_override_explicit_callbacks(connected_flag):
+async def test_open_does_not_override_explicit_callbacks(connected_flag, monkeypatch):
     custom_closed_cb = AsyncMock()
     nova = _make_nova(
         nats_client_config={"servers": "nats://x:4222", "closed_cb": custom_closed_cb}
     )
-    type(nova.nats).is_connected = property(lambda self: connected_flag["value"])
+    monkeypatch.setattr(
+        type(nova.nats), "is_connected", property(lambda self: connected_flag["value"])
+    )
 
     await nova.open()
 
     assert nova.nats.connect.call_args.kwargs["closed_cb"] is custom_closed_cb
 
 
-async def test_closed_callback_reopens_the_connection(connected_flag):
+async def test_closed_callback_reopens_the_connection(connected_flag, monkeypatch):
     nova = _make_nova()
-    type(nova.nats).is_connected = property(lambda self: connected_flag["value"])
+    monkeypatch.setattr(
+        type(nova.nats), "is_connected", property(lambda self: connected_flag["value"])
+    )
 
     async def connect_side_effect(*args, **kwargs):
         connected_flag["value"] = True
@@ -68,9 +74,11 @@ async def test_closed_callback_reopens_the_connection(connected_flag):
     assert nova.nats.connect.call_count == 2
 
 
-async def test_close_prevents_reopen_after_closed_callback(connected_flag):
+async def test_close_prevents_reopen_after_closed_callback(connected_flag, monkeypatch):
     nova = _make_nova()
-    type(nova.nats).is_connected = property(lambda self: connected_flag["value"])
+    monkeypatch.setattr(
+        type(nova.nats), "is_connected", property(lambda self: connected_flag["value"])
+    )
 
     await nova.open()
     await nova.close()
