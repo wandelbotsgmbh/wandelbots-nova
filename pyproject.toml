@@ -31,7 +31,8 @@ dependencies = [
     "blinker>=1.9.0",
     "python-statemachine==3.2.0",
     "msgpack>=1.2.1",
-    "pillow>=12.3.0",
+    "pillow>=13.0.0",
+    "urllib3>=2.8.0",
 ]
 
 [project.optional-dependencies]
@@ -95,6 +96,7 @@ create-motion-group-models = "nova.helper_scripts.create_motion_group_models:upd
 wandelscript = "wandelscript.cli:app"
 ws = "wandelscript.cli:app"
 dev-wheel = "nova.helper_scripts.trigger_dev_wheel:main"
+nova-skills = "nova.helper_scripts.install_agent_skills:main"
 
 [dependency-groups]
 dev = [
@@ -256,3 +258,12 @@ build-backend = "hatchling.build"
 [tool.uv.sources]
 nova2urdf = { path = "vendor/nova2urdf-0.1.12-py3-none-any.whl" }
 
+
+# LeRobot 0.6 caps Pillow below 13, and every Pillow before 13 carries open
+# advisories (heap overflows, an RCE through Ghostscript). The integration only
+# decodes camera frames and loads checkpoint configs, so it is run on the
+# patched Pillow. Like the source above this is uv-only: pip honours LeRobot's
+# cap, so `pip install wandelbots-nova[novapolicy-lerobot]` cannot resolve
+# until LeRobot lifts it. Drop the override once it does.
+[tool.uv]
+override-dependencies = ["pillow>=13.0.0"]

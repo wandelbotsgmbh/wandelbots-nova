@@ -15,6 +15,10 @@ permissions:
 jobs:
   uv-audit:
     runs-on: ubuntu-latest
+    env:
+      # requires-python is open-ended (>=3.12); without a pin uv picks the newest CPython,
+      # for which binary-only deps such as pyarrow may not have wheels yet.
+      UV_PYTHON: "3.12"
     steps:
       - uses: actions/checkout@v6
 
