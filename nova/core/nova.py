@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import nats
 
 from nova.cell.cell import Cell
@@ -7,6 +9,13 @@ from nova.config import CELL_NAME, NovaConfig, default_config
 from nova.logging import logger
 
 from .gateway import ApiGateway
+
+# Backoff for re-establishing the NATS connection after nats-py has exhausted its own
+# built-in reconnect attempts (e.g. when the server keeps closing the connection, as
+# happens when an auth-callout-issued user JWT expires and the server stays unreachable
+# for longer than nats-py's reconnect window).
+_NATS_REOPEN_INITIAL_DELAY_SECS = 2.0
+_NATS_REOPEN_MAX_DELAY_SECS = 60.0
 
 
 class Nova:
@@ -27,6 +36,8 @@ class Nova:
         self.apis = self._api_client
 
         self.nats = nats.NATS()
+        self._nats_reopen_task: asyncio.Task | None = None
+        self._closing = False
 
     @property
     def config(self) -> NovaConfig:
@@ -52,6 +63,8 @@ class Nova:
         if self.is_connected():
             return
 
+        self._closing = False
+
         # Configure any active viewers
         try:
             from nova.viewers import _configure_active_viewers
@@ -60,8 +73,51 @@ class Nova:
         except ImportError:
             pass
 
+        # Report connection health and keep the connection alive across server-initiated
+        # disconnects (e.g. an auth-callout-issued user JWT expiring), without overriding
+        # any callback the caller explicitly configured via nats_client_config.
+        nats_config = dict(self._config.nats_client_config or {})
+        nats_config.setdefault("error_cb", self._on_nats_error)
+        nats_config.setdefault("disconnected_cb", self._on_nats_disconnected)
+        nats_config.setdefault("reconnected_cb", self._on_nats_reconnected)
+        nats_config.setdefault("closed_cb", self._on_nats_closed)
+
         # ApiGateway doesn't need an explicit connect call, it's initialized in constructor
-        await self.nats.connect(**(self._config.nats_client_config or {}))
+        await self.nats.connect(**nats_config)
+
+    async def _on_nats_error(self, exc: Exception) -> None:
+        logger.warning(f"NATS connection error: {exc}")
+
+    async def _on_nats_disconnected(self) -> None:
+        logger.warning("NATS connection lost, attempting to reconnect")
+
+    async def _on_nats_reconnected(self) -> None:
+        logger.info("NATS connection restored")
+
+    async def _on_nats_closed(self) -> None:
+        """Called by nats-py once it has exhausted its own reconnect attempts.
+
+        This only fires on an unintended, server- or network-caused closure; `close()`
+        sets `_closing` first so a deliberate shutdown never triggers it.
+        """
+        if self._closing:
+            return
+
+        logger.error("NATS reconnect attempts exhausted, connection closed; retrying")
+        if self._nats_reopen_task is None or self._nats_reopen_task.done():
+            self._nats_reopen_task = asyncio.create_task(self._reopen_with_backoff())
+
+    async def _reopen_with_backoff(self) -> None:
+        delay = _NATS_REOPEN_INITIAL_DELAY_SECS
+        while not self._closing:
+            await asyncio.sleep(delay)
+            try:
+                await self.open()
+                logger.info("NATS connection re-established")
+                return
+            except Exception as exc:
+                logger.warning(f"NATS reconnect attempt failed: {exc}")
+                delay = min(delay * 2, _NATS_REOPEN_MAX_DELAY_SECS)
 
     async def connect(self):
         """[Deprecated] Opens the NOVA instance
@@ -71,6 +127,9 @@ class Nova:
 
     async def close(self):
         """Closes the underlying API client session and NATS client."""
+        self._closing = True
+        if self._nats_reopen_task is not None:
+            self._nats_reopen_task.cancel()
         try:
             if self.nats is not None and self.nats.is_connected:
                 await self.nats.drain()
