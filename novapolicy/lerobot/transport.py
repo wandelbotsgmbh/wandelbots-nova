@@ -74,7 +74,13 @@ class LeRobotGrpcTransport:
         if not response.data:
             if allow_empty:
                 return []
-            raise RuntimeError("LeRobot server returned an empty action response")
+            # The server answers a failed inference with the same empty message
+            # as a missing observation, and logs the actual error only locally.
+            msg = (
+                "LeRobot server returned no actions. Its policy failed on this "
+                "observation or never received it; the cause is in the server's log."
+            )
+            raise RuntimeError(msg)
         actions = pickle.loads(response.data)  # ruff: ignore[suspicious-pickle-usage]  # nosec: trusted protocol.
         if not isinstance(actions, list):
             msg = f"Expected LeRobot list[TimedAction], got {type(actions).__name__}"

@@ -246,6 +246,26 @@ policy_type = "act"
 The NOVA client-side decoder is policy-architecture agnostic as long as the server returns a flat
 action vector matching the schema-derived joint, TCP, and IO layout.
 
+### `task`
+
+The language instruction for checkpoints that condition on one: SmolVLA, pi0, pi0.5, X-VLA and any
+other policy whose preprocessor pipeline contains LeRobot's `tokenizer_processor` step. It is sent
+with every observation as `observation["task"]`, the same key LeRobot's own robot client uses:
+
+```python
+client = LeRobotPolicyClient(
+    "127.0.0.1:8080",
+    "lerobot/smolvla_base",
+    task="pick up the cube and place it on the marker",
+    fps=10,
+)
+```
+
+Phrase it like the instructions in the training data. Whether a checkpoint needs one is read from
+its `policy_preprocessor.json`, so no list of policy types is involved. `connect()` refuses to start
+an instruction-conditioned checkpoint without a task. Checkpoints that need no instruction (ACT,
+diffusion) ignore it.
+
 ### `fps`
 
 Control/dataset frequency used by the NOVA client to time returned actions:
@@ -591,6 +611,13 @@ Cartesian components followed by the IO value.
 
 This check needs a client-readable checkpoint. Without one it cannot run, and the client warns that
 it was skipped.
+
+### `LeRobot server returned no actions`
+
+The server answers a failed inference with the same empty message as a missing observation, and
+writes the real error only to its own log. Look there first. A `KeyError: 'task'` means the checkpoint
+needs a language instruction: pass `task=`. The client normally catches that at `connect()`, but it
+can't when it has no readable copy of the checkpoint.
 
 ### `Observations are implausibly far outside what this checkpoint was trained on`
 

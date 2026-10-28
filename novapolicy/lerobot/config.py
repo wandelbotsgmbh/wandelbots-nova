@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, replace
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from lerobot.configs.types import FeatureType
 
@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 _CONFIG_NAME = "config.json"
 _PREPROCESSOR_NAME = "policy_preprocessor.json"
 _NORMALIZER_STEP = "normalizer_processor"
+# LeRobot's registered name for the step that tokenizes the language instruction.
+# A checkpoint whose pipeline contains it reads ``observation["task"]`` on every
+# inference, whichever policy family it belongs to.
+_TOKENIZER_STEP = "tokenizer_processor"
 
 # Width of the plausible band derived from mean/std statistics.
 _STD_SIGMA = 4.0
@@ -81,6 +85,9 @@ class LeRobotExecutionSettings:
         input_features: Observation features the policy expects. Empty when the
             checkpoint infers them from the dataset at train time.
         output_features: Action features the policy produces.
+        requires_task: Whether the checkpoint conditions on a language
+            instruction. Read from its preprocessor pipeline, so it is ``False``
+            for a checkpoint that ships no ``policy_preprocessor.json``.
     """
 
     policy_type: str
@@ -90,6 +97,7 @@ class LeRobotExecutionSettings:
     output_features: dict[str, PolicyFeature] = field(default_factory=dict)
     stats: dict[str, FeatureStats] = field(default_factory=dict)
     """Training statistics per feature, when the checkpoint's preprocessor is readable."""
+    requires_task: bool = False
 
     @property
     def comparable_input_features(self) -> dict[str, PolicyFeature]:
@@ -128,8 +136,12 @@ def load_execution_settings(
     """
     source = _resolve_source(pretrained_name_or_path)
     settings = _from_policy_config(_load_policy_config(source))
-    stats = _load_stats(source)
-    return replace(settings, stats=stats) if stats else settings
+    steps = _preprocessor_steps(source)
+    return replace(
+        settings,
+        stats=_load_stats(source, steps),
+        requires_task=any(step.get("registry_name") == _TOKENIZER_STEP for step in steps),
+    )
 
 
 def try_load_execution_settings(
@@ -251,29 +263,36 @@ def _checkpoint_file(source: str | Path, filename: str) -> Path | None:
         return None
 
 
-def _load_stats(source: str | Path) -> dict[str, FeatureStats]:
-    """Read the checkpoint's normalization statistics, if they are present.
+def _preprocessor_steps(source: str | Path) -> list[dict[str, Any]]:
+    """The steps of the checkpoint's preprocessor pipeline, or none if it ships none.
 
-    They live beside ``config.json`` as the normalizer step's safetensors state,
-    keyed ``"<feature>.<stat>"``. Absent statistics are normal — a checkpoint may
-    be distributed as ``config.json`` alone — so this never raises; the range
-    check simply does not run.
+    A checkpoint may be distributed as ``config.json`` alone, so an absent or
+    unreadable pipeline is not an error.
     """
     preprocessor = _checkpoint_file(source, _PREPROCESSOR_NAME)
     if preprocessor is None:
-        return {}
-
+        return []
     try:
         with preprocessor.open(encoding="utf-8") as handle:
-            config = json.load(handle)
-        state_files = [
-            step["state_file"]
-            for step in config.get("steps", [])
-            if step.get("registry_name") == _NORMALIZER_STEP and step.get("state_file")
-        ]
-    except (OSError, ValueError, TypeError, KeyError) as exc:
+            steps = json.load(handle).get("steps", [])
+    except (OSError, ValueError, AttributeError) as exc:
         logger.debug("Cannot read %s: %s", preprocessor, exc)
-        return {}
+        return []
+    return [step for step in steps if isinstance(step, dict)] if isinstance(steps, list) else []
+
+
+def _load_stats(source: str | Path, steps: list[dict[str, Any]]) -> dict[str, FeatureStats]:
+    """Read the checkpoint's normalization statistics, if they are present.
+
+    They live beside ``config.json`` as the normalizer step's safetensors state,
+    keyed ``"<feature>.<stat>"``. Absent statistics are normal, so this never
+    raises; the range check simply does not run.
+    """
+    state_files = [
+        step["state_file"]
+        for step in steps
+        if step.get("registry_name") == _NORMALIZER_STEP and step.get("state_file")
+    ]
 
     raw: dict[str, list[float]] = {}
     for name in state_files:

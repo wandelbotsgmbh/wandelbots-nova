@@ -580,6 +580,16 @@ def _write_checkpoint(tmp_path, **overrides):
     return tmp_path
 
 
+def _write_instruction_preprocessor(tmp_path) -> None:
+    """Give the checkpoint the pipeline an instruction-conditioned policy ships."""
+    import json
+
+    steps = [{"registry_name": "tokenizer_processor"}, {"registry_name": "device_processor"}]
+    (tmp_path / "policy_preprocessor.json").write_text(
+        json.dumps({"steps": steps}), encoding="utf-8"
+    )
+
+
 class _FakeCamera:
     """Camera source that can report and change its read-time size."""
 
@@ -904,3 +914,70 @@ async def test_a_units_mismatch_is_caught_against_the_checkpoints_statistics(
         await client.get_actions({mg.id: _state((math.pi,) * 6)}, schema)
 
     await client.close()
+
+
+# ---------------------------------------------------------------------------
+# Language instruction
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_instruction_conditioned_checkpoint_refuses_to_start_without_a_task(
+    fake_lerobot, tmp_path
+) -> None:
+    """Without the task LeRobot's server fails every inference and says so only in
+    its own log, so the client stops at connect instead.
+    """
+    checkpoint = _write_checkpoint(tmp_path)
+    _write_instruction_preprocessor(checkpoint)
+    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint))
+
+    with pytest.raises(ValueError, match="language instruction"):
+        await client.connect([])
+
+
+@pytest.mark.asyncio
+async def test_the_task_travels_with_every_observation(fake_lerobot, tmp_path) -> None:
+    checkpoint = _write_checkpoint(tmp_path)
+    _write_instruction_preprocessor(checkpoint)
+    mg = _mg()
+    schema = _schema(mg, image_source=_FakeCamera())
+    client = LeRobotPolicyClient(
+        fake_lerobot.address, str(checkpoint), task="pick up the cube", fps=15
+    )
+
+    await client.connect([mg.id])
+    await client.get_actions(
+        {mg.id: _state((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))},
+        schema,
+        images={"cam_scene_1": np.zeros((120, 160, 3), dtype=np.uint8)},
+        io_values={"digital_out[0]": True},
+    )
+
+    assert fake_lerobot.stub.observations[-1].observation["task"] == "pick up the cube"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_a_checkpoint_without_an_instruction_sends_no_task(fake_lerobot) -> None:
+    mg = _mg()
+    schema = _schema(mg)
+    client = LeRobotPolicyClient(
+        fake_lerobot.address, "/server-only/checkpoint", policy_type="act", actions_per_chunk=8
+    )
+
+    await client.connect([mg.id])
+    await client.get_actions(
+        {mg.id: _state((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))},
+        schema,
+        images={"cam_scene_1": np.zeros((120, 160, 3), dtype=np.uint8)},
+        io_values={"digital_out[0]": True},
+    )
+
+    assert "task" not in fake_lerobot.stub.observations[-1].observation
+    await client.close()
+
+
+def test_a_blank_task_is_rejected() -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        LeRobotPolicyClient("127.0.0.1:8080", "model", task="  ")

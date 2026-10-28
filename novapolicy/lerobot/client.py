@@ -43,6 +43,11 @@ class LeRobotPolicyClient(PolicyClient):
     rate is a property of the dataset, not the policy. Camera frame size is not
     derived either; a mismatch is reported and left to the camera stream.
 
+    A checkpoint that conditions on a language instruction - its preprocessor
+    pipeline tokenizes one, as SmolVLA, pi0, pi0.5 and X-VLA do - needs ``task``.
+    ``connect`` refuses to start such a checkpoint without it: LeRobot's server
+    fails on every inference instead, and reports that only in its own log.
+
     Derivation needs a checkpoint the *client* can read. When
     ``pretrained_name_or_path`` is a server-local absolute path, pass
     ``config_path`` pointing at a client-local copy of the checkpoint directory
@@ -59,6 +64,9 @@ class LeRobotPolicyClient(PolicyClient):
         n_action_steps: Override for the actions executed per chunk. Defaults to
             the checkpoint's ``n_action_steps``; the executor reads it from here.
         policy_type: Override for the LeRobot policy type, such as ``"act"``.
+        task: Language instruction sent with every observation, such as
+            ``"pick up the cube"``. Required by instruction-conditioned
+            checkpoints and ignored by the others.
         fps: Dataset/control frequency used for action timing.
         playback_speed: Physical playback speed relative to the dataset rate.
         device: Torch device used by the inference server.
@@ -90,6 +98,7 @@ class LeRobotPolicyClient(PolicyClient):
         actions_per_chunk: int | None = None,
         n_action_steps: int | None = None,
         policy_type: str | None = None,
+        task: str | None = None,
         fps: float = 15.0,
         playback_speed: float = 1.0,
         device: str = "cpu",
@@ -113,7 +122,10 @@ class LeRobotPolicyClient(PolicyClient):
                 f"got {async_queue_refill_threshold}"
             )
             raise ValueError(msg)
+        if task is not None and not task.strip():
+            raise ValueError("task must be a non-empty instruction, or None")
 
+        self._task = task
         self._pretrained_name_or_path = pretrained_name_or_path
         self._config_path = config_path if config_path is not None else pretrained_name_or_path
         self._explicit_policy_type = policy_type
@@ -219,6 +231,13 @@ class LeRobotPolicyClient(PolicyClient):
         # client unresolved and raises again rather than running on half-applied
         # settings.
         policy_type = self._resolved_policy_type(settings)
+        if settings.requires_task and self._task is None:
+            msg = (
+                f"The {settings.policy_type!r} checkpoint at {self._config_path!r} is "
+                "conditioned on a language instruction. Pass task='...' to "
+                "LeRobotPolicyClient, phrased like the instructions it was trained on."
+            )
+            raise ValueError(msg)
         actions_per_chunk = self._resolved_actions_per_chunk(settings)
         n_action_steps = self._resolved_n_action_steps(settings)
 
@@ -320,6 +339,10 @@ class LeRobotPolicyClient(PolicyClient):
         observation = await self._lerobot_schema.build_observation(
             states, schema, images, io_values
         )
+        if self._task is not None:
+            # LeRobot's robot client puts the instruction here too; the server
+            # copies it through to the policy's tokenizer step.
+            observation["task"] = self._task
         state_names, layout = self._schema_layout(states, schema)
         self._check_observation_range(observation, state_names)
         await asyncio.to_thread(self._ensure_policy_setup, schema, state_names, images, layout)

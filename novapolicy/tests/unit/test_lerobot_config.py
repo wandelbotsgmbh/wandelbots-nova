@@ -328,3 +328,31 @@ def test_statistics_are_fetched_for_a_hub_checkpoint(tmp_path, monkeypatch) -> N
 
     assert "policy_preprocessor.json" in requested
     assert settings.stats["observation.state"].bounds(0) == pytest.approx((0.0, 1.0))
+
+
+def _write_pipeline(tmp_path, *registry_names: str) -> None:
+    steps = [{"registry_name": name} for name in registry_names]
+    (tmp_path / "policy_preprocessor.json").write_text(
+        json.dumps({"steps": steps}), encoding="utf-8"
+    )
+
+
+def test_a_tokenizer_step_means_the_checkpoint_needs_a_task(tmp_path) -> None:
+    """SmolVLA, pi0, pi0.5 and X-VLA all ship this step; deriving from it needs no
+    list of instruction-conditioned policy types.
+    """
+    checkpoint = _checkpoint(tmp_path)
+    _write_pipeline(checkpoint, "rename_observations_processor", "tokenizer_processor")
+
+    assert load_execution_settings(checkpoint).requires_task is True
+
+
+def test_a_pipeline_without_a_tokenizer_needs_no_task(tmp_path) -> None:
+    checkpoint = _checkpoint(tmp_path)
+    _write_pipeline(checkpoint, "rename_observations_processor", "normalizer_processor")
+
+    assert load_execution_settings(checkpoint).requires_task is False
+
+
+def test_a_checkpoint_without_a_pipeline_needs_no_task(tmp_path) -> None:
+    assert load_execution_settings(_checkpoint(tmp_path)).requires_task is False
