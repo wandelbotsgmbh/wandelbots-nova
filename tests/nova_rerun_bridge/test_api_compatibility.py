@@ -12,7 +12,12 @@ from unittest.mock import Mock
 import pytest
 
 from nova import viewers
-from nova_rerun_bridge import NovaRerunBridge, hull_visualizer, model_loader, motion_storage  # noqa: F401
+from nova_rerun_bridge import (  # noqa: F401
+    NovaRerunBridge,
+    hull_visualizer,
+    model_loader,
+    motion_storage,
+)
 from nova_rerun_bridge.collision_scene import extract_link_chain_and_tcp
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 from nova_rerun_bridge.trajectory import log_tcp_pose
