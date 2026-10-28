@@ -769,8 +769,8 @@ async def _export(
     """Export the controller with nova2urdf, in millimetres, into *cache*."""
     try:
         import httpx
+        from nova2urdf import MeshExtractionError, export_controller
         from nova2urdf.api_client import get_headers
-        from nova2urdf.export_robot_urdf import export_controller
     except ImportError:
         logger.info(
             "No URDF export found and nova2urdf is not installed, so the URDF "
@@ -792,17 +792,24 @@ async def _export(
 
     cache.mkdir(parents=True, exist_ok=True)
     async with httpx.AsyncClient(headers=get_headers(), timeout=180, verify=False) as client:
-        path = await export_controller(
-            client,
-            controller.id,
-            output_dir=str(cache),
-            length_divisor=_MILLIMETRES,
-            tool_assets=tool_assets,
-        )
-    if path is None:
+        try:
+            package = await export_controller(
+                client,
+                controller.id,
+                output_dir=str(cache),
+                length_divisor=_MILLIMETRES,
+                tool_assets=tool_assets,
+            )
+        except MeshExtractionError as exc:
+            # A URDF without meshes would render an invisible robot; no renderer
+            # is the honest outcome, and the program being visualized carries on.
+            logger.warning("No usable meshes for {}, so no URDF: {}", controller.id, exc)
+            return None
+    # With output_dir set, the export is written and package.path is its URDF.
+    if package is None or package.path is None:
         return None
-    logger.info("Exported URDF for {} to {}", controller.id, path)
-    return Path(path).parent
+    logger.info("Exported URDF for {} to {}", controller.id, package.path)
+    return package.path.parent
 
 
 async def _api_host(controller: Controller) -> str | None:

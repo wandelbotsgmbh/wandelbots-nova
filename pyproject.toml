@@ -40,7 +40,7 @@ nova-rerun-bridge = [
     "rerun-sdk==0.34.0",
     # Robots render from URDF, which nova2urdf derives from the DH parameters
     # and meshes the API serves. Used as a library, so no export step is needed.
-    "nova2urdf>=0.1.12",
+    "nova2urdf>=0.3.0",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
@@ -251,19 +251,11 @@ known-first-party = ["nova", "nova_rerun_bridge", "novapolicy", "novax"]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# nova2urdf is not on PyPI yet, so its wheel is bundled in vendor/ and resolved
-# from there. uv honours this for this project only: pip and anyone installing
-# the published wandelbots-nova wheel ignore [tool.uv.sources], so the extra
-# cannot resolve nova2urdf until it is on an index. See vendor/README.md.
-[tool.uv.sources]
-nova2urdf = { path = "vendor/nova2urdf-0.1.12-py3-none-any.whl" }
-
-
 # LeRobot 0.6 caps Pillow below 13, and every Pillow before 13 carries open
 # advisories (heap overflows, an RCE through Ghostscript). The integration only
 # decodes camera frames and loads checkpoint configs, so it is run on the
-# patched Pillow. Like the source above this is uv-only: pip honours LeRobot's
-# cap, so `pip install wandelbots-nova[novapolicy-lerobot]` cannot resolve
-# until LeRobot lifts it. Drop the override once it does.
+# patched Pillow. This is uv-only: pip honours LeRobot's cap, so
+# `pip install wandelbots-nova[novapolicy-lerobot]` cannot resolve until
+# LeRobot lifts it. Drop the override once it does.
 [tool.uv]
 override-dependencies = ["pillow>=13.0.0"]

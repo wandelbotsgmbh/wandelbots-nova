@@ -2194,8 +2194,8 @@ wheels = [
 
 [[package]]
 name = "nova2urdf"
-version = "0.1.12"
-source = { path = "vendor/nova2urdf-0.1.12-py3-none-any.whl" }
+version = "0.3.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dracopy" },
     { name = "httpx" },
@@ -2204,26 +2204,9 @@ dependencies = [
     { name = "scipy" },
     { name = "trimesh" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/54/09/1d736ec0b250a25c76ddf9e3c044853ac8f18e268d8cf68ee7250e9221c1/nova2urdf-0.3.1.tar.gz", hash = "sha256:763ceae6ee40dee1dbfcb88c9f5363fa5899fc35755b076fe4ca1e9bb334b647", size = 76474 }
 wheels = [
-    { filename = "nova2urdf-0.1.12-py3-none-any.whl", hash = "sha256:b5176e028820e2d1a6f73f6670348ce21e413dde4cb1135d8202ac095a994d8d" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "basedpyright", marker = "extra == 'dev'", specifier = ">=1.31.7" },
-    { name = "dracopy", specifier = ">=2.0" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "numpy", specifier = ">=1.24" },
-    { name = "poethepoet", marker = "extra == 'dev'" },
-    { name = "pygltflib", specifier = ">=1.16" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
-    { name = "radon", marker = "extra == 'dev'" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.15.4" },
-    { name = "scipy", specifier = ">=1.10" },
-    { name = "skylos", marker = "extra == 'dev'", specifier = "==3.4.3" },
-    { name = "trimesh", specifier = ">=4.0" },
-    { name = "ty", marker = "extra == 'dev'" },
+    { url = "https://files.pythonhosted.org/packages/e2/bc/ec3808d3351f2bcd4f4da758f7899b84a5e0c376d785c83accad1baecc58/nova2urdf-0.3.1-py3-none-any.whl", hash = "sha256:5c5121ef6087795de664dbcf680a721a18f451d20f71fa67cef679bff934f2b0", size = 62388 },
 ]
 
 [[package]]
@@ -3815,7 +3798,7 @@ requires-dist = [
     { name = "msgpack", marker = "extra == 'novapolicy-nats'", specifier = ">=1.1.0,<2" },
     { name = "nats-py", specifier = ">=2.11.0" },
     { name = "nats-py", marker = "extra == 'novapolicy-nats'", specifier = ">=2.9" },
-    { name = "nova2urdf", marker = "extra == 'nova-rerun-bridge'", path = "vendor/nova2urdf-0.1.12-py3-none-any.whl" },
+    { name = "nova2urdf", marker = "extra == 'nova-rerun-bridge'", specifier = ">=0.3.0" },
     { name = "numpy", specifier = ">1.1.19" },
     { name = "numpy", marker = "extra == 'wandelscript'", specifier = ">=1.1.19" },
     { name = "pillow", specifier = ">=13.0.0" },
