@@ -5,6 +5,7 @@ from typing import Any, Callable
 from pydantic.type_adapter import TypeAdapter
 
 from nova import Nova, api, get_current_program_context
+from nova.core.nats_state import nats_usable
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ async def wait_for_bus_io(
     """
     nova = _resolve_nova(nova)
 
-    if not nova.nats.is_connected:
+    if not nats_usable(nova.nats):
         raise RuntimeError("NATS client is not connected")
 
     if nats_subscription_kwargs is None:
