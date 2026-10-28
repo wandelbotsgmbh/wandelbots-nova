@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "a5688453f7e1",
+  "strategy": "manual-commit",
+  "branch": "feat/add-external-tcp-to-execution-commands",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/cell/tuner.py",
+    "nova/core/nats_state.py",
+    "nova/core/nova.py",
+    "nova/events/__init__.py",
+    "nova/program/store.py",
+    "nova/utils/io.py",
+    "tests/nats_live.py",
+    "tests/nova/core/test_nats_state.py",
+    "tests/nova/core/test_nova_nats_expiry_live.py",
+    "tests/nova/core/test_nova_reconnect.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a5/688453f7e1/0/metadata.json",
+      "transcript": "/a5/688453f7e1/0/full.jsonl",
+      "compact_transcript": "/a5/688453f7e1/0/transcript.jsonl",
+      "content_hash": "/a5/688453f7e1/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2,
+    "cache_creation_tokens": 15807,
+    "cache_read_tokens": 31034,
+    "output_tokens": 704,
+    "api_call_count": 1
+  }
+}
