@@ -23,6 +23,11 @@ class Rerun(Viewer):
     """
     Rerun viewer for 3D visualization of robot motion and program execution.
 
+    Calling ``Rerun()`` still registers the viewer globally for backward compatibility, but
+    implicit registration is deprecated and will be removed in the next major release. Programs
+    should pass ``viewer=Rerun`` or a lambda to
+    ``@nova.program`` so each execution owns a fresh viewer.
+
     This viewer automatically captures and visualizes:
     - Robot trajectories and motion paths
     - TCP poses and transformations
@@ -34,14 +39,14 @@ class Rerun(Viewer):
     Example usage:
         # 3D view only (default)
         @nova.program(
-            viewer=nova.viewers.Rerun(
+            viewer=lambda: nova.viewers.Rerun(
                 tcp_tools={"vacuum": "assets/vacuum_cup.stl"}
             )
         )
 
         # Full interface with detailed analysis panels
         @nova.program(
-            viewer=nova.viewers.Rerun(
+            viewer=lambda: nova.viewers.Rerun(
                 show_safety_zones=True,
                 show_collision_link_chain=True,
                 show_collision_tool=True,
@@ -148,6 +153,11 @@ class Rerun(Viewer):
             # Rerun is an optional integration. If initialization fails (e.g. no rerun
             # viewer/proxy available), skip it instead of failing program execution.
             logger.warning("Skipping Rerun viewer configuration due to error: %s", e)
+
+    @property
+    def is_configured(self) -> bool:
+        """Return whether this viewer has an active NOVA Rerun bridge."""
+        return self._bridge is not None
 
     async def setup_after_preconditions(self) -> None:
         """Setup async components after preconditions are met.
@@ -362,6 +372,7 @@ class Rerun(Viewer):
     def cleanup(self) -> None:
         """Clean up rerun integration after program execution."""
         self._bridge = None
+        self._bridge_initialized = False
         self._logged_safety_zones.clear()  # Reset safety zone tracking
 
     def _resolve_tool_asset(self, tcp: str | None) -> str | None:
