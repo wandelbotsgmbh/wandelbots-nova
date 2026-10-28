@@ -84,3 +84,7 @@ yes, fix the #544 findings first
 ---
 
 I looked at the rerun visu but there they move inside the zone together quite a lot does this branch have the time rerun time scaling fix ?
+
+---
+
+remove hints and traces regarding the actual customer Audi and regarding the VASS standard from the PR description and maybe comments.
