@@ -1,0 +1,5 @@
+tell me about how the sync drift detection in multi motion group execution works
+
+---
+
+How can the max_drift parameter be adjusted by a user?
