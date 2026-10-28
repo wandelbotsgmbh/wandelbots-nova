@@ -15,9 +15,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # LeRobot 0.6 requires torch<2.12 and setuptools<82. PyTorch has no
-      # patched release for GHSA-rrmf-rvhw-rf47, while the setuptools fixes
-      # start at 83 and 84.1. Keep these exceptions narrow until LeRobot updates.
+      # LeRobot 0.6.1 caps torch <2.12 and setuptools <82. The fixes are in
+      # torch 2.13 (GHSA-rrmf-rvhw-rf47) and setuptools 83 and 84.1, so these
+      # stay ignored until LeRobot lifts its caps. Remove them then.
       - name: Dependency review
         uses: actions/dependency-review-action@v4
         with:
