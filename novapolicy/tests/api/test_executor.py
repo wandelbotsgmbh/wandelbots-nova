@@ -976,7 +976,8 @@ class _StaleCamera:
         self._remaining = fresh_reads
         self.reads = 0
 
-    async def connect(self) -> None: ...
+    async def connect(self) -> None:
+        pass
 
     def read(self, max_age_s: float = 5.0):
         self.reads += 1
@@ -988,7 +989,8 @@ class _StaleCamera:
     def get_latest_frame(self, max_age_s: float = 5.0):
         return np.zeros((4, 4, 3), dtype=np.uint8)
 
-    async def disconnect(self) -> None: ...
+    async def disconnect(self) -> None:
+        pass
 
 
 def _camera_schema(camera: object, *, max_age_s: float | None = None) -> PolicySchema:

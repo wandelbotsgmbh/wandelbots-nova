@@ -538,9 +538,12 @@ async def test_a_fault_stops_the_robot_without_draining():
     """An exception on the way out means stop now, not after the horizon."""
     jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
 
-    with _no_estop_no_rerun(), pytest.raises(RuntimeError, match="boom"):
+    async def fail_inside() -> None:
         async with jogger:
             raise RuntimeError("boom")
+
+    with _no_estop_no_rerun(), pytest.raises(RuntimeError, match="boom"):
+        await fail_inside()
 
     sessions[mg].drain.assert_not_awaited()
     sessions[mg].stop.assert_awaited_once()

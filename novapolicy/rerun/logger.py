@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from nova_rerun_bridge.dh_robot import DHRobot
     from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
-    from nova import api
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.rerun.streaming import StateStreamer
