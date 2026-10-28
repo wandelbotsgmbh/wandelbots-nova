@@ -9,8 +9,7 @@ two stages: first it turns its base joint 45° toward the partner, to the
 stationary, it takes the zone lock, moves to the meeting point, comes back to
 the approach point and only then gives the lock back.  Whoever comes second
 waits at its approach point until the zone is free again — the software
-equivalent of the PLC ``Roboterverriegelung`` (``MAKRO 20``) handshake between
-two KUKA robots.
+equivalent of a PLC-based robot interlock handshake between two KUKA robots.
 
 What to watch (in the log, and in rerun where the two robots are drawn at their
 mountings):
@@ -82,7 +81,7 @@ MEETING_POINT = (0.0, 0.0, 1500.0)
 
 # The zone shared by the two robots.  A lock is a *pair* relationship — "the
 # space A and B both use" — identified by the two robot names and a slot number
-# (VASS numbers the zones between one robot pair 1..16).  There is no geometry
+# (1..16 zones per robot pair, as PLC interlocks usually number them).  There is no geometry
 # attached; which motions need the zone is the programmer's knowledge.
 SHARED_ZONE = LockId.of(ROBOT_A, ROBOT_B, 1)
 

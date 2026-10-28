@@ -1,11 +1,11 @@
 """Data models for the robot↔robot interlock prototype.
 
-Lock identity mirrors the VASS signal scheme it replaces.  In the source system a
+Lock identity mirrors how PLC-based robot interlocks are usually numbered: a
 shared zone between two robots is a *slot number* that both partners use
-symmetrically: robot A requests slot N with ``A(80+N)`` and releases it with
-``A(40+N)``; robot B does the same with the same N.  ``LockId`` reconstructs a
-single canonical name from that pair, so both sides independently compute the
-same string without any central registry.
+symmetrically — robot A requests and releases slot N, and robot B does the same
+with the same N.  ``LockId`` reconstructs a single canonical name from that pair,
+so both sides independently compute the same string without any central
+registry.
 """
 
 from __future__ import annotations
@@ -30,13 +30,13 @@ def _clean(value: str) -> str:
 class LockId(pydantic.BaseModel):
     """Canonical identity of one shared zone between exactly two robots.
 
-    Built from the two robot ids and the VASS interlock slot number.  The slot
-    number is symmetric in the source system — if ``ir340r01`` uses slot 9 for
-    ``ir340r02`` then ``ir340r02`` uses slot 9 for ``ir340r01`` — which is what
-    lets both processes derive the same key independently.  ``FB207`` enforces
-    exactly this reciprocity (``xFehlerNr3``/``PAFE``); here the model validator
-    normalises the pair to a canonical order and rejects self-interlocks, so a
-    mismatched pair simply produces a key nobody else contends for.
+    Built from the two robot ids and the interlock slot number.  The slot number
+    is symmetric — if ``robot-a`` uses slot 9 for ``robot-b`` then ``robot-b``
+    uses slot 9 for ``robot-a`` — which is what lets both processes derive the
+    same key independently.  A PLC interlock typically flags a pair that does not
+    match up as an error; here the model validator normalises the pair to a
+    canonical order and rejects self-interlocks, so a mismatched pair simply
+    produces a key nobody else contends for.
     """
 
     model_config = pydantic.ConfigDict(frozen=True)
@@ -62,7 +62,7 @@ class LockId(pydantic.BaseModel):
 
     @classmethod
     def of(cls, robot: str, partner: str, slot: int) -> "LockId":
-        """Build from one robot's point of view. ``LockId.of("ir340r01", "ir340r02", 9)``."""
+        """Build from one robot's point of view. ``LockId.of("robot-a", "robot-b", 9)``."""
         return cls(robot_a=robot, robot_b=partner, slot=slot)
 
     @property
@@ -78,16 +78,16 @@ class LockRecord(pydantic.BaseModel):
     """The value stored in the KV bucket while a lock is held."""
 
     holder: str
-    """Robot id of the holder, e.g. ``ir340r01``."""
+    """Robot id of the holder, e.g. ``robot-a``."""
 
     run_id: str
     """Unique per process run.  Distinguishes a restarted process from its predecessor."""
 
     slot: int
-    """The holder's own VASS slot number — kept for traceability back to ``A8x``/``A4x``."""
+    """The holder's own slot number — kept for traceability back to the PLC slot."""
 
     label: str = ""
-    """Free-text, e.g. the Folge step that took the lock. Diagnostics only."""
+    """Free-text, e.g. the program step that took the lock. Diagnostics only."""
 
     acquired_at: datetime.datetime = pydantic.Field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
@@ -142,7 +142,7 @@ class AlreadyHeldError(InterlockError):
     The deadlock argument of this prototype is *no hold-and-wait*: a robot never
     waits for locks while holding others, because each step takes its **complete**
     slot set in a single all-or-nothing :meth:`InterlockClient.acquire` — exactly
-    like one ``SPSMAKRO20`` call.  Acquiring while holding would reintroduce
+    like a robot program requesting all its zones from the PLC at once.  Acquiring while holding would reintroduce
     hold-and-wait (and with it, representable deadlock), so it is refused.
 
     Release everything first, or widen the original acquire to the full set.

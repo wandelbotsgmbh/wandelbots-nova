@@ -122,22 +122,22 @@ async def nc(connect) -> nats.NATS:
 
 
 async def test_roundtrip_against_jetstream(nc, cell):
-    r01 = InterlockClient(nc, cell=cell, robot="ir340r01")
-    lock = LockId.of("ir340r01", "ir340r02", 9)
+    r01 = InterlockClient(nc, cell=cell, robot="robot-a")
+    lock = LockId.of("robot-a", "robot-b", 9)
 
     grant = await r01.acquire([lock], label="live roundtrip")
     assert r01.held == [lock.key]
     state = await r01.inspect()
-    assert state[lock.key].holder == "ir340r01"
+    assert state[lock.key].holder == "robot-a"
 
     await r01.release(grant)
     assert await r01.inspect() == {}
 
 
 async def test_mutual_exclusion_and_watch_wakeup(nc, cell):
-    r01 = InterlockClient(nc, cell=cell, robot="ir340r01")
-    r02 = InterlockClient(nc, cell=cell, robot="ir340r02")
-    lock = LockId.of("ir340r01", "ir340r02", 9)
+    r01 = InterlockClient(nc, cell=cell, robot="robot-a")
+    r02 = InterlockClient(nc, cell=cell, robot="robot-b")
+    lock = LockId.of("robot-a", "robot-b", 9)
 
     grant = await r01.acquire([lock])
     waiter = asyncio.create_task(r02.acquire([lock], timeout=10, poll_interval=0.05))
@@ -148,15 +148,15 @@ async def test_mutual_exclusion_and_watch_wakeup(nc, cell):
     await r01.release(grant)
     second = await asyncio.wait_for(waiter, timeout=5)
     handover = asyncio.get_running_loop().time() - released_at
-    assert second.holder == "ir340r02"
+    assert second.holder == "robot-b"
     assert handover < 2.0, f"hand-over took {handover:.2f}s — watch wake-up seems dead"
 
 
 async def test_recreate_after_delete_tombstone(nc, cell):
     """JetStream delete leaves a tombstone in the stream; create must keep
     working across repeated hold/release cycles."""
-    r01 = InterlockClient(nc, cell=cell, robot="ir340r01")
-    lock = LockId.of("ir340r01", "ir340r02", 9)
+    r01 = InterlockClient(nc, cell=cell, robot="robot-a")
+    lock = LockId.of("robot-a", "robot-b", 9)
     for _ in range(5):
         grant = await r01.acquire([lock])
         await r01.release(grant)
@@ -166,10 +166,10 @@ async def test_lock_changing_hands_mid_release_is_foreign(nc, cell, monkeypatch)
     """Against a real server a revision-guarded delete on a changed key raises
     nats-py's untranslated BadRequestError (err_code 10071), not
     KeyWrongLastSequenceError; release() must still report ForeignRelease."""
-    r01 = InterlockClient(nc, cell=cell, robot="ir340r01")
-    r02 = InterlockClient(nc, cell=cell, robot="ir340r02")
+    r01 = InterlockClient(nc, cell=cell, robot="robot-a")
+    r02 = InterlockClient(nc, cell=cell, robot="robot-b")
     operator = InterlockClient(nc, cell=cell, robot="operator")
-    lock = LockId.of("ir340r01", "ir340r02", 9)
+    lock = LockId.of("robot-a", "robot-b", 9)
     grant = await r01.acquire([lock])
 
     read = r01._read
@@ -184,7 +184,7 @@ async def test_lock_changing_hands_mid_release_is_foreign(nc, cell, monkeypatch)
     monkeypatch.setattr(r01, "_read", read_then_hand_over)
     with pytest.raises(ForeignRelease):
         await r01.release(grant)
-    assert (await r01.inspect())[lock.key].holder == "ir340r02"
+    assert (await r01.inspect())[lock.key].holder == "robot-b"
 
 
 async def test_bucket_creation_race(connect, cell):
@@ -202,22 +202,22 @@ async def test_bucket_creation_race(connect, cell):
 async def test_crashed_holder_lock_survives_disconnect(connect, cell):
     """A holder that vanishes without releasing must keep blocking its partner
     (no TTL), and the restarted process recovers via include_previous_runs."""
-    lock = LockId.of("ir340r01", "ir340r02", 9)
+    lock = LockId.of("robot-a", "robot-b", 9)
 
     nc1 = await connect()
-    r01 = InterlockClient(nc1, cell=cell, robot="ir340r01")
+    r01 = InterlockClient(nc1, cell=cell, robot="robot-a")
     await r01.acquire([lock])
     await nc1.close()  # process dies without releasing
 
     nc2 = await connect()
-    r02 = InterlockClient(nc2, cell=cell, robot="ir340r02")
+    r02 = InterlockClient(nc2, cell=cell, robot="robot-b")
     with pytest.raises(InterlockTimeout):
         await r02.acquire([lock], timeout=1.0, poll_interval=0.05)
 
     # recovery: the restarted r01 asserts the robot is physically clear
-    r01_restarted = InterlockClient(nc2, cell=cell, robot="ir340r01")
+    r01_restarted = InterlockClient(nc2, cell=cell, robot="robot-a")
     released = await r01_restarted.release_all(include_previous_runs=True)
     assert released == [lock.key]
 
     grant = await r02.acquire([lock], timeout=5)
-    assert grant.holder == "ir340r02"
+    assert grant.holder == "robot-b"

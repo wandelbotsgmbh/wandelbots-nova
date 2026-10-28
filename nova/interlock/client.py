@@ -1,25 +1,25 @@
-"""NATS-backed robot↔robot interlock ("Roboterverriegelung" / MAKRO 20).
+"""NATS-backed robot↔robot interlock.
 
-Replaces the PLC signal handshake with NATS JetStream KV as the atomic locking
-layer.  The mapping to the original mechanism:
+Replaces a PLC-based robot interlock handshake with NATS JetStream KV as the
+atomic locking layer.  The mapping to a typical PLC implementation:
 
-===========================  ==================================================
-VASS / FB207                 here
-===========================  ==================================================
-``A81..A96`` request bit      :meth:`InterlockClient.acquire`
-``E81..E96`` grant (ack)      the KV ``create`` succeeding
-``E41..E56`` partner clear    (not modelled — see "Single-stage" below)
-``A41..A56 = EIN`` release    :meth:`InterlockClient.release`
-``ST_ROBVER`` shared table    the KV bucket ``nova_cells_{cell}_interlocks``
-``MAKRO 20`` 5-phase call     one :meth:`acquire` over the whole slot set
-===========================  ==================================================
+=================================  ===============================================
+PLC handshake                      here
+=================================  ===============================================
+request bit per shared zone        :meth:`InterlockClient.acquire`
+grant / acknowledge from the PLC   the KV ``create`` succeeding
+partner-clear signal               (not modelled — see "Single-stage" below)
+release bit                        :meth:`InterlockClient.release`
+shared interlock table in the PLC  the KV bucket ``nova_cells_{cell}_interlocks``
+one call requesting all zones      one :meth:`acquire` over the whole slot set
+=================================  ===============================================
 
-**Single-stage.**  FB207 arbitrates a *reservation* (``Quitt_Anf``/``E8x``) and
-separately broadcasts a *position-derived clearance* (``Frg_an``/``E4x``,
-computed from ``Stell_Frg``/``PF0``).  A robot had to wait on both.  Here the KV
-entry is the reservation *and* the occupancy: it exists exactly while a robot is
-inside, because it is created before the move and deleted after the retreat.
-That collapses the handshake into one atomic operation.
+**Single-stage.**  A PLC interlock usually arbitrates a *reservation* and
+separately broadcasts a *position-derived clearance*; a robot has to wait on
+both.  Here the KV entry is the reservation *and* the occupancy: it exists
+exactly while a robot is inside, because it is created before the move and
+deleted after the retreat.  That collapses the handshake into one atomic
+operation.
 
     The cost is that a crashed holder leaves the lock held.  That is deliberate:
     a stuck lock stops a robot (safe), whereas a lock that expires while a robot
@@ -32,19 +32,21 @@ That collapses the handshake into one atomic operation.
     only on a **clean** exit of the guarded block.  On an exception or a
     cancellation the robot may have decelerated to a stop *inside* the zone, so
     the locks are kept.  Recovery is :meth:`release_all` once the robot is back
-    in a position known to be clear (e.g. at home, the start-of-Folge
-    ``A41..A56 = EIN`` situation), or an operator :meth:`force_release`.
+    in a position known to be clear (e.g. at home, where a robot program
+    typically releases everything at its start), or an operator
+    :meth:`force_release`.
 
-**Atomicity.**  A robot typically needs several zones at once (in the GEO40 trio
-each robot takes its full set in a single ``MAKRO 20`` call).  :meth:`acquire`
-takes them in sorted key order and rolls back completely on any conflict, so a
-caller never holds a partial set while waiting.  Rollback is free here because
-acquisition happens with the robot stationary, before any motion is planned or
-started — nothing has to be undone physically.  With no partial holds there is
-no hold-and-wait, hence no deadlock — and *single acquire* is **enforced**, not
-assumed: :meth:`acquire` raises :class:`AlreadyHeldError` while anything is
-held.  Staged/nested acquisition (the VASS same-partner pattern) is therefore
-not supported by this prototype; take the complete set for a step in one call.
+**Atomicity.**  A robot typically needs several zones at once (in a cell where
+three robots share zones pairwise, each robot takes its full set in one call).
+:meth:`acquire` takes them in sorted key order and rolls back completely on any
+conflict, so a caller never holds a partial set while waiting.  Rollback is free
+here because acquisition happens with the robot stationary, before any motion is
+planned or started — nothing has to be undone physically.  With no partial holds
+there is no hold-and-wait, hence no deadlock — and *single acquire* is
+**enforced**, not assumed: :meth:`acquire` raises :class:`AlreadyHeldError`
+while anything is held.  Staged or nested acquisition (taking zones with the same
+partner one after another) is therefore not supported by this prototype; take
+the complete set for a step in one call.
 
 .. warning::
     **Experimental.**  This is a prototype replacement for a PLC function.  It is
@@ -122,8 +124,8 @@ class InterlockClient:
 
     Args:
         nats_client: a connected ``nats.NATS`` — typically ``ctx.nova.nats``.
-        cell: cell id, e.g. ``"urw1-agr3-sk1"``.
-        robot: this robot's id, e.g. ``"ir340r01"``.  Used as the holder identity.
+        cell: cell id, e.g. ``"cell"``.
+        robot: this robot's id, e.g. ``"robot-a"``.  Used as the holder identity.
         create_bucket: create the bucket if missing.  Safe for every process to
             set (creation is idempotent), but one owner is tidier.
     """
@@ -226,9 +228,9 @@ class InterlockClient:
     ) -> Grant:
         """Acquire every lock in *locks*, or none.  Blocks until granted.
 
-        This is the ``MAKRO 20`` equivalent: pass the complete set of slots the
-        step needs, exactly as the KRL sets ``A89``/``A91`` and then calls
-        ``SPSMAKRO20`` once.
+        The equivalent of a robot program requesting all interlock zones a step
+        needs from the PLC in one call: pass the complete set of slots the step
+        needs.
 
         Call it with the robot stationary, before planning or executing motion.
 
@@ -458,15 +460,15 @@ class InterlockClient:
     async def release(self, grant: Grant, *, slots: Iterable[int] | None = None) -> None:
         """Release locks held under *grant*.
 
-        This is the ``Freigabe Verriegelung`` equivalent — the KRL's
-        ``A41/A49/A51 = EIN`` after the robot has retreated clear of the zone.
+        The equivalent of setting the PLC release bits after the robot has
+        retreated clear of the zone.
         **Call it only once the robot is physically out**, and as an awaited call,
         never as an ``io_write`` embedded in an action list.
 
         Args:
             slots: release only these of the holder's own slot numbers.  Omit to
-                release everything in the grant.  Mirrors the KRL releasing a
-                subset early (e.g. ``ir360r01`` drops slot 7 before the rest).
+                release everything in the grant.  Mirrors a robot program that
+                releases one zone early, before the rest.
                 Note that a partial release keeps the client "holding", so a
                 further :meth:`acquire` is still refused until the rest is
                 released too.  Slots already released under this grant are
@@ -537,9 +539,10 @@ class InterlockClient:
     async def release_all(self, *, include_previous_runs: bool = False) -> list[str]:
         """Release everything this robot holds.  Returns the released keys.
 
-        Mirrors the start-of-Folge ``A41..A56 = EIN`` block.  **Call it only when
-        the robot is physically clear of every zone** — at home is the canonical
-        case; in the incumbent the start-of-Folge release happens exactly there.
+        Mirrors the block of release bits a robot program sets at its start.
+        **Call it only when the robot is physically clear of every zone** — at
+        home is the canonical case, which is where a robot program typically
+        releases everything at its start.
         Do *not* call it blindly from a ``finally:`` after an aborted motion: the
         robot may have stopped inside a zone, and releasing then is the collision
         scenario the no-TTL rule exists to prevent.  On abnormal exits, leave the
