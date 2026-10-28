@@ -35,10 +35,11 @@ Both come out of the URDF now, each drawn see-through in its own colour from the
 | a zone the robot may not leave | orange, outline only |
 | a collision object in a plan | grey, solid |
 
-- `Rerun(show_collision=...)` decides whether the robot's collision hulls are
-  drawn: off by default, `True` for all of them, `None` for only the links whose
-  model carries no visual mesh. `show_collision_link_chain` and
-  `show_collision_tool` are deprecated aliases of it.
+- The robot's collision hulls and its tool's collision geometry both come from the
+  URDF, so they are one setting: `Rerun(show_collision_link_chain=...)` and
+  `Rerun(show_collision_tool=...)` draw both when either is on. `Rerun()` turns
+  `show_collision_tool` on, so collision geometry is drawn by default; pass
+  `show_collision_tool=False` to hide it.
 - `Rerun(show_safety_zones=...)` and `Rerun(show_safety_link_chain=...)` work as
   before.
 - The safety controller's volumes are exported per TCP; the one being driven is

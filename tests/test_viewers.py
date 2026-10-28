@@ -53,38 +53,29 @@ class TestRerunViewer:
         """Should be able to create Rerun viewer with default parameters."""
         viewer = Rerun()
         assert isinstance(viewer, Viewer)
-        # The robot's own collision geometry rides in the URDF's <collision>
-        # elements, so the viewer carries no flag for it.
-        # Deprecated aliases of show_collision, still readable.
         assert viewer.show_collision_link_chain is False
-        assert viewer.show_collision_tool is False
+        assert viewer.show_collision_tool is True
         assert viewer.show_safety_link_chain is True
         assert viewer.show_safety_zones is True
         assert viewer.show_collision_scenes is True
         assert viewer.trajectory_sample_interval_ms == 50.0
-        assert viewer.state_sample_interval_ms == pytest.approx(1000.0 / 30.0)
 
     def test_rerun_viewer_custom_parameters(self):
         """Should accept custom parameters."""
         viewer = Rerun(
+            show_collision_link_chain=True,
+            show_collision_tool=False,
             show_safety_link_chain=False,
-            show_collision=False,
             show_safety_zones=False,
             tcp_tools={"gripper": "gripper.stl"},
             trajectory_sample_interval_ms=100.0,
-            state_sample_interval_ms=10.0,
         )
+        assert viewer.show_collision_link_chain is True
+        assert viewer.show_collision_tool is False
         assert viewer.show_safety_link_chain is False
-        assert viewer.show_collision is False
         assert viewer.show_safety_zones is False
         assert viewer.tcp_tools == {"gripper": "gripper.stl"}
         assert viewer.trajectory_sample_interval_ms == 100.0
-        assert viewer.state_sample_interval_ms == 10.0
-
-    @pytest.mark.parametrize("interval_ms", [0.0, -1.0, float("inf"), float("nan")])
-    def test_rerun_viewer_rejects_invalid_state_sample_interval(self, interval_ms: float) -> None:
-        with pytest.raises(ValueError, match="positive finite"):
-            Rerun(state_sample_interval_ms=interval_ms)
 
     def test_rerun_viewer_legacy_auto_registration_remains_compatible(self):
         """Legacy construction remains compatible while programs migrate to factories."""
@@ -110,10 +101,9 @@ class TestRerunViewer:
             nova=mock_nova,
             spawn=True,
             recording_id=None,
+            show_collision_link_chain=False,
+            show_collision_tool=True,
             show_safety_link_chain=False,
-            show_collision=False,
-            state_sample_interval_ms=pytest.approx(1000.0 / 30.0),
-            tcp_tools={},
         )
         assert viewer._bridge is mock_bridge
 
@@ -626,9 +616,14 @@ class TestViewerIntegration:
 
     def test_viewer_configuration_propagation(self):
         """Test that viewer configuration is properly propagated."""
-        viewer = Rerun(show_safety_link_chain=False, tcp_tools={"gripper": "gripper.stl"})
+        viewer = Rerun(
+            show_collision_link_chain=True,
+            show_safety_link_chain=False,
+            tcp_tools={"gripper": "gripper.stl"},
+        )
 
         # Verify configuration
+        assert viewer.show_collision_link_chain is True
         assert viewer.show_safety_link_chain is False
         assert viewer.tcp_tools == {"gripper": "gripper.stl"}
 
@@ -638,6 +633,7 @@ class TestViewerIntegration:
 
             mock_bridge_class.assert_called_once()
             call_args = mock_bridge_class.call_args[1]
+            assert call_args["show_collision_link_chain"] is True
             assert call_args["show_safety_link_chain"] is False
             # Note: tcp_tools is stored on the viewer but not passed to the bridge constructor
 

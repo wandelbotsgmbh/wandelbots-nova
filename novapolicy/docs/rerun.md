@@ -22,9 +22,7 @@ from novapolicy import SequentialExecution
 
 @nova.program(
     id="my_policy",
-    viewer=lambda: viewers.Rerun(
-        state_sample_interval_ms=10.0  # 100 Hz live state
-    ),
+    viewer=viewers.Rerun,
 )
 async def run(ctx):
     ...
@@ -107,7 +105,7 @@ sinusoidal `dx`/`dy`/`dz` with a **constant** `position_norm_mm`, because the er
 vector rotates with the path while its magnitude stays put. The norm is the series
 to read for whether tracking is steady.
 
-`state_sample_interval_ms` controls actual robot-state samples used by the 3D mesh,
+`PolicyRerunLogger(state_sample_interval_ms=...)` controls actual robot-state samples used by the 3D mesh,
 TCP trail, and joint plots. It does not change the policy or jogging command cadence;
 configure policy timing or `WaypointConfig` separately when commands themselves need
 a shorter interval. `trajectory_sample_interval_ms` independently controls sampling

@@ -110,12 +110,13 @@ class PolicyRerunLogger:
         # The program's own viewer owns how the robot is drawn, so a policy run
         # renders the way the rest of the program does.
         viewer = get_viewer_manager().get_viewer(Rerun)
-        if state_sample_interval_ms is None:
-            state_sample_interval_ms = (
-                viewer.state_sample_interval_ms if viewer is not None else 1000.0 / 30.0
-            )
-        self._state_sample_interval_ms = state_sample_interval_ms
-        self._show_collision: bool | None = viewer.show_collision if viewer is not None else None
+        self._state_sample_interval_ms = state_sample_interval_ms or 1000.0 / 30.0
+        # Both flags draw the same URDF collision geometry; see the bridge.
+        self._show_collision: bool | None = (
+            bool(viewer.show_collision_link_chain or viewer.show_collision_tool)
+            if viewer is not None
+            else None
+        )
         self._dh_robots: dict[str, Any] = {}
         self._tcp_offsets: dict[str, Any] = {}  # mg_id -> 4x4 flange->TCP matrix
         # mg_id -> 4x4 taking a reported pose into the robot's frame. Shared by

@@ -1,7 +1,6 @@
 import asyncio
 import math
 import os
-import warnings
 from datetime import datetime
 from typing import Optional
 
@@ -27,20 +26,14 @@ from nova_rerun_bridge.trajectory import MotionGroupTimeline, TimingMode, log_mo
 def _resolve_show_collision(
     show_collision: Optional[bool], link_chain: Optional[bool], tool: Optional[bool]
 ) -> Optional[bool]:
-    """Settle the collision setting, honouring its two deprecated aliases.
+    """Settle the collision setting from the viewer's two collision flags.
 
-    ``show_collision_link_chain`` and ``show_collision_tool`` split one choice
-    in two; both kinds of volume come out of the URDF's ``<collision>``, so
-    ``show_collision`` covers them together and wins over the aliases.
+    ``Rerun`` passes ``show_collision_link_chain`` and ``show_collision_tool``.
+    Both kinds of volume come out of the URDF's ``<collision>``, so either one
+    draws them; ``show_collision``, when set, wins over both.
     """
     if link_chain is None and tool is None:
         return show_collision
-    warnings.warn(
-        "show_collision_link_chain and show_collision_tool are deprecated; "
-        "use show_collision, which covers both.",
-        DeprecationWarning,
-        stacklevel=3,
-    )
     if show_collision is not False:
         # The caller set the new one; it wins over what it replaced.
         return show_collision

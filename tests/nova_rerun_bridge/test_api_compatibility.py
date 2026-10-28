@@ -7,39 +7,47 @@ runs. What cannot be kept is listed at the bottom.
 """
 
 import warnings
+from unittest.mock import Mock
 
 import pytest
 
 from nova import viewers
-from nova_rerun_bridge import hull_visualizer, model_loader, motion_storage  # noqa: F401
+from nova_rerun_bridge import NovaRerunBridge, hull_visualizer, model_loader, motion_storage  # noqa: F401
 from nova_rerun_bridge.collision_scene import extract_link_chain_and_tcp
 from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 from nova_rerun_bridge.trajectory import log_tcp_pose
 
 
-class TestDeprecatedCollisionFlags:
-    def test_viewer_maps_the_two_old_flags(self):
-        with pytest.warns(DeprecationWarning):
-            viewer = viewers.Rerun(
-                spawn=False, show_collision_link_chain=False, show_collision_tool=False
-            )
-        assert viewer.show_collision is False
-        viewer.cleanup()
+def _bridge(**flags) -> NovaRerunBridge:
+    return NovaRerunBridge(nova=Mock(), spawn=False, **flags)
 
-    def test_one_of_them_left_on_keeps_collision_on(self):
-        with pytest.warns(DeprecationWarning):
-            viewer = viewers.Rerun(
-                spawn=False, show_collision_link_chain=False, show_collision_tool=True
-            )
-        assert viewer.show_collision is True
-        viewer.cleanup()
 
-    def test_new_flag_wins_and_no_warning_without_the_old_ones(self):
+class TestViewerCollisionFlags:
+    def test_both_flags_off_draws_no_collision(self):
+        assert (
+            _bridge(show_collision_link_chain=False, show_collision_tool=False).show_collision
+            is False
+        )
+
+    def test_one_of_them_on_draws_collision(self):
+        assert (
+            _bridge(show_collision_link_chain=False, show_collision_tool=True).show_collision
+            is True
+        )
+
+    def test_the_viewer_default_draws_collision_without_warning(self):
+        viewer = viewers.Rerun(spawn=False)
         with warnings.catch_warnings():
             warnings.simplefilter("error", DeprecationWarning)
-            viewer = viewers.Rerun(spawn=False, show_collision=True)
-        assert viewer.show_collision is True
+            bridge = _bridge(
+                show_collision_link_chain=viewer.show_collision_link_chain,
+                show_collision_tool=viewer.show_collision_tool,
+            )
+        assert bridge.show_collision is True
         viewer.cleanup()
+
+    def test_show_collision_wins_over_the_flags(self):
+        assert _bridge(show_collision=None, show_collision_tool=True).show_collision is None
 
     def test_visualizer_takes_the_old_arguments(self):
         with pytest.warns(DeprecationWarning):
