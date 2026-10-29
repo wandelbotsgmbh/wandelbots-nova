@@ -30,7 +30,7 @@ dependencies = [
     "nats-py>=2.11.0",
     "blinker>=1.9.0",
     "python-statemachine==3.2.0",
-    "msgpack>=1.2.1",
+    "msgpack>=1.2.3",
     "pillow>=13.0.0",
     "urllib3>=2.8.0",
 ]
