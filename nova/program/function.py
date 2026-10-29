@@ -180,7 +180,30 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 f"Please make sure the right input parameters are configured. {e}"
             )
 
-        return await self._wrapped(ctx, **validated_kwargs)
+        viewer = await self._activate_direct_call_viewer(nova)
+        try:
+            return await self._wrapped(ctx, **validated_kwargs)
+        finally:
+            if viewer is not None:
+                get_viewer_manager().cleanup_viewer(viewer)
+
+    async def _activate_direct_call_viewer(self, nova: Nova) -> Viewer | None:
+        """Activate this program's viewer when it is awaited directly, not run by a runner.
+
+        A runner activates the viewer itself and sets the execution context before it
+        calls the program, so this only acts when there is no execution context.
+        """
+        from nova.program.runner import current_execution_context_var
+
+        if current_execution_context_var.get(None) is not None:
+            return None
+        viewer = self._create_viewer()
+        if viewer is None:
+            return None
+        get_viewer_manager().activate_viewer(viewer)
+        viewer.configure(nova)
+        await viewer.setup_after_preconditions()
+        return viewer
 
     def _create_viewer(self) -> Viewer | None:
         """Create or return the viewer owned by one program execution."""

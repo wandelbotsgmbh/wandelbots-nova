@@ -462,7 +462,7 @@ class ProgramRunner(ABC):
         created_controller_ids: list[str] = []
         robot_cell: RobotCell | None = None
         active_viewer = None
-        operator_token = is_operator_execution_var.set(self._app_name is not None)
+        operator_token = None
 
         try:
             active_viewer = (
@@ -497,6 +497,11 @@ class ProgramRunner(ABC):
                     cycle=None,
                     # **{controller.id: controller for controller in controllers},
                 )
+
+            # Set context variable to indicate if running via operator (for viewer optimization).
+            # Only after Nova.open(): it configures the viewers, and Rerun skips its setup
+            # when it sees this flag.
+            operator_token = is_operator_execution_var.set(self._app_name is not None)
 
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event, nova=self._nova
@@ -601,7 +606,8 @@ class ProgramRunner(ABC):
                     from nova.viewers import get_viewer_manager
 
                     get_viewer_manager().cleanup_viewer(active_viewer)
-                is_operator_execution_var.reset(operator_token)
+                if operator_token is not None:
+                    is_operator_execution_var.reset(operator_token)
 
     @abstractmethod
     async def _run(self, execution_context: ExecutionContext):
