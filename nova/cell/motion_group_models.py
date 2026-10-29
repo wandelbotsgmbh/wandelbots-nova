@@ -127,6 +127,7 @@ MotionGroupModel = Literal[
     "universalrobots-ur15",
     "universalrobots-ur16e",
     "universalrobots-ur20e",
+    "universalrobots-ur30",
     "universalrobots-ur3e",
     "universalrobots-ur5",
     "universalrobots-ur5e",
