@@ -39,6 +39,56 @@ schema = PolicySchema(
 )
 ```
 
+## Units
+
+NOVA speaks radians and millimetres. A dataset does not necessarily, and a policy trained on
+degrees normalizes cleanly against its own statistics before moving the arm to the wrong place —
+because those statistics are in the *recording* robot's units.
+
+Declare the conversion once and it applies in both directions: forward on the observation,
+inverted on the action.
+
+```python
+from novapolicy import Clamp, Observation, Rad2Deg, Scale
+
+Observation.joint_positions("arm", source=mg, ops=[Rad2Deg()])
+
+# Position is millimetres and orientation radians, so they convert apart.
+Observation.tcp(
+    "eef",
+    source=mg,
+    action=True,
+    position_ops=[Scale(0.001)],  # mm -> m
+    orientation_ops=[Rad2Deg()],
+)
+```
+
+| Operator | Direction | Notes |
+| --- | --- | --- |
+| `Rad2Deg()` | bijective | Exact both ways. |
+| `Scale(factor)` | bijective | A zero or non-finite factor is rejected at construction. |
+| `Clamp(low, high)` | bidirectional | Bounds the observation forward *and* the command on the way back — limiting a command is the safety-relevant direction. |
+
+Operators run front-to-back on the observation and back-to-front on the action, so
+`[Scale(0.001), Clamp(-1, 1)]` clamps in metres in both directions. They are element-wise, and an
+operator that declares itself forward-only is rejected on a channel the policy writes — the
+executor would have nothing to send back.
+
+The inversion happens in the executor **before** relative targets resolve: a delta in degrees added
+to a state in radians is exactly the error this prevents.
+
+This is **not** normalization. A policy server applies the checkpoint's own normalization and
+unnormalization; duplicating it here would corrupt the values twice over. What is unguarded, and
+what these operators are for, is units and scale.
+
+Rotation-representation conversion — rotation vector to quaternion or Euler — is out of scope;
+these are element-wise scalars. Operators do not apply to `computed` or `constant` observations.
+
+`ops` are distinct from the IO `Mapping` above on purpose: a `Mapping` crosses a *type* boundary
+(hardware bools and analogue levels to the policy's floats) and is applied by each policy client as
+it decodes its own wire format, while a `ValueOp` is a float-to-float *units* transform the schema
+itself applies at one seam.
+
 ## Relative actions
 
 Joint and TCP observations support `mode="relative"`. The mode controls how the
@@ -56,8 +106,8 @@ Observation.joint_positions("arm", source=mg, mode="relative")
 ## TCP actions
 
 Policies that output Cartesian targets instead of joint positions. Set
-`action=True` on `Observation.tcp()` — the executor sends `PoseWaypointsRequest`
-for that motion group, and the server handles inverse kinematics internally:
+`action=True` on `Observation.tcp()` — the executor sends `POSE` waypoints for
+that motion group, and the server handles inverse kinematics internally:
 
 ```python
 Observation.tcp("eef_pose", source=mg, tcp="Flange", action=True)

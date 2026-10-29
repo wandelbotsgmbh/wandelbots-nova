@@ -45,21 +45,14 @@ def _mock_mg(descriptions: dict[str, object] | None = None):
 
 
 @pytest.mark.asyncio
-async def test_deduplication_skips_unchanged():
-    """Writing the same value twice should only call the API once."""
+async def test_deduplicates_unchanged_values_and_writes_changes():
     mg = _mock_mg({"digital_out[0]": _BOOL})
     writer = IOWriter(mg)
+
     await writer.write({"digital_out[0]": True})
     await writer.write({"digital_out[0]": True})
     assert mg._api_client.controller_ios_api.set_output_values.call_count == 1
 
-
-@pytest.mark.asyncio
-async def test_writes_changed_value():
-    """Changing a value should call the API again."""
-    mg = _mock_mg({"digital_out[0]": _BOOL})
-    writer = IOWriter(mg)
-    await writer.write({"digital_out[0]": True})
     await writer.write({"digital_out[0]": False})
     assert mg._api_client.controller_ios_api.set_output_values.call_count == 2
 

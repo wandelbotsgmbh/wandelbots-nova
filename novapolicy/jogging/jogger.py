@@ -2,7 +2,7 @@
 
 Provides ``jog_joints()`` and ``jog_tcp()`` — async context managers that
 open jogging sessions. The user sets target positions in a loop; the session
-streams timestamped waypoints to the NOVA jogging API.
+streams timestamped waypoints to the NOVA action chunk streaming API.
 
 Faults are detected automatically and raised through the ``async for`` loop:
 
@@ -17,10 +17,12 @@ triggering condition's name is available on ``jogger.stop_condition_triggered``.
 from __future__ import annotations
 
 import asyncio
+import bisect
 import contextlib
 import logging
+import math
 import time
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, TypeAlias, cast, overload
 
 from novapolicy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
@@ -36,11 +38,114 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_CARTESIAN_DIMS = 6  # x, y, z, rx, ry, rz — fixed by NOVA jogging API
+_CARTESIAN_DIMS = 6  # x, y, z, rx, ry, rz — fixed by the NOVA waypoint pose
 
-# Safety fallback: if the robot never reports a RUNNING jogging state, anchor
-# the elapsed clock anyway after this many seconds so the loop can't stall.
-_ANCHOR_FALLBACK_S = 2.5
+_TimedPoint: TypeAlias = tuple[float, list[float]]
+_Chunk: TypeAlias = list[list[float]]
+
+
+def _is_chunk(value: object) -> bool:
+    """Whether ``value`` is a chunk of future steps rather than one target.
+
+    An empty list is not a chunk: there is nothing to infer a shape from, and
+    treating it as one would send a request with no waypoints.
+    """
+    return isinstance(value, list) and bool(value) and isinstance(value[0], list)
+
+
+# The timing constants below were tuned against a single UR10e reached over a
+# wandelbox. The mechanisms they answer to are general; the numbers are not, and
+# a different robot, controller firmware or link will want its own values. Treat
+# them as defaults to re-tune, and prefer the reasoning over the figures.
+
+# How far ahead of session time step zero is placed for an explicit chunk. Must
+# outlast the interval between pushes (plus link latency), or the seam between
+# an old and a new chunk gets executed. Deliberately constant: anything
+# time-varying in the time-to-position mapping is executed as a lurch.
+LEAD_MS = 100.0
+
+# Lead used for live targets. This is how far ahead of the robot's current
+# motion a replacement trajectory starts, and therefore how long the controller
+# has to blend onto it. Live targets are replaced ~90 times a second, so the
+# controller performs that join constantly; give it too little room and it
+# occasionally cannot do so smoothly, which comes out as a brief stall and
+# catch-up (the robot stays on the path, but its pace dips).
+#
+# Every waypoint in the buffer was measured rather than projected, so nothing
+# here trades accuracy against distance: the lead can simply be as much room as
+# the controller needs to make the join. On the reference rig, speed evenness
+# improved monotonically from 30ms up to 100ms, where the stalls disappeared
+# altogether; shorter leads stalled on most laps. Where a controller needs more
+# or less room than that, this is the knob.
+#
+# Note this is not about running out of waypoints: lengthening the horizon
+# instead does not help, because the constraint is at the *start* of each
+# replacement, not the end.
+LIVE_LEAD_MS = 100.0
+
+# Quantisation of the session timeline. Anchoring every chunk at a multiple of
+# this keeps successive chunks on ONE absolute grid; without it each replacement
+# lands at a new phase, which on the reference rig was the difference between
+# grossly uneven motion and none measurable at all.
+TIMELINE_GRID_MS = 10.0
+
+# A rolling live-target buffer needs at least two samples to define a spacing.
+_MIN_BUFFER_SAMPLES = 2
+
+# Hard cap on samples retained in the rolling buffer, on top of its time window.
+# That window is measured against ``elapsed``, which holds at 0.0 until the robot
+# reports it is executing motion — so while a caller pushes targets into a
+# session that has not started (or whose state stream has stalled), the age of
+# the oldest sample is always 0 and nothing is ever evicted. The cap is set far
+# above what any real rate needs: a 100Hz caller fills a 500ms buffer with ~50
+# samples.
+_MAX_LIVE_SAMPLES = 256
+
+# How much commanded history is retained for Rerun tracking, in server ms. Only
+# needs to outlast the delivery burst that makes the cached pose stale.
+_COMMAND_HISTORY_MS = 1000
+
+
+def _resample_evenly(
+    samples: list[_TimedPoint], step_s: float, *, start: float | None = None
+) -> list[list[float]]:
+    """Put irregularly-timed samples on an evenly spaced grid.
+
+    Linear interpolation at each grid instant, using the time every sample was
+    actually taken. The values stay the caller's own — only the instants they
+    are read at change — so this resamples a recording rather than predicting
+    anything.
+
+    ``start`` pins the grid to an absolute phase; without it the grid begins at
+    the oldest sample.
+    """
+    start = samples[0][0] if start is None else start
+    end = samples[-1][0]
+    if end < start:
+        return []
+    # Round the span UP so the grid reaches the newest sample. Truncating drops
+    # the last partial interval, and that interval is the leading edge of the
+    # horizon — the freshest thing the buffer knows. A grid point landing past
+    # the newest sample holds its value (``fraction`` is clamped below), which
+    # states the target has stopped rather than guessing where it went next.
+    #
+    # The epsilon absorbs float division: a span of exactly two steps comes out
+    # as 1.9999999999999996 often enough to matter, and truncating that loses a
+    # whole waypoint.
+    span_steps = math.ceil((end - start) / step_s - 1e-9)
+    count = max(_MIN_BUFFER_SAMPLES, span_steps + 1)
+    grid: list[list[float]] = []
+    index = 0
+    for i in range(count):
+        moment = start + i * step_s
+        while index + 2 < len(samples) and samples[index + 1][0] <= moment:
+            index += 1
+        before_t, before = samples[index]
+        after_t, after = samples[min(index + 1, len(samples) - 1)]
+        span = after_t - before_t
+        fraction = 0.0 if span <= 0 else min(1.0, max(0.0, (moment - before_t) / span))
+        grid.append([before[k] + fraction * (after[k] - before[k]) for k in range(len(before))])
+    return grid
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +163,7 @@ class _BaseJogger:
         *,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
         ease_in_s: float = 0.0,
+        buffer_window_ms: float = 500.0,
     ) -> None:
         self._mg_list = mg_list
         self._multi = len(mg_list) > 1
@@ -67,9 +173,17 @@ class _BaseJogger:
         self._rerun: PolicyRerunLogger | None = None
         self._loop_t0: float | None = None
         self._ack0_ms: float = 0.0
-        self._first_yield_t: float | None = None
+        self._tick_ms: float | None = None
+        self._timeline_ms: float = 0.0
         self._ease_in_s = ease_in_s
         self._ease_baseline: dict[MotionGroup, list[float]] = {}
+        if buffer_window_ms < 0:
+            msg = "buffer_window_ms must be greater than or equal to 0"
+            raise ValueError(msg)
+        self._buffer_window_ms = buffer_window_ms
+        self._target_buffers: dict[MotionGroup, list[tuple[float, list[float]]]] = {}
+        self._warned_mixed_target_forms: set[MotionGroup] = set()
+        self._commanded: dict[str, dict[int, list[float]]] = {}
 
     @property
     def elapsed(self) -> float:
@@ -77,35 +191,93 @@ class _BaseJogger:
 
         Holds at ``0.0`` until the robot reports it is actively executing motion
         (all sessions :attr:`~WaypointJoggingSession.is_running`), then ticks
-        from zero. The robot's control loop engages a moment after the first
-        waypoint; anchoring on the actual RUNNING state — rather than a fixed
-        timer — means a time-parameterised target holds at its start value until
-        the robot is genuinely tracking, avoiding the hard catch-up jump on the
-        first move. A fallback anchors anyway if RUNNING is never reported, so
-        the loop can't stall.
+        from zero. It is anchored on the first loop iteration that has state,
+        not on the robot reporting RUNNING: waiting for RUNNING deadlocks the
+        live path, because the timeline has to move before any target velocity
+        can be measured and the robot has to move before it reports RUNNING.
+        A catch-up jump is not a concern either way: targets are placed on an
+        absolute timeline and unreachable waypoints are dropped at send time.
 
-        Crucially this advances on **acknowledged server progress** (capped at
-        the chunk horizon), not wall-clock: if the connection stalls, a target
-        parameterised on ``elapsed`` stops advancing too, so it stays in step
-        with the waypoint anchors and the robot never has to jump to catch up
-        with a timeline that ran ahead while the link was down.
+        Crucially this advances on the **server** jogger clock, not wall-clock,
+        so it stays in step with the timeline the waypoints are anchored on. The
+        extrapolation between state samples is uncapped, so on a stalled link it
+        keeps advancing rather than freezing; see :attr:`_timeline_ms` handling
+        below for why forward jumps are kept and backward ones are not.
         """
         if self._loop_t0 is None:
             return 0.0
-        return max(0.0, (self._acknowledged_ms() - self._ack0_ms) / 1000.0)
+        # Sampled once per loop iteration (see __aiter__), so every target the
+        # caller derives from this value is timestamped from the same instant.
+        #
+        # This MUST come from the server clock, not the monotonic clock. The
+        # robot executes against the jogger session timer, and wall time drifts
+        # from it; driving the trajectory clock from monotonic time measured
+        # far worse in two separate experiments (10mm+ tracking error and
+        # repeated stalls), even though it is the smoother of the two.
+        now_ms = self._tick_ms if self._tick_ms is not None else self._acknowledged_ms()
+        elapsed_ms = max(0.0, now_ms - self._ack0_ms)
+        # Quantise to the timeline grid so every chunk anchors at a multiple of
+        # it and successive chunks share one absolute grid, instead of each
+        # landing at a new phase.
+        grid_ms = TIMELINE_GRID_MS
+        if grid_ms > 0:
+            elapsed_ms = math.floor(elapsed_ms / grid_ms) * grid_ms
+        # Never run backwards: server "now" is extrapolated between state
+        # samples, so a late sample can resolve below an earlier estimate, and
+        # content is a function of this value — a backward step commands the
+        # robot to reverse.
+        #
+        # Forward jumps are deliberately NOT limited. They look like the robot
+        # teleporting, but they are the clock *correcting* after our own event
+        # loop was late reading the state stream. Rate-limiting them measured far
+        # worse (the timeline fell a full second behind, so every waypoint landed
+        # in the past and the robot starved): this clock must track the server,
+        # jumps included.
+        self._timeline_ms = max(self._timeline_ms, elapsed_ms)
+        return self._timeline_ms / 1000.0
 
     def _acknowledged_ms(self) -> float:
         """Acknowledged session "now" (ms), most conservative across all arms.
 
         Taking the minimum means the shared jog timeline only advances as fast
-        as the slowest-acknowledged motion group, so a stall on any one arm
-        freezes the whole timeline.
+        as the slowest-acknowledged motion group, so the arm furthest behind
+        sets the pace for all of them.
         """
         return min(s.session_elapsed_ms for s in self._sessions.values())
 
     def _sessions_by_id(self) -> dict[str, WaypointJoggingSession]:
         """Sessions keyed by motion group ID (for Rerun streaming)."""
         return {mg.id: session for mg, session in self._sessions.items()}
+
+    def _timeline_timestamp_ms(
+        self, mg: MotionGroup, trajectory_time_s: float, lead_ms: float = LEAD_MS
+    ) -> int | None:
+        """Absolute server timestamp for a target generated at ``trajectory_time_s``.
+
+        The whole session shares **one fixed timeline**: content generated at
+        trajectory time ``T`` always maps to ``ack0 + T + lead``, whenever it is
+        sent. Re-deriving the anchor from server "now" at send time instead makes
+        the same trajectory point land on a slightly different timestamp in every
+        chunk, because "now" is sampled at a jittery, aged instant — measured on
+        a UR10e that re-anchoring turned an otherwise jitter-free motion into a
+        visibly vibrating one.
+
+        Returns ``None`` before the timeline is anchored, so callers fall back to
+        a "now"-relative placement for the very first chunks.
+        """
+        session = self._sessions.get(mg)
+        if session is None or self._loop_t0 is None:
+            return None
+        # The lead is deliberately CONSTANT. Anything time-varying in this
+        # mapping (an adaptive lead, a drifting clock offset) moves previously
+        # commanded points to new absolute times, and the robot executes each
+        # such shift as a lurch -- an adaptive lead measured worse than a fixed
+        # one on every pattern tried.
+        return int(self._ack0_ms + trajectory_time_s * 1000.0 + lead_ms)
+
+    def _anchor_for_now(self, mg: MotionGroup, lead_ms: float = LEAD_MS) -> int | None:
+        """Timeline anchor for content generated at this iteration's instant."""
+        return self._timeline_timestamp_ms(mg, self.elapsed, lead_ms)
 
     def _expected_dims(self, mg: MotionGroup) -> int | None:
         """Expected target dimension for a motion group. Override in subclass."""
@@ -119,9 +291,21 @@ class _BaseJogger:
 
         Optional, off by default (``ease_in_s == 0``). When enabled, each step is
         interpolated from the robot's position at jogging start toward the
-        requested target by ``min(1, t / ease_in_s)`` — so motion (and velocity)
-        ramps up smoothly from zero over the first ``ease_in_s`` seconds and is
-        unchanged afterwards. Each step uses its own time within a chunk.
+        requested target over the first ``ease_in_s`` seconds, and is unchanged
+        afterwards. Each step uses its own time within a chunk.
+
+        The blend follows a smootherstep, not a straight ramp. A straight ramp is
+        continuous in position but not in velocity: the blend rate drops from
+        full to nothing the instant it completes, and the robot executes that
+        step in acceleration as a stumble a few hundred ms later. Measured on
+        the reference rig, the linear ramp made successive horizons disagree about
+        the same future moment by an order of magnitude more than they do for the
+        rest of the run, and the robot dipped to half speed shortly after.
+
+        Smootherstep (``6x^5 - 15x^4 + 10x^3``) is zero in both the first and the
+        second derivative at each end. Plain smoothstep (``3x^2 - 2x^3``) zeroes
+        only the first: its blend acceleration still steps at the ends, which is
+        the same defect as the linear ramp one order up. Only jerk steps here.
         """
         if self._ease_in_s <= 0 or not steps:
             return steps
@@ -142,61 +326,333 @@ class _BaseJogger:
         t0 = self.elapsed
         eased: list[list[float]] = []
         for i, step in enumerate(steps):
-            e = min(1.0, (t0 + i * dt_ms / 1000.0) / self._ease_in_s)
-            if e >= 1.0:
+            fraction = min(1.0, (t0 + i * dt_ms / 1000.0) / self._ease_in_s)
+            if fraction >= 1.0:
                 eased.append(step)
             else:
+                e = fraction**3 * (fraction * (fraction * 6.0 - 15.0) + 10.0)
                 eased.append([base[k] + e * (step[k] - base[k]) for k in range(len(step))])
         return eased
 
     def _validate_and_push(self, mg: MotionGroup, values: list[float]) -> None:
-        """Validate target dimensions and push to session."""
+        """Validate target dimensions and push the target exactly as measured.
+
+        One waypoint, where the target actually is. Nothing is inferred about
+        where it is going next — that horizon is the server's job, and until the
+        API provides it the rolling buffer in :meth:`_set_live_target` stands in.
+
+        This is the path taken while that buffer is still filling (and whenever
+        ``buffer_window_ms`` is 0). A lone waypoint is a *terminal* target the server
+        decelerates to a standstill at, so motion is halting for the first
+        ``buffer_window_ms`` of a run. That is the honest cost of never guessing.
+        """
+        self._validate_target_dims(mg, values)
+        session = self._sessions.get(mg)
+        if session is not None:
+            eased = self._ease_steps(mg, [list(values)], 0.0)
+            anchor = self._anchor_for_now(mg, LIVE_LEAD_MS)
+            session.update_chunk(
+                steps=eased,
+                dt_ms=0.0,
+                first_timestamp_ms=anchor,
+                timestamp_offset_steps=0 if anchor is not None else 1,
+                extend_buffer=False,
+            )
+            # Log what was actually commanded, not the raw request: during
+            # ease-in they differ by design, and plotting the raw request makes
+            # the tracking error look far worse than the robot is behaving.
+            self._record_commanded(mg.id, eased, 0.0, anchor)
+            self._log_target(mg.id, eased[:1], 0.0)
+            return
+        self._log_target(mg.id, [values], 0.0)
+
+    def _send_chunk(self, mg: MotionGroup, chunk: _Chunk, dt_ms: float) -> list[float]:
+        """Send one motion group's chunk. Returns its final step.
+
+        The chunk is placed on the absolute session timeline at
+        :data:`LEAD_MS`, so the same trajectory point keeps the same timestamp
+        however often the chunk is re-sent.
+        """
+        session = self._sessions.get(mg)
+        if session is not None:
+            eased = self._ease_steps(mg, chunk, dt_ms)
+            anchor = self._anchor_for_now(mg)
+            session.update_chunk(
+                steps=eased,
+                dt_ms=dt_ms,
+                first_timestamp_ms=(
+                    anchor if anchor is not None else session.estimated_server_timestamp_ms
+                ),
+                # Stated rather than left to the default: a chunk is the one form
+                # that gets min_chunk_horizon_ms padding, and this is where that
+                # is decided.
+                extend_buffer=True,
+            )
+            self._record_commanded(mg.id, eased, dt_ms, anchor)
+            self._log_target(mg.id, eased, dt_ms)
+        return chunk[-1]
+
+    def _dispatch_chunk(
+        self, chunk: _Chunk | dict[MotionGroup, _Chunk], dt_ms: float
+    ) -> dict[MotionGroup, list[float]]:
+        """Validate and send a chunk per motion group; return each one's final step.
+
+        Shared by both joggers: a chunk is ``list[list[float]]`` in joint space and
+        in TCP space alike, so only the live-target form differs between them.
+        """
+        if dt_ms <= 0:
+            msg = (
+                "set_chunk needs a positive dt_ms — the spacing between the "
+                f"chunk's steps — but got {dt_ms!r}."
+            )
+            raise ValueError(msg)
+
+        if isinstance(chunk, dict):
+            finals: dict[MotionGroup, list[float]] = {}
+            for mg, steps in chunk.items():
+                self._require_chunk(steps)
+                finals[mg] = self._send_chunk(mg, steps, dt_ms)
+                self._clear_target_buffer(mg)
+            return finals
+
+        if not isinstance(chunk, list):
+            msg = f"Expected list[list[float]] or dict[MotionGroup, ...], got {type(chunk)}"
+            raise TypeError(msg)
+        self._require_chunk(chunk)
+        if self._multi:
+            msg = "For multiple motion groups, pass a dict[MotionGroup, list[list[float]]]"
+            raise TypeError(msg)
+        mg = self._mg_list[0]
+        final = self._send_chunk(mg, chunk, dt_ms)
+        self._clear_target_buffer(mg)
+        return {mg: final}
+
+    @staticmethod
+    def _require_chunk(value: object) -> None:
+        """Reject anything but a chunk, on the way into ``set_chunk``."""
+        if _is_chunk(value):
+            return
+        if isinstance(value, list) and not value:
+            msg = "set_chunk got an empty list; a chunk needs at least one step."
+        elif isinstance(value, list):
+            msg = (
+                "set_chunk expects a chunk of future steps (list[list[float]]) but "
+                "got a single target. Use set_target(...) for one target."
+            )
+        else:
+            msg = f"set_chunk expects list[list[float]], got {type(value)}"
+        raise TypeError(msg)
+
+    @staticmethod
+    def _reject_chunk(value: object) -> None:
+        """Reject a chunk, on the way into ``set_target``."""
+        if not _is_chunk(value):
+            return
+        msg = (
+            "set_target takes one live target, not a chunk of future steps. Pass "
+            "it to set_chunk(chunk, dt_ms=...) instead — a chunk carries its own "
+            "horizon, so buffer_window_ms does not apply to it."
+        )
+        raise TypeError(msg)
+
+    def _set_live_target(self, mg: MotionGroup, values: list[float]) -> None:
+        """Send one live target through the rolling buffer, or alone if disabled.
+
+        The server needs a horizon of *future* waypoints or it decelerates, and a
+        live target only ever says where the target is **now**. That horizon
+        belongs to the API; until the API provides it, this buffer stands in
+        without inventing anything: targets are held and replayed ``buffer_window_ms``
+        late, so every waypoint sent is a real measured target.
+
+        Every sample is commanded at a **constant** delay after the moment it was
+        produced, so a sample always maps to the same absolute time no matter how
+        often the window is re-sent. Re-anchoring the window at "now" instead
+        pushes the same sample further into the future on every push, so the
+        playback start keeps receding and the robot never gets through it.
+        """
+        if self._buffer_window_ms == 0:
+            self._validate_and_push(mg, values)
+            return
+
+        self._validate_target_dims(mg, values)
+        session = self._sessions.get(mg)
+        if session is None:
+            return
+
+        now = self.elapsed
+        buffer = self._target_buffers.setdefault(mg, [])
+        buffer.append((now, list(values)))
+        # Keep only the trailing window; a sample is dropped once it is older
+        # than buffer_window_ms, so the window length is bounded by time, not by call
+        # rate.
+        cutoff = now - self._buffer_window_ms / 1000.0
+        while len(buffer) > _MIN_BUFFER_SAMPLES and (
+            buffer[1][0] < cutoff or len(buffer) > _MAX_LIVE_SAMPLES
+        ):
+            del buffer[0]
+
+        span_s = buffer[-1][0] - buffer[0][0]
+        if len(buffer) < _MIN_BUFFER_SAMPLES or span_s <= 0:
+            # Not enough history yet (or the timeline has not started ticking):
+            # keep the robot live with a plain single target rather than waiting
+            # for the window to fill, which would otherwise never move at all.
+            self._validate_and_push(mg, values)
+            return
+
+        # Waypoints are laid out at a uniform spacing, so the recorded samples
+        # have to be put on a uniform grid *by interpolating at their own
+        # timestamps*. Handing them over as-is with an averaged dt replays each
+        # one at the wrong moment -- the caller's ticks jitter over 10-13ms, and
+        # a quantised timeline collapses some of them -- which time-warps the
+        # trajectory and injects velocity noise into what is otherwise exact
+        # recorded data — on the reference rig, replaying with an averaged dt was
+        # an order of magnitude less even than honouring the timestamps.
+        #
+        # The grid is ONE absolute grid, not one starting wherever the oldest
+        # surviving sample happens to sit: which sample that is changes with
+        # every prune, so anchoring to it lands the same recorded moment on a
+        # slightly different timestamp in each push -- the same re-anchoring
+        # that turns an otherwise clean motion into a vibrating one.
+        # The spacing the controller executes best — a per-controller property,
+        # so it comes from config rather than being hardcoded — but never coarser
+        # than half the window, so a short buffer is still represented by more
+        # than its endpoints.
+        step_dt_s = min(session.single_step_dt_ms / 1000.0, span_s / 2.0)
+        step_dt_ms = step_dt_s * 1000.0
+        grid_start = math.ceil(buffer[0][0] / step_dt_s) * step_dt_s
+        steps = _resample_evenly(buffer, step_dt_s, start=grid_start)
+        if not steps:
+            self._validate_and_push(mg, values)
+            return
+        # The window is the whole horizon: it reaches up to "now" and no further,
+        # because nothing beyond it has been measured yet. ``buffer_window_ms`` therefore
+        # sets the horizon the server profiles against, which is why it has to be
+        # a few hundred milliseconds — the server caps its speed at whatever it
+        # can still brake to a stop within.
+        anchor = self._timeline_timestamp_ms(
+            mg, grid_start + self._buffer_window_ms / 1000.0, LIVE_LEAD_MS
+        )
+        eased = self._ease_steps(mg, steps, step_dt_ms)
+        session.update_chunk(
+            steps=eased,
+            dt_ms=step_dt_ms,
+            first_timestamp_ms=(
+                anchor if anchor is not None else session.estimated_server_timestamp_ms
+            ),
+            extend_buffer=False,
+        )
+        self._record_commanded(mg.id, eased, step_dt_ms, anchor)
+        self._log_target(mg.id, steps, step_dt_ms)
+
+    def _clear_target_buffer(self, mg: MotionGroup) -> None:
+        """Forget rolling samples when an explicit chunk replaces live targets.
+
+        A chunk carries its own horizon, so the samples held for the live path are
+        stale the moment one arrives. Dropping them is correct, but it is worth
+        saying out loud: the buffer then has to refill before the live path can
+        build a horizon again, and until it does its targets go out alone as
+        terminal waypoints — the halting motion ``buffer_window_ms`` exists to
+        avoid. Alternating the two forms on one motion group keeps paying that.
+
+        Nothing is logged for a caller that only ever sends chunks, since there
+        are no samples to discard.
+        """
+        discarded = self._target_buffers.pop(mg, None)
+        if discarded and mg not in self._warned_mixed_target_forms:
+            self._warned_mixed_target_forms.add(mg)
+            logger.warning(
+                "%s received a chunk while %d live target(s) were buffered; the "
+                "buffer is cleared and live targets will be sent alone until it "
+                "refills. Prefer one target form per motion group.",
+                mg.id,
+                len(discarded),
+            )
+
+    def _validate_target_dims(self, mg: MotionGroup, values: list[float]) -> None:
         expected = self._expected_dims(mg)
         if expected is not None and len(values) != expected:
             msg = f"Target has {len(values)} values but motion group '{mg.id}' expects {expected}"
             raise ValueError(msg)
-        session = self._sessions.get(mg)
-        if session is not None:
-            # Single-step live target: anchor at "now", one step ahead so the
-            # server has time to reach it from the robot's current position.
-            session.update_chunk(
-                steps=self._ease_steps(mg, [values], 0.0), dt_ms=0.0, anchor_offset_steps=1
-            )
-        self._log_target(mg.id, [values], 0.0)
 
-    def _push_target(self, mg: MotionGroup, value: list, dt_ms: float) -> list[float]:
-        """Push a single or chunk target to a session. Returns the final target."""
-        session = self._sessions.get(mg)
-        if session is None:
-            return value if not isinstance(value[0], list) else value[-1]
-        if value and isinstance(value[0], list):
-            # Chunked: absolute anchor on the jogger's own session timeline so
-            # overlapping per-tick resends land identical steps at identical
-            # timestamps (one coherent trajectory, no seam jump).
-            session.update_chunk(
-                steps=self._ease_steps(mg, value, dt_ms),
-                dt_ms=dt_ms,
-                anchor_ms=session.session_elapsed_ms,
-            )
-            self._log_target(mg.id, value, dt_ms)
-            return value[-1]
-        self._validate_and_push(mg, value)
-        return value
+    def _record_commanded(
+        self, mg_id: str, steps: list[list[float]], dt_ms: float, anchor_ms: int | None
+    ) -> None:
+        """Remember what was commanded for each server millisecond.
+
+        Only kept while Rerun is logging — it exists so the tracking plot can
+        line a command up with the state that was measured at the same moment.
+        A later chunk overwrites an earlier one at the same timestamp, which is
+        what the server does with it too.
+        """
+        if self._rerun is None or anchor_ms is None or not steps:
+            return
+        history = self._commanded.setdefault(mg_id, {})
+        spacing = dt_ms if dt_ms > 0 else 0.0
+        for i, step in enumerate(steps):
+            history[anchor_ms + int(i * spacing)] = list(step)
+            if spacing <= 0:
+                break
+        cutoff = anchor_ms - _COMMAND_HISTORY_MS
+        for timestamp in [t for t in history if t < cutoff]:
+            del history[timestamp]
+
+    def _commanded_at(self, mg_id: str, server_ms: int | None) -> list[float] | None:
+        """What was commanded for ``server_ms``, interpolated between waypoints."""
+        history = self._commanded.get(mg_id)
+        if not history or server_ms is None:
+            return None
+        timestamps = sorted(history)
+        index = bisect.bisect_left(timestamps, server_ms)
+        if index == 0:
+            return history[timestamps[0]]
+        if index >= len(timestamps):
+            return history[timestamps[-1]]
+        before, after = timestamps[index - 1], timestamps[index]
+        start, end = history[before], history[after]
+        fraction = (server_ms - before) / (after - before)
+        return [start[k] + fraction * (end[k] - start[k]) for k in range(len(start))]
 
     def _log_target(self, mg_id: str, steps: list[list[float]], dt_ms: float) -> None:
         """Log jogging target to Rerun as an action chunk visualization."""
         if self._rerun is None:
             return
-        from novapolicy.types import ActionChunk  # noqa: PLC0415
+        from novapolicy.types import ActionChunk  # ruff: ignore[import-outside-top-level]
 
-        # Determine if this is joint or TCP based on session mode
-        session_by_id = self._sessions_by_id()
-        session = session_by_id.get(mg_id)
+        # Only the commanded chunk is logged here. Tracking error belongs to
+        # the state, not to this tick, and is logged per state packet in
+        # :meth:`_log_state_tracking`.
+        session = self._sessions_by_id().get(mg_id)
         if session is not None and session.mode == "cartesian":
             chunk = ActionChunk(tcp={mg_id: steps}, dt_ms=dt_ms)
         else:
             chunk = ActionChunk(joints={mg_id: steps}, dt_ms=dt_ms)
         self._rerun.log_action_chunk(chunk, step=0)
+
+    def _log_state_tracking(
+        self, mg_id: str, mode: str, state: RobotState, server_ms: int, generated_at: float
+    ) -> None:
+        """Log commanded-vs-actual for one state packet, at its own instant.
+
+        Driven by the state stream rather than the control loop. The two run at
+        different rates and, more importantly, states arrive in bursts: sampling
+        the cached pose once per control tick re-reads the same packet for tens of
+        milliseconds at a time and drops the rest, which draws the tracking error
+        as a repeating flat shelf and, on a bursty link, discarded roughly half of
+        all states. One entry per packet plots every state at the
+        moment it was generated, so the trace is continuous.
+
+        The command is resolved for *this packet's* server timestamp, so both
+        sides of the difference describe the same instant.
+        """
+        if self._rerun is None:
+            return
+        commanded = self._commanded_at(mg_id, server_ms)
+        if commanded is None:
+            return
+        if mode == "cartesian":
+            self._rerun.log_tcp_tracking(mg_id, commanded, state, step=0, at=generated_at)
+        else:
+            self._rerun.log_joint_tracking(mg_id, commanded, state, step=0, at=generated_at)
 
     def state(self) -> dict[MotionGroup, RobotState] | RobotState | None:
         """Get current robot state(s).
@@ -243,6 +699,18 @@ class _BaseJogger:
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> bool:
+        # Let the waypoints already accepted finish before tearing the session
+        # down. They describe motion the caller asked for, and with a rolling
+        # buffer all of it lies in the future by construction, so cancelling
+        # straight away stops the robot part-way through the commanded path.
+        #
+        # Skipped when the loop ended for a reason that wants the robot stopped
+        # NOW: a fault, an e-stop, or a fired stop condition. Draining those
+        # would keep the robot moving for the length of the horizon after
+        # something asked it to stop.
+        if exc_type is None and self.stop_condition_triggered is None:
+            await self._drain_sessions()
+        self._stop_observing_states()
         if self._rerun is not None:
             await self._rerun.stop_streaming()
             self._rerun = None
@@ -255,26 +723,57 @@ class _BaseJogger:
         logger.info("%s stopped", self.__class__.__name__)
         return False
 
+    async def _drain_sessions(self) -> None:
+        """Wait out every session's outstanding waypoint schedule, in parallel."""
+        with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
+            _ = await asyncio.gather(
+                *(session.drain() for session in self._sessions.values()),
+                return_exceptions=True,
+            )
+
     async def _init_rerun(self) -> None:
         """Initialize Rerun logger if a viewer is active."""
-        from novapolicy.rerun import _is_rerun_active  # noqa: PLC0415
+        from novapolicy.rerun import _is_rerun_active  # ruff: ignore[import-outside-top-level]
 
         if not _is_rerun_active():
             return
 
-        from novapolicy.rerun import PolicyRerunLogger  # noqa: PLC0415
+        from novapolicy.rerun import PolicyRerunLogger  # ruff: ignore[import-outside-top-level]
 
-        self._rerun = PolicyRerunLogger(self._mg_list)
+        self._rerun = PolicyRerunLogger(
+            self._mg_list,
+            use_tcp_offset_for_joint_actions=True,
+        )
         await self._rerun.initialize()
         if self._rerun is not None:
             self._rerun.start_streaming(self._sessions_by_id())
+            self._observe_states_for_rerun()
+
+    def _observe_states_for_rerun(self) -> None:
+        """Log tracking error from the state stream for as long as Rerun is on."""
+        for mg, session in self._sessions.items():
+            mg_id, mode = mg.id, session.mode
+
+            def observe(
+                state: RobotState,
+                server_ms: int,
+                generated_at: float,
+                mg_id: str = mg_id,
+                mode: str = mode,
+            ) -> None:
+                self._log_state_tracking(mg_id, mode, state, server_ms, generated_at)
+
+            session.set_state_observer(observe)
+
+    def _stop_observing_states(self) -> None:
+        for session in self._sessions.values():
+            session.set_state_observer(None)
 
     async def _move_to_start_joint_position(self) -> None:
         """PTP move all motion groups to their start_joint_position positions."""
-        import asyncio as _asyncio  # noqa: PLC0415
+        import asyncio as _asyncio  # ruff: ignore[import-outside-top-level]
 
-        from nova import api  # noqa: PLC0415
-        from nova.actions import jnt  # noqa: PLC0415
+        from nova.actions import jnt  # ruff: ignore[import-outside-top-level]
 
         async def _ptp(mg: MotionGroup, joints: list[float]) -> None:
             tcp = await mg.active_tcp_name() or (await mg.tcp_names())[0]
@@ -282,14 +781,15 @@ class _BaseJogger:
             # planning at this exact start pose (the same relaxation a manual
             # PTP-to-home would use).
             setup = await mg.get_setup(tcp)
-            setup.collision_setups = api.models.CollisionSetups({})
-            traj = await mg.plan([jnt(joints)], tcp, motion_group_setup=setup)
-            await mg.execute(traj, tcp, actions=[jnt(joints)])
+            setup.collision_setups = {}
+            target = tuple(joints)
+            traj = await mg.plan([jnt(target)], tcp, motion_group_setup=setup)
+            await mg.execute(traj, tcp, actions=[jnt(target)])
 
-        tasks = [
-            _ptp(mg, joints)
-            for mg, joints in self._start_joint_position.items()  # type: ignore[union-attr]
-        ]
+        start_positions = self._start_joint_position
+        if start_positions is None:
+            return
+        tasks = [_ptp(mg, joints) for mg, joints in start_positions.items()]
         await _asyncio.gather(*tasks)
 
     @property
@@ -311,21 +811,25 @@ class _BaseJogger:
             if triggered_stop_condition(self._sessions) is not None:
                 return
             s = self.state()
-            if s is not None:
-                if self._loop_t0 is None:
-                    now = time.monotonic()
-                    if self._first_yield_t is None:
-                        self._first_yield_t = now
-                    running = all(sess.is_running for sess in self._sessions.values())
-                    # Anchor the clock once the robot is actually executing
-                    # motion, or after a safety fallback so a robot that never
-                    # reports RUNNING can't stall the loop.
-                    if running or now - self._first_yield_t > _ANCHOR_FALLBACK_S:
-                        self._loop_t0 = now
-                        # Baseline the acknowledged clock at the same instant so
-                        # elapsed ticks from zero on the acknowledged timeline.
-                        self._ack0_ms = self._acknowledged_ms()
-                yield s
+            if s is None:
+                await asyncio.sleep(0.01)
+                continue
+            if self._loop_t0 is None:
+                # Anchor as soon as state is available. Waiting for the robot to
+                # report RUNNING deadlocks the live path: the timeline stays at
+                # zero, so no target velocity can be measured, so every push is
+                # a single terminal waypoint, so the robot never starts moving
+                # and never reports RUNNING. A catch-up jump is not a concern
+                # either way: targets are placed on an absolute timeline and
+                # unreachable waypoints are dropped at send time.
+                self._loop_t0 = time.monotonic()
+                # Baseline the acknowledged clock at the same instant so
+                # elapsed ticks from zero on the acknowledged timeline.
+                self._ack0_ms = self._acknowledged_ms()
+            # One timeline sample per iteration: everything the caller does with
+            # this state (read elapsed, build a chunk, push targets) shares it.
+            self._tick_ms = self._acknowledged_ms()
+            yield s
             await asyncio.sleep(0.01)
 
 
@@ -348,6 +852,7 @@ class JointJogger(_BaseJogger):
         stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
         ease_in_s: float = 0.0,
+        buffer_window_ms: float = 500.0,
     ) -> None:
         cfg = config or WaypointConfig()
         sessions: dict[MotionGroup, WaypointJoggingSession] = {}
@@ -366,7 +871,11 @@ class JointJogger(_BaseJogger):
             else:
                 home_dict = {motion_groups[0]: start_joint_position}
         super().__init__(
-            motion_groups, sessions, start_joint_position=home_dict, ease_in_s=ease_in_s
+            motion_groups,
+            sessions,
+            start_joint_position=home_dict,
+            ease_in_s=ease_in_s,
+            buffer_window_ms=buffer_window_ms,
         )
         self._target: dict[MotionGroup, list[float]] | None = None
 
@@ -379,39 +888,74 @@ class JointJogger(_BaseJogger):
             return self._target.get(self._mg_list[0])
         return self._target
 
-    def set_target(
-        self,
-        target: (
-            list[float] | list[list[float]] | dict[MotionGroup, list[float] | list[list[float]]]
-        ),
-        *,
-        dt_ms: float = 0.0,
-    ) -> None:
-        """Set the tracking target.
+    def set_target(self, target: list[float] | dict[MotionGroup, list[float]]) -> None:
+        """Set the live joint target — where the robot should be *now*.
+
+        Live targets go through the ring buffer sized by ``buffer_window_ms``:
+        recent targets are replayed as a continuous waypoint horizon, so the
+        server always has somewhere to be going next. There is no ``dt_ms`` to
+        get wrong — spacing is measured from the trajectory times the samples
+        were produced at.
 
         Args:
-            target: Joint positions to track.
-                - ``list[float]`` — single target (one motion group)
-                - ``list[list[float]]`` — chunk of future targets (one motion group)
-                - ``dict[MotionGroup, ...]`` — per-MG targets or chunks
-            dt_ms: Time between chunk steps in milliseconds.
-                Only used when ``target`` contains chunks (nested lists).
-                Enables interpolation and feedforward velocity.
+            target: Joint positions to track — ``list[float]`` for one motion
+                group, or ``dict[MotionGroup, list[float]]`` for several.
+
+        Raises:
+            TypeError: If given a chunk of future steps. Use :meth:`set_chunk`.
         """
-        if isinstance(target, list):
-            if self._multi:
-                msg = "For multiple motion groups, pass a dict[MotionGroup, ...]"
-                raise TypeError(msg)
-            mg = self._mg_list[0]
-            final = self._push_target(mg, target, dt_ms)
-            self._target = {mg: final}
-        elif isinstance(target, dict):
+        if isinstance(target, dict):
             self._target = self._target or {}
-            for mg, mg_value in target.items():
-                self._target[mg] = self._push_target(mg, mg_value, dt_ms)
-        else:
-            msg = f"Expected list or dict, got {type(target)}"
+            for mg, value in target.items():
+                self._reject_chunk(value)
+                self._set_live_target(mg, value)
+                self._target[mg] = value
+            return
+
+        self._reject_chunk(target)
+        if not isinstance(target, list):
+            msg = f"Expected list[float] or dict[MotionGroup, list[float]], got {type(target)}"
             raise TypeError(msg)
+        if self._multi:
+            msg = "For multiple motion groups, pass a dict[MotionGroup, list[float]]"
+            raise TypeError(msg)
+        mg = self._mg_list[0]
+        self._set_live_target(mg, target)
+        self._target = {mg: target}
+
+    def set_chunk(
+        self,
+        chunk: list[list[float]] | dict[MotionGroup, list[list[float]]],
+        *,
+        dt_ms: float,
+    ) -> None:
+        """Send a chunk of future joint targets.
+
+        A chunk already describes where the robot goes next, so it carries its own
+        horizon: ``buffer_window_ms`` does not apply and costs no latency here. A
+        chunk shorter than :attr:`WaypointConfig.min_chunk_horizon_ms` is padded by
+        repeating its final step, and leading steps whose moment has already passed
+        are dropped at send time.
+
+        Sending a chunk clears the live ring buffer, so alternating this with
+        :meth:`set_target` on one motion group leaves the live targets after each
+        chunk to go out alone until the buffer refills.
+
+        Args:
+            chunk: Future joint positions — ``list[list[float]]`` for one motion
+                group, or ``dict[MotionGroup, list[list[float]]]`` for several.
+            dt_ms: Spacing between consecutive steps, in milliseconds. Required.
+
+        Raises:
+            TypeError: If given a single target. Use :meth:`set_target`.
+            ValueError: If ``dt_ms`` is not positive.
+        """
+        finals = self._dispatch_chunk(chunk, dt_ms)
+        # A dict updates only the groups it names; a bare chunk replaces outright,
+        # matching set_target.
+        merged = dict(self._target or {}) if isinstance(chunk, dict) else {}
+        merged.update(finals)
+        self._target = merged
 
     async def __aenter__(self) -> JointJogger:
         await super().__aenter__()
@@ -437,6 +981,7 @@ class TcpJogger(_BaseJogger):
         stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
         ease_in_s: float = 0.0,
+        buffer_window_ms: float = 500.0,
     ) -> None:
         cfg = config or WaypointConfig()
         sessions: dict[MotionGroup, WaypointJoggingSession] = {}
@@ -456,14 +1001,22 @@ class TcpJogger(_BaseJogger):
                 home_dict = start_joint_position
             else:
                 home_dict = {mg_list[0]: start_joint_position}
-        super().__init__(mg_list, sessions, start_joint_position=home_dict, ease_in_s=ease_in_s)
-        self._target: dict[MotionGroup, Pose] | None = None
+        super().__init__(
+            mg_list,
+            sessions,
+            start_joint_position=home_dict,
+            ease_in_s=ease_in_s,
+            buffer_window_ms=buffer_window_ms,
+        )
+        self._target: dict[MotionGroup, Pose | list[float]] | None = None
 
-    def _expected_dims(self, mg: MotionGroup) -> int | None:  # noqa: ARG002
+    def _expected_dims(self, mg: MotionGroup) -> int | None:  # ruff: ignore[unused-method-argument, no-self-use]
         return _CARTESIAN_DIMS
 
     @property
-    def target(self) -> dict[MotionGroup, Pose] | Pose | None:
+    def target(
+        self,
+    ) -> dict[MotionGroup, Pose | list[float]] | Pose | list[float] | None:
         """Current target (read-only). Use :meth:`set_target` to update."""
         if self._target is None:
             return None
@@ -471,50 +1024,81 @@ class TcpJogger(_BaseJogger):
             return self._target.get(self._mg_list[0])
         return self._target
 
-    def set_target(
-        self,
-        target: Pose | list[list[float]] | dict[MotionGroup, Pose | list[list[float]]],
-        *,
-        dt_ms: float = 0.0,
-    ) -> None:
-        """Set the TCP tracking target.
+    def set_target(self, target: Pose | dict[MotionGroup, Pose]) -> None:
+        """Set the live TCP target — where the TCP should be *now*.
+
+        Live poses go through the ring buffer sized by ``buffer_window_ms``: recent
+        poses are replayed as a continuous waypoint horizon, so the server always
+        has somewhere to be going next. There is no ``dt_ms`` to get wrong —
+        spacing is measured from the trajectory times the samples were produced at.
 
         Args:
-            target: TCP pose(s) to track.
-                - ``Pose`` — single position target (one motion group)
-                - ``list[list[float]]`` — chunk of future TCP targets [x,y,z,rx,ry,rz]
-                - ``dict[MotionGroup, ...]`` — per-MG targets or chunks
-            dt_ms: Time between chunk steps in milliseconds.
-                Only used when target is a chunk (list of lists).
-        """
-        from nova.types import Pose  # noqa: PLC0415
+            target: TCP pose to track — a ``Pose`` for one motion group, or
+                ``dict[MotionGroup, Pose]`` for several.
 
-        if isinstance(target, Pose):
-            if self._multi:
-                msg = "For multiple motion groups, pass a dict[MotionGroup, Pose]"
-                raise TypeError(msg)
-            mg = self._mg_list[0]
-            self._validate_and_push(mg, list(target.position) + list(target.orientation))
-            self._target = {mg: target}
-        elif isinstance(target, list):
-            if self._multi:
-                msg = "For multiple motion groups, pass a dict[MotionGroup, ...]"
-                raise TypeError(msg)
-            mg = self._mg_list[0]
-            self._push_target(mg, target, dt_ms)
-            self._target = {mg: target[-1] if target and isinstance(target[0], list) else target}
-        elif isinstance(target, dict):
+        Raises:
+            TypeError: If given a chunk of future steps. Use :meth:`set_chunk`.
+        """
+        from nova.types import Pose  # ruff: ignore[import-outside-top-level]
+
+        if isinstance(target, dict):
             self._target = self._target or {}
             for mg, value in target.items():
-                if isinstance(value, Pose):
-                    self._validate_and_push(mg, list(value.position) + list(value.orientation))
-                    self._target[mg] = value
-                else:
-                    self._push_target(mg, value, dt_ms)
-                    self._target[mg] = value[-1] if value and isinstance(value[0], list) else value
-        else:
-            msg = f"Expected Pose, list, or dict, got {type(target)}"
+                if not isinstance(value, Pose):
+                    self._reject_chunk(value)
+                    msg = f"Expected Pose per motion group, got {type(value)}"
+                    raise TypeError(msg)
+                self._set_live_target(mg, list(value.position) + list(value.orientation))
+                self._target[mg] = value
+            return
+
+        if not isinstance(target, Pose):
+            self._reject_chunk(target)
+            msg = f"Expected Pose or dict[MotionGroup, Pose], got {type(target)}"
             raise TypeError(msg)
+        if self._multi:
+            msg = "For multiple motion groups, pass a dict[MotionGroup, Pose]"
+            raise TypeError(msg)
+        mg = self._mg_list[0]
+        self._set_live_target(mg, list(target.position) + list(target.orientation))
+        self._target = {mg: target}
+
+    def set_chunk(
+        self,
+        chunk: list[list[float]] | dict[MotionGroup, list[list[float]]],
+        *,
+        dt_ms: float,
+    ) -> None:
+        """Send a chunk of future TCP targets, each ``[x, y, z, rx, ry, rz]``.
+
+        A chunk already describes where the TCP goes next, so it carries its own
+        horizon: ``buffer_window_ms`` does not apply and costs no latency here. A
+        chunk shorter than :attr:`WaypointConfig.min_chunk_horizon_ms` is padded by
+        repeating its final step, and leading steps whose moment has already passed
+        are dropped at send time.
+
+        Sending a chunk clears the live ring buffer, so alternating this with
+        :meth:`set_target` on one motion group leaves the live poses after each
+        chunk to go out alone until the buffer refills.
+
+        Args:
+            chunk: Future TCP poses in mm and rad — ``list[list[float]]`` for one
+                motion group, or ``dict[MotionGroup, list[list[float]]]`` for
+                several. Note these are raw 6-vectors, not ``Pose`` objects.
+            dt_ms: Spacing between consecutive steps, in milliseconds. Required.
+
+        Raises:
+            TypeError: If given a single pose. Use :meth:`set_target`.
+            ValueError: If ``dt_ms`` is not positive.
+        """
+        finals = self._dispatch_chunk(chunk, dt_ms)
+        # A dict updates only the groups it names; a bare chunk replaces outright,
+        # matching set_target. Annotated because ``_target`` also holds live Poses.
+        merged: dict[MotionGroup, Pose | list[float]] = (
+            dict(self._target or {}) if isinstance(chunk, dict) else {}
+        )
+        merged.update(finals)
+        self._target = merged
 
     async def __aenter__(self) -> TcpJogger:
         await super().__aenter__()
@@ -534,6 +1118,7 @@ def jog_joints(
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
     ease_in_s: float = ...,
+    buffer_window_ms: float = ...,
 ) -> JointJogger:
     pass
 
@@ -546,6 +1131,7 @@ def jog_joints(
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
     ease_in_s: float = ...,
+    buffer_window_ms: float = ...,
 ) -> JointJogger:
     pass
 
@@ -557,6 +1143,7 @@ def jog_joints(
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     ease_in_s: float = 0.0,
+    buffer_window_ms: float = 500.0,
 ) -> JointJogger:
     """Create a joint position jogger using server-side waypoint jogging.
 
@@ -571,6 +1158,40 @@ def jog_joints(
         ease_in_s: If > 0, ramp motion up from a standstill over this many
             seconds at the start, so velocity begins at zero instead of jumping
             to the target's initial speed. Default 0 (disabled).
+        buffer_window_ms: Length of the ring buffer of recent live targets, in
+            milliseconds. **Applies to live targets only** — see below.
+
+            Its job is to keep live jogging smooth. A live target says only where
+            the target is *now*, and a lone waypoint is a *terminal* target: with
+            no successor the server plans a decelerate-to-standstill profile, so a
+            target replaced every tick makes the robot stop and restart
+            continuously. That is the jerky motion this removes. The buffer holds
+            the last ``buffer_window_ms`` of targets and replays them as a
+            continuous waypoint horizon, so the server always has somewhere to be
+            going next.
+
+            Nothing in that horizon is invented: every waypoint in it is a target
+            that was really measured, replayed late rather than extrapolated
+            forward. The cost is latency — the robot trails the live target by a
+            little over this window.
+
+            It has to be a few hundred milliseconds. The window *is* the horizon,
+            and the server caps its speed at whatever it can brake to a stop
+            within, so a short window makes the robot creep and pause: on the
+            UR10e this was tuned against, a 150ms window stalled a fifth of all
+            samples and 450ms still stalled occasionally. Where the safe horizon
+            differs, so does this default.
+
+            ``0`` disables buffering: each target is sent alone, as measured, and
+            the halting motion described above is what you get. Useful for
+            stepping a robot to discrete positions, not for tracking a moving one.
+
+            **Live targets only.** :meth:`~JointJogger.set_chunk` takes chunks,
+            which carry their own horizon, so there is nothing to buffer and no
+            latency to pay there; sending one also clears whatever the ring buffer
+            had accumulated. The equivalent knob for chunks is
+            :attr:`WaypointConfig.min_chunk_horizon_ms`, which pads a chunk that is
+            too short to brake within.
 
     Returns:
         A :class:`JointJogger` async context manager.
@@ -586,14 +1207,18 @@ def jog_joints(
             async for state in jogger:
                 jogger.set_target([0.1, -1.5, 1.0, -0.5, 0.0, 0.0])
     """
-    if not isinstance(motion_groups, list):
-        motion_groups = [motion_groups]
+    groups = (
+        cast("list[MotionGroup]", motion_groups)
+        if isinstance(motion_groups, list)
+        else [motion_groups]
+    )
     return JointJogger(
-        motion_groups,
+        groups,
         config=config,
         stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,
         ease_in_s=ease_in_s,
+        buffer_window_ms=buffer_window_ms,
     )
 
 
@@ -606,6 +1231,7 @@ def jog_tcp(
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
     ease_in_s: float = ...,
+    buffer_window_ms: float = ...,
 ) -> TcpJogger:
     pass
 
@@ -617,6 +1243,8 @@ def jog_tcp(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
+    ease_in_s: float = ...,
+    buffer_window_ms: float = ...,
 ) -> TcpJogger:
     pass
 
@@ -629,6 +1257,7 @@ def jog_tcp(
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     ease_in_s: float = 0.0,
+    buffer_window_ms: float = 500.0,
 ) -> TcpJogger:
     """Create a TCP pose jogger using server-side waypoint jogging.
 
@@ -645,6 +1274,14 @@ def jog_tcp(
         ease_in_s: If > 0, ramp motion up from a standstill over this many
             seconds at the start, so velocity begins at zero instead of jumping
             to the target's initial speed. Default 0 (disabled).
+        buffer_window_ms: Length of the ring buffer of recent live targets, in
+            milliseconds. Replaying them as a continuous horizon is what keeps
+            live jogging smooth instead of halting; the robot trails the live
+            target by a little over this window in exchange. ``0`` sends each
+            target alone. Applies to :meth:`~TcpJogger.set_target` only;
+            :meth:`~TcpJogger.set_chunk` gets its horizon from
+            :attr:`WaypointConfig.min_chunk_horizon_ms`. See :func:`jog_joints`
+            for the full trade.
 
     Returns:
         A :class:`TcpJogger` async context manager.
@@ -662,11 +1299,12 @@ def jog_tcp(
     """
     if isinstance(motion_groups, dict):
         return TcpJogger(
-            motion_groups,
+            cast("dict[MotionGroup, str]", motion_groups),
             config=config,
             stop_conditions=stop_conditions,
             start_joint_position=start_joint_position,
             ease_in_s=ease_in_s,
+            buffer_window_ms=buffer_window_ms,
         )
     return TcpJogger(
         {motion_groups: tcp},
@@ -674,4 +1312,5 @@ def jog_tcp(
         stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,
         ease_in_s=ease_in_s,
+        buffer_window_ms=buffer_window_ms,
     )

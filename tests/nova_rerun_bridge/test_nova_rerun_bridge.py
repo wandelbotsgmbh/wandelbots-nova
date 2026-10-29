@@ -4,11 +4,13 @@ Tests focus on business logic, async operations, and Nova integration.
 Does not test rerun library functionality directly.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from nova_rerun_bridge.nova_rerun_bridge import NovaRerunBridge
+from nova_rerun_bridge.trajectory import TimingMode
 
 
 class TestNovaRerunBridgeInit:
@@ -24,6 +26,7 @@ class TestNovaRerunBridgeInit:
 
         assert bridge.nova == mock_nova
         assert isinstance(bridge._streaming_tasks, dict)
+        assert bridge.state_sample_interval_ms == pytest.approx(1000.0 / 30.0)
 
     @patch("nova_rerun_bridge.nova_rerun_bridge.rr")
     @patch("nova_rerun_bridge.nova_rerun_bridge.logger")
@@ -57,6 +60,15 @@ class TestNovaRerunBridgeInit:
         args, kwargs = mock_rr.init.call_args
         assert kwargs.get("recording_id") == custom_id
         assert kwargs.get("spawn") is True
+
+    @pytest.mark.parametrize("interval_ms", [0.0, -1.0, float("inf"), float("nan")])
+    @patch("nova_rerun_bridge.nova_rerun_bridge.rr")
+    @patch("nova_rerun_bridge.nova_rerun_bridge.logger")
+    def test_invalid_state_sample_interval_is_rejected(
+        self, mock_logger, mock_rr, interval_ms: float
+    ) -> None:
+        with pytest.raises(ValueError, match="positive finite"):
+            NovaRerunBridge(Mock(), spawn=False, state_sample_interval_ms=interval_ms)
 
 
 class TestSetupBlueprint:
@@ -142,6 +154,34 @@ class TestSetupBlueprint:
 
             # Should send blueprint with all motion groups
             mock_send.assert_called_once_with(["group1", "group2", "group3"], True)
+
+
+class TestStateStreaming:
+    @pytest.mark.asyncio
+    async def test_custom_state_sample_interval_controls_stream_frequency(self):
+        mock_nova = Mock()
+        motion_group = Mock()
+
+        with (
+            patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
+            patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
+            patch(
+                "nova_rerun_bridge.nova_rerun_bridge.stream_motion_group", new_callable=AsyncMock
+            ) as stream_motion_group,
+        ):
+            bridge = NovaRerunBridge(mock_nova, spawn=False, state_sample_interval_ms=10.0)
+            await bridge.start_streaming(motion_group)
+            await asyncio.sleep(0)
+
+        stream_motion_group.assert_awaited_once_with(
+            bridge,
+            nova=mock_nova,
+            motion_group=motion_group,
+            tcp_name=None,
+            target_frequency=100.0,
+            show_collision=False,
+            tool_assets=None,
+        )
 
 
 class TestCollisionSetups:
@@ -401,8 +441,11 @@ class TestTrajectoryTimeline:
             for seconds in (5.0, 7.0):
                 await bridge.log_motion(self._trajectory(seconds), "tcp", {}, motion_group)
 
-        offsets = [call.kwargs["time_offset"] for call in mock_log.await_args_list]
-        assert offsets == [0.0, 5.0]  # waiting time between the two motions is not represented
+        # The timeline continues each one after the previous: waiting time is not represented.
+        calls = [
+            (c.kwargs["timing_mode"], c.kwargs["time_offset"]) for c in mock_log.await_args_list
+        ]
+        assert calls == [(TimingMode.CONTINUE, 0), (TimingMode.CONTINUE, 0)]
 
     @pytest.mark.asyncio
     async def test_wall_clock_places_trajectories_at_real_elapsed_time(self):
@@ -422,5 +465,22 @@ class TestTrajectoryTimeline:
             for seconds in (5.0, 7.0):
                 await bridge.log_motion(self._trajectory(seconds), "tcp", {}, motion_group)
 
-        offsets = [call.kwargs["time_offset"] for call in mock_log.await_args_list]
-        assert offsets == [3.0, 42.0]  # the 34 s the robot spent waiting stay visible
+        calls = [
+            (c.kwargs["timing_mode"], c.kwargs["time_offset"]) for c in mock_log.await_args_list
+        ]
+        assert calls == [(TimingMode.RESET, 3.0), (TimingMode.RESET, 42.0)]  # waiting stays visible
+
+
+def test_close_detaches_the_log_sink_it_added():
+    """Each run builds a bridge; without this, run N logs every line N times."""
+    from unittest.mock import Mock, patch
+
+    from nova_rerun_bridge.nova_rerun_bridge import NovaRerunBridge
+
+    with patch("nova_rerun_bridge.nova_rerun_bridge.logger") as log:
+        log.add.return_value = 7
+        bridge = NovaRerunBridge(nova=Mock(), spawn=False)
+        bridge.close()
+        bridge.close()
+
+    log.remove.assert_called_once_with(7)

@@ -1,5 +1,5 @@
 import nova
-from nova import Nova, api, run_program
+from nova import Nova, ProgramContext, api, run_program
 from nova.actions import cartesian_ptp, linear
 from nova.cell import virtual_controller
 from nova.exceptions import PlanTrajectoryFailed
@@ -22,7 +22,7 @@ from nova_rerun_bridge import NovaRerunBridge
         cleanup_controllers=False,
     ),
 )
-async def test():
+async def test(ctx: ProgramContext):
     async with Nova() as nova, NovaRerunBridge(nova) as bridge:
         await bridge.setup_blueprint()
 

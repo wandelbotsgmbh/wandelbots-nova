@@ -21,6 +21,10 @@ async def main(ctx: nova.ProgramContext):
     amplitude = 0.3
     frequency = 0.5
 
+    # set_target sends live targets, which go through the default 500 ms
+    # buffer_window_ms: recent targets are replayed as a waypoint horizon, so the
+    # robot tracks that far behind the wave. Pass buffer_window_ms=0 to send each
+    # target alone, at the cost of halting motion between them.
     async with jog_joints(mg, start_joint_position=HOME) as jogger:
         async for _ in jogger:
             t = jogger.elapsed

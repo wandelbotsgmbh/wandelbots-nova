@@ -5,11 +5,27 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from novapolicy.rerun.constants import MIN_LINE_STEPS, TCP_TRAIL_COLOR, TRAIL_WIDTH_UI
 import rerun as rr
 
 if TYPE_CHECKING:
     from nova.types import RobotState
+    from rerun import RecordingStream
+
+
+def to_robot_frame(position: list[float], frame: object | None) -> list[float]:
+    """Move a reported TCP position into the robot's frame.
+
+    Nova reports a motion group's pose relative to whatever its chain is mounted
+    on, so a TCP arrives in the frame of that mount, not the robot's. Without
+    this a trail is drawn a metre from the TCP it belongs to.
+    """
+    if frame is None:
+        return position
+    point = np.asarray(frame, dtype=float) @ np.array([*position[:3], 1.0])
+    return [float(value) for value in point[:3]]
 
 
 def log_observation(
@@ -21,11 +37,13 @@ def log_observation(
     visualizers: dict[str, Any],
     tcp_trail: dict[str, list[list[float]]],
     max_trail_points: int,
+    recording: RecordingStream | None,
+    pose_frames: dict[str, Any] | None = None,
 ) -> None:
     """Log robot state: update 3D mesh positions, joint scalars, TCP trail."""
     elapsed = time.monotonic() - start_time
-    rr.set_time("policy_time", duration=elapsed)
-    rr.set_time("policy_step", sequence=step)
+    rr.set_time("policy_time", duration=elapsed, recording=recording)
+    rr.set_time("policy_step", sequence=step, recording=recording)
 
     for mg_id, state in states.items():
         if not hasattr(state, "joints"):
@@ -34,12 +52,14 @@ def log_observation(
 
         # Joint timeseries
         for i, j in enumerate(joints):
-            rr.log(f"policy/{mg_id}/joints/j{i}", rr.Scalars(j))
+            rr.log(f"policy/{mg_id}/joints/j{i}", rr.Scalars(j), recording=recording)
 
         # Update 3D robot mesh
         visualizer = visualizers.get(mg_id)
         if visualizer is not None:
-            visualizer.log_robot_geometry(joint_position=joints)
+            # Keyed by motion group: one visualizer can hold several of this
+            # model's chains, and this drives only the one that belongs here.
+            visualizer.log_robot_geometry({mg_id: joints})
 
         # TCP trail (actual path in green, screen-space width). Prefer the real
         # TCP pose reported by the robot (honours the active TCP offset) so the
@@ -48,7 +68,7 @@ def log_observation(
         tcp_pos: list[float] | None = None
         pose = getattr(state, "pose", None)
         if pose is not None:
-            tcp_pos = list(pose.position)
+            tcp_pos = to_robot_frame(list(pose.position), (pose_frames or {}).get(mg_id))
         else:
             dh_robot = dh_robots.get(mg_id)
             if dh_robot is not None:
@@ -66,6 +86,7 @@ def log_observation(
                         colors=[TCP_TRAIL_COLOR],
                         radii=rr.components.Radius.ui_points(TRAIL_WIDTH_UI),
                     ),
+                    recording=recording,
                 )
             rr.log(
                 f"policy/{mg_id}/tcp",
@@ -74,4 +95,5 @@ def log_observation(
                     colors=[TCP_TRAIL_COLOR],
                     radii=rr.components.Radius.ui_points(4.0),
                 ),
+                recording=recording,
             )

@@ -1,4 +1,8 @@
-"""Load robot models directly from the NOVA API."""
+"""Fetch a robot model's GLB mesh from the NOVA API.
+
+A standalone helper: the bridge renders robots from URDF and does not call this,
+but the API serves the meshes and this returns one.
+"""
 
 from loguru import logger
 

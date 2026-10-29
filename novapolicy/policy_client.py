@@ -1,9 +1,9 @@
-"""PolicyClient protocol and built-in implementations."""
+"""Strict policy-client interface and local callback adapter."""
 
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -14,35 +14,31 @@ if TYPE_CHECKING:
     from novapolicy.schema import PolicySchema
     from novapolicy.types import ActionChunk
 
-logger = logging.getLogger(__name__)
 
+class PolicyClient(ABC):
+    """Base class for every policy action source used by ``PolicyExecutor``.
 
-@runtime_checkable
-class PolicyClient(Protocol):
-    """Protocol for policy action sources.
-
-    A policy is a pure function: (robot states, images) → ActionChunk.
-    It never signals “done” — episode termination is an executor concern.
-
-    The executor owns the ``PolicySchema`` and passes it to ``get_actions()``
-    on every call.
+    Lifecycle and optional continuous-execution hooks have explicit no-op
+    defaults. Concrete clients only need to implement :meth:`get_actions` and
+    override the hooks they support.
     """
 
-    async def connect(self, motion_group_ids: list[str]) -> None:
-        """Establish connection to the policy service."""
+    async def connect(self, motion_group_ids: list[str]) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
+        """Establish a policy-service connection."""
 
-    async def validate_schema(self, schema: PolicySchema) -> None:
-        """Validate that the schema satisfies the policy's requirements.
+    async def validate_schema(self, schema: PolicySchema) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
+        """Raise ``ValueError`` when the schema cannot satisfy the policy."""
 
-        Called by the executor after ``connect()`` and before the first
-        inference call.  Implementations should raise ``ValueError`` if the
-        schema is missing keys the policy expects.
+    async def prepare(  # ruff: ignore[empty-method-without-abstract-decorator]
+        self,
+        states: dict[str, RobotState],
+        schema: PolicySchema,
+        images: dict[str, NDArray[Any]] | None = None,
+        io_values: dict[str, object] | None = None,
+    ) -> None:
+        """Perform optional setup before the execution timeout starts."""
 
-        The default implementation is a no-op — override in clients that
-        can introspect the server's expected inputs (e.g. GR00T's
-        ``get_modality_config``).
-        """
-
+    @abstractmethod
     async def get_actions(
         self,
         states: dict[str, RobotState],
@@ -50,32 +46,40 @@ class PolicyClient(Protocol):
         images: dict[str, NDArray[Any]] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
-        """Receive robot states + camera images, return action chunk."""
+        """Return one action chunk for the current observation."""
 
-    async def close(self) -> None:
-        """Close the connection."""
+    async def close(self) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
+        """Release policy-service resources."""
+
+    def synchronize_action_timestep(self, timestep: int) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
+        """Synchronize an asynchronous queue to the controller timestep."""
+
+    @property
+    def requires_first_waypoint_bridge(self) -> bool:
+        """Whether continuous execution needs one measured-state bridge."""
+        return False
+
+    @property
+    def n_action_steps(self) -> int | None:
+        """Steps to execute per chunk when the policy declares its own horizon.
+
+        ``None`` leaves the choice to the executor. Clients that read a
+        checkpoint report its value here so the caller does not have to copy it.
+        """
+        return None
+
+    @property
+    def rtc(self) -> object | None:
+        """Model-side RTC configuration, or ``None`` when RTC is disabled."""
+        return None
 
 
-class CallbackPolicyClient:
-    """Policy client that calls a local async function.
-
-    The user function receives a flat feature dict built from the schema
-    (observations) and returns an :class:`ActionChunk` — one or more future
-    steps for each motion group.
-    """
+class CallbackPolicyClient(PolicyClient):
+    """Explicit adapter for a local asynchronous policy callback."""
 
     def __init__(self, fn: Callable[..., Any]) -> None:
         self._fn = fn
 
-    async def connect(self, motion_group_ids: list[str]) -> None:
-        """No-op for local callbacks."""
-
-    async def validate_schema(self, schema: PolicySchema) -> None:
-        """No-op — bare functions don't declare expected keys."""
-
-    async def close(self) -> None:
-        pass
-
     async def get_actions(
         self,
         states: dict[str, RobotState],
@@ -83,8 +87,7 @@ class CallbackPolicyClient:
         images: dict[str, NDArray[Any]] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
-        obs: dict[str, Any] = await schema.build_observation(states, io_values)
+        observation: dict[str, Any] = await schema.build_observation(states, io_values)
         if images:
-            obs.update(images)
-
-        return await self._fn(obs)
+            observation.update(images)
+        return await self._fn(observation)

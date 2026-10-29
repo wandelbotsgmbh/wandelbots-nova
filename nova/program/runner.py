@@ -190,6 +190,7 @@ class ProgramRunner(ABC):
         """
         program_id = program.program_id
 
+        self._viewer = program._viewer
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
         self._preconditions = program.preconditions
@@ -462,6 +463,12 @@ class ProgramRunner(ABC):
         robot_cell: RobotCell | None = None
 
         try:
+            if self._viewer is not None:
+                from nova.viewers import get_viewer_manager
+
+                # Active for this run only, so other programs' viewers stay out of it.
+                get_viewer_manager().activate_viewer(self._viewer)
+
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
                 # Even in tests/simulation we provide a Nova instance so program wrappers
@@ -578,13 +585,19 @@ class ProgramRunner(ABC):
                 api.models.ProgramRunState.FAILED, on_state_change, self._nova
             )
         finally:
-            if self._nova is not None:
-                await _cleanup_preconditions(
-                    nova=self._nova,
-                    preconditions=self._preconditions,
-                    controller_ids=created_controller_ids,
-                )
-                await self._nova.close()
+            try:
+                if self._nova is not None:
+                    await _cleanup_preconditions(
+                        nova=self._nova,
+                        preconditions=self._preconditions,
+                        controller_ids=created_controller_ids,
+                    )
+                    await self._nova.close()
+            finally:
+                if self._viewer is not None:
+                    from nova.viewers import get_viewer_manager
+
+                    get_viewer_manager().cleanup_viewer(self._viewer)
 
     @abstractmethod
     async def _run(self, execution_context: ExecutionContext):

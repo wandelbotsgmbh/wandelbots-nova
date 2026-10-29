@@ -7,18 +7,24 @@ users interact with ``Gr00tPolicyClient``.
 
 from __future__ import annotations
 
+import importlib
 import io
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
+if TYPE_CHECKING:
+    from types import ModuleType
+
+_msgpack: ModuleType | None
 try:
-    import msgpack as _msgpack
+    _msgpack = importlib.import_module("msgpack")
 except ImportError:  # pragma: no cover
     _msgpack = None
 
+_zmq: ModuleType | None
 try:
-    import zmq as _zmq
+    _zmq = importlib.import_module("zmq")
 except ImportError:  # pragma: no cover
     _zmq = None
 
@@ -60,7 +66,7 @@ class Gr00tMsgSerializer:
         if not isinstance(obj, np.ndarray):
             return obj
         output = io.BytesIO()
-        np.save(output, obj, allow_pickle=False)
+        np.save(output, cast("Any", obj), allow_pickle=False)
         return {"__ndarray_class__": True, "as_npy": output.getvalue()}
 
 
@@ -89,12 +95,15 @@ class Gr00tZmqTransport:
         zmq_module = _require_zmq()
         if self._socket is not None:
             self._socket.close(linger=0)
-        if self._context is None:
-            self._context = zmq_module.Context()
-        self._socket = self._context.socket(zmq_module.REQ)
-        self._socket.setsockopt(zmq_module.RCVTIMEO, self._timeout_ms)
-        self._socket.setsockopt(zmq_module.SNDTIMEO, self._timeout_ms)
-        self._socket.connect(f"tcp://{self._host}:{self._port}")
+        context = self._context
+        if context is None:
+            context = zmq_module.Context()
+            self._context = context
+        socket = context.socket(zmq_module.REQ)
+        socket.setsockopt(zmq_module.RCVTIMEO, self._timeout_ms)
+        socket.setsockopt(zmq_module.SNDTIMEO, self._timeout_ms)
+        socket.connect(f"tcp://{self._host}:{self._port}")
+        self._socket = socket
 
     def close(self) -> None:
         """Close the socket and terminate the ZMQ context."""
@@ -124,8 +133,12 @@ class Gr00tZmqTransport:
             RuntimeError: If the server returns an error.
         """
         zmq_module = _require_zmq()
-        if self._socket is None:
+        socket = self._socket
+        if socket is None:
             self.connect()
+            socket = self._socket
+        if socket is None:
+            raise RuntimeError("Failed to create GR00T ZMQ socket")
 
         request: dict[str, object] = {"endpoint": endpoint}
         if data is not None:
@@ -134,8 +147,8 @@ class Gr00tZmqTransport:
             request["api_token"] = self._api_token
 
         try:
-            self._socket.send(Gr00tMsgSerializer.to_bytes(request))
-            message = self._socket.recv()
+            socket.send(Gr00tMsgSerializer.to_bytes(request))
+            message = socket.recv()
         except zmq_module.error.Again as exc:
             self.connect()  # Reconnect on timeout
             msg = f"Timed out calling GR00T endpoint '{endpoint}'"
@@ -143,7 +156,8 @@ class Gr00tZmqTransport:
 
         response = Gr00tMsgSerializer.from_bytes(message)
         if isinstance(response, dict) and "error" in response:
-            msg = f"GR00T server error: {response['error']}"
+            error = cast("dict[str, object]", response)["error"]
+            msg = f"GR00T server error: {error}"
             raise RuntimeError(msg)
         return response
 
@@ -156,15 +170,15 @@ def require_dict(response: object, *, name: str) -> dict[str, object]:
     return cast("dict[str, object]", response)
 
 
-def _require_msgpack() -> object:
+def _require_msgpack() -> ModuleType:
     if _msgpack is None:
-        msg = "msgpack is required for Gr00tPolicyClient"
+        msg = "msgpack is required for Gr00tPolicyClient. Install with: wandelbots-nova[novapolicy-gr00t]"
         raise ModuleNotFoundError(msg)
     return _msgpack
 
 
-def _require_zmq() -> object:
+def _require_zmq() -> ModuleType:
     if _zmq is None:
-        msg = "pyzmq is required for Gr00tPolicyClient"
+        msg = "pyzmq is required for Gr00tPolicyClient. Install with: wandelbots-nova[novapolicy-gr00t]"
         raise ModuleNotFoundError(msg)
     return _zmq

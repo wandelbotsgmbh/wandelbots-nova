@@ -28,18 +28,13 @@ jobs:
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
 
-      - name: Download Robot Models
-        run: |
-          uv sync --extra "nova-rerun-bridge"
-          uv run download-models
-
       - name: Create and populate nova_rerun_bridge_app directory
         run: |
           # Create temp directory
           rm -rf temp_build
           mkdir -p temp_build
 
-          DIRS_TO_COPY=("models" "nova" "nova_rerun_bridge")
+          DIRS_TO_COPY=("nova" "nova_rerun_bridge")
           FILES_TO_COPY=("pyproject.toml" "uv.lock" "README.md")
 
           # Copy to temp directory first

@@ -26,6 +26,20 @@ async def main(ctx: nova.ProgramContext):
     radius = 50.0
     frequency = 0.3
 
+    # set_target sends live poses, which go through the default 500 ms
+    # buffer_window_ms: recent poses are replayed as a waypoint horizon, so the TCP
+    # tracks that far behind the circle. Pass buffer_window_ms=0 to send each pose
+    # alone, at the cost of halting motion between them.
+    def smootherstep(x: float) -> float:
+        """Monotone 0->1 warp with zero velocity *and* zero acceleration at both ends.
+
+        Warping the circle's phase, rather than enveloping its amplitude, keeps the
+        TCP exactly on the circle and simply slows it at each end. An amplitude
+        envelope would drag it to the circle's centre and back out.
+        """
+        x = min(1.0, max(0.0, x))
+        return x**3 * (x * (x * 6 - 15) + 10)
+
     async with jog_tcp(
         {mg1: tcp1, mg2: tcp2},
         start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT},
@@ -43,23 +57,21 @@ async def main(ctx: nova.ProgramContext):
                 center1_z = start1.position[2]
                 center2_x = start2.position[0] - radius
                 center2_z = start2.position[2]
-            angle = 2 * math.pi * frequency * t
-            jogger.set_target(
-                {
-                    mg1: Pose(
-                        center1_x + radius * math.cos(angle),
-                        start1.position[1],
-                        center1_z + radius * math.sin(angle),
-                        *start1.orientation,
-                    ),
-                    mg2: Pose(
-                        center2_x + radius * math.cos(-angle),
-                        start2.position[1],
-                        center2_z + radius * math.sin(-angle),
-                        *start2.orientation,
-                    ),
-                }
-            )
+            angle = 2 * math.pi * frequency * duration * smootherstep(t / duration)
+            jogger.set_target({
+                mg1: Pose(
+                    center1_x + radius * math.cos(angle),
+                    start1.position[1],
+                    center1_z + radius * math.sin(angle),
+                    *start1.orientation,
+                ),
+                mg2: Pose(
+                    center2_x + radius * math.cos(-angle),
+                    start2.position[1],
+                    center2_z + radius * math.sin(-angle),
+                    *start2.orientation,
+                ),
+            })
 
 
 if __name__ == "__main__":
