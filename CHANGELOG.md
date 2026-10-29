@@ -1,6 +1,28 @@
 # CHANGELOG
 
 
+## [6.2.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v6.1.0...v6.2.0) (2026-10-29)
+
+
+### Features
+
+* **agent-skills:** ship nova-app-review skill and installer CLI ([#532](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/532)) ([f29a206](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f29a206103d72d7f264e94785464fe11d1bdd2b7))
+* **interlock:** NATS-backed robot-robot interlock ([#544](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/544)) ([9b966cf](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9b966cf8dbb808b332a25893c63a57d4967964bb))
+* **rerun:** wall-clock timeline option for multi-robot programs ([#547](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/547)) ([fbe6c1a](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fbe6c1a80a71e2e32a8a43949973c8414ced3ced))
+
+
+### Bug Fixes
+
+* **deps:** bump msgpack and dnspython for open advisories ([#553](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/553)) ([801661b](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/801661bd94c8cde3a1c5db0274790eb3fdbd9e77))
+* **deps:** bump packages with open advisories, run uv-audit on 3.12 ([#546](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/546)) ([41afe1a](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/41afe1a6dd877bda02da1768411f8866cc017568))
+* **deps:** require urllib3&gt;=2.8.0 for security advisories ([#534](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/534)) ([7c4cfef](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7c4cfef3c87e5ee6ad10cdd1400bee71d3db2266))
+* **NDX-944:** model armed/transient/rest trajectory states and fail on contradicting frames ([#516](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/516)) ([e4a7f3f](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e4a7f3f3f127ed433716d0f2eb67a9523efa9c05))
+
+
+### Chores
+
+* **ci:** pass job secrets with a local gpg action instead of Docker ([#545](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/545)) ([377f0ae](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/377f0ae2ccd944f143af54cac3db01bf30f79b22))
+
 ## [6.1.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v6.0.0...v6.1.0) (2026-09-25)
 
 
