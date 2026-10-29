@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from nova_rerun_bridge.nova_rerun_bridge import NovaRerunBridge
+from nova_rerun_bridge.trajectory import TimingMode
 
 
 class TestNovaRerunBridgeInit:
@@ -410,6 +411,64 @@ class TestContextManager:
 
             # The test is primarily about ensuring no exceptions are raised during cleanup
             # The specific cleanup behavior is implementation detail
+
+
+class TestTrajectoryTimeline:
+    """Where on the shared timeline a motion group's trajectories are placed."""
+
+    @staticmethod
+    def _trajectory(seconds: float):
+        trajectory = Mock()
+        trajectory.joint_positions = [Mock(), Mock()]
+        trajectory.times = [0.0, seconds]
+        return trajectory
+
+    @pytest.mark.asyncio
+    async def test_default_packs_trajectories_back_to_back(self):
+        """Default: the next trajectory starts where the previous one of the same group ended."""
+        motion_group = Mock()
+        motion_group.id = "0@robot"
+        with (
+            patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
+            patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
+            patch("nova_rerun_bridge.nova_rerun_bridge.log_motion", new=AsyncMock()) as mock_log,
+            patch(
+                "nova_rerun_bridge.nova_rerun_bridge.time.monotonic",
+                side_effect=[0.0, 100.0, 200.0],
+            ),
+        ):
+            bridge = NovaRerunBridge(Mock(), spawn=False)
+            for seconds in (5.0, 7.0):
+                await bridge.log_motion(self._trajectory(seconds), "tcp", {}, motion_group)
+
+        # The timeline continues each one after the previous: waiting time is not represented.
+        calls = [
+            (c.kwargs["timing_mode"], c.kwargs["time_offset"]) for c in mock_log.await_args_list
+        ]
+        assert calls == [(TimingMode.CONTINUE, 0), (TimingMode.CONTINUE, 0)]
+
+    @pytest.mark.asyncio
+    async def test_wall_clock_places_trajectories_at_real_elapsed_time(self):
+        """wall_clock=True: a trajectory starts at the real time it was logged."""
+        motion_group = Mock()
+        motion_group.id = "0@robot"
+        with (
+            patch("nova_rerun_bridge.nova_rerun_bridge.rr"),
+            patch("nova_rerun_bridge.nova_rerun_bridge.logger"),
+            patch("nova_rerun_bridge.nova_rerun_bridge.log_motion", new=AsyncMock()) as mock_log,
+            patch(
+                "nova_rerun_bridge.nova_rerun_bridge.time.monotonic",
+                side_effect=[1000.0, 1003.0, 1042.0],
+            ),
+        ):
+            bridge = NovaRerunBridge(Mock(), spawn=False, wall_clock=True)
+            for seconds in (5.0, 7.0):
+                await bridge.log_motion(self._trajectory(seconds), "tcp", {}, motion_group)
+
+        calls = [
+            (c.kwargs["timing_mode"], c.kwargs["time_offset"]) for c in mock_log.await_args_list
+        ]
+        assert calls == [(TimingMode.RESET, 3.0), (TimingMode.RESET, 42.0)]  # waiting stays visible
 
 
 def test_close_detaches_the_log_sink_it_added():

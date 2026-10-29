@@ -28,11 +28,6 @@ def test_program_with_rerun_viewer():
 
 def test_a_program_takes_its_viewer_out_of_the_global_set():
     """Rerun() still registers itself; the program activates it only while it runs."""
-    # Imported here: test_import_performance drops nova from sys.modules, and the
-    # program decorator must see the same viewer manager as this test.
-    import nova
-    from nova import viewers
-
     manager = viewers.get_viewer_manager()
     rerun_viewer = viewers.Rerun(spawn=False)
     assert rerun_viewer in manager.active_viewers
@@ -46,8 +41,6 @@ def test_a_program_takes_its_viewer_out_of_the_global_set():
 
 def test_every_run_activates_the_viewer_and_cleans_it_up():
     """A second run in the same process is visualized too."""
-    import nova
-    from nova import viewers
     from nova.cell.simulation import SimulatedRobotCell
     from nova.program.runner import PythonProgramRunner
 
@@ -56,11 +49,7 @@ def test_every_run_activates_the_viewer_and_cleans_it_up():
 
     @nova.program(viewer=viewer)
     async def test_program(ctx: nova.ProgramContext):
-        # Resolve inside the runner thread so module-reload tests cannot leave us
-        # holding an obsolete singleton reference.
-        from nova.viewers import get_viewer_manager
-
-        active_during_runs.append(get_viewer_manager().active_viewers)
+        active_during_runs.append(viewers.get_viewer_manager().active_viewers)
 
     for _ in range(2):
         PythonProgramRunner(test_program, robot_cell_override=SimulatedRobotCell()).start(sync=True)
@@ -72,9 +61,6 @@ def test_every_run_activates_the_viewer_and_cleans_it_up():
 
 async def test_a_directly_awaited_program_activates_and_cleans_up_its_viewer():
     """Awaiting a program with ``nova=...`` has no runner, so the program owns its viewer."""
-    import nova
-    from nova import viewers
-
     viewer = Mock(spec=viewers.Viewer)
     nova_instance = Mock()
     active_during_run = []
@@ -95,7 +81,6 @@ async def test_a_directly_awaited_program_activates_and_cleans_up_its_viewer():
 
 def test_an_operator_run_configures_its_viewer_before_flagging_operator_execution():
     """Nova.open() configures the viewers; Rerun skips its setup once the flag is set."""
-    import nova
     from nova.program.runner import PythonProgramRunner, is_operator_execution_var
 
     flag_seen = {}
@@ -131,8 +116,6 @@ def test_an_operator_run_configures_its_viewer_before_flagging_operator_executio
 
 
 def test_rerun_cleanup_releases_its_bridge_for_the_next_run():
-    from nova import viewers
-
     viewer = viewers.Rerun(spawn=False)
     bridge = Mock()
     viewer._bridge = bridge

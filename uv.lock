@@ -3805,7 +3805,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.0,<0.29" },
     { name = "lerobot", extras = ["async"], marker = "python_full_version >= '3.12' and extra == 'novapolicy-lerobot'", specifier = ">=0.6,<0.7" },
     { name = "loguru", specifier = ">=0.7.2,<0.8" },
-    { name = "msgpack", specifier = ">=1.2.1" },
+    { name = "msgpack", specifier = ">=1.2.3" },
     { name = "msgpack", marker = "extra == 'novapolicy-gr00t'", specifier = ">=1.1.0,<2" },
     { name = "msgpack", marker = "extra == 'novapolicy-nats'", specifier = ">=1.1.0,<2" },
     { name = "nats-py", specifier = ">=2.11.0" },
