@@ -190,7 +190,7 @@ class ProgramRunner(ABC):
         """
         program_id = program.program_id
 
-        self._program = program
+        self._viewer = program._viewer
         self._run_id = str(uuid.uuid4())
         self._program_id = program_id
         self._preconditions = program.preconditions
@@ -461,19 +461,13 @@ class ProgramRunner(ABC):
         sink_id = logger.add(log_capture)
         created_controller_ids: list[str] = []
         robot_cell: RobotCell | None = None
-        active_viewer = None
-        operator_token = None
 
         try:
-            active_viewer = (
-                self._program._create_viewer() if isinstance(self._program, Program) else None
-            )
-            if active_viewer is not None:
+            if self._viewer is not None:
                 from nova.viewers import get_viewer_manager
 
-                viewer_manager = get_viewer_manager()
-                viewer_manager.unregister_viewer(active_viewer)
-                viewer_manager.activate_viewer(active_viewer)
+                # Active for this run only, so other programs' viewers stay out of it.
+                get_viewer_manager().activate_viewer(self._viewer)
 
             if self._robot_cell_override:
                 robot_cell = self._robot_cell_override
@@ -498,10 +492,8 @@ class ProgramRunner(ABC):
                     # **{controller.id: controller for controller in controllers},
                 )
 
-            # Set context variable to indicate if running via operator (for viewer optimization).
-            # Only after Nova.open(): it configures the viewers, and Rerun skips its setup
-            # when it sees this flag.
-            operator_token = is_operator_execution_var.set(self._app_name is not None)
+            # Set context variable to indicate if running via operator (for viewer optimization)
+            is_operator_execution_var.set(self._app_name is not None)
 
             self.execution_context = execution_context = ExecutionContext(
                 robot_cell=robot_cell, stop_event=stop_event, nova=self._nova
@@ -602,12 +594,10 @@ class ProgramRunner(ABC):
                     )
                     await self._nova.close()
             finally:
-                if active_viewer is not None:
+                if self._viewer is not None:
                     from nova.viewers import get_viewer_manager
 
-                    get_viewer_manager().cleanup_viewer(active_viewer)
-                if operator_token is not None:
-                    is_operator_execution_var.reset(operator_token)
+                    get_viewer_manager().cleanup_viewer(self._viewer)
 
     @abstractmethod
     async def _run(self, execution_context: ExecutionContext):

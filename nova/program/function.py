@@ -40,7 +40,6 @@ from nova import datasets as ds
 from nova.datasets import Dataset, LoadDatasetRequest
 from nova.program import registry
 from nova.program.context import ProgramContext, current_program_context_var
-from nova.viewers import Viewer, get_viewer_manager
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +64,7 @@ class Program(BaseModel, Generic[Parameters, Return]):
     _wrapped: Callable[..., Coroutine[Any, Any, Return]] = PrivateAttr(  # ty: ignore[invalid-assignment]
         default_factory=lambda *args, **kwargs: None
     )
-    _viewer: Viewer | Callable[[], Viewer] | None = PrivateAttr(default=None)
+    _viewer: Any | None = PrivateAttr(default=None)
     program_id: str
     name: str | None
     description: str | None
@@ -180,36 +179,30 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 f"Please make sure the right input parameters are configured. {e}"
             )
 
-        viewer = await self._activate_direct_call_viewer(nova)
+        viewer = await self._activate_viewer_for_direct_call(nova)
         try:
             return await self._wrapped(ctx, **validated_kwargs)
         finally:
             if viewer is not None:
+                from nova.viewers import get_viewer_manager
+
                 get_viewer_manager().cleanup_viewer(viewer)
 
-    async def _activate_direct_call_viewer(self, nova: Nova) -> Viewer | None:
+    async def _activate_viewer_for_direct_call(self, nova: Nova) -> Any | None:
         """Activate this program's viewer when it is awaited directly, not run by a runner.
 
         A runner activates the viewer itself and sets the execution context before it
         calls the program, so this only acts when there is no execution context.
         """
         from nova.program.runner import current_execution_context_var
+        from nova.viewers import get_viewer_manager
 
-        if current_execution_context_var.get(None) is not None:
+        if self._viewer is None or current_execution_context_var.get(None) is not None:
             return None
-        viewer = self._create_viewer()
-        if viewer is None:
-            return None
-        get_viewer_manager().activate_viewer(viewer)
-        viewer.configure(nova)
-        await viewer.setup_after_preconditions()
-        return viewer
-
-    def _create_viewer(self) -> Viewer | None:
-        """Create or return the viewer owned by one program execution."""
-        if self._viewer is None or isinstance(self._viewer, Viewer):
-            return self._viewer
-        return self._viewer()
+        get_viewer_manager().activate_viewer(self._viewer)
+        self._viewer.configure(nova)
+        await self._viewer.setup_after_preconditions()
+        return self._viewer
 
     async def _load_dataset(self, nova: Nova) -> Dataset | None:
         """Load the dataset declared in this program's preconditions, before it starts running.
@@ -455,7 +448,7 @@ def program(
     name: str | None = None,
     description: str | None = None,
     preconditions: ProgramPreconditions | None = None,
-    viewer: Viewer | Callable[[], Viewer] | None = None,
+    viewer: Any | None = None,
 ) -> Callable[[Callable[Parameters, Return]], Program[Parameters, Coroutine[Any, Any, Return]]]: ...
 
 
@@ -467,7 +460,7 @@ def program(
     name: str | None = None,
     description: str | None = None,
     preconditions: ProgramPreconditions | None = None,
-    viewer: Viewer | Callable[[], Viewer] | None = None,
+    viewer: Any | None = None,
 ):
     """
     Decorator factory for creating Nova programs with declarative controller setup.
@@ -482,10 +475,7 @@ def program(
             Only devices that are part of the preconditions are opened and listened for e.g. estop handling
             A local dataset's path (see `nova.datasets.local_dataset()`) is resolved relative to the
             file of this @nova.program, not the current working directory.
-        viewer: Optional viewer instance or zero-argument factory. A factory creates a fresh
-            viewer for each execution and avoids module-import side effects. Passing an instance
-            remains supported, but implicit global registration by ``Rerun()`` is deprecated and
-            will be removed in the next major release.
+        viewer: Optional viewer instance for program visualization (e.g., nova.viewers.Rerun())
 
     Decorator / decorator-factory for creating Nova programs.
         - Bare usage:        @nova.program
@@ -521,9 +511,11 @@ def program(
         if description:
             program_obj.description = description
         program_obj.preconditions = preconditions
-        if isinstance(viewer, Viewer):
-            # Rerun() still auto-registers for legacy direct usage. A program owns
-            # its viewer, so claim it now and activate it only while the program runs.
+        if viewer is not None:
+            from nova.viewers import get_viewer_manager
+
+            # Rerun() registers itself globally. The program owns this viewer and
+            # activates it only while it runs, so other programs' runs don't log into it.
             get_viewer_manager().unregister_viewer(viewer)
         program_obj._viewer = viewer
         registry.register(program_obj)
