@@ -35,7 +35,7 @@ def io_value(io: str, value: bool | int | float) -> api.models.IOValue:
 
 def local_pose(pose_id: str) -> api.models.LocalPoseReference:
     """Reference a pose taught in the enclosing dataset."""
-    return api.models.LocalPoseReference(pose_id=pose_id)
+    return api.models.LocalPoseReference(dataset_pose=pose_id)
 
 
 def joint_position(joints: list[float]) -> api.models.JointPositionReference:

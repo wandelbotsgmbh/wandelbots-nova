@@ -14,7 +14,14 @@ _TIMESTAMP = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
 
 def _api_pose(pose: Pose, dataset_pose: str, frame: str | None = None) -> api.models.DatasetPose:
     return api.models.DatasetPose(
-        pose=pose.to_api_model(), dataset_pose=dataset_pose, dataset="d", frame=frame
+        pose=pose.to_api_model(),
+        dataset_pose=dataset_pose,
+        dataset="d",
+        frame=api.models.WorldFrameReference()
+        if frame is None
+        else api.models.DatasetFrameReference(frame=frame),
+        tcp="Flange",
+        kinematic_configuration=api.models.UnspecifiedKinematicConfiguration(),
     )
 
 

@@ -23,7 +23,7 @@ class DatasetPose(api.models.DatasetPose):
     """A dataset pose whose `pose` is an SDK `Pose` instead of the API wire model.
 
     `pose` is the pose as taught, relative to `frame`. Use `as_world()` to resolve it
-    into world coordinates.
+    into world coordinates. `tcp` and `kinematic_configuration` are kept as on the wire.
     """
 
     # `from_attributes` lets an `api.models.DatasetPose` be validated into this type as-is.
@@ -39,11 +39,11 @@ class DatasetPose(api.models.DatasetPose):
         Raises:
             FrameResolutionError: `frame` cannot be resolved to world.
         """
-        if self.frame is None:
+        if isinstance(self.frame, api.models.WorldFrameReference):
             return self.pose
         if self._tree is None:
-            raise _detached(f"Pose '{self.dataset_pose}'", self.frame)
-        return self._tree.world_transform(self.frame) @ self.pose
+            raise _detached(f"Pose '{self.dataset_pose}'", self.frame.frame)
+        return self._tree.world_transform(self.frame.frame) @ self.pose
 
 
 class DatasetFrame(api.models.DatasetFrame):

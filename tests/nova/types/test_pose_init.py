@@ -88,7 +88,11 @@ class TestPoseInitAllowed:
             dataset_pose="p1",
             dataset="d1",
             pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
-            kinematic_configuration=kinematic_config,
+            frame=api.models.WorldFrameReference(),
+            tcp="Flange",
+            kinematic_configuration=api.models.SpecifiedKinematicConfiguration(
+                **kinematic_config.model_dump()
+            ),
         )
         p = Pose(dataset_pose)
         assert p.to_tuple() == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
@@ -99,7 +103,11 @@ class TestPoseInitAllowed:
             dataset_pose="p1",
             dataset="d1",
             pose=api.models.Pose(position=None, orientation=(4.0, 5.0, 6.0)),
-            kinematic_configuration=kinematic_config,
+            frame=api.models.WorldFrameReference(),
+            tcp="Flange",
+            kinematic_configuration=api.models.SpecifiedKinematicConfiguration(
+                **kinematic_config.model_dump()
+            ),
         )
         p = Pose(dataset_pose)
         assert p.to_tuple() == (0.0, 0.0, 0.0, 4.0, 5.0, 6.0)
@@ -110,7 +118,11 @@ class TestPoseInitAllowed:
             dataset_pose="p1",
             dataset="d1",
             pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=None),
-            kinematic_configuration=kinematic_config,
+            frame=api.models.WorldFrameReference(),
+            tcp="Flange",
+            kinematic_configuration=api.models.SpecifiedKinematicConfiguration(
+                **kinematic_config.model_dump()
+            ),
         )
         p = Pose(dataset_pose)
         assert p.to_tuple() == (1.0, 2.0, 3.0, 0.0, 0.0, 0.0)
@@ -121,7 +133,11 @@ class TestPoseInitAllowed:
             dataset_pose="p1",
             dataset="d1",
             pose=api.models.Pose(position=None, orientation=None),
-            kinematic_configuration=kinematic_config,
+            frame=api.models.WorldFrameReference(),
+            tcp="Flange",
+            kinematic_configuration=api.models.SpecifiedKinematicConfiguration(
+                **kinematic_config.model_dump()
+            ),
         )
         p = Pose(dataset_pose)
         assert p.to_tuple() == (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -132,6 +148,9 @@ class TestPoseInitAllowed:
             dataset_pose="p2",
             dataset="d1",
             pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
+            frame=api.models.WorldFrameReference(),
+            tcp="Flange",
+            kinematic_configuration=api.models.UnspecifiedKinematicConfiguration(),
         )
         p = Pose(dataset_pose)
         assert p.to_tuple() == (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
@@ -142,8 +161,10 @@ class TestPoseInitAllowed:
         dataset_pose = api.models.DatasetPose(
             dataset_pose="p3",
             dataset="d1",
-            frame="fixture",
+            frame=api.models.DatasetFrameReference(frame="fixture"),
             pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
+            tcp="Flange",
+            kinematic_configuration=api.models.UnspecifiedKinematicConfiguration(),
         )
 
         with pytest.raises(ValueError, match="expressed in frame 'fixture'"):
@@ -238,7 +259,11 @@ class TestPoseInitForbidden:
             dataset_pose="p1",
             dataset="d1",
             pose=api.models.Pose(position=(1.0, 2.0, 3.0), orientation=(4.0, 5.0, 6.0)),
-            kinematic_configuration=kinematic_config,
+            frame=api.models.WorldFrameReference(),
+            tcp="Flange",
+            kinematic_configuration=api.models.SpecifiedKinematicConfiguration(
+                **kinematic_config.model_dump()
+            ),
         )
         with pytest.raises(ValueError):
             Pose(dataset_pose, kinematic_configuration=kinematic_config)

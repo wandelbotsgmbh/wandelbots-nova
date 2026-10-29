@@ -30,16 +30,16 @@ APPROACH = Pose((0, 0, -100, 0, 0, 0))
 
 def _show_pose_vs_world_pose(dataset: ds.Dataset):
     """`.pose` is the pose as taught, `.as_world()` resolves its frame chain."""
-    # "pick" is taught in world (frame=None), so both are the same pose.
+    # "pick" is taught in world, so both are the same pose.
     pick = dataset.poses["pick"]
-    assert pick.frame is None
+    assert pick.frame == api.models.WorldFrameReference()
     assert pick.pose == pick.as_world()
 
     # "fixture-slot-a" is taught in the "fixture" frame, which itself sits on "table".
     # `.pose` is the raw taught value and is NOT a world pose - moving there would send
     # the robot to the wrong place. `.as_world()` composes table <- fixture <- slot.
     slot = dataset.poses["fixture-slot-a"]
-    assert slot.frame == "fixture"
+    assert slot.frame == api.models.DatasetFrameReference(frame="fixture")
     assert slot.pose != slot.as_world()
 
     # A frame resolves to the transform that takes a pose from that frame into world.
@@ -47,7 +47,7 @@ def _show_pose_vs_world_pose(dataset: ds.Dataset):
 
     print(f"pick.pose            = {pick.pose}")
     print(f"pick.as_world()      = {pick.as_world()}")
-    print(f"slot.pose            = {slot.pose}  (in frame '{slot.frame}')")
+    print(f"slot.pose            = {slot.pose}  (in frame '{slot.frame.frame}')")
     print(f"slot.as_world()      = {slot.as_world()}")
     print(f"fixture.pose         = {fixture.pose}  (in frame '{fixture.reference_frame}')")
     print(f"fixture.as_world()   = {fixture.as_world()}")
