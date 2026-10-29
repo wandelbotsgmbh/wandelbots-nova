@@ -122,6 +122,7 @@ testpaths = """
 markers = """
     integration: mark a test as requiring a running Nova instance
     xdist_group(name): group tests that needs to run sequentially
+    nats: talks to a JetStream server (NOVA_API's NATS, else a local nats-server; skipped if neither)
 """
 
 
