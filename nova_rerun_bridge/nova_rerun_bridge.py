@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import os
 from datetime import datetime
 from typing import Optional
@@ -54,6 +55,7 @@ class NovaRerunBridge:
         self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
 
+        self._log_sink_id: int | None = None
         recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         # In CI/GitHub Actions we should never attempt to spawn/connect the Rerun viewer.
@@ -71,8 +73,8 @@ class NovaRerunBridge:
             elif spawn:
                 rr.init(application_id="nova", recording_id=recording_id, spawn=True)
 
-            # Attach loguru to rerun (best-effort).
-            logger.add(sink=rr.LoggingHandler("logs/handler"))
+            # Attach loguru to rerun (best-effort). close() detaches it again.
+            self._log_sink_id = logger.add(sink=rr.LoggingHandler("logs/handler"))
         except Exception as e:
             # Rerun is a best-effort visualization backend. Never fail Nova execution if
             # the viewer cannot be spawned/connected.
@@ -621,6 +623,13 @@ class NovaRerunBridge:
             logger.info(f"Install rerun app and open the visual log on {get_rerun_address()}")
 
         await self.cleanup()
+
+    def close(self) -> None:
+        """Detach this bridge's log sink, so a later bridge doesn't log every line twice."""
+        if self._log_sink_id is not None:
+            with contextlib.suppress(ValueError):  # already removed, e.g. by logger.remove()
+                logger.remove(self._log_sink_id)
+            self._log_sink_id = None
 
     async def cleanup(self) -> None:
         """

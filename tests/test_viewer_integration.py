@@ -83,6 +83,75 @@ def test_program_runner_scopes_and_cleans_factory_viewer():
     assert viewer not in get_viewer_manager().active_viewers
 
 
+async def test_a_directly_awaited_program_activates_and_cleans_up_its_viewer():
+    """Awaiting a program with ``nova=...`` has no runner, so the program owns its viewer."""
+    viewer = Mock(spec=viewers.Viewer)
+    nova_instance = Mock()
+    active_during_run = []
+
+    @nova.program(viewer=lambda: viewer)
+    async def test_program(ctx: nova.ProgramContext):
+        active_during_run.extend(viewers.get_viewer_manager().active_viewers)
+
+    await test_program(nova=nova_instance)
+    await test_program(nova=nova_instance)
+
+    assert active_during_run == [viewer, viewer]
+    assert viewer.configure.call_count == 2
+    viewer.configure.assert_called_with(nova_instance)
+    assert viewer.cleanup.call_count == 2
+    assert viewer not in viewers.get_viewer_manager().active_viewers
+
+
+def test_an_operator_run_configures_its_viewer_before_flagging_operator_execution():
+    """Nova.open() configures the viewers; Rerun skips its setup once the flag is set."""
+    from unittest.mock import AsyncMock, patch
+
+    from nova.program.runner import PythonProgramRunner, is_operator_execution_var
+
+    flag_seen = {}
+
+    class _FakeNova:
+        def __init__(self, config=None):
+            pass
+
+        async def open(self):
+            flag_seen["at_open"] = is_operator_execution_var.get()
+
+        async def close(self):
+            pass
+
+        def is_connected(self):
+            return False
+
+        def cell(self):
+            return Mock()
+
+    @nova.program()
+    async def test_program(ctx: nova.ProgramContext):
+        flag_seen["in_program"] = is_operator_execution_var.get()
+
+    with (
+        patch("nova.program.runner.Nova", _FakeNova),
+        patch("nova.program.runner._ensure_preconditions", AsyncMock(return_value=[])),
+        patch("nova.program.runner._cleanup_preconditions", AsyncMock()),
+    ):
+        PythonProgramRunner(test_program, app_name="novax").start(sync=True)
+
+    assert flag_seen == {"at_open": False, "in_program": True}
+
+
+def test_rerun_cleanup_releases_its_bridge():
+    viewer = viewers.Rerun(spawn=False)
+    bridge = Mock()
+    viewer._bridge = bridge
+
+    viewer.cleanup()
+
+    bridge.close.assert_called_once()
+    assert viewer._bridge is None
+
+
 def test_rerun_viewer_instantiation():
     """Test that Rerun viewer can be instantiated with different parameters."""
     # Test default instantiation

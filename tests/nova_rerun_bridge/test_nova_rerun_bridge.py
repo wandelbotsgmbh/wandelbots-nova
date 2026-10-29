@@ -371,3 +371,18 @@ class TestContextManager:
 
             # The test is primarily about ensuring no exceptions are raised during cleanup
             # The specific cleanup behavior is implementation detail
+
+
+def test_close_detaches_the_log_sink_it_added():
+    """Each run builds a bridge; without this, run N logs every line N times."""
+    from unittest.mock import Mock, patch
+
+    from nova_rerun_bridge.nova_rerun_bridge import NovaRerunBridge
+
+    with patch("nova_rerun_bridge.nova_rerun_bridge.logger") as log:
+        log.add.return_value = 7
+        bridge = NovaRerunBridge(nova=Mock(), spawn=False)
+        bridge.close()
+        bridge.close()
+
+    log.remove.assert_called_once_with(7)

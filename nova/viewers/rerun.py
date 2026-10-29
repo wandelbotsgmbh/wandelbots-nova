@@ -371,6 +371,8 @@ class Rerun(Viewer):
 
     def cleanup(self) -> None:
         """Clean up rerun integration after program execution."""
+        if self._bridge is not None:
+            self._bridge.close()
         self._bridge = None
         self._bridge_initialized = False
         self._logged_safety_zones.clear()  # Reset safety zone tracking
