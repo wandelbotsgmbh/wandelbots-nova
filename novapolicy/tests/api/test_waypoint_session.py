@@ -838,6 +838,77 @@ async def test_drain_waits_until_the_server_clock_reaches_the_last_waypoint():
             p.stop()
 
 
+def _chunk_requests(server: FakeJoggingServer) -> list[object]:
+    return [_inner(r) for r in server.requests if _is_joint_chunk(_inner(r))]
+
+
+@pytest.mark.asyncio
+async def test_drain_stops_on_the_last_target_instead_of_keeping_the_velocity():
+    """With a delay until braking the robot would run on past the last target."""
+    session, server = _build_session(
+        config=WaypointConfig(min_chunk_horizon_ms=0, delay_until_braking_ms=200)
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        session.update_chunk(steps=[[0.0] * 6, [1.0] * 6], dt_ms=50.0, first_timestamp_ms=5_000)
+        await _wait_until(lambda: session.scheduled_until_server_ms == 5_050)
+
+        assert await session.drain(timeout_s=0.05) is False
+        chunk, final = _chunk_requests(server)
+        assert chunk.delay_until_braking == 200
+        assert final.delay_until_braking == 0
+        assert [(w.timestamp, _joints(w)) for w in final.waypoints] == [(5_050, [1.0] * 6)]
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_final_target_already_passed_is_still_sent_to_stop_on():
+    """A robot keeping its velocity past the last target has to come back to it."""
+    session, server = _build_session(
+        config=WaypointConfig(min_chunk_horizon_ms=0, delay_until_braking_ms=200)
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        session.update_chunk(steps=[[1.0] * 6], dt_ms=50.0, first_timestamp_ms=5_000)
+        await _wait_until(lambda: session.scheduled_until_server_ms == 5_000)
+        session._clock.update(5_100)
+
+        await session.drain(timeout_s=0.05)
+        final = _chunk_requests(server)[-1]
+        assert final.delay_until_braking == 0
+        assert final.waypoints[0].timestamp > 5_100
+        assert _joints(final.waypoints[0]) == [1.0] * 6
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_without_a_delay_until_braking_drain_sends_nothing_more():
+    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    try:
+        await session.start()
+        await session.wait_ready()
+        session.update_chunk(steps=[[1.0] * 6], dt_ms=50.0, first_timestamp_ms=5_000)
+        await _wait_until(lambda: session.scheduled_until_server_ms == 5_000)
+
+        assert await session.drain(timeout_s=0.05) is False
+        assert len(_chunk_requests(server)) == 1
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
 @pytest.mark.asyncio
 async def test_drain_waits_for_acknowledgement_not_for_extrapolation():
     """A stalled link must not let a drain declare the motion finished.

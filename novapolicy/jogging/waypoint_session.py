@@ -128,6 +128,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._scheduled_until_server_ms = 0
         self._scheduled_waypoint_timestamps: list[int] = []
         self._scheduled_step_timestamps: list[int] = []
+        self._last_sent: tuple[int, list[float]] | None = None
+        """Timestamp and target of the last waypoint sent, for :meth:`_queue_final_target`."""
         self._scheduled_action_timestep = -1
         self._scheduled_at_server_ms = 0
 
@@ -517,6 +519,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         sent lies in the future — the robot trails the newest target by the buffer
         duration, so cancelling immediately truncates that much of the path.
 
+        With :attr:`~novapolicy.types.WaypointConfig.delay_until_braking_ms` set,
+        the robot would keep moving past the last target, so once everything is
+        sent the last target goes out once more to stop on.
+
         Returns whether the schedule was reached before ``timeout_s``. Does not
         stop the session; call :meth:`stop` afterwards.
         """
@@ -524,7 +530,11 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             return True
         deadline = time.monotonic() + timeout_s
         poll_s = max(self._config.state_rate_ms, 1) / 1000.0
+        final_queued = not self._config.delay_until_braking_ms
         while True:
+            if not final_queued and not self._pending():
+                final_queued = True
+                self._queue_final_target()
             # Re-read the schedule every pass rather than snapshotting it. The
             # jogging task is still running, so the caller's last ``set_target``
             # may only be queued when the drain starts — snapshotting would
@@ -554,6 +564,21 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     def _pending(self) -> bool:
         """Whether a queued chunk is still waiting to be timestamped and sent."""
         return self._pending_request is not None
+
+    def _queue_final_target(self) -> None:
+        """Queue the last waypoint sent again, to stop on it rather than coast past it."""
+        if self._last_sent is None or self._failed or self._stop_condition is not None:
+            return
+        timestamp_ms, target = self._last_sent
+        self._queued_chunk_count += 1
+        self._pending_request = PendingChunk(
+            steps=[target],
+            dt_ms=self._config.single_step_dt_ms,
+            first_timestamp_ms=timestamp_ms,
+            sequence=self._queued_chunk_count,
+            final=True,
+        )
+        self._pending_request_event.set()
 
     async def stop(self) -> None:
         """Stop the session gracefully.
@@ -764,6 +789,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 else pending.action_timestep
             )
             self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
+            self._last_sent = (request.waypoints[-1].timestamp, list(pending.steps[-1]))
             self._start_waypoint_tracking_measurement(request)
 
             yield request
@@ -820,7 +846,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 first_timestamp_ms=base_ms,
                 timestamp_offset_steps=pending.timestamp_offset_steps,
                 server_dt_ms=pending.server_dt_ms,
-                delay_until_braking_ms=self._config.delay_until_braking_ms,
+                delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
             )
             return _ScheduledRequest(
                 request=request,
@@ -830,6 +856,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
         anchor_ms = max(0, anchor_timestamp_ms(base_ms, pending.timestamp_offset_steps, dt_ms))
         earliest_ms = self._clock.estimated_server_timestamp_ms + MIN_LEAD_MS
+        if pending.final:
+            # The robot may already be past the final target's time, keeping its
+            # velocity; it still has to go back and stop there.
+            anchor_ms = max(anchor_ms, math.ceil(earliest_ms))
         skip = max(0, math.ceil((earliest_ms - anchor_ms) / dt_ms))
 
         if skip >= len(steps):
@@ -857,7 +887,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             first_timestamp_ms=anchor_ms + int(skip * dt_ms),
             timestamp_offset_steps=0,
             server_dt_ms=pending.server_dt_ms,
-            delay_until_braking_ms=self._config.delay_until_braking_ms,
+            delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
         )
         # Dropped steps keep the timestamps they were going to be sent with, so
         # the caller's step numbering still indexes this list directly.

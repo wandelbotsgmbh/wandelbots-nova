@@ -93,8 +93,9 @@ server keeps the robot's velocity that long after a chunk's last waypoint before
 brakes, and every new chunk restarts the countdown. Short chunks streamed at the
 policy rate, down to a single waypoint, then run as one motion without padding:
 set `min_chunk_horizon_ms=0` with it, because a padded chunk ends in a hold. About
-200 ms covered 100-150 ms network stalls in teleoperation. When the stream ends,
-the robot keeps moving for that long past the final target.
+200 ms covered 100-150 ms network stalls in teleoperation. Draining the session
+sends the last target once more without the delay, so the robot stops on it
+instead of running past it.
 
 ### Late chunks are trimmed
 

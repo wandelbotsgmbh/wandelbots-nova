@@ -55,6 +55,9 @@ class PendingChunk:
 
     ``0`` means "the whole list", for records built without padding.
     """
+    final: bool = False
+    """The last target of a run: sent with ``delay_until_braking`` 0 so the robot
+    stops on it instead of keeping its velocity past it."""
 
     @property
     def last_caller_step(self) -> int:

@@ -240,9 +240,9 @@ class WaypointConfig:
     chunk ends in a hold that leaves no velocity to keep.
 
     Meant for short chunks streamed at the policy rate, down to one waypoint.
-    About 200 ms rode through 100-150 ms network stalls in teleoperation. The
-    robot keeps moving that long past the final target once the stream ends, so
-    only use it where that overshoot is acceptable.
+    About 200 ms rode through 100-150 ms network stalls in teleoperation. At the
+    end of a run, :meth:`WaypointJoggingSession.drain` sends the last target once
+    more without the delay, so the robot stops on it rather than running past it.
 
     Needs NOVA 26.8.0-112 or newer; older servers ignore the field.
     """
