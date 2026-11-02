@@ -9,10 +9,12 @@ class UnsupportedRoutineCommand(CommandRoutineError):
     """The routine uses a feature NOVA cannot execute yet; the message names the command."""
 
 
-class RoutineRunFailed(CommandRoutineError):
-    """A routine run ended without completing: it failed or was stopped from elsewhere."""
+def error_from_api_exception(exc: api.ApiException) -> CommandRoutineError:
+    """Map a raw API-client exception onto the stable `nova.command_routines` exception type.
 
-    def __init__(self, run: api.models.CommandRoutineRun):
-        self.run = run
-        reason = f": {run.error}" if run.error else ""
-        super().__init__(f"Routine run {run.run} ended {run.state.value}{reason}")
+    NOVA's message already names the command, its index and the reason, so it is reused as-is.
+    A 501 means NOVA cannot execute a feature of the routine yet.
+    """
+    message = exc.data.message if isinstance(exc.data, api.models.Error) else str(exc)
+    error_cls = UnsupportedRoutineCommand if exc.status == 501 else CommandRoutineError
+    return error_cls(message)

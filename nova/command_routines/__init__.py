@@ -1,12 +1,13 @@
-"""Assemble NOVA CommandRoutine objects declaratively, and plan and execute them on NOVA.
+"""Assemble NOVA CommandRoutine objects declaratively.
 
 Build a routine by passing an ordered list of commands to :func:`command_routine`.
 The command, pose, path and trigger factories in :mod:`nova.command_routines.commands`
 construct the individual pieces; :func:`with_settings` shares motion settings across a
-group of motions. :func:`plan` and :func:`execute` send a resolved routine to NOVA.
+group of motions. A routine runs through ``MotionGroup.plan`` / ``plan_and_execute``. NOVA's
+rejections of it are raised as :class:`CommandRoutineError`, or :class:`UnsupportedRoutineCommand`
+for a feature it does not implement yet.
 """
 
-from nova.command_routines.command_routines import execute, plan
 from nova.command_routines.commands import (
     at_distance,
     at_path_fraction,
@@ -30,21 +31,14 @@ from nova.command_routines.commands import (
     wait_for_io,
     wait_for_time,
 )
-from nova.command_routines.exceptions import (
-    CommandRoutineError,
-    RoutineRunFailed,
-    UnsupportedRoutineCommand,
-)
+from nova.command_routines.exceptions import CommandRoutineError, UnsupportedRoutineCommand
 from nova.command_routines.routine import command_routine, with_settings
 
 __all__ = [
     "CommandRoutineError",
-    "RoutineRunFailed",
     "UnsupportedRoutineCommand",
     "command_routine",
     "with_settings",
-    "plan",
-    "execute",
     "motion",
     "generated_motion",
     "move_linear",

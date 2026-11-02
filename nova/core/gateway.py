@@ -161,8 +161,8 @@ class ApiGateway:
             api.api.BUSInputsOutputsApi(api_client=self._api_client), self
         )
         self.datasets_api = _intercept(api.api.DatasetsApi(api_client=self._api_client), self)
-        self.command_routine_execution_api: api.api.CommandRoutineExecutionApi = _intercept(
-            api.api.CommandRoutineExecutionApi(api_client=self._api_client), self
+        self.command_routines_api: api.api.CommandRoutinesApi = _intercept(
+            api.api.CommandRoutinesApi(api_client=self._api_client), self
         )
 
         logger.debug(f"NOVA API client initialized with user agent {self._api_client.user_agent}")

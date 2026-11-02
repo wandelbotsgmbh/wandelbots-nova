@@ -34,15 +34,21 @@ from nova.types import MotionState, Pose, RobotState
 logger = logging.getLogger(__name__)
 
 ActionsLike: TypeAlias = Action | Sequence[Action]
+ActionsOrRoutine: TypeAlias = ActionsLike | api.models.CommandRoutine
 
 
-def _normalize_actions(actions: ActionsLike) -> list[Action]:
+def _normalize_actions(actions: ActionsOrRoutine) -> list[Action]:
     """
     Normalize `Action | Sequence[Action]` to `list[Action]`.
 
     Note: `list` is invariant in typing, so accepting `Sequence[Action]` allows callers
     to pass `list[Motion]` (and other Action subtypes) without casts.
     """
+    if isinstance(actions, api.models.CommandRoutine):
+        raise ValueError(
+            "A CommandRoutine is planned and run with plan() and plan_and_execute() of a "
+            "MotionGroup, not through the action-list functions"
+        )
     if isinstance(actions, Action):
         return [actions]
     return list(actions)
@@ -227,6 +233,38 @@ class AbstractRobot(Device):
         )
 
     @abstractmethod
+    async def _plan_routine(self, routine: api.models.CommandRoutine) -> api.models.JointTrajectory:
+        """Plan a CommandRoutine for this robot, with the routine's own context.
+
+        The routine is already checked: it takes no overrides. The returned trajectory is for
+        display. Raise ``NotImplementedError`` if the robot cannot plan routines.
+        """
+
+    @abstractmethod
+    async def _start_routine(
+        self, routine: api.models.CommandRoutine
+    ) -> api.models.CommandRoutineRun:
+        """Start a CommandRoutine on this robot, which plans and runs it with its own context.
+
+        Returns the run once it is accepted, not when the robot is done. Raise
+        ``NotImplementedError`` if the robot cannot run routines.
+        """
+
+    @staticmethod
+    def _check_routine_call(
+        tcp: str | None, routine_tcp: str | None, **unsupported: object
+    ) -> None:
+        """Reject arguments that a routine, which brings its own context, cannot take."""
+        given = [name for name, value in unsupported.items() if value is not None]
+        if tcp not in (None, routine_tcp):
+            given.append("tcp")
+        if given:
+            raise ValueError(
+                f"A CommandRoutine runs with its own context; these arguments are not supported "
+                f"for it: {', '.join(given)}"
+            )
+
+    @abstractmethod
     async def _plan(
         self,
         actions: list[Action],
@@ -239,8 +277,12 @@ class AbstractRobot(Device):
         """Plan a trajectory for the given actions
 
         Args:
-            actions (list[Action] | Action): The actions to be planned. Can be a single action or a list of actions.
-                Only motion actions are considered for planning.
+            actions (list[Action] | Action | CommandRoutine): The actions to be planned. Can be a single action
+                or a list of actions. Only motion actions are considered for planning. A CommandRoutine is
+                planned by NOVA for this robot, whatever robot it references, with its own context (TCP, start
+                joint position, motion group setup, default motion settings): all other arguments must then be
+                unset (``tcp`` may repeat the routine's TCP) and the trajectory is for display. Its poses must
+                be resolved, see ``nova.datasets.resolve_command_routine``.
             tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position (tuple[float, ...] | None): The starting joint position. If None, the current joint
                 position of the robot is used.
@@ -255,7 +297,7 @@ class AbstractRobot(Device):
 
     async def plan(
         self,
-        actions: ActionsLike,
+        actions: ActionsOrRoutine,
         tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         motion_group_setup: api.models.MotionGroupSetup | None = None,
@@ -293,7 +335,18 @@ class AbstractRobot(Device):
         Raises:
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a
                 target pose in a collision-free motion.
+            CommandRoutineError: When NOVA rejects a CommandRoutine; the error names the command.
         """
+        if isinstance(actions, api.models.CommandRoutine):
+            self._check_routine_call(
+                tcp,
+                actions.tcp,
+                start_joint_position=start_joint_position,
+                motion_group_setup=motion_group_setup,
+                payload_override=payload_override,
+                singularity_handling=singularity_handling,
+            )
+            return await self._plan_routine(actions)
         actions_list = _normalize_actions(actions)
 
         if len(actions_list) == 0:
@@ -522,7 +575,7 @@ class AbstractRobot(Device):
 
     async def plan_and_execute(
         self,
-        actions: ActionsLike,
+        actions: ActionsOrRoutine,
         tcp: str | None = None,
         start_joint_position: tuple[float, ...] | None = None,
         movement_controller: MovementController | None = None,
@@ -532,11 +585,16 @@ class AbstractRobot(Device):
         singularity_handling: api.models.SingularityHandling | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
-    ) -> None:
+    ) -> api.models.CommandRoutineRun | None:
         """Plan and execute a trajectory for the given actions.
 
+        A CommandRoutine is started on NOVA for this robot, whatever robot it references, and NOVA
+        plans and runs it with its own context. The call returns the started run once NOVA has
+        accepted it, not when the robot is done; ``MotionGroup.stop_routine`` stops it. Only ``tcp``
+        (repeating the routine's TCP) may be passed with a routine. An action list returns ``None``.
+
         Args:
-            actions (list[Action] | Action): The actions to be planned and executed.
+            actions (list[Action] | Action | CommandRoutine): The actions to be planned and executed.
             tcp (str | None): The id of the tool center point (TCP). Can be None for joint-space-only motions.
             start_joint_position (tuple[float, ...] | None): The starting joint position.
             movement_controller (MovementController | None): The movement controller to be used. Defaults to move_forward.
@@ -556,6 +614,19 @@ class AbstractRobot(Device):
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
                 pose in a collision-free motion.
         """
+        if isinstance(actions, api.models.CommandRoutine):
+            self._check_routine_call(
+                tcp,
+                actions.tcp,
+                start_joint_position=start_joint_position,
+                movement_controller=movement_controller,
+                start_on_io=start_on_io,
+                pause_on_io=pause_on_io,
+                payload_override=payload_override,
+                singularity_handling=singularity_handling,
+                state_stream_rate_msecs=state_stream_rate_msecs,
+            )
+            return await self._start_routine(actions)
         actions_list = _normalize_actions(actions)
 
         if self._supports_direct_non_motion_actions(actions_list):
