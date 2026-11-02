@@ -2,22 +2,23 @@
 
 A `CommandRoutine` is an ordered list of commands with its own context (motion group, TCP, start
 joint position, default motion settings, motion group setup). You can build one in code
-(`nova.command_routines`) or load it from a Dataset. `MotionGroup` runs it the same way it runs
-action lists:
+(`nova.command_routines`) or keep it in a Dataset. NOVA plans and runs the whole routine through
+its command routine execution API, which `nova.command_routines` calls for you:
 
 | Call | Returns |
 | --- | --- |
-| `await mg.plan(routine)` | `JointTrajectory` |
-| `await mg.execute(joint_trajectory, routine.tcp, routine)` | runs a planned trajectory |
-| `await mg.plan_and_execute(routine)` | plans, then runs |
+| `await cr.plan(nova, routine)` | the `PlannedCommandRoutine` with the trajectory NOVA planned, e.g. to draw its path; nothing moves |
+| `await cr.execute(nova, routine)` | runs the routine and returns the completed run |
 
-The routine's own context is used and cannot be overridden. Per-command motion settings take
-precedence over the routine defaults. Planning only needs the start joint position, so move the
-robot there first .
+The routine runs with its own context on the motion group it references (`motion_group`). Pass
+`controller=...` to run it on the motion group with the same index on another controller.
+Per-command motion settings take precedence over the routine defaults. The robot must be at the
+routine's start joint position, so move it there first.
 
 ## From code
 
 ```python
+from nova import command_routines as cr
 from nova.command_routines import command_routine, move_joint_ptp, move_linear, set_io
 
 routine = command_routine(
@@ -26,54 +27,64 @@ routine = command_routine(
     tcp="Flange",
     motion_group_setup=await mg.get_setup("Flange"),
     start_joint_position=list(await mg.joints()),
-    commands=[move_joint_ptp(target_joints), set_io("tool_out[0]", True), move_linear(pose_ref)],
+    commands=[move_joint_ptp(target_joints), set_io("tool_out[0]", True), move_linear(inline_pose)],
 )
-await mg.plan_and_execute(routine)
+await cr.execute(nova, routine)
 ```
+
+Poses in a routine you run must be inline poses in the `world` frame (`api.models.InlinePose`).
 
 ## From a Dataset
 
-Load the Dataset (for example with `ds.local_dataset(...)` in `@nova.program` preconditions) and
-resolve the routine against it. Local pose references and poses in a Dataset frame become inline
-world poses, so the calls above need no dataset:
+A routine stored in a Dataset on the NOVA instance refers to the Dataset's poses and frames.
+Let NOVA resolve it first: local pose references and poses in a Dataset frame become inline world
+poses, so the routine runs without the Dataset.
 
 ```python
-from nova.cell.routine_execution import resolve_routine
+from nova import command_routines as cr
+from nova import datasets as ds
 
-routine = ctx.dataset.command_routines["my-routine"]
-await mg.plan_and_execute(resolve_routine(routine, ctx.dataset))
+routine = await ds.resolve_command_routine(nova, "my-dataset", "my-routine")
+await cr.execute(nova, routine)
 ```
 
 If the routine's TCP or motion group setup do not match your controller, replace them with
 `routine.model_copy(update={"tcp": ..., "motion_group_setup": await mg.get_setup(tcp)})`.
-The full flow, with the dataset of `examples/datasets.py`, is in
-[`examples/command_routine.py`](../examples/command_routine.py). The command support list is
-this page's "Supported commands" and "Not supported yet" sections.
+The full flow is in [`examples/command_routine.py`](../examples/command_routine.py).
 
 ## Supported commands
+
+NOVA runs every command as authored, at its place in the sequence or at its `at` trigger:
 
 - Motions: `move_linear`, `move_cartesian_ptp`, `move_joint_ptp` (joint position target),
   `move_circular`.
 - `set_io`: boolean, integer and analog outputs, controller or bus IO origin. Without `at` it
   switches at its motion boundary. With a time, distance or path-fraction trigger
   (`at_time`, `at_distance`, `at_path_fraction`) it switches at that point along the motion.
+- `wait_for_time`, `wait_for_io`, `pause_on_io` and `marker`.
 
 ## Not supported yet
 
-`wait_for_time`, `wait_for_io`, `pause_on_io`, `marker` and `generated_motion` have no
-action-list equivalent. A routine containing one raises `UnsupportedRoutineCommand` naming the
-command (for example `Command 3 (wait_for_time) is not supported yet`) during planning, before
-the robot moves. Nothing is skipped silently.
+NOVA rejects these before the robot moves with `UnsupportedRoutineCommand`, naming the command
+and its index (for example `Command 0 (motion_command): a joint PTP to a pose target is not
+implemented yet`):
+
+- spline and direction-constrained path types,
+- a joint PTP to a pose target, a cartesian path to a joint position target, a circle via a
+  joint position,
+- more than one TCP: poses taught with different TCPs, or with another TCP than the routine's.
 
 ## Observing state, stopping, errors
 
-- **Observe:** run the routine as a task and read `mg.stream_state()` next to it. `state_stream_rate_msecs` sets the
-  rate of the state stream used during execution.
-- **Stop:** cancel the task awaiting the call. No outputs are written after a stop. Without a
-  stop the routine runs to completion.
-- **Errors**, all raised before the robot moves:
-  - `UnsupportedRoutineCommand`: unsupported command or path type.
-  - `PoseResolutionError`: a referenced pose cannot be resolved (error names the pose). Pass the
-    Dataset when the routine uses local pose references.
-  - `ValueError`: the routine references a different motion group.
-  - Planning failures surface as the usual planning errors.
+- **Observe:** run the routine as a task and read `mg.stream_state()` next to it.
+- **Stop:** cancel the task awaiting `cr.execute`. The SDK stops the run on NOVA; no outputs are
+  written after the stop. Without a stop the routine runs to completion.
+- **Errors** (all in `nova.command_routines`), raised before the robot moves unless noted:
+  - `UnsupportedRoutineCommand`: a feature NOVA cannot execute yet (see above).
+  - `CommandRoutineError`: NOVA rejects the routine, e.g. an unresolved pose, an unreachable
+    target, a busy motion group or a robot not at the start joint position. The message names the
+    command. It is the base class of the other two.
+  - `RoutineRunFailed`, raised during the run: it failed (for example a `wait_for_io` timed out)
+    or was stopped from elsewhere. `error.run` holds its final state.
+  - `DatasetNotFoundError` / `DatasetError` from `ds.resolve_command_routine`: the Dataset or
+    routine does not exist, or a pose cannot be resolved (the error names the pose).

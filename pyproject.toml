@@ -14,7 +14,7 @@ requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
-    "wandelbots-api-client==26.9.0.dev45",
+    "wandelbots-api-client==26.9.0+a3248.03b9fa45.517643",
     "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",
@@ -208,3 +208,13 @@ known-first-party = ["nova", "nova_rerun_bridge", "novax"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# Dev build of the API client with the command routine execution endpoints; only that package is
+# taken from this index. Remove once wandelbots-api-client 26.9.0 is on PyPI.
+[[tool.uv.index]]
+name = "wandelbots-dev"
+url = "https://code.wabo.run/api/v4/projects/889/packages/pypi/simple"
+explicit = true
+
+[tool.uv.sources]
+wandelbots-api-client = { index = "wandelbots-dev" }

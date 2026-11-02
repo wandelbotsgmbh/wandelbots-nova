@@ -1,35 +1,27 @@
 """
-Run a CommandRoutine on a virtual KUKA KR16, reusing the dataset of `datasets.py`.
+Run a CommandRoutine of a dataset on a virtual KUKA KR16.
 
-The dataset's `startup-routine` only holds a `wait_for_time` command, which is not supported yet.
-This example therefore drops unsupported commands from the dataset routine and appends explicit
-motions to the dataset poses `pick` and `place`, plus two `set_io` commands: one at a motion
-boundary and one with a path-fraction trigger. It then plans and runs the routine.
+NOVA plans and runs the whole routine: motions, set_io (with and without trigger), waits,
+pause_on_io and markers. A routine stored in a dataset is resolved by NOVA first, so its poses
+become world poses and it runs without the dataset.
 
-Which commands are supported: see `docs/command_routines.md` ("Supported commands" and
-"Not supported yet") and `nova/cell/routine_execution.py`.
+This example uses the `default` dataset seeded on the NOVA instance (the same content as
+`example_dataset.json`). Its `startup-routine` only waits, so the example gives it this robot's
+context and appends motions to the dataset poses `pick` and `place`, plus two `set_io`
+commands: one at a motion boundary and one with a path-fraction trigger.
+
+See `docs/command_routines.md` for what is supported.
 """
 
 import nova
 from nova import api, run_program
+from nova import command_routines as cr
 from nova import datasets as ds
-from nova.actions import joint_ptp
 from nova.cell import virtual_controller
-from nova.cell.routine_execution import resolve_routine
-from nova.command_routines import (
-    at_path_fraction,
-    move_cartesian_ptp,
-    move_linear,
-    set_io,
-    with_settings,
-)
+from nova.command_routines import at_path_fraction, move_cartesian_ptp, set_io, with_settings
 
 # Output that exists on the virtual KUKA controller.
 OUTPUT = "OUT#1"
-
-# TODO: Remove this filter once the SDK can execute these commands. Until then a routine
-# containing one of them is rejected with `UnsupportedRoutineCommand` before the robot moves.
-UNSUPPORTED = ("wait_for_time", "wait_for_io", "pause_on_io", "marker", "generated_motion")
 
 
 @nova.program(
@@ -43,39 +35,44 @@ UNSUPPORTED = ("wait_for_time", "wait_for_io", "pause_on_io", "marker", "generat
                 type="kuka-kr16_r2010_2",
             )
         ],
-        dataset=ds.local_dataset("example_dataset.json"),
+        dataset=ds.remote_dataset("default"),
         cleanup_controllers=False,
     ),
 )
 async def start(ctx: nova.ProgramContext):
-    """Run a Dataset routine with explicit motions and set_io, with and without trigger."""
+    """Run a dataset routine with a wait, explicit motions and set_io, with and without trigger."""
     controller = await ctx.cell.controller("kuka-kr16-r2010")
     motion_group = controller[0]
     tcp = (await motion_group.tcp_names())[0]
     home = tuple(await motion_group.joints())
 
+    # `pick` and `place` are taught in world; move to them with this robot's TCP.
+    def taught(pose_id: str) -> api.models.InlinePose:
+        pose = ctx.dataset.poses[pose_id]
+        return api.models.InlinePose(
+            pose=pose.as_world().to_api_model(),
+            frame=api.models.WorldFrameReference(),
+            tcp=tcp,
+            kinematic_configuration=pose.kinematic_configuration,
+        )
+
     slow = api.models.MotionSettings(
         limits_override=api.models.LimitsOverride(tcp_velocity_limit=50)
     )
 
-    fast = api.models.MotionSettings(
-        limits_override=api.models.LimitsOverride(tcp_velocity_limit=250)
-    )
-
-    dataset_routine = ctx.dataset.command_routines["startup-routine"]
-    supported = [c for c in dataset_routine.commands if c.type not in UNSUPPORTED]
-
-    routine = dataset_routine.model_copy(
+    seed = await ds.resolve_command_routine(ctx.nova, "default", "startup-routine")
+    routine = seed.model_copy(
         update={
             "commands": [
-                *supported,
-                move_cartesian_ptp("pick"),  # dataset poses are resolved through the dataset
+                *seed.commands,  # waits for one second
+                move_cartesian_ptp(taught("pick")),
                 set_io(OUTPUT, True),  # without trigger: at the motion boundary
-                *with_settings(slow, [move_linear("place")]),
+                *with_settings(slow, [move_cartesian_ptp(taught("place"))]),
                 set_io(OUTPUT, False, at=at_path_fraction(0.5)),  # with trigger
-                *with_settings(fast, [move_cartesian_ptp("pick")]),
+                move_cartesian_ptp(taught("pick")),
             ],
             # The seed routine carries no context, so take it from the motion group.
+            "motion_group": api.models.MotionGroupReference(id=motion_group.id),
             "tcp": tcp,
             "motion_group_setup": await motion_group.get_setup(tcp),
             "start_joint_position": list(home),
@@ -83,8 +80,7 @@ async def start(ctx: nova.ProgramContext):
     )
 
     print("Running routine...")
-    await motion_group.plan_and_execute(resolve_routine(routine, ctx.dataset))
-    await motion_group.plan_and_execute([joint_ptp(home)], tcp)
+    await cr.execute(ctx.nova, routine)
     print(f"{OUTPUT} = {await controller.read(OUTPUT)}")
 
 
