@@ -281,6 +281,25 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
 
 
 @pytest.mark.asyncio
+async def test_the_configured_delay_until_braking_goes_out_with_every_chunk():
+    session, server = _build_session(
+        config=WaypointConfig(min_chunk_horizon_ms=0, delay_until_braking_ms=200)
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        session.update_chunk(steps=[[0.0] * 6], dt_ms=50.0, first_timestamp_ms=5_000)
+
+        await _wait_until(lambda: len(server.requests) >= 2)
+        assert _inner(server.requests[1]).delay_until_braking == 200
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
 async def test_a_short_chunk_holds_its_final_target_to_fill_the_buffer():
     session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=100.0))
     target = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]

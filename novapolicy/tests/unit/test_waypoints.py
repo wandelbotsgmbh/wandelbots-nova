@@ -10,12 +10,15 @@ intervals.
 from __future__ import annotations
 
 import itertools
+import json
 
 from hypothesis import given, settings, strategies as st
+import pytest
 
 from nova import api
 from novapolicy.jogging.clock import JoggingTimeClock
 from novapolicy.jogging.waypoints import make_waypoints_request
+from novapolicy.types import WaypointConfig
 
 
 def _joint_timestamps(req) -> list[int]:
@@ -257,3 +260,39 @@ def test_a_zero_step_spacing_is_rejected_at_construction():
 
     # Zero is documented as "no automatic extension", so it must stay legal.
     assert WaypointConfig(min_chunk_horizon_ms=0.0).min_chunk_horizon_ms == 0.0
+
+
+# ---------------------------------------------------------------------------
+# delay_until_braking — how long the server keeps the velocity after a chunk.
+# ---------------------------------------------------------------------------
+
+
+def _wire(req) -> dict:
+    """The request as the action chunk stream sends it."""
+    return json.loads(req.model_dump_json(exclude_none=True))
+
+
+def test_delay_until_braking_is_sent_with_the_waypoints():
+    """The pinned API client predates the field, so the request has to carry it itself."""
+    req = make_waypoints_request(
+        JoggingTimeClock(),
+        "joint",
+        steps=[[0.0] * 6],
+        effective_dt_ms=50.0,
+        first_timestamp_ms=100,
+        delay_until_braking_ms=200,
+    )
+    assert _wire(req)["delay_until_braking"] == 200
+
+
+def test_without_a_delay_the_request_is_unchanged_for_older_servers():
+    req = make_waypoints_request(
+        JoggingTimeClock(), "joint", steps=[[0.0] * 6], effective_dt_ms=50.0, first_timestamp_ms=100
+    )
+    assert "delay_until_braking" not in _wire(req)
+
+
+def test_a_negative_delay_until_braking_is_rejected_at_construction():
+    with pytest.raises(ValueError, match="delay_until_braking_ms"):
+        _ = WaypointConfig(delay_until_braking_ms=-1)
+    assert WaypointConfig().delay_until_braking_ms is None

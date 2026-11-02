@@ -820,6 +820,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 first_timestamp_ms=base_ms,
                 timestamp_offset_steps=pending.timestamp_offset_steps,
                 server_dt_ms=pending.server_dt_ms,
+                delay_until_braking_ms=self._config.delay_until_braking_ms,
             )
             return _ScheduledRequest(
                 request=request,
@@ -856,6 +857,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             first_timestamp_ms=anchor_ms + int(skip * dt_ms),
             timestamp_offset_steps=0,
             server_dt_ms=pending.server_dt_ms,
+            delay_until_braking_ms=self._config.delay_until_braking_ms,
         )
         # Dropped steps keep the timestamps they were going to be sent with, so
         # the caller's step numbering still indexes this list directly.

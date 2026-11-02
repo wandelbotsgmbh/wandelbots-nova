@@ -229,7 +229,27 @@ class WaypointConfig:
     live path with no timeline to lay waypoints on.
     """
 
+    delay_until_braking_ms: int | None = None
+    """How long the robot keeps its velocity after a chunk's last waypoint before braking.
+
+    ``None`` leaves the field out of the request, so the server brakes at the end
+    of every chunk as before. With a delay, a chunk that arrives in time continues
+    the motion instead of starting it again from standstill, and every chunk
+    restarts the countdown. This lets the server do what the padding above does on
+    the client: set ``min_chunk_horizon_ms=0`` for it to apply, because a padded
+    chunk ends in a hold that leaves no velocity to keep.
+
+    Meant for short chunks streamed at the policy rate, down to one waypoint.
+    About 200 ms rode through 100-150 ms network stalls in teleoperation. The
+    robot keeps moving that long past the final target once the stream ends, so
+    only use it where that overshoot is acceptable.
+
+    Needs NOVA 26.8.0-112 or newer; older servers ignore the field.
+    """
+
     def __post_init__(self) -> None:
+        if self.delay_until_braking_ms is not None and self.delay_until_braking_ms < 0:
+            raise ValueError("delay_until_braking_ms must be non-negative")
         if not math.isfinite(self.single_step_dt_ms) or self.single_step_dt_ms <= 0:
             raise ValueError("single_step_dt_ms must be a positive finite value")
         if not math.isfinite(self.min_chunk_horizon_ms) or self.min_chunk_horizon_ms < 0:

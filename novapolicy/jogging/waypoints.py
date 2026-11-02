@@ -9,13 +9,25 @@ its :class:`~novapolicy.jogging.clock.JoggingTimeClock` and mode.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
+
+from pydantic import Field
 
 from nova import api
 
 if TYPE_CHECKING:
     from novapolicy.jogging.clock import JoggingTimeClock
     from novapolicy.types import JoggingMode
+
+
+class ActionChunkRequest(api.models.ActionChunkRequest):
+    """``ActionChunkRequest`` with ``delay_until_braking`` [ms].
+
+    The pinned API client (26.7.0) predates the field, while NOVA 26.8.0-112
+    accepts it. Drop this once the client is 26.8.0 or newer.
+    """
+
+    delay_until_braking: Annotated[int, Field(ge=0)] | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -84,6 +96,7 @@ def make_waypoints_request(
     first_timestamp_ms: int | None = None,
     timestamp_offset_steps: int = 0,
     server_dt_ms: float | None = None,
+    delay_until_braking_ms: int | None = None,
 ) -> api.models.ActionChunkRequest:
     """Build the ActionChunkRequest for a chunk at stream-yield time.
 
@@ -104,6 +117,9 @@ def make_waypoints_request(
     ``timestamp_offset_steps`` shifts the selected timestamp by whole ``dt``
     steps: ``+1`` places step zero one interval in the future; a negative value
     backdates an overlapping seam; ``0`` uses the timestamp exactly.
+
+    ``delay_until_braking_ms`` is sent as is; ``None`` leaves it out (see
+    :attr:`~novapolicy.types.WaypointConfig.delay_until_braking_ms`).
     """
     step_dt_ms = step_spacing_ms(effective_dt_ms, server_dt_ms)
     base_ms = (
@@ -114,11 +130,12 @@ def make_waypoints_request(
 
     coordinates = _pose_coordinates(steps) if mode == "cartesian" else _joint_coordinates(steps)
 
-    return api.models.ActionChunkRequest(
+    return ActionChunkRequest(
         waypoints=[
             api.models.Waypoint(timestamp=ts, waypoint=coordinate)
             for ts, coordinate in zip(timestamps, coordinates, strict=True)
         ],
+        delay_until_braking=delay_until_braking_ms,
     )
 
 

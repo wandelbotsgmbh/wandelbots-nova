@@ -88,6 +88,14 @@ at your last step rather than sitting at it for the rest of the window. Set the
 config value to `0` to disable padding — a chunk whose last step is not a genuine
 stopping point will then get a decelerate-to-standstill profile at its end.
 
+With `WaypointConfig.delay_until_braking_ms` set (NOVA 26.8.0-112 or newer), the
+server keeps the robot's velocity that long after a chunk's last waypoint before it
+brakes, and every new chunk restarts the countdown. Short chunks streamed at the
+policy rate, down to a single waypoint, then run as one motion without padding:
+set `min_chunk_horizon_ms=0` with it, because a padded chunk ends in a hold. About
+200 ms covered 100-150 ms network stalls in teleoperation. When the stream ends,
+the robot keeps moving for that long past the final target.
+
 ### Late chunks are trimmed
 
 A chunk is timestamped when you build it and sent a moment later. Leading
