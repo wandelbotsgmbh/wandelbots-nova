@@ -235,6 +235,7 @@ class AbstractRobot(Device):
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
+        external_tool_offset_name: str | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -248,6 +249,8 @@ class AbstractRobot(Device):
                 Only use this when you are certain the physical controller is configured with the same payload.
             singularity_handling (api.models.SingularityHandling | None): Strategy for handling wrist singularities
                 along a cartesian path. If None, the API default (NONE) is used. Experimental.
+            external_tool_offset_name (str | None): If set, the (moving) coordinate system defined by the root's kinematic chain
+                is used as reference and the fixed tool is moving relative to it
 
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
@@ -261,6 +264,7 @@ class AbstractRobot(Device):
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
+        external_tool_offset_name: str | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions.
 
@@ -307,6 +311,7 @@ class AbstractRobot(Device):
                 motion_group_setup=motion_group_setup,
                 payload_override=payload_override,
                 singularity_handling=singularity_handling,
+                external_tool_offset_name=external_tool_offset_name,
             )
 
             # Automatic viewer integration - log planning results if viewers are active
