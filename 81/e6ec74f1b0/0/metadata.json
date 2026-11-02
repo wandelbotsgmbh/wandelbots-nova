@@ -1,0 +1,235 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "81e6ec74f1b0",
+  "session_id": "d8042bd7-7b25-434a-8293-fa5f445281ca",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-02T06:59:55.449721Z",
+  "branch": "feat/command-routine-execution",
+  "checkpoints_count": 5,
+  "save_step_count": 5,
+  "files_touched": [
+    ".specs/ndx-883-command-routine-execution/spec.md",
+    "docs/command_routines.md",
+    "examples/command_routine.py",
+    "nova/cell/robot_cell.py",
+    "nova/cell/routine_execution.py",
+    "nova/command_routines/__init__.py",
+    "nova/command_routines/command_routines.py",
+    "nova/command_routines/exceptions.py",
+    "nova/core/gateway.py",
+    "nova/datasets/__init__.py",
+    "nova/datasets/datasets.py",
+    "nova/exceptions.py",
+    "pyproject.toml",
+    "tests/cell/test_execute_routine.py",
+    "tests/command_routines/test_command_routines.py",
+    "tests/nova/cell/motion_group/test_execute_routine.py",
+    "tests/nova/command_routines/test_command_routines_integration.py",
+    "tests/nova/datasets/test_client.py",
+    "uv.lock"
+  ],
+  "agent": "Claude Code",
+  "model": "kimi-k3",
+  "turn_id": "d3e981ceae4f",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 268760,
+    "cache_creation_tokens": 1497662,
+    "cache_read_tokens": 46826010,
+    "output_tokens": 174880,
+    "api_call_count": 227
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01Lc2w8wgBxoMFDZmjk7UVGh",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "code-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "d3e981ceae4f",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 922,
+        "end": 923,
+        "entry_ids": [
+          "6a9d70e6-cbcf-4f62-878f-6a4a606e7c7b"
+        ],
+        "tool_use_id": "toolu_01Lc2w8wgBxoMFDZmjk7UVGh"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Lc2w8wgBxoMFDZmjk7UVGh"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: code-review",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-call_26ba70fdc3c441bbb6422b83",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "code-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "d3e981ceae4f",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1707,
+        "end": 1708,
+        "entry_ids": [
+          "c926406f-63ea-4ead-8667-3293ca79888a"
+        ],
+        "tool_use_id": "call_26ba70fdc3c441bbb6422b83"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "call_26ba70fdc3c441bbb6422b83"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: code-review",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-02T06:59:55.290616Z",
+    "agent_lines": 0,
+    "agent_removed": 701,
+    "human_added": 265,
+    "human_modified": 640,
+    "human_removed": 0,
+    "total_committed": 265,
+    "total_lines_changed": 1606,
+    "agent_percentage": 43.648816936488174,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 2143,
+      "user_lines_removed": 123,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 21,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 17,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/pr-description.md": 59,
+        ".specs/command-routine/execution/spec.md": 142,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        ".specs/command-routine/pose-resolution/spec.md": 65,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "examples/start_here_cr.py": 112,
+        "pick-and-place.json": 476,
+        "pyproject.toml": 1,
+        "trajectory_cursor_overview.md": 192,
+        "uv.lock": 122
+      },
+      "user_removed_per_file": {
+        "pyproject.toml": 1,
+        "uv.lock": 122
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 135,
+      "user_lines_removed": 66,
+      "agent_lines_added": 2871,
+      "agent_lines_removed": 1027,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        "nova/exceptions.py": 22,
+        "pyproject.toml": 2,
+        "uv.lock": 82
+      },
+      "user_removed_per_file": {
+        "pyproject.toml": 1,
+        "uv.lock": 65
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 29,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2694,
+      "agent_lines_removed": 812,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 29,
+      "user_lines_removed": 1,
+      "agent_lines_added": 2694,
+      "agent_lines_removed": 812,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29
+      },
+      "user_removed_per_file": {
+        "examples/command_routine.py": 1
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 696,
+      "user_lines_removed": 433,
+      "agent_lines_added": 2856,
+      "agent_lines_removed": 1079,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 7,
+        ".specs/command-routine/execution/spec.md": 24,
+        ".specs/command-routine/pose-resolution/spec.md": 1,
+        "docs/command_routines.md": 18,
+        "examples/command_routine.py": 19,
+        "nova/cell/cell.py": 15,
+        "nova/cell/controller.py": 15,
+        "nova/cell/motion_group.py": 137,
+        "nova/command_routines/command_routines.py": 21,
+        "nova/core/gateway.py": 2,
+        "nova/core/nova.py": 1,
+        "pyproject.toml": 1,
+        "tests/cell/test_execute_routine.py": 128,
+        "tests/command_routines/test_command_routines.py": 24,
+        "tests/nova/cell/motion_group/test_execute_routine.py": 250,
+        "uv.lock": 4
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 8,
+        ".specs/command-routine/execution/spec.md": 22,
+        ".specs/command-routine/pose-resolution/spec.md": 1,
+        "docs/command_routines.md": 15,
+        "examples/command_routine.py": 37,
+        "nova/cell/cell.py": 3,
+        "nova/cell/controller.py": 2,
+        "nova/cell/motion_group.py": 62,
+        "nova/command_routines/command_routines.py": 11,
+        "nova/core/gateway.py": 2,
+        "nova/core/nova.py": 1,
+        "pyproject.toml": 1,
+        "tests/command_routines/test_command_routines.py": 13,
+        "tests/nova/command_routines/test_command_routines_integration.py": 251,
+        "uv.lock": 4
+      }
+    }
+  ]
+}
