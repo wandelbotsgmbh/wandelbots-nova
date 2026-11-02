@@ -69,6 +69,24 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria allow independent iteration. Weak criteria (“make it work”) invite endless clarification.
 
+### 5. Follow the contribution guide
+
+The human-facing rules you must also follow live in
+[How to contribute](README.md#how-to-contribute): local check commands, code style, Conventional
+Commits, and the review/release flow. Read it before opening a pull request.
+
+Two points are non-negotiable for agent-authored changes:
+
+- **Run the checks locally before you claim done.** Format, import order, lint, typecheck, and the
+  non-integration tests — the exact commands are in the contribution guide. Never weaken or skip a
+  check to get green.
+- **Fill in `.github/PULL_REQUEST_TEMPLATE.md` honestly.** **Why** and **Benefits** are mandatory,
+  and the **Test plan** may only list commands you actually ran. Do not invent tests, screenshots,
+  or verification.
+
+Use the `pr` skill (`.agents/skills/pr/SKILL.md`) to open or update a pull request, and the `ci`
+skill (`.agents/skills/ci/SKILL.md`) to triage a red pipeline.
+
 ---
 
 ## NOVA API (v2)
