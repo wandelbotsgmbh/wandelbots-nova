@@ -7,7 +7,18 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from pyinstrument import Profiler
+
+
+@pytest.fixture(autouse=True)
+def _restore_nova_modules():
+    """Put the original nova modules back, so later tests don't mix two copies of nova."""
+    saved = {name: module for name, module in sys.modules.items() if name.startswith("nova")}
+    yield
+    for name in [name for name in sys.modules if name.startswith("nova")]:
+        del sys.modules[name]
+    sys.modules.update(saved)
 
 
 def test_nova_import_performance():

@@ -26,6 +26,10 @@ class NovaRerunBridgeProtocol(Protocol):
         """Async context manager exit."""
         ...
 
+    def close(self) -> None:
+        """Release what the bridge attached globally, such as its log sink."""
+        ...
+
     async def setup_blueprint(self) -> None:
         """Setup the blueprint."""
         ...

@@ -3,7 +3,7 @@ import rerun as rr
 import trimesh
 
 import nova
-from nova import Nova, api, run_program
+from nova import Nova, ProgramContext, api, run_program
 from nova.actions import cartesian_ptp
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
@@ -43,7 +43,7 @@ def log_mesh_to_rerun(scene: trimesh.Trimesh) -> None:
         cleanup_controllers=False,
     ),
 )
-async def test():
+async def test(ctx: ProgramContext):
     async with Nova() as nova:
         cell = nova.cell()
         controller = await cell.controller("ur10")

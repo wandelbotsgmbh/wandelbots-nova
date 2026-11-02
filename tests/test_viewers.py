@@ -20,6 +20,7 @@ The tests use pytest best practices:
 - Clear test organization by functional area
 """
 
+import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -284,6 +285,45 @@ class TestViewerManager:
         manager.register_viewer(viewer)
 
         assert viewer in manager._viewers
+
+    def test_get_viewer_returns_the_active_viewer_of_a_type(self):
+        manager = ViewerManager()
+        viewer = Mock(spec=Viewer)
+
+        assert manager.get_viewer(Viewer) is None
+        manager.register_viewer(viewer)
+
+        assert manager.get_viewer(Viewer) is viewer
+        assert manager.get_viewer(Rerun) is None
+
+    def test_cleanup_viewer_leaves_the_other_viewers_active(self):
+        manager = ViewerManager()
+        viewer1 = Mock(spec=Viewer)
+        viewer2 = Mock(spec=Viewer)
+        manager.register_viewer(viewer1)
+        manager.register_viewer(viewer2)
+
+        manager.cleanup_viewer(viewer1)
+
+        viewer1.cleanup.assert_called_once()
+        viewer2.cleanup.assert_not_called()
+        assert manager.active_viewers == (viewer2,)
+
+    @pytest.mark.asyncio
+    async def test_a_run_viewer_is_active_only_in_its_own_task(self):
+        manager = ViewerManager()
+        viewer1 = Mock(spec=Viewer)
+        viewer2 = Mock(spec=Viewer)
+
+        async def run(viewer):
+            manager.activate_viewer(viewer)
+            await asyncio.sleep(0)
+            assert manager.active_viewers == (viewer,)
+            manager.cleanup_viewer(viewer)
+
+        await asyncio.gather(run(viewer1), run(viewer2))
+
+        assert not manager.active_viewers
 
     def test_register_duplicate_viewer(self):
         """Should not register the same viewer twice."""
