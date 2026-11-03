@@ -30,7 +30,9 @@ The rules the example demonstrates (see ``nova.interlock`` for the reasoning):
 3. Recovery is explicit: at the start, with the arm turned away from the
    partner and therefore known to be clear,
    ``release_all(include_previous_runs=True)`` drops locks a previous crashed
-   run of *this robot* left behind.
+   run of *this robot* left behind.  It requires a ``RobotOwnership`` claim, so
+   a second live process for the same robot is refused at its start rather than
+   freeing this one's locks.
 
 Both robots run in one process here for convenience.  In production each robot
 is its own process (or pod); nothing changes, because the lock state lives in
@@ -54,7 +56,7 @@ import nova
 from nova import Controller, api, run_program
 from nova.actions import cartesian_ptp, joint_ptp
 from nova.cell import virtual_controller
-from nova.interlock import InterlockClient, LockId
+from nova.interlock import InterlockClient, LockId, RobotOwnership
 from nova.types import MotionSettings, Pose
 
 ROBOT_A = "interlock-a"
@@ -264,18 +266,25 @@ async def interlock_two_robots(ctx: nova.ProgramContext):
         place_robot(ctx, cell.cell_id, ROBOT_A), place_robot(ctx, cell.cell_id, ROBOT_B)
     )
 
-    # One client per robot identity, all on the cell's NATS connection.  The
-    # bucket `nova_cells_<cell>_interlocks` is created on first use.
-    locks_a = InterlockClient(ctx.nova.nats, cell=cell.cell_id, robot=ROBOT_A)
-    locks_b = InterlockClient(ctx.nova.nats, cell=cell.cell_id, robot=ROBOT_B)
+    # Claim each robot id first: if another live process already acts for one
+    # of these robots, this raises OwnershipConflict instead of letting two
+    # processes free each other's locks.  One client per robot identity, all on
+    # the cell's NATS connection.  The bucket `nova_cells_<cell>_interlocks` is
+    # created on first use.
+    nats_client = ctx.nova.nats
+    async with (
+        RobotOwnership(nats_client, cell=cell.cell_id, robot=ROBOT_A) as owner_a,
+        RobotOwnership(nats_client, cell=cell.cell_id, robot=ROBOT_B) as owner_b,
+    ):
+        locks_a, locks_b = owner_a.client(), owner_b.client()
 
-    # Both cycles start at the same moment and race for the zone; the interlock
-    # is the only thing serializing them.
-    await asyncio.gather(robot_cycle(controller_a, locks_a), robot_cycle(controller_b, locks_b))
+        # Both cycles start at the same moment and race for the zone; the
+        # interlock is the only thing serializing them.
+        await asyncio.gather(robot_cycle(controller_a, locks_a), robot_cycle(controller_b, locks_b))
 
-    # Operator's view of the bucket — empty after two clean runs.
-    remaining = await locks_a.inspect()
-    log.info("locks still held in the cell: %s", remaining or "none")
+        # Operator's view of the bucket — empty after two clean runs.
+        remaining = await locks_a.inspect()
+        log.info("locks still held in the cell: %s", remaining or "none")
 
 
 if __name__ == "__main__":

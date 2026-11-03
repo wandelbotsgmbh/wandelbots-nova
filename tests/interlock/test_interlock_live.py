@@ -32,10 +32,14 @@ import pytest
 from nova import Nova
 from nova.interlock import (
     BUCKET_TEMPLATE,
+    OWNERS_BUCKET_TEMPLATE,
     ForeignRelease,
     InterlockClient,
     InterlockTimeout,
     LockId,
+    OwnershipConflict,
+    OwnershipLost,
+    RobotOwnership,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.nats]
@@ -112,8 +116,10 @@ async def cell(connect) -> AsyncIterator[str]:
     """A fresh cell (hence a fresh KV bucket) per test; the bucket is removed afterwards."""
     name = f"livetest-{uuid.uuid4().hex[:8]}"
     yield name
-    with contextlib.suppress(Exception):
-        await (await connect()).jetstream().delete_key_value(BUCKET_TEMPLATE.format(cell=name))
+    js = (await connect()).jetstream()
+    for template in (BUCKET_TEMPLATE, OWNERS_BUCKET_TEMPLATE):
+        with contextlib.suppress(Exception):
+            await js.delete_key_value(template.format(cell=name))
 
 
 @pytest.fixture
@@ -205,7 +211,9 @@ async def test_crashed_holder_lock_survives_disconnect(connect, cell):
     lock = LockId.of("robot-a", "robot-b", 9)
 
     nc1 = await connect()
-    r01 = InterlockClient(nc1, cell=cell, robot="robot-a")
+    owner = RobotOwnership(nc1, cell=cell, robot="robot-a")
+    await owner.claim()
+    r01 = owner.client()
     await r01.acquire([lock])
     await nc1.close()  # process dies without releasing
 
@@ -214,10 +222,51 @@ async def test_crashed_holder_lock_survives_disconnect(connect, cell):
     with pytest.raises(InterlockTimeout):
         await r02.acquire([lock], timeout=1.0, poll_interval=0.05)
 
-    # recovery: the restarted r01 asserts the robot is physically clear
-    r01_restarted = InterlockClient(nc2, cell=cell, robot="robot-a")
+    # recovery: the restarted r01 takes over the dead owner's robot id and
+    # asserts the robot is physically clear
+    restarted_owner = RobotOwnership(nc2, cell=cell, robot="robot-a")
+    await restarted_owner.claim()
+    r01_restarted = restarted_owner.client()
     released = await r01_restarted.release_all(include_previous_runs=True)
     assert released == [lock.key]
 
     grant = await r02.acquire([lock], timeout=5)
     assert grant.holder == "robot-b"
+
+
+async def test_live_owner_on_another_connection_blocks_a_second_claim(connect, cell):
+    """Two processes, one robot id: the second one is refused while the first answers."""
+    first = RobotOwnership(await connect(), cell=cell, robot="robot-a")
+    await first.claim()
+    second = RobotOwnership(await connect(), cell=cell, robot="robot-a", liveness_timeout=0.5)
+    with pytest.raises(OwnershipConflict):
+        await second.claim()
+    await first.verify()
+
+
+async def test_owner_whose_connection_died_is_taken_over(connect, cell):
+    nc1 = await connect()
+    dead = RobotOwnership(nc1, cell=cell, robot="robot-a")
+    await dead.claim()
+    await nc1.close()  # the process dies without releasing the robot id
+
+    started = asyncio.get_running_loop().time()
+    successor = RobotOwnership(await connect(), cell=cell, robot="robot-a", liveness_timeout=0.3)
+    await successor.claim()
+    elapsed = asyncio.get_running_loop().time() - started
+    assert successor.claimed
+    assert elapsed < 3.0, f"takeover took {elapsed:.2f}s"
+
+
+async def test_superseded_owner_cannot_acquire(connect, cell):
+    nc1 = await connect()
+    old = RobotOwnership(nc1, cell=cell, robot="robot-a")
+    await old.claim()
+    old_locks = old.client()
+    await old._stop_answering()  # alive, but unreachable for pings
+
+    new = RobotOwnership(await connect(), cell=cell, robot="robot-a", liveness_timeout=0.3)
+    await new.claim()
+    with pytest.raises(OwnershipLost):
+        await old_locks.acquire([LockId.of("robot-a", "robot-b", 9)], timeout=1)
+    assert await new.client().inspect() == {}

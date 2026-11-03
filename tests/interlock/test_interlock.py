@@ -26,6 +26,7 @@ from nova.interlock import (
     InterlockTimeout,
     LockId,
     LockRecord,
+    RobotOwnership,
 )
 
 TRIO = {
@@ -104,6 +105,13 @@ class FakeKV:
             raise KeyWrongLastSequenceError()
         return self.put(key, value)
 
+    async def update(self, key: str, value: bytes, last: int | None = None, **_) -> int:
+        await asyncio.sleep(0)
+        entry = self._data.get(key)
+        if last is not None and (entry is None or entry.revision != last):
+            raise KeyWrongLastSequenceError()
+        return self.put(key, value)
+
     async def delete(self, key: str, last: int | None = None, **_) -> bool:
         if self.fail_delete is not None:
             raise self.fail_delete
@@ -132,11 +140,77 @@ class FakeKV:
         return watcher
 
 
-def make_client(kv: FakeKV, robot: str) -> InterlockClient:
-    client = InterlockClient(None, cell="testcell", robot=robot, create_bucket=False)
+class _FakeSubscription:
+    def __init__(self, nats: "FakeNats", subject: str):
+        self._nats = nats
+        self.subject = subject
+
+    async def unsubscribe(self) -> None:
+        self._nats.handlers.pop(self.subject, None)
+
+
+class _FakeMsg:
+    def __init__(self):
+        self.reply: bytes | None = None
+
+    async def respond(self, data: bytes) -> None:
+        self.reply = data
+
+
+class FakeNats:
+    """Request/reply only: what the ownership liveness ping needs.
+
+    ``frozen`` simulates a live owner that cannot answer (blocked loop, NATS gap):
+    requests to it time out instead of reaching its handler.
+    """
+
+    def __init__(self):
+        self.handlers: dict[str, Callable] = {}
+        self.frozen: set[str] = set()
+        self.requests = 0
+
+    async def subscribe(self, subject: str, cb: Callable) -> _FakeSubscription:
+        self.handlers[subject] = cb
+        return _FakeSubscription(self, subject)
+
+    async def request(self, subject: str, payload: bytes = b"", timeout: float = 1.0):
+        import nats.errors
+
+        self.requests += 1
+        handler = self.handlers.get(subject)
+        if handler is None:
+            raise nats.errors.NoRespondersError()
+        if subject in self.frozen:
+            await asyncio.sleep(timeout)
+            raise nats.errors.TimeoutError()
+        msg = _FakeMsg()
+        await handler(msg)
+        return msg
+
+
+def make_owner(kv: FakeKV, nats: FakeNats, robot: str) -> RobotOwnership:
+    owner = RobotOwnership(
+        nats,
+        cell="testcell",
+        robot=robot,
+        create_bucket=False,
+        liveness_timeout=0.01,
+    )
+    owner._kv = kv  # ty: ignore[invalid-assignment]
+    return owner
+
+
+def make_client(kv: FakeKV, robot: str, owner: RobotOwnership | None = None) -> InterlockClient:
+    client = InterlockClient(None, cell="testcell", robot=robot, create_bucket=False, owner=owner)
     client._run_id = f"run-{robot}"
     client._kv = kv  # ty: ignore[invalid-assignment]
     return client
+
+
+async def claimed_owner(robot: str, owners_kv: FakeKV | None = None) -> RobotOwnership:
+    owner = make_owner(owners_kv or FakeKV(), FakeNats(), robot)
+    await owner.claim()
+    return owner
 
 
 # ---------------------------------------------------------------- lock identity
@@ -486,7 +560,8 @@ async def test_release_all_recovers_locks_from_a_previous_run():
     await crashed.acquire([TRIO["r01_r02"], TRIO["r01_r03"]])
     del crashed
 
-    restarted = make_client(kv, "robot-a")  # fresh run_id, empty _held
+    # fresh run_id, empty _held
+    restarted = make_client(kv, "robot-a", owner=await claimed_owner("robot-a"))
     assert await restarted.release_all() == [], "default must not touch a foreign run"
     assert len(kv._data) == 2
 
@@ -500,7 +575,7 @@ async def test_release_all_previous_runs_spares_other_robots():
     r02 = make_client(kv, "robot-b")
     await r02.acquire([TRIO["r02_r03"]])
 
-    r01 = make_client(kv, "robot-a")
+    r01 = make_client(kv, "robot-a", owner=await claimed_owner("robot-a"))
     await r01.release_all(include_previous_runs=True)
     assert TRIO["r02_r03"].key in kv._data, "another robot's lock must be untouched"
 

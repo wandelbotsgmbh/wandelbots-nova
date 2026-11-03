@@ -63,6 +63,7 @@ import logging
 import random
 import uuid
 from collections.abc import AsyncIterator, Iterable, Sequence
+from typing import TYPE_CHECKING
 
 import nats
 from nats.js.api import KeyValueConfig
@@ -82,10 +83,15 @@ from nova.interlock.models import (
     AlreadyHeldError,
     ForeignRelease,
     Grant,
+    GrantLost,
     InterlockTimeout,
     LockId,
     LockRecord,
+    OwnershipRequired,
 )
+
+if TYPE_CHECKING:
+    from nova.interlock.ownership import RobotOwnership
 
 logger = logging.getLogger(__name__)
 
@@ -128,12 +134,27 @@ class InterlockClient:
         robot: this robot's id, e.g. ``"robot-a"``.  Used as the holder identity.
         create_bucket: create the bucket if missing.  Safe for every process to
             set (creation is idempotent), but one owner is tidier.
+        owner: this process's claim on *robot* (see :class:`RobotOwnership`).
+            With it, every acquire first checks the claim still holds, and
+            ``release_all(include_previous_runs=True)`` is allowed.  Usually
+            obtained through :meth:`RobotOwnership.client`.
     """
 
     def __init__(
-        self, nats_client: nats.NATS, *, cell: str, robot: str, create_bucket: bool = True
+        self,
+        nats_client: nats.NATS,
+        *,
+        cell: str,
+        robot: str,
+        create_bucket: bool = True,
+        owner: RobotOwnership | None = None,
     ):
+        if owner is not None and (owner.robot, owner.cell) != (robot, cell):
+            raise ValueError(
+                f"owner claims {owner.robot} in {owner.cell}, client is for {robot} in {cell}"
+            )
         self._nats = nats_client
+        self._owner = owner
         self._cell = cell
         self._robot = robot
         self._run_id = uuid.uuid4().hex[:12]
@@ -146,10 +167,16 @@ class InterlockClient:
         # task's fresh lock as "our own" and both would get a grant.
         self._acquire_lock = asyncio.Lock()
         self._held: dict[str, int] = {}
+        # The grant of the last successful acquire, for request_id retries.
+        self._grant: Grant | None = None
 
     @property
     def robot(self) -> str:
         return self._robot
+
+    @property
+    def owner(self) -> RobotOwnership | None:
+        return self._owner
 
     @property
     def run_id(self) -> str:
@@ -225,6 +252,7 @@ class InterlockClient:
         timeout: float = 120.0,
         label: str = "",
         poll_interval: float = 0.1,
+        request_id: str | None = None,
     ) -> Grant:
         """Acquire every lock in *locks*, or none.  Blocks until granted.
 
@@ -238,30 +266,63 @@ class InterlockClient:
         the no-deadlock argument of this prototype is *no hold-and-wait*, so each
         step must take its complete slot set in one call.
 
+        Args:
+            request_id: names this request, e.g. the program step.  Calling
+                ``acquire`` again with the same id and the same slot set while
+                its grant is still fully held returns that grant instead of
+                raising :class:`AlreadyHeldError`, so a step that is retried
+                after a failure *following* a successful acquire does not get
+                stuck.  The grant is re-checked against the bucket first.
+
         Raises:
             InterlockTimeout: nothing was acquired and the robot has not moved.
                 Abort the program; never proceed.
             AlreadyHeldError: this client still holds locks from a previous
-                acquire.  Release them first.
+                acquire (other than a retry of the same ``request_id``).
+                Release them first.
+            GrantLost: a retry's grant is no longer held as granted.
+            OwnershipLost: the client has an owner and its claim is gone.
         """
         if not locks:
-            return Grant(holder=self._robot, run_id=self._run_id, revisions={})
+            return Grant(
+                holder=self._robot, run_id=self._run_id, revisions={}, request_id=request_id
+            )
         async with self._acquire_lock:
             return await self._acquire(
-                locks, timeout=timeout, label=label, poll_interval=poll_interval
+                locks,
+                timeout=timeout,
+                label=label,
+                poll_interval=poll_interval,
+                request_id=request_id,
             )
 
     async def _acquire(
-        self, locks: Sequence[LockId], *, timeout: float, label: str, poll_interval: float
+        self,
+        locks: Sequence[LockId],
+        *,
+        timeout: float,
+        label: str,
+        poll_interval: float,
+        request_id: str | None,
     ) -> Grant:
+        by_key = {lock.key: lock for lock in locks}
+        if self._owner is not None:
+            await self._owner.verify()
         if self._held:
-            raise AlreadyHeldError(
-                self._robot, sorted(self._held), sorted({lock.key for lock in locks})
-            )
+            grant = self._grant
+            if (
+                request_id is not None
+                and grant is not None
+                and grant.request_id == request_id
+                and set(grant.revisions) == set(by_key)
+                and self._held == grant.revisions
+            ):
+                return await self._confirm_retry(grant)
+            raise AlreadyHeldError(self._robot, sorted(self._held), sorted(by_key))
 
         kv = await self._bucket()
-        by_key = {lock.key: lock for lock in locks}
         ordered = sorted(by_key)
+        owner_session = self._owner.session if self._owner is not None else ""
         deadline = asyncio.get_running_loop().time() + timeout
         attempt = 0
 
@@ -273,7 +334,11 @@ class InterlockClient:
             try:
                 for key in ordered:
                     record = LockRecord(
-                        holder=self._robot, run_id=self._run_id, slot=by_key[key].slot, label=label
+                        holder=self._robot,
+                        run_id=self._run_id,
+                        slot=by_key[key].slot,
+                        label=label,
+                        owner=owner_session,
                     )
                     payload = record.model_dump_json().encode()
                     try:
@@ -310,7 +375,10 @@ class InterlockClient:
                     ordered,
                     f" ({label})" if label else "",
                 )
-                return Grant(holder=self._robot, run_id=self._run_id, revisions=taken)
+                self._grant = Grant(
+                    holder=self._robot, run_id=self._run_id, revisions=taken, request_id=request_id
+                )
+                return self._grant
 
             # Roll back completely.  Safe: the robot has not moved.  Shielded like
             # the error path: a cancellation here must not orphan the keys.
@@ -342,6 +410,31 @@ class InterlockClient:
             )
             # Jitter breaks livelock between two robots contending for the same set.
             await asyncio.sleep(random.random() * poll_interval)
+            if self._owner is not None:
+                # A long wait must not outlive the claim: a successor may have taken over.
+                await self._owner.verify()
+
+    async def _confirm_retry(self, grant: Grant) -> Grant:
+        """Return *grant* for a retried request, after checking the bucket still agrees."""
+        kv = await self._bucket()
+        lost: dict[str, LockRecord | None] = {}
+        for key, rev in sorted(grant.revisions.items()):
+            record, current_rev = await self._read(kv, key)
+            if (
+                record is None
+                or (record.holder, record.run_id) != (self._robot, self._run_id)
+                or current_rev != rev
+            ):
+                lost[key] = record
+        if lost:
+            raise GrantLost(self._robot, lost)
+        logger.info(
+            "[%s] interlock retry of request %s: already holding %s",
+            self._robot,
+            grant.request_id,
+            grant.keys,
+        )
+        return grant
 
     async def _wait_for_change(
         self, kv: KeyValue, key: str, *, max_wait: float, poll_interval: float
@@ -555,7 +648,18 @@ class InterlockClient:
                 This is the programmatic recovery for the routine restart case:
                 by calling it the program asserts the robot is physically clear.
                 Cross-robot cleanup remains an operator :meth:`force_release`.
+                Requires an ``owner`` (:class:`RobotOwnership`): only a process
+                that owns the robot id knows that no other live process for the
+                same robot is standing in a zone under these locks.
+
+        Raises:
+            OwnershipRequired: ``include_previous_runs`` without an ``owner``.
+            OwnershipLost: the owner's claim is gone.
         """
+        if include_previous_runs:
+            if self._owner is None:
+                raise OwnershipRequired(self._robot)
+            await self._owner.verify()
         kv = await self._bucket()
         keys = set(self._held)
         if include_previous_runs:
