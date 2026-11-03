@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "e348919befa0",
+  "strategy": "manual-commit",
+  "branch": "lab/pause-auto-resume-main",
+  "checkpoints_count": 16,
+  "files_touched": [
+    ".vscode/settings.json",
+    "examples/lab/succession/runs/20261026-113239-plan-once-reopen.jsonl",
+    "examples/lab/succession/runs/20261026-113602-plan-once-reopen-a.jsonl",
+    "examples/lab/succession/runs/20261026-114137-plan-once-reopen-a.jsonl",
+    "examples/lab/succession/runs/old/20261026-113239-plan-once-reopen.jsonl",
+    "examples/lab/succession/runs/old/20261026-113334-plan-once-persistent.jsonl",
+    "examples/lab/succession/runs/old/20261026-113420-plan-once-linger.jsonl",
+    "examples/lab/succession/runs/old/20261026-113602-plan-once-reopen-a.jsonl",
+    "examples/lab/succession/runs/old/20261026-113644-plan-once-persistent-a.jsonl",
+    "examples/lab/succession/runs/old/20261026-113727-plan-once-linger-a.jsonl",
+    "examples/lab/succession/runs/old/20261026-113808-plan-once-reopen-b.jsonl",
+    "examples/lab/succession/runs/old/20261026-113850-plan-once-persistent-b.jsonl",
+    "examples/lab/succession/runs/old/20261026-113941-plan-once-linger-b.jsonl",
+    "examples/lab/succession/runs/stream-comparison.html"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e3/48919befa0/0/metadata.json",
+      "transcript": "/e3/48919befa0/0/full.jsonl",
+      "compact_transcript": "/e3/48919befa0/0/transcript.jsonl",
+      "content_hash": "/e3/48919befa0/0/content_hash.txt",
+      "prompt": "/e3/48919befa0/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5794,
+    "cache_creation_tokens": 2249814,
+    "cache_read_tokens": 64267264,
+    "output_tokens": 269046,
+    "api_call_count": 205
+  }
+}
