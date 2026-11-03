@@ -168,7 +168,10 @@ class MotionGroup(AbstractRobot):
                 cell=self._cell,
                 plan_command_routine_request=api.models.PlanCommandRoutineRequest(
                     command_routine=routine,
-                    motion_group=api.models.MotionGroupReference(id=self.id),
+                    controller=self._controller_id,
+                    motion_group_override=None
+                    if routine.motion_group is not None and routine.motion_group.id == self.id
+                    else api.models.MotionGroupReference(id=self.id),
                 ),
             )
         except api.ApiException as exc:
@@ -186,7 +189,10 @@ class MotionGroup(AbstractRobot):
                 cell=self._cell,
                 start_command_routine_run_request=api.models.StartCommandRoutineRunRequest(
                     command_routine=routine,
-                    motion_group=api.models.MotionGroupReference(id=self.id),
+                    controller=self._controller_id,
+                    motion_group_override=None
+                    if routine.motion_group is not None and routine.motion_group.id == self.id
+                    else api.models.MotionGroupReference(id=self.id),
                 ),
             )
         except api.ApiException as exc:

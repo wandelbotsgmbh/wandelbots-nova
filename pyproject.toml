@@ -14,7 +14,7 @@ requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
     "httpx>=0.28.0,<0.29",
-    "wandelbots-api-client==26.9.0+a3248.03b9fa45.517643",
+    "wandelbots-api-client==26.9.0+a3248.8ad509c4.520178",
     "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",

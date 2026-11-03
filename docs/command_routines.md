@@ -16,7 +16,9 @@ takes an action list:
 of a run and following its state will come with NATS.
 
 The routine's own context is used. `plan` and `plan_and_execute` run it **on this motion group,
-whatever motion group the routine names**; the routine itself is not changed. They take no other
+whatever motion group the routine names**; the routine itself is not changed. A routine that names
+another motion group is planned with the setup NOVA describes for this one, not with the routine's
+`motion_group_setup`. They take no other
 arguments for it (start joint position, motion group setup, payload, `movement_controller`,
 `start_on_io`, ...): such an argument raises `ValueError`, and `tcp` may only repeat the routine's
 TCP. `execute`, `stream_execute` and `stream_plan_and_execute` do not take a routine and raise
@@ -65,11 +67,11 @@ The full flow is in [`examples/command_routine.py`](../examples/command_routine.
 | Scenario | Outcome |
 | --- | --- |
 | joint PTP, cartesian PTP, line, circle | runs |
-| `PathCubicSpline` through via points | runs |
 | generated motions (collision-free, to joints or to a pose) | runs |
 | `set_io` where the robot stands (written by the service) and between two motions (written by the controller) | runs |
 | `wait_for_time`, `wait_for_io` (also compound conditions with `all_of`, `any_of`, `not`) | runs; a `wait_for_io` that times out fails the run, naming the command |
 | `marker` (with payload) | runs |
+| `at` triggers, `pause_on_io` | run |
 | routine default settings, per-motion overrides | runs |
 | I/O-only routine (`motion_group_setup: None`): bus IOs, a wait, a marker | runs, nothing is planned or moved |
 
@@ -78,16 +80,16 @@ The full flow is in [`examples/command_routine.py`](../examples/command_routine.
 NOVA answers these before the robot moves with HTTP 501, which the SDK raises as
 `UnsupportedRoutineCommand` naming the command:
 
-- an `at` trigger in a routine with motions,
-- `pause_on_io`,
-- a direction-constrained path type,
-- a joint PTP to a pose target,
-- a pose taught with another TCP than the routine's.
+- `PathCubicSpline` and the direction-constrained path types,
+- a joint PTP to a pose target, a cartesian path to a joint position target, a circle via a joint
+  position,
+- more than one TCP: poses taught with different TCPs, or with another TCP than the routine's.
 
 NOVA answers these with HTTP 422, raised as `CommandRoutineError`: a local pose reference or a pose
 in a Dataset frame (resolve the routine first), a motion routine without `start_joint_position`, a
-target out of the workspace (the error names the command), and I/O-only routines with a
-`motion_group`, a `CONTROLLER` IO, a motion, an `at` trigger or `pause_on_io`.
+target out of the workspace (the error names the command), a routine that spans more than one motion
+group, and I/O-only routines with a `motion_group`, a `CONTROLLER` IO, a motion, an `at` trigger or
+`pause_on_io`.
 
 ## Known limits of the client
 

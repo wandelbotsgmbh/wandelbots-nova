@@ -16,8 +16,8 @@ NDX-844 ("Add CommandRoutine execution to the Python SDK", released in 6.0.0) de
 
 NOVA's command routines API plans and runs a whole CommandRoutine. The SDK sends the routine to it as it is, without converting it into an action list. `MotionGroup` decides by what it receives: an action list takes the existing path, a CommandRoutine goes to the API, on this motion group.
 
-- **What runs:** everything NOVA runs: explicit motions (joint PTP, cartesian PTP, line, circle), cubic splines, generated (collision-free) motions, set_io, wait_for_time, wait_for_io (also compound conditions), markers, and I/O-only routines.
-- **What is rejected:** what NOVA does not implement yet (`at` triggers in routines with motions, pause_on_io, direction-constrained paths, a joint PTP to a pose, poses of another TCP), before the robot moves, with an error naming the command; and what is invalid (unresolved poses, a missing start joint position, an unreachable target).
+- **What runs:** everything NOVA runs: explicit motions (joint PTP, cartesian PTP, line, circle), generated (collision-free) motions, set_io, wait_for_time, wait_for_io (also compound conditions), `at` triggers, pause_on_io, markers, and I/O-only routines.
+- **What is rejected:** what NOVA does not implement yet (cubic splines, direction-constrained paths, a joint PTP to a pose, a cartesian path to a joint position, a circle via a joint position, more than one TCP), before the robot moves, with an error naming the command; and what is invalid (unresolved poses, a missing start joint position, an unreachable target).
 - **What gets used:** the routine's own context. Routines with Dataset pose references are resolved first, see the related spec.
 - **Where it runs:** on the motion group the call is made on, whatever motion group the routine names.
 - **What the programmer can do:** plan a routine, start it (and get its run), stop the run. Following a run until it ends is not part of this step; it will be built on NATS.
@@ -50,7 +50,7 @@ Tags: **[Deferred]** not implemented. **[NOVA]** done by NOVA; the SDK passes th
 
 **User Story:** As a Robot Programmer, I want every motion command in a routine to execute, so that the robot path matches the authored routine.
 
-- **R2.1** WHEN a routine contains joint PTP, cartesian PTP, line, circle, cubic spline or generated motions, NOVA SHALL move the robot along them. **[NOVA]** **[Pending]**
+- **R2.1** WHEN a routine contains joint PTP, cartesian PTP, line, circle or generated motions, NOVA SHALL move the robot along them. **[NOVA]** **[Pending]**
 
 ### R3 Switch outputs
 
@@ -62,7 +62,7 @@ Tags: **[Deferred]** not implemented. **[NOVA]** done by NOVA; the SDK passes th
 
 **User Story:** As a Robot Programmer, I want routines that cannot run rejected before anything moves, so that adoption carries no risk.
 
-- **R4.1** IF NOVA does not implement a feature of the routine yet (HTTP 501), THEN THE SDK SHALL raise `UnsupportedRoutineCommand` with NOVA's message naming the command and its index. Currently: an `at` trigger in a routine with motions, pause_on_io, a direction-constrained path, a joint PTP to a pose, a pose of another TCP.
+- **R4.1** IF NOVA does not implement a feature of the routine yet (HTTP 501), THEN THE SDK SHALL raise `UnsupportedRoutineCommand` with NOVA's message naming the command and its index. Currently: a cubic spline, a direction-constrained path, a joint PTP to a pose, a cartesian path to a joint position, a circle via a joint position, a pose of another TCP.
 - **R4.2** IF NOVA rejects the routine for another reason (HTTP 422, 404, 409: an unresolved pose, a missing start joint position, an unreachable target, an I/O-only routine with a motion group, a controller IO, a motion, an `at` trigger or pause_on_io, a busy motion group, a robot not at the start joint position), THEN THE SDK SHALL raise `CommandRoutineError` with NOVA's message.
 - **R4.3** `UnsupportedRoutineCommand` SHALL be a `CommandRoutineError`.
 
@@ -110,7 +110,7 @@ Tags: **[Deferred]** not implemented. **[NOVA]** done by NOVA; the SDK passes th
 
 - **The robot branches on its input.** `AbstractRobot.plan` and `plan_and_execute` accept a `CommandRoutine` next to action lists: a routine is checked (arguments it cannot take raise `ValueError`) and handed to the abstract hooks `_plan_routine` and `_start_routine`; everything else takes the existing path, unchanged. `MotionGroup` implements the hooks by calling NOVA's command routines API (`planCommandRoutine`, `startCommandRoutineRun`) with the `ApiGateway` it holds, with itself as the motion group to run on. `SimulatedRobot` implements them by raising `NotImplementedError`, because it has no NOVA to talk to. `_normalize_actions`, the one funnel of the other action-list paths, raises `ValueError` for a routine, which is what `execute` and the streams do with one.
 - **The calls live in the motion group, errors in `nova.command_routines`.** `MotionGroup._plan_routine`, `_start_routine` and `stop_routine` call `self._api_client.command_routines_api` (`planCommandRoutine`, `startCommandRoutineRun`, `stopCommandRoutineRun`) and map API errors with `error_from_api_exception` from `nova/command_routines/exceptions.py` (`CommandRoutineError`; `UnsupportedRoutineCommand` for 501), as `nova/datasets` maps its errors. There are no module-level run functions: a routine always runs on a motion group, and no `Nova` instance is passed down.
-- **The motion group to run on is the request's override.** `planCommandRoutine` and `startCommandRoutineRun` take a `motion_group` that overrides the routine's own. The MotionGroup always passes itself and leaves the routine as it is.
+- **The motion group to run on is the request's override.** `planCommandRoutine` and `startCommandRoutineRun` take the `controller` the routine runs on (required for a motion routine; NOVA never derives it from a motion group id) and a `motion_group_override`. The MotionGroup always passes its controller and, unless the routine names it already, itself as the override. NOVA then plans the routine with the setup it describes for this motion group instead of the routine's `motion_group_setup`; a routine that names this motion group keeps its own setup. The routine is left as it is.
 - **No translation and no waiting.** The routine is not converted into actions; NOVA plans and runs it, so the SDK's trajectory execution (cursor, movement controllers, state streaming) is not used. `plan_and_execute` returns the run once it is accepted, which is the handle for `stop_routine`. Following a run will use NATS, not polling.
 - **Errors.** NOVA's messages name the command and reason and are reused as they are. `ValueError` is raised by the SDK for arguments a routine cannot take.
 - **Docs and example.** `docs/command_routines.md` and `examples/command_routine.py`.
@@ -119,9 +119,9 @@ Tags: **[Deferred]** not implemented. **[NOVA]** done by NOVA; the SDK passes th
 ## Testing Decisions
 
 - **One seam.** Every test calls the motion group's `plan`, `plan_and_execute` or `stop_routine` and asserts only what is observable there: what NOVA was asked, the answer and the errors. Command semantics are NOVA's.
-- **Shared scenarios.** `tests/command_routines/scenarios.py` builds the routines of NOVA's routines service (11 features, 15 errors) in code; unit and integration tests use the same routines.
+- **Routines in the tests.** Each test file builds the routines it needs in code at its head (unit: the 11 features and 15 errors of NOVA's routines service; integration: the subset that runs on a virtual controller). There is no shared scenario module.
 - **Unit:** `tests/cell/test_execute_routine.py` with a double of the API: plan, run, stop, the scenarios, the wire format of the settings, the rejections and the simulated robot.
-- **Integration:** `tests/nova/cell/motion_group/test_execute_routine.py` on a virtual KUKA: every feature to `COMPLETED`, every error as documented, another motion group, set_io. The scenarios that need the bus IO service are skipped.
+- **Integration:** `tests/nova/cell/motion_group/test_execute_routine.py` on a virtual KUKA: every feature to `COMPLETED`, every error as documented, another motion group, set_io.
 - **Regression:** the existing plan/execute, action and routine builder suites stay green.
 - **Manual:** one recorded run on a real controller is still outstanding.
 
