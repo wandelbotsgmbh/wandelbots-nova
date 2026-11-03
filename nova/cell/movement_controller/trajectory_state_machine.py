@@ -264,7 +264,7 @@ class TrajectoryExecutionMachine(StateMachine):
         self.pause_reason: PauseReason | None = None
         self.failure_reason: str | None = None
         self.failed_frame: api.models.MotionGroupState | None = None
-        self._moved_from: float | None = None
+        self._moved = False
         self._pause_requested = False
         # (state kind, location) of the last terminal frame seen, and the one a
         # resume must ignore while the controller still re-publishes it.
@@ -472,7 +472,7 @@ class TrajectoryExecutionMachine(StateMachine):
         self._stale_terminal = self._last_terminal if source in (self.ended, self.paused) else None
 
     def on_enter_armed(self) -> None:
-        self._moved_from: float | None = None
+        self._moved = False
         self._pause_requested = False
         self.pause_reason = None
         logger.debug("Trajectory state machine → armed (waiting for motion)")
@@ -527,14 +527,9 @@ class TrajectoryExecutionMachine(StateMachine):
                 if not standstill:
                     # The robot is leaving standstill; the discriminator flips to
                     # RUNNING one cycle later (measured 2026-09-16).
-                    if self._moved_from is None:
-                        self._moved_from = self.location
+                    self._moved = True
                     self._keep_armed()
-                elif self._pause_requested or (
-                    # Back at standstill without leaving the parked location is
-                    # still the parked shape, e.g. right after a stopped execution.
-                    self._moved_from is not None and self.location != self._moved_from
-                ):
+                elif self._moved or self._pause_requested:
                     self.pause_reason = PauseReason.USER
                     self._pause_while_armed()
                 else:

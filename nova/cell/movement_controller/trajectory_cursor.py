@@ -1365,6 +1365,15 @@ class TrajectoryCursor:
                 # operation is active: observers (guards, overlays, UIs) need states
                 # from before movement starts, not only once it is under way.
                 result = self._state_machine.process_motion_state(motion_group_state)
+                # TEMP diagnostic: which frame started `executing`.
+                details = motion_group_state.execute and motion_group_state.execute.details
+                frame_id = (
+                    getattr(details, "trajectory", None),
+                    result.location,
+                    motion_group_state.standstill,
+                )
+                if result.state_changed and result.current_state_id == "executing":
+                    self._diag_executing_frame = frame_id
                 if logger.isEnabledFor(logging.DEBUG):
                     frame_state = _frame_execute_state(motion_group_state)
                     exec_state = type(frame_state).__name__ if frame_state is not None else None
@@ -1427,7 +1436,9 @@ class TrajectoryCursor:
                         # execute() waiting forever. Fail it instead.
                         error = UnexpectedTrajectoryState(
                             f"trajectory was paused by user at location {self._current_location} "
-                            f"(from {result.previous_state_id}) "
+                            f"(from {result.previous_state_id}; own={self.motion_id} "
+                            f"executing_frame={getattr(self, '_diag_executing_frame', None)} "
+                            f"paused_frame={frame_id}) "
                             "during one-shot execution; only this cursor may pause it",
                             machine_state=result.current_state_id,
                             frame=motion_group_state,
