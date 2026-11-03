@@ -259,7 +259,13 @@ class TrajectoryExecutionMachine(StateMachine):
 
     # -- Instance state -------------------------------------------------------
 
-    def __init__(self) -> None:
+    def __init__(self, trajectory: str | None = None) -> None:
+        """
+        Args:
+            trajectory: Id of the tracked trajectory. Frames that report another
+                trajectory are handled like frames without execute details.
+        """
+        self._trajectory = trajectory
         self.location: float | None = None
         self.pause_reason: PauseReason | None = None
         self.failure_reason: str | None = None
@@ -271,6 +277,16 @@ class TrajectoryExecutionMachine(StateMachine):
         self._last_terminal: tuple[type, float] | None = None
         self._stale_terminal: tuple[type, float] | None = None
         super().__init__()
+
+    def _is_other_trajectory(self, execute: api.models.Execute) -> bool:
+        # The controller can still report the previous trajectory (RUNNING) after a
+        # new one was initialized; that frame says nothing about this execution.
+        details = execute.details
+        return (
+            self._trajectory is not None
+            and isinstance(details, api.models.TrajectoryDetails)
+            and details.trajectory != self._trajectory
+        )
 
     def _active_configuration_id(self) -> str:
         """String id for the active configuration (uses :attr:`StateChart.configuration`)."""
@@ -326,7 +342,7 @@ class TrajectoryExecutionMachine(StateMachine):
             transition information.
         """
         previous_state_id: str = self._active_configuration_id()
-        has_execute = state.execute is not None
+        has_execute = state.execute is not None and not self._is_other_trajectory(state.execute)
         location: float | None = None
 
         if not has_execute:

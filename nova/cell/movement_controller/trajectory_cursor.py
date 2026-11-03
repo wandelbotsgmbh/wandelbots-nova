@@ -676,7 +676,7 @@ class TrajectoryCursor:
         self._target_location = self._current_location
         self._detach_on_standstill = detach_on_standstill
 
-        self._state_machine = TrajectoryExecutionMachine()
+        self._state_machine = TrajectoryExecutionMachine(trajectory=motion_id)
         self._operation_handler = OperationHandler()
 
         self._initialize_task = asyncio.create_task(self.ainitialize())
@@ -1341,16 +1341,6 @@ class TrajectoryCursor:
             ):
                 ready_event.set()
 
-                # Since NOVA 26.8.0 the first frames can still report the previous trajectory
-                # as RUNNING. Such a frame would put the machine into `executing` before our
-                # own trajectory parks at its start, which then reads as a user pause.
-                details = motion_group_state.execute and motion_group_state.execute.details
-                if details is not None and getattr(details, "trajectory", None) not in (
-                    None,
-                    self.motion_id,
-                ):
-                    continue
-
                 # Arm the state machine when an operation is active and the machine
                 # is at rest. This happens *before* the frame is processed, which is
                 # the contract the machine's rest-state rules rely on: a RUNNING
@@ -1408,10 +1398,15 @@ class TrajectoryCursor:
                 if current_op is None or current_op.future.done():
                     continue
 
-                if result.skip and not _frame_shows_motion(motion_group_state):
+                shows_motion = (
+                    _frame_shows_motion(motion_group_state)
+                    if result.has_execute
+                    else not motion_group_state.standstill
+                )
+                if result.skip and not shows_motion:
                     continue
 
-                if _frame_shows_motion(motion_group_state):
+                if shows_motion:
                     self._operation_handler.set_running()  # idempotent
 
                 if self._state_machine.is_ended or self._state_machine.is_paused:
