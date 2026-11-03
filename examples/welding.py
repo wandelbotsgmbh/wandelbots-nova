@@ -222,7 +222,15 @@ async def test(ctx: nova.ProgramContext):
 
     # Connect to the controller and activate motion groups
     motion_group = controller[0]
-    motion_group_description = await motion_group.get_description()
+    # The virtual controller restarts after the TCP change; wait until it serves the motion group.
+    for _ in range(30):
+        try:
+            motion_group_description = await motion_group.get_description()
+            break
+        except api.exceptions.BadRequestException:
+            await asyncio.sleep(1)
+    else:
+        motion_group_description = await motion_group.get_description()
 
     # Add mesh to collision world
     mesh_collider = await add_mesh_to_collision_world(
