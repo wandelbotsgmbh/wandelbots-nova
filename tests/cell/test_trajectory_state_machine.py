@@ -188,6 +188,16 @@ class TestArmed:
         assert machine.pause_reason is PauseReason.USER
         assert result.state_changed
 
+    def test_parked_frame_at_the_same_location_after_leaving_standstill_stays_armed(self):
+        """Leaving standstill without any trajectory progress is not a pause: after a
+        stopped execution the new trajectory's parked frame follows such a frame."""
+        machine = _armed()
+        machine.process_motion_state(_paused_by_user(0.0, standstill=False))
+        machine.process_motion_state(_paused_by_user(0.0))
+        assert machine.is_armed
+        machine.process_motion_state(_running(0.0))
+        assert machine.is_executing
+
     def test_requested_pause_concludes_on_the_parked_frame(self):
         """A pause the owner asked for before the robot moved is the same frame as
         the parked shape; request_pause() tells them apart."""

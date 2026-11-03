@@ -1427,6 +1427,7 @@ class TrajectoryCursor:
                         # execute() waiting forever. Fail it instead.
                         error = UnexpectedTrajectoryState(
                             f"trajectory was paused by user at location {self._current_location} "
+                            f"(from {result.previous_state_id}) "
                             "during one-shot execution; only this cursor may pause it",
                             machine_state=result.current_state_id,
                             frame=motion_group_state,
