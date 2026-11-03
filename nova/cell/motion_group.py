@@ -253,6 +253,11 @@ class MotionGroup(AbstractRobot):
             cell=self._cell, controller=self._controller_id, motion_group=self.id
         )
 
+    async def _fetch_coordinate_systems(self) -> list[api.models.CoordinateSystem]:
+        return await self._api_client.controller_api.list_coordinate_systems(
+            cell=self._cell, controller=self._controller_id
+        )
+
     async def get_description(self) -> api.models.MotionGroupDescription:
         """Get the motion group description.
 
@@ -317,6 +322,8 @@ class MotionGroup(AbstractRobot):
                 ``description.payloads``.
         """
         motion_group_description = await self._fetch_motion_group_description()
+        coordinate_systems = await self._fetch_coordinate_systems()
+
         resolved_payload = await self._resolve_payload(
             payload_override=payload_override,
             tcp_name=tcp_name,
@@ -328,6 +335,7 @@ class MotionGroup(AbstractRobot):
             tcp_name=tcp_name,
             payload=resolved_payload,
             external_tool_coordinate_system_name=external_tool_coordinate_system_name,
+            coordinate_systems=coordinate_systems,
         )
 
     @staticmethod
