@@ -1,0 +1,543 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "e341aa05f415",
+  "session_id": "d8042bd7-7b25-434a-8293-fa5f445281ca",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-03T12:43:35.994181Z",
+  "branch": "feat/command-routine-execution",
+  "checkpoints_count": 19,
+  "save_step_count": 20,
+  "files_touched": [
+    ".specs/command-routine/execution/spec.md",
+    "docs/command_routines.md",
+    "nova/cell/motion_group.py",
+    "pyproject.toml",
+    "uv.lock"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "ca5934c9800f",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 269098,
+    "cache_creation_tokens": 4415338,
+    "cache_read_tokens": 118817575,
+    "output_tokens": 434048,
+    "api_call_count": 396
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01Lc2w8wgBxoMFDZmjk7UVGh",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "code-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "ca5934c9800f",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 922,
+        "end": 923,
+        "entry_ids": [
+          "6a9d70e6-cbcf-4f62-878f-6a4a606e7c7b"
+        ],
+        "tool_use_id": "toolu_01Lc2w8wgBxoMFDZmjk7UVGh"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Lc2w8wgBxoMFDZmjk7UVGh"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: code-review",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-call_26ba70fdc3c441bbb6422b83",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "code-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "ca5934c9800f",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1707,
+        "end": 1708,
+        "entry_ids": [
+          "c926406f-63ea-4ead-8667-3293ca79888a"
+        ],
+        "tool_use_id": "call_26ba70fdc3c441bbb6422b83"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "call_26ba70fdc3c441bbb6422b83"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: code-review",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 24
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-03T12:43:35.686111Z",
+    "agent_lines": 86,
+    "agent_removed": 4,
+    "human_added": 0,
+    "human_modified": 148,
+    "human_removed": 10,
+    "total_committed": 234,
+    "total_lines_changed": 248,
+    "agent_percentage": 36.29032258064516,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 2132,
+      "user_lines_removed": 268,
+      "agent_lines_added": 531,
+      "agent_lines_removed": 90,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 21,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 17,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "examples/start_here_cr.py": 112,
+        "pick-and-place.json": 476,
+        "tests/cell/test_execute_routine.py": 128,
+        "tests/nova/cell/motion_group/test_execute_routine.py": 250,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        "examples/command_routine.py": 17,
+        "tests/nova/command_routines/test_command_routines_integration.py": 251
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 1665,
+      "user_lines_removed": 25,
+      "agent_lines_added": 1019,
+      "agent_lines_removed": 666,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 21,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 17,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 3,
+        ".specs/command-routine/execution/spec.md": 20,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 3,
+        ".specs/command-routine/execution/spec.md": 22
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 1654,
+      "user_lines_removed": 11,
+      "agent_lines_added": 1129,
+      "agent_lines_removed": 683,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 21,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 17,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 1654,
+      "user_lines_removed": 11,
+      "agent_lines_added": 1129,
+      "agent_lines_removed": 683,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 21,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 17,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 1650,
+      "user_lines_removed": 11,
+      "agent_lines_added": 1634,
+      "agent_lines_removed": 536,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 1650,
+      "user_lines_removed": 11,
+      "agent_lines_added": 1634,
+      "agent_lines_removed": 536,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 1650,
+      "user_lines_removed": 11,
+      "agent_lines_added": 1612,
+      "agent_lines_removed": 533,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 1650,
+      "user_lines_removed": 11,
+      "agent_lines_added": 1594,
+      "agent_lines_removed": 536,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 1650,
+      "user_lines_removed": 11,
+      "agent_lines_added": 1606,
+      "agent_lines_removed": 536,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 1650,
+      "user_lines_removed": 11,
+      "agent_lines_added": 1610,
+      "agent_lines_removed": 536,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 1650,
+      "user_lines_removed": 11,
+      "agent_lines_added": 1610,
+      "agent_lines_removed": 536,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 13,
+      "user_lines_added": 1831,
+      "user_lines_removed": 51,
+      "agent_lines_added": 677,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "tests/nova/cell/motion_group/test_execute_routine.py": 181,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11,
+        "tests/nova/cell/motion_group/test_execute_routine.py": 40
+      }
+    },
+    {
+      "checkpoint_number": 14,
+      "user_lines_added": 1650,
+      "user_lines_removed": 11,
+      "agent_lines_added": 583,
+      "agent_lines_removed": 40,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 15,
+      "user_lines_added": 1652,
+      "user_lines_removed": 46,
+      "agent_lines_added": 688,
+      "agent_lines_removed": 47,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "tests/nova/cell/motion_group/test_execute_routine.py": 2,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11,
+        "tests/nova/cell/motion_group/test_execute_routine.py": 35
+      }
+    },
+    {
+      "checkpoint_number": 16,
+      "user_lines_added": 1650,
+      "user_lines_removed": 11,
+      "agent_lines_added": 653,
+      "agent_lines_removed": 59,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 17,
+      "user_lines_added": 1650,
+      "user_lines_removed": 11,
+      "agent_lines_added": 648,
+      "agent_lines_removed": 63,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 18,
+      "user_lines_added": 1650,
+      "user_lines_removed": 11,
+      "agent_lines_added": 523,
+      "agent_lines_removed": 325,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11
+      }
+    },
+    {
+      "checkpoint_number": 19,
+      "user_lines_added": 1772,
+      "user_lines_removed": 133,
+      "agent_lines_added": 648,
+      "agent_lines_removed": 63,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "pyproject.toml": 1,
+        "trajectory_cursor_overview.md": 192,
+        "uv.lock": 121
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11,
+        "pyproject.toml": 1,
+        "uv.lock": 121
+      }
+    },
+    {
+      "checkpoint_number": 20,
+      "user_lines_added": 1656,
+      "user_lines_removed": 25,
+      "agent_lines_added": 823,
+      "agent_lines_removed": 204,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 12,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "nova/cell/motion_group.py": 6,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 11,
+        "nova/cell/motion_group.py": 14
+      }
+    }
+  ]
+}
