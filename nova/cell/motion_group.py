@@ -713,7 +713,8 @@ class MotionGroup(AbstractRobot):
             try:
                 tcps = self._tcps_as_dict(await self.tcps())
                 return tcps[tcp.id]
-            except KeyError:
+            # 400 while the restarted virtual robot is not serving the motion group yet
+            except (KeyError, api.exceptions.BadRequestException):
                 await asyncio.sleep(1)
                 t -= 1
 

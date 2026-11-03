@@ -1,5 +1,3 @@
-import asyncio
-
 import numpy as np
 import rerun as rr
 import trimesh
@@ -192,45 +190,20 @@ async def test(ctx: nova.ProgramContext):
     controller = await cell.controller("ur10e-welding")
     tcp_name = "torch"
 
-    await ctx.nova.api.virtual_controller_api.set_virtual_controller_mounting(
-        cell="cell",
-        controller=controller.id,
-        motion_group=f"0@{controller.id}",
-        coordinate_system=api.models.CoordinateSystem(
-            coordinate_system="world",
-            name="mounting",
-            position=[0, 0, 0],
-            orientation=[0, 0, 0],
-            orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
-        ),
-    )
-
-    await ctx.nova.api.virtual_controller_api.add_virtual_controller_tcp(
-        cell=cell.id,
-        controller=controller.id,
-        motion_group=f"0@{controller.id}",
-        tcp=tcp_name,
-        robot_tcp_data=api.models.RobotTcpData(
-            name="torch",
+    # Connect to the controller and activate motion groups
+    motion_group = controller[0]
+    # Adding the TCP restarts the virtual robot; this waits until the TCP is available.
+    await motion_group.ensure_virtual_tcp(
+        api.models.RobotTcp(
+            id=tcp_name,
+            name=tcp_name,
             position=[0, 0, 100],
             orientation=[0, 0, 0],
             orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
         ),
+        timeout=60,
     )
-
-    await asyncio.sleep(5)
-
-    # Connect to the controller and activate motion groups
-    motion_group = controller[0]
-    # The virtual controller restarts after the TCP change; wait until it serves the motion group.
-    for _ in range(30):
-        try:
-            motion_group_description = await motion_group.get_description()
-            break
-        except api.exceptions.BadRequestException:
-            await asyncio.sleep(1)
-    else:
-        motion_group_description = await motion_group.get_description()
+    motion_group_description = await motion_group.get_description()
 
     # Add mesh to collision world
     mesh_collider = await add_mesh_to_collision_world(
