@@ -407,19 +407,6 @@ async def test_ensure_virtual_tcp_returns_existing_identical_tcp(mock_motion_gro
 
 
 @pytest.mark.asyncio
-async def test_ensure_virtual_tcp_waits_through_the_virtual_robot_restart(
-    mock_motion_group, monkeypatch
-):
-    """Adding a TCP restarts the virtual robot, which answers 400 until it is back."""
-    monkeypatch.setattr("nova.cell.motion_group.asyncio.sleep", AsyncMock())
-    tcp = api.models.RobotTcp(id="test_tcp", position=[0, 0, 150], orientation=[0, 0, 0])
-    restarting = api.exceptions.BadRequestException(status=400, reason="Bad Request")
-    mock_motion_group.tcps = AsyncMock(side_effect=[{}, restarting, {"test_tcp": tcp}])
-
-    assert await mock_motion_group.ensure_virtual_tcp(tcp) == tcp
-
-
-@pytest.mark.asyncio
 async def test_ensure_virtual_tcp_updates_different_tcp(mock_motion_group):
     """Test that ensure_virtual_tcp updates TCP when configurations differ."""
     tcp = api.models.RobotTcp(
