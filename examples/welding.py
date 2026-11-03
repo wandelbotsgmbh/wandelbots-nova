@@ -188,21 +188,13 @@ async def test(ctx: nova.ProgramContext):
 
     cell = ctx.nova.cell()
     controller = await cell.controller("ur10e-welding")
-    tcp_name = "torch"
+    # Plan for the flange with the torch offset applied to the targets: adding a torch TCP
+    # would restart the virtual robot.
+    tcp_name = "Flange"
+    flange_from_torch = ~Pose((0, 0, 100, 0, 0, 0))
 
     # Connect to the controller and activate motion groups
     motion_group = controller[0]
-    # Adding the TCP restarts the virtual robot; this waits until the TCP is available.
-    await motion_group.ensure_virtual_tcp(
-        api.models.RobotTcp(
-            id=tcp_name,
-            name=tcp_name,
-            position=[0, 0, 100],
-            orientation=[0, 0, 0],
-            orientation_type=api.models.OrientationType.EULER_ANGLES_EXTRINSIC_XYZ,
-        ),
-        timeout=60,
-    )
     motion_group_description = await motion_group.get_description()
 
     # Add mesh to collision world
@@ -222,7 +214,9 @@ async def test(ctx: nova.ProgramContext):
         cell=cell.id, setup=collision_setup_id
     )
     # Calculate seam positions based on mesh pose
-    seam1_start, seam1_end, seam2_start, seam2_end = await calculate_seam_poses(mesh_pose)
+    seam1_start, seam1_end, seam2_start, seam2_end = (
+        seam @ flange_from_torch for seam in await calculate_seam_poses(mesh_pose)
+    )
 
     # Define approach offset in local coordinates
     approach_offset = Pose((0, 0, -60, 0, 0, 0))
