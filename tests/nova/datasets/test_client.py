@@ -95,35 +95,44 @@ class TestFetchDataset:
 
 class TestResolveCommandRoutine:
     async def test_returns_the_routine_resolved_by_the_instance(self):
+        # GIVEN
         resolved = command_routine("pick-and-place", commands=[move_joint_ptp([0.0] * 6)])
         nova_mock = _nova_mock(resolve_dataset_command_routine=resolved)
 
+        # WHEN
         result = await ds.resolve_command_routine(
             nova_mock, "default", "pick-and-place", revision=2
         )
 
+        # THEN
         assert result == resolved
         nova_mock.api.datasets_api.resolve_dataset_command_routine.assert_awaited_once_with(
             cell="cell", dataset="default", command_routine="pick-and-place", revision=2
         )
 
     async def test_missing_routine_raises_not_found(self):
+        # GIVEN
         nova_mock = _nova_mock(
             resolve_dataset_command_routine=api.exceptions.NotFoundException(
                 status=404, reason="not found"
             )
         )
 
+        # WHEN
+        # THEN
         with pytest.raises(DatasetNotFoundError):
             await ds.resolve_command_routine(nova_mock, "default", "missing")
 
     async def test_unresolvable_pose_raises_dataset_error_naming_it(self):
+        # GIVEN
         nova_mock = _nova_mock(
             resolve_dataset_command_routine=api.exceptions.UnprocessableEntityException(
                 status=422, body='{"message": "pose \'slot\' cannot be resolved"}'
             )
         )
 
+        # WHEN
+        # THEN
         with pytest.raises(DatasetError, match="slot"):
             await ds.resolve_command_routine(nova_mock, "default", "pick-and-place")
 

@@ -1,12 +1,14 @@
 """Running CommandRoutines through ``MotionGroup`` on a virtual KUKA controller.
 
-NOVA's own scenarios (``tests/command_routines/scenarios.py``) run against a real instance:
-every feature must reach ``COMPLETED``, every error must be answered as documented.
+Every test defines the routine it runs, so what it does is visible where it is asserted.
 ``plan_and_execute`` returns the started run as soon as NOVA has accepted it, so the tests follow
 the run by polling the API themselves; the library does not wait (that will use NATS).
 """
 
 import asyncio
+import math
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 import pytest
 
@@ -17,32 +19,43 @@ from nova.cell.controllers import virtual_controller
 from nova.command_routines import (
     CommandRoutineError,
     UnsupportedRoutineCommand,
+    at_path_fraction,
     command_routine,
+    io_value,
+    marker,
+    move_cartesian_ptp,
+    move_circular,
     move_joint_ptp,
     move_linear,
+    set_io,
+    wait_for_io,
+    wait_for_time,
 )
-from nova.command_routines.exceptions import error_from_api_exception
 from nova.types import Pose
-from tests.command_routines.scenarios import Context, errors, features
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 _State = api.models.CommandRoutineRunState
 _FINAL = (_State.COMPLETED, _State.FAILED, _State.STOPPED)
-_DUMMY = Context(start=[0.0] * 6, tcp_pose=Pose((0, 0, 0, 0, 0, 0)))
 
-_NEEDS_BUS_IO = "needs the bus IO service (virtual profinet) with the IOs of the routine"
-_INPUT_TO_SET = {"04-wait-for-io": "IN#1"}
-_SKIPPED = {"05-wait-for-io-expression": _NEEDS_BUS_IO, "11-io-only-bus": _NEEDS_BUS_IO}
-# These routines are I/O-only: `motion_group_setup: null` is what declares them, and the
-# generated client drops explicit nulls from the request, so NOVA cannot tell.
-_IO_ONLY_ERRORS = {
-    "e04-io-only-with-motion-group",
-    "e05-io-only-controller-io",
-    "e06-io-only-with-motion",
-    "e14-io-only-at-trigger",
-    "e15-io-only-pause-on-io",
-}
+OUT_1, OUT_2, IN_1 = "OUT#1", "OUT#2", "IN#1"
+HOME = (0.0, -math.pi / 2, math.pi / 2, 0.0, math.pi / 2, math.pi)
+"""Where every test starts: the position a virtual KUKA has when it is created."""
+
+
+@dataclass(frozen=True)
+class Context:
+    """The robot a routine is written for, as it stands now."""
+
+    start: list[float]
+    """Joint position the robot is at, in radians."""
+    moved: list[float]
+    """Joint position a little away from ``start``."""
+    tcp_pose: Pose
+    """Pose of the TCP at ``start``; motion targets are offsets from it."""
+    setup: api.models.MotionGroupSetup
+    tcp: str
+    motion_group: str
 
 
 def _kuka(name: str):
@@ -52,14 +65,47 @@ def _kuka(name: str):
 
 
 async def _context(mg) -> Context:
-    """The routine context of this robot, as it stands now."""
     tcp = (await mg.tcp_names())[0]
+    start = list(await mg.joints())
     return Context(
-        start=list(await mg.joints()),
+        start=start,
+        moved=[start[0] + 0.2, *start[1:]],
         tcp_pose=await mg.tcp_pose(tcp),
         setup=await mg.get_setup(tcp),
         tcp=tcp,
         motion_group=mg.id,
+    )
+
+
+def _routine(ctx: Context, name: str, *commands, **settings) -> api.models.CommandRoutine:
+    """A routine written for the robot of ``ctx``, with its start position, TCP and setup."""
+    return command_routine(
+        name,
+        motion_group=ctx.motion_group,
+        tcp=ctx.tcp,
+        motion_group_setup=ctx.setup,
+        start_joint_position=ctx.start,
+        commands=list(commands),
+        **settings,
+    )
+
+
+def _pose(ctx: Context, dx: float = 0.0, dy: float = 0.0, *, tcp: str | None = None):
+    """An inline world pose ``dx``/``dy`` millimetres from the start pose."""
+    pose = ctx.tcp_pose @ Pose((dx, dy, 0, 0, 0, 0))
+    return api.models.InlinePose(
+        pose=pose.to_api_model(),
+        frame=api.models.WorldFrameReference(),
+        tcp=tcp or ctx.tcp,
+        kinematic_configuration=api.models.UnspecifiedKinematicConfiguration(),
+    )
+
+
+def _input_is_true(io: str) -> api.models.IOConditionExpression:
+    return api.models.IOConditionExpression(
+        io=io_value(io, True),
+        comparator=api.models.Comparator.COMPARATOR_EQUALS,
+        io_origin=api.models.IOOrigin.CONTROLLER,
     )
 
 
@@ -75,96 +121,299 @@ async def _final(nova: Nova, run: api.models.CommandRoutineRun, seen: list | Non
     return run
 
 
+@asynccontextmanager
+async def _watch_runs(nova: Nova):
+    """Collect every change of every run NOVA publishes on NATS, in order.
+
+    Polling the run misses commands the robot only passes (a marker lasts an instant), NATS
+    carries one message per change.
+    """
+    updates: list[api.models.CommandRoutineRun] = []
+
+    async def collect(message):
+        updates.append(api.models.CommandRoutineRun.model_validate_json(message.data))
+
+    subscription = await nova.nats.subscribe(
+        f"nova.v2.cells.{nova.cell().cell_id}.routines.runs.*", cb=collect
+    )
+    try:
+        yield updates
+    finally:
+        await subscription.unsubscribe()
+
+
+def _markers_passed(
+    updates: list[api.models.CommandRoutineRun],
+    run: api.models.CommandRoutineRun,
+    routine: api.models.CommandRoutine,
+) -> list[str]:
+    """Names of the markers the run was on, in order. A marker's payload is not published."""
+    indices = [u.current_command_index for u in updates if u.run == run.run]
+    return [
+        routine.commands[index].name
+        for index in dict.fromkeys(i for i in indices if i is not None)  # each command once
+        if isinstance(routine.commands[index], api.models.MarkerCommand)
+    ]
+
+
+async def _on_command(nova: Nova, run: api.models.CommandRoutineRun, index: int):
+    """Follow the run until it is executing or waiting on the command ``index``."""
+    routines = nova.api.command_routines_api
+    async with asyncio.timeout(30):
+        while run.current_command_index != index:
+            await asyncio.sleep(0.05)
+            run = await routines.get_command_routine_run(cell=nova.cell().cell_id, run=run.run)
+    return run
+
+
+async def _go_home(mg):
+    """Bring the robot to ``HOME``; an earlier test may have left it elsewhere."""
+    tcp = (await mg.tcp_names())[0]
+    await mg.plan_and_execute([joint_ptp(HOME)], tcp)
+
+
+async def _stop_active_runs(nova: Nova):
+    """A run that is left active keeps its motion group busy for every later test."""
+    routines = nova.api.command_routines_api
+    cell = nova.cell().cell_id
+    for run in (await routines.list_command_routine_runs(cell=cell)).runs:
+        if run.state not in _FINAL:
+            await routines.stop_command_routine_run(cell=cell, run=run.run)
+
+
 @pytest.fixture
 async def robot():
     async with Nova() as nova:
         controller = await nova.cell().ensure_controller(_kuka("kuka-routine-test"))
         async with controller[0] as mg:
-            yield nova, controller, mg
+            await _stop_active_runs(nova)
+            await _go_home(mg)
+            try:
+                yield nova, controller, mg
+            finally:
+                await _stop_active_runs(nova)
+                await _go_home(mg)
 
 
-class TestFeatures:
-    @pytest.mark.parametrize(
-        "name",
-        [
-            pytest.param(name, marks=pytest.mark.skip(reason=_SKIPPED[name]))
-            if name in _SKIPPED
-            else name
-            for name in features(_DUMMY)
-        ],
-    )
-    async def test_feature_routine_completes(self, robot, name):
-        nova, controller, mg = robot
-        routine = features(await _context(mg))[name]
+class TestRun:
+    async def test_every_motion_type_runs(self, robot):
+        # GIVEN
+        nova, _, mg = robot
+        ctx = await _context(mg)
+        routine = _routine(
+            ctx,
+            "motion-types",
+            move_joint_ptp(ctx.moved),
+            move_cartesian_ptp(_pose(ctx, 20)),
+            move_linear(_pose(ctx, 40)),
+            move_circular(_pose(ctx, 60), via_pose=_pose(ctx, 50, 20)),
+        )
 
+        # WHEN
         run = await mg.plan_and_execute(routine)
-        if name in _INPUT_TO_SET:
-            await asyncio.sleep(1.5)  # the routine waits for this input
-            await controller.write(_INPUT_TO_SET[name], True)
         final = await _final(nova, run)
 
+        # THEN
         assert final.state == _State.COMPLETED, final.error
 
     async def test_set_io_is_written_where_the_robot_stands_and_on_the_way(self, robot):
+        # GIVEN
         nova, controller, mg = robot
         ctx = await _context(mg)
-        await controller.write(ctx.io_out, False)
-        await controller.write(ctx.io_out_2, False)
+        await controller.write(OUT_1, False)
+        await controller.write(OUT_2, False)
+        routine = _routine(
+            ctx,
+            "set-io",
+            set_io(OUT_1, True),  # where the robot stands: written by the service
+            move_joint_ptp(ctx.moved),
+            set_io(OUT_2, True),  # between two motions: written by the controller
+            move_joint_ptp(ctx.start),
+        )
 
-        run = await mg.plan_and_execute(features(ctx)["02-set-io"])
+        # WHEN
+        run = await mg.plan_and_execute(routine)
         final = await _final(nova, run)
 
+        # THEN
         assert final.state == _State.COMPLETED, final.error
-        assert await controller.read(ctx.io_out) is True
-        assert await controller.read(ctx.io_out_2) is True
-        await controller.write(ctx.io_out, False)
-        await controller.write(ctx.io_out_2, False)
+        assert await controller.read(OUT_1) is True
+        assert await controller.read(OUT_2) is True
+        await controller.write(OUT_1, False)
+        await controller.write(OUT_2, False)
 
     async def test_wait_for_time_holds_the_run_on_the_wait(self, robot):
+        # GIVEN
         nova, _, mg = robot
-        routine = features(await _context(mg))["03-wait-for-time"]
+        ctx = await _context(mg)
+        routine = _routine(
+            ctx,
+            "wait-for-time",
+            move_joint_ptp(ctx.moved),
+            wait_for_time(1500),  # command 1
+            move_joint_ptp(ctx.start),
+        )
         seen: list = []
 
+        # WHEN
         run = await mg.plan_and_execute(routine)
         final = await _final(nova, run, seen)
 
+        # THEN
         assert final.state == _State.COMPLETED, final.error
-        assert 1 in seen  # command 1 is the 1.5 s wait
+        assert 1 in seen
 
-    async def test_plan_returns_the_trajectory_without_moving_the_robot(self, robot):
+    async def test_wait_for_io_continues_when_the_input_becomes_true(self, robot):
+        # GIVEN
+        nova, controller, mg = robot
+        ctx = await _context(mg)
+        await controller.write(IN_1, False)
+        routine = _routine(
+            ctx,
+            "wait-for-io",
+            move_joint_ptp(ctx.moved),
+            wait_for_io(_input_is_true(IN_1), timeout_ms=30_000),
+            move_joint_ptp(ctx.start),
+        )
+
+        # WHEN
+        run = await mg.plan_and_execute(routine)
+        await asyncio.sleep(1.5)  # the routine waits for this input
+        await controller.write(IN_1, True)
+        final = await _final(nova, run)
+
+        # THEN
+        assert final.state == _State.COMPLETED, final.error
+
+    async def test_markers_are_passed_in_order(self, robot):
+        # GIVEN
+        nova, _, mg = robot
+        ctx = await _context(mg)
+        routine = _routine(
+            ctx,
+            "markers",
+            marker("start", payload={"stage": "idle"}),  # where the robot stands
+            move_joint_ptp(ctx.moved),
+            marker("passed"),  # passed while the robot moves on
+            move_joint_ptp(ctx.start),
+            marker("end", payload={"count": 3}),
+        )
+
+        # WHEN
+        async with _watch_runs(nova) as updates:
+            run = await mg.plan_and_execute(routine)
+            final = await _final(nova, run)
+            await asyncio.sleep(0.5)  # the last messages are still on their way
+
+        # THEN
+        assert final.state == _State.COMPLETED, final.error
+        assert _markers_passed(updates, run, routine) == ["start", "passed", "end"]
+
+    async def test_default_and_per_motion_speed_settings_run(self, robot):
+        # GIVEN
+        nova, _, mg = robot
+        ctx = await _context(mg)
+        default = api.models.MotionSettings(
+            blending=api.models.BlendingPosition(position_zone_radius=5.0),
+            limits_override=api.models.LimitsOverride(tcp_velocity_limit=100.0),
+        )
+        slower = api.models.MotionSettings(
+            limits_override=api.models.LimitsOverride(tcp_velocity_limit=25.0)
+        )
+        routine = _routine(
+            ctx,
+            "motion-settings",
+            move_cartesian_ptp(_pose(ctx, 20)),  # the routine's default settings
+            move_cartesian_ptp(_pose(ctx, 40), settings=slower),  # overridden speed
+            default_motion_settings=default,
+        )
+
+        # WHEN
+        run = await mg.plan_and_execute(routine)
+        final = await _final(nova, run)
+
+        # THEN
+        assert final.state == _State.COMPLETED, final.error
+
+    async def test_a_run_can_be_stopped(self, robot):
+        # GIVEN
+        nova, _, mg = robot
+        ctx = await _context(mg)
+        run = await mg.plan_and_execute(
+            _routine(
+                ctx,
+                "stop",
+                move_joint_ptp(ctx.moved),
+                wait_for_time(1500),
+                move_joint_ptp(ctx.start),
+            )
+        )
+
+        # WHEN
+        run = await _on_command(nova, run, 1)  # the robot has moved and now waits
+        stopped = await mg.stop_routine(run)
+
+        # THEN
+        assert stopped.state == _State.STOPPED
+        assert (await _final(nova, run)).state == _State.STOPPED
+
+
+class TestPlan:
+    async def test_returns_the_trajectory_without_moving_the_robot(self, robot):
+        # GIVEN
         _, _, mg = robot
         ctx = await _context(mg)
+        routine = _routine(ctx, "plan", move_joint_ptp(ctx.moved), move_joint_ptp(ctx.start))
 
-        trajectory = await mg.plan(features(ctx)["01-motion-types"])
+        # WHEN
+        trajectory = await mg.plan(routine)
 
+        # THEN
         assert len(trajectory.joint_positions) > 1
         assert await mg.joints() == pytest.approx(ctx.start, abs=1e-3)
 
-    async def test_a_run_can_be_stopped(self, robot):
-        nova, _, mg = robot
-        routine = features(await _context(mg))["03-wait-for-time"]
 
+class TestAtTrigger:
+    async def test_set_io_at_a_fraction_of_the_motion_is_written_during_that_motion(self, robot):
+        # GIVEN
+        nova, controller, mg = robot
+        ctx = await _context(mg)
+        await controller.write(OUT_1, False)
+        routine = _routine(
+            ctx,
+            "set-io-at",
+            move_joint_ptp(ctx.moved),  # command 0: from location 0 to location 1
+            set_io(OUT_1, True, at=at_path_fraction(0.5)),  # command 1: halfway along command 0
+            move_joint_ptp(ctx.start),  # command 2: from location 1 to location 2
+        )
+
+        # WHEN
+        planned = await nova.api.command_routines_api.plan_command_routine(
+            cell=nova.cell().cell_id,
+            plan_command_routine_request=api.models.PlanCommandRoutineRequest(
+                command_routine=routine, controller=controller.id
+            ),
+        )
         run = await mg.plan_and_execute(routine)
-        stopped = await mg.stop_routine(run)
+        final = await _final(nova, run)
 
-        assert stopped.state == _State.STOPPED
-        assert (await _final(nova, run)).state == _State.STOPPED
+        # THEN
+        [trigger] = planned.triggers
+        assert trigger.command_index == 1
+        assert trigger.location == pytest.approx(0.5, abs=0.05)  # inside the first motion
+        assert final.state == _State.COMPLETED, final.error
+        assert await controller.read(OUT_1) is True
+        await controller.write(OUT_1, False)
 
 
 class TestDatasetPoses:
     async def test_a_routine_of_a_stored_dataset_is_resolved_by_nova_and_runs(self, robot):
         """A pose taught 50 mm along x of a frame at the start TCP pose ends there in world."""
+        # GIVEN
         nova, _, mg = robot
         ctx = await _context(mg)
         cell, dataset = nova.cell().cell_id, "sdk-routine-test"
-        stored = command_routine(
-            "dataset-pose",
-            motion_group=mg.id,
-            tcp=ctx.tcp,
-            motion_group_setup=ctx.setup,
-            start_joint_position=ctx.start,
-            commands=[move_linear("ahead")],
-        )
+        stored = _routine(ctx, "dataset-pose", move_linear("ahead"))
         await nova.api.datasets_api.create_dataset(
             cell=cell,
             create_dataset_request=api.models.CreateDatasetRequest(
@@ -187,6 +436,8 @@ class TestDatasetPoses:
                 command_routines=[stored],
             ),
         )
+
+        # WHEN
         try:
             routine = await ds.resolve_command_routine(nova, dataset, "dataset-pose", cell=cell)
             run = await mg.plan_and_execute(routine)
@@ -194,6 +445,7 @@ class TestDatasetPoses:
         finally:
             await nova.api.datasets_api.delete_dataset(cell=cell, dataset=dataset)
 
+        # THEN
         assert final.state == _State.COMPLETED, final.error
         expected = ctx.tcp_pose @ Pose((50, 0, 0))
         reached = await mg.tcp_pose(ctx.tcp)
@@ -210,66 +462,47 @@ class TestOtherMotionGroup:
             first = await cell.ensure_controller(_kuka("kuka-routine-test"))
             second = await cell.ensure_controller(_kuka("kuka-routine-other"))
             async with first[0] as mg_named, second[0] as mg_used:
+                # GIVEN
+                await _stop_active_runs(nova)
+                await _go_home(mg_named)
+                await _go_home(mg_used)
                 ctx = await _context(mg_named)  # the routine names the first motion group
-                moved = [ctx.start[0] + 0.2, *ctx.start[1:]]
-                routine = command_routine(
-                    "other-motion-group",
-                    motion_group=mg_named.id,
-                    tcp=ctx.tcp,
-                    motion_group_setup=ctx.setup,
-                    start_joint_position=ctx.start,
-                    commands=[move_joint_ptp(moved)],
-                )
+                routine = _routine(ctx, "other-motion-group", move_joint_ptp(ctx.moved))
                 assert await mg_used.joints() == pytest.approx(ctx.start, abs=1e-2)
 
+                # WHEN
                 run = await mg_used.plan_and_execute(routine)
                 final = await _final(nova, run)
 
+                # THEN
                 assert final.state == _State.COMPLETED, final.error
-                assert await mg_used.joints() == pytest.approx(moved, abs=1e-2)
+                assert await mg_used.joints() == pytest.approx(ctx.moved, abs=1e-2)
                 assert await mg_named.joints() == pytest.approx(ctx.start, abs=1e-2)
                 await mg_used.plan_and_execute([joint_ptp(tuple(ctx.start))], ctx.tcp)
 
 
 class TestErrors:
-    @pytest.mark.parametrize(
-        "name",
-        [
-            pytest.param(
-                name,
-                marks=pytest.mark.xfail(
-                    reason="the client drops `motion_group_setup: null`, so NOVA does not see an "
-                    "I/O-only routine; it answers for another reason",
-                    strict=False,
-                ),
-            )
-            if name in _IO_ONLY_ERRORS
-            else name
-            for name in errors(_DUMMY)
-        ],
-    )
-    async def test_error_is_answered_as_documented(self, robot, name):
-        nova, controller, mg = robot
+    async def test_an_unresolved_pose_is_a_command_routine_error(self, robot):
+        # GIVEN
+        _, _, mg = robot
         ctx = await _context(mg)
-        failure = errors(ctx)[name]
-        await controller.write(ctx.io_in_never, False)
+        routine = _routine(ctx, "unresolved", move_linear("slot"))  # a local pose id
 
-        if failure.status is None:
-            run = await mg.plan_and_execute(failure.routine)  # NOVA accepts the start ...
-            final = await _final(nova, run)  # ... and the run fails
-            assert final.state == _State.FAILED
-            assert "Command 1" in (final.error or "")
-            return
+        # WHEN
+        # THEN
+        with pytest.raises(CommandRoutineError) as raised:
+            await mg.plan_and_execute(routine)
+        assert type(raised.value) is CommandRoutineError
+        assert await mg.joints() == pytest.approx(ctx.start, abs=1e-3)  # nothing moved
 
-        # Sent as authored, without the motion group of the call as the one to run on: the
-        # I/O-only errors are about what the routine itself names (or leaves out).
-        request = api.models.StartCommandRoutineRunRequest(command_routine=failure.routine)
-        with pytest.raises(api.ApiException) as raised:
-            await nova.api.command_routines_api.start_command_routine_run(
-                cell=nova.cell().cell_id, start_command_routine_run_request=request
-            )
+    async def test_a_pose_of_another_tcp_is_unsupported(self, robot):
+        # GIVEN
+        _, _, mg = robot
+        ctx = await _context(mg)
+        routine = _routine(ctx, "other-tcp", move_linear(_pose(ctx, 20, tcp="OtherTcp")))
 
-        expected = UnsupportedRoutineCommand if failure.status == 501 else CommandRoutineError
-        assert raised.value.status == failure.status
-        assert type(error_from_api_exception(raised.value)) is expected
+        # WHEN
+        # THEN
+        with pytest.raises(UnsupportedRoutineCommand):
+            await mg.plan_and_execute(routine)
         assert await mg.joints() == pytest.approx(ctx.start, abs=1e-3)  # nothing moved

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -8,6 +9,7 @@ from nova.actions.base import Action
 from nova.actions.container import CombinedActions
 from nova.actions.io import ReadAction
 from nova.cell.motion_group import MotionGroup, split_actions_into_batches
+from nova.command_routines import command_routine, move_joint_ptp
 from nova.core.gateway import ApiGateway
 from nova.exceptions import InconsistentCollisionScenes
 from nova.types import Pose
@@ -238,6 +240,24 @@ def mock_motion_group():
     mock_api_client.kinematics_api = MagicMock()
     mock_api_client.kinematics_api.forward_kinematics = AsyncMock()
     mock_api_client.kinematics_api.get_kinematic_configuration = AsyncMock()
+    mock_api_client.command_routines_api = MagicMock()
+    mock_api_client.command_routines_api.plan_command_routine = AsyncMock(
+        return_value=api.models.PlanCommandRoutineResponse(
+            joint_trajectory=api.models.JointTrajectory(
+                joint_positions=[[0.0] * 6, [0.1] * 6], times=[0.0, 1.0], locations=[0.0, 1.0]
+            )
+        )
+    )
+    mock_api_client.command_routines_api.start_command_routine_run = AsyncMock(
+        return_value=api.models.CommandRoutineRun(
+            run="run-1",
+            command_routine="routine",
+            state=api.models.CommandRoutineRunState.RUNNING,
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+    )
+    mock_api_client.command_routines_api.get_command_routine_run = AsyncMock()
+    mock_api_client.command_routines_api.stop_command_routine_run = AsyncMock()
     return MotionGroup(
         api_client=mock_api_client,
         cell="test_cell",
@@ -722,3 +742,90 @@ async def test_direct_non_motion_path_warns_when_a_trigger_has_no_motion(mock_mo
 
     assert mock_motion_group._api_client.controller_ios_api.set_output_values.await_count == 2
     assert "Path trigger" in caplog.text and "no motion" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_plan_routine_of_another_motion_group_plans_it_on_this_one(mock_motion_group):
+    # GIVEN a routine written for another motion group
+    routine = command_routine(
+        "routine", motion_group="0@other", commands=[move_joint_ptp([0.0] * 6)]
+    )
+
+    # WHEN
+    await mock_motion_group.plan(routine)
+
+    # THEN NOVA plans it for this controller and motion group, and the routine stays as authored
+    routines_api = mock_motion_group._api_client.command_routines_api
+    request = routines_api.plan_command_routine.await_args.kwargs["plan_command_routine_request"]
+    assert request.controller == "test-controller"
+    assert request.motion_group_override == api.models.MotionGroupReference(id="0@test-controller")
+    assert request.command_routine == routine
+    routines_api.start_command_routine_run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_routine_of_this_motion_group_is_not_overridden(mock_motion_group):
+    # GIVEN a routine that names this motion group
+    routine = command_routine(
+        "routine", motion_group="0@test-controller", commands=[move_joint_ptp([0.0] * 6)]
+    )
+
+    # WHEN
+    await mock_motion_group.plan_and_execute(routine)
+
+    # THEN NOVA runs it with its own setup: only the controller is passed
+    routines_api = mock_motion_group._api_client.command_routines_api
+    request = routines_api.start_command_routine_run.await_args.kwargs[
+        "start_command_routine_run_request"
+    ]
+    assert request.controller == "test-controller"
+    assert request.motion_group_override is None
+
+
+@pytest.mark.asyncio
+async def test_plan_and_execute_routine_returns_the_started_run_without_waiting(mock_motion_group):
+    # GIVEN
+    routine = command_routine("routine", commands=[move_joint_ptp([0.0] * 6)])
+
+    # WHEN
+    run = await mock_motion_group.plan_and_execute(routine)
+
+    # THEN the run NOVA accepted is returned, nothing is planned, polled or stopped
+    routines_api = mock_motion_group._api_client.command_routines_api
+    assert run.run == "run-1"
+    assert run.state == api.models.CommandRoutineRunState.RUNNING
+    routines_api.plan_command_routine.assert_not_awaited()
+    routines_api.get_command_routine_run.assert_not_awaited()
+    routines_api.stop_command_routine_run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_routine_does_not_take_arguments_that_override_its_context(mock_motion_group):
+    # GIVEN
+    routine = command_routine("routine", tcp="Flange", commands=[move_joint_ptp([0.0] * 6)])
+
+    # WHEN
+    # THEN the routine's own context is used, so these raise before NOVA is called
+    with pytest.raises(ValueError, match="start_joint_position"):
+        await mock_motion_group.plan(routine, start_joint_position=(0.0,) * 6)
+    with pytest.raises(ValueError, match="movement_controller"):
+        await mock_motion_group.plan_and_execute(routine, movement_controller=MagicMock())
+    with pytest.raises(ValueError, match="tcp"):
+        await mock_motion_group.plan(routine, "OtherTcp")
+    routines_api = mock_motion_group._api_client.command_routines_api
+    routines_api.plan_command_routine.assert_not_awaited()
+    routines_api.start_command_routine_run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_does_not_take_a_routine(mock_motion_group):
+    # GIVEN
+    routine = command_routine("routine", commands=[move_joint_ptp([0.0] * 6)])
+    trajectory = api.models.JointTrajectory(
+        joint_positions=[[0.0] * 6, [0.1] * 6], times=[0.0, 1.0], locations=[0.0, 1.0]
+    )
+
+    # WHEN
+    # THEN a routine is started by plan_and_execute, there is no trajectory to execute
+    with pytest.raises(ValueError, match="plan_and_execute"):
+        await mock_motion_group.execute(trajectory, "Flange", routine)
