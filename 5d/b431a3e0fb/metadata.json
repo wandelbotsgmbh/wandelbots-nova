@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "5db431a3e0fb",
+  "strategy": "manual-commit",
+  "branch": "feat/interlock-ownership-idempotent-acquire",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "examples/interlock_two_robots.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5d/b431a3e0fb/0/metadata.json",
+      "transcript": "/5d/b431a3e0fb/0/full.jsonl",
+      "compact_transcript": "/5d/b431a3e0fb/0/transcript.jsonl",
+      "content_hash": "/5d/b431a3e0fb/0/content_hash.txt",
+      "prompt": "/5d/b431a3e0fb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 97,
+    "cache_creation_tokens": 121753,
+    "cache_read_tokens": 6326141,
+    "output_tokens": 57522,
+    "api_call_count": 53
+  }
+}
