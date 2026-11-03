@@ -46,7 +46,7 @@ def _make_execute(
     return api.models.Execute(
         joint_position=[0.0] * 6,
         details=api.models.TrajectoryDetails(
-            trajectory="traj-123", location=location, state=trajectory_state
+            trajectory="test-motion", location=location, state=trajectory_state
         ),
     )
 

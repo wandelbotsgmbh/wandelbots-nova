@@ -121,7 +121,11 @@ def motion_group(
         # cursor's startup handshake before any trajectory progress arrives.
         yield state(True)
         while True:
-            yield await queue.get()
+            frame = await queue.get()
+            # A real stream reports the trajectory this group loaded.
+            if frame.execute is not None and frame.execute.details is not None:
+                frame.execute.details.trajectory = trajectory_id
+            yield frame
 
     group = MagicMock()
     group._cell = cell
