@@ -31,17 +31,17 @@ def _get_coordinate_system_pose(
         if coordinate_system.coordinate_system == coordinate_system_name:
             position = coordinate_system.position
 
-        orientation_type = (
-            coordinate_system.orientation_type or api.models.OrientationType.ROTATION_VECTOR
-        )
+            orientation_type = (
+                coordinate_system.orientation_type or api.models.OrientationType.ROTATION_VECTOR
+            )
 
-        orientation = (
-            to_rotation_vector(coordinate_system.orientation, orientation_type)
-            if coordinate_system.orientation is not None
-            else None
-        )
+            orientation = (
+                to_rotation_vector(coordinate_system.orientation, orientation_type)
+                if coordinate_system.orientation is not None
+                else None
+            )
 
-        return api.models.Pose(position=position, orientation=orientation)
+            return api.models.Pose(position=position, orientation=orientation)
 
     raise ValueError(f"Coordinate system {coordinate_system_name} could not be found.")
 
