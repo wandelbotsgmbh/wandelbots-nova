@@ -1,0 +1,128 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "e1162f8f1adf",
+  "session_id": "d8042bd7-7b25-434a-8293-fa5f445281ca",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-04T07:18:25.979759Z",
+  "branch": "feat/command-routine-execution",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [
+    "examples/start_here_cr.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "e38aba784b51",
+  "checkpoint_transcript_start": 3653,
+  "transcript_lines_at_start": 3653,
+  "compact_transcript_start": 522,
+  "token_usage": {
+    "input_tokens": 20,
+    "cache_creation_tokens": 424320,
+    "cache_read_tokens": 1642844,
+    "output_tokens": 5026,
+    "api_call_count": 10
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01Lc2w8wgBxoMFDZmjk7UVGh",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "code-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "e38aba784b51",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 922,
+        "end": 923,
+        "entry_ids": [
+          "6a9d70e6-cbcf-4f62-878f-6a4a606e7c7b"
+        ],
+        "tool_use_id": "toolu_01Lc2w8wgBxoMFDZmjk7UVGh"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Lc2w8wgBxoMFDZmjk7UVGh"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: code-review",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-call_26ba70fdc3c441bbb6422b83",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "code-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "e38aba784b51",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1707,
+        "end": 1708,
+        "entry_ids": [
+          "c926406f-63ea-4ead-8667-3293ca79888a"
+        ],
+        "tool_use_id": "call_26ba70fdc3c441bbb6422b83"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "call_26ba70fdc3c441bbb6422b83"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: code-review",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 32
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-04T07:18:25.704168Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 112,
+    "total_committed": 0,
+    "total_lines_changed": 112,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1729,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 21,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        ".specs/command-routine/pose-resolution/spec.md": 70,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      }
+    }
+  ]
+}
