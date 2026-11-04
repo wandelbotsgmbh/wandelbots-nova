@@ -1,0 +1,148 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "1438b03d39ec",
+  "session_id": "a7e5f5b2-078a-4d06-b0af-7df18d68a0f5",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-04T07:03:38.406106Z",
+  "branch": "feat/command-routine-execution",
+  "checkpoints_count": 3,
+  "save_step_count": 3,
+  "files_touched": [
+    ".specs/command-routine/execution/spec.md",
+    "docs/command_routines.md",
+    "examples/command_routine.py",
+    "nova/cell/motion_group.py",
+    "nova/cell/robot_cell.py",
+    "nova/cell/simulation.py",
+    "nova/command_routines/__init__.py",
+    "nova/command_routines/command_routines.py",
+    "nova/command_routines/routine.py",
+    "nova/datasets/__init__.py",
+    "nova/datasets/datasets.py",
+    "nova/datasets/types.py",
+    "tests/cell/test_motion_group.py",
+    "tests/command_routines/test_command_routine.py",
+    "tests/command_routines/test_routine_execution.py",
+    "tests/nova/cell/motion_group/test_execute_routine.py",
+    "tests/nova/datasets/test_client.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "675ea1897ed0",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 80,
+    "cache_creation_tokens": 191881,
+    "cache_read_tokens": 2772925,
+    "output_tokens": 30285,
+    "api_call_count": 40
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-04T07:03:38.361256Z",
+    "agent_lines": 0,
+    "agent_removed": 136,
+    "human_added": 278,
+    "human_modified": 432,
+    "human_removed": 0,
+    "total_committed": 278,
+    "total_lines_changed": 846,
+    "agent_percentage": 16.07565011820331,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1744,
+      "user_lines_removed": 16,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 21,
+        ".specs/command-routine/execution/spec.md": 15,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        ".specs/command-routine/pose-resolution/spec.md": 70,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "trajectory_cursor_overview.md": 192
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/spec.md": 16
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 531,
+      "user_lines_removed": 442,
+      "agent_lines_added": 1715,
+      "agent_lines_removed": 16,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 2,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 1,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 1,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 8,
+        ".specs/command-routine/execution/spec.md": 26,
+        ".specs/command-routine/pose-resolution/spec.md": 14,
+        "docs/command_routines.md": 20,
+        "examples/command_routine.py": 3,
+        "nova/cell/motion_group.py": 15,
+        "nova/cell/robot_cell.py": 7,
+        "nova/command_routines/__init__.py": 3,
+        "nova/command_routines/routine.py": 145,
+        "nova/datasets/__init__.py": 1,
+        "tests/command_routines/test_routine_execution.py": 234,
+        "tests/nova/cell/motion_group/test_execute_routine.py": 22
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 2,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 1,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 1,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 8,
+        ".specs/command-routine/execution/spec.md": 26,
+        ".specs/command-routine/pose-resolution/spec.md": 14,
+        "docs/command_routines.md": 23,
+        "examples/command_routine.py": 2,
+        "nova/cell/motion_group.py": 59,
+        "nova/cell/robot_cell.py": 78,
+        "nova/cell/simulation.py": 8,
+        "nova/command_routines/__init__.py": 2,
+        "nova/datasets/__init__.py": 8,
+        "nova/datasets/datasets.py": 33,
+        "tests/cell/test_motion_group.py": 107,
+        "tests/nova/cell/motion_group/test_execute_routine.py": 25,
+        "tests/nova/datasets/test_client.py": 45
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 289,
+      "user_lines_removed": 26,
+      "agent_lines_added": 1949,
+      "agent_lines_removed": 424,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 2,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 1,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 1,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 8,
+        ".specs/command-routine/pose-resolution/spec.md": 14,
+        "tests/command_routines/test_routine_execution.py": 234
+      },
+      "user_removed_per_file": {
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 2,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 1,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 1,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 8,
+        ".specs/command-routine/pose-resolution/spec.md": 14
+      }
+    }
+  ]
+}

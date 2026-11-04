@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "1438b03d39ec",
+  "strategy": "manual-commit",
+  "branch": "feat/command-routine-execution",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".specs/command-routine/execution/spec.md",
+    "docs/command_routines.md",
+    "examples/command_routine.py",
+    "nova/cell/motion_group.py",
+    "nova/cell/robot_cell.py",
+    "nova/cell/simulation.py",
+    "nova/command_routines/__init__.py",
+    "nova/command_routines/command_routines.py",
+    "nova/command_routines/routine.py",
+    "nova/datasets/__init__.py",
+    "nova/datasets/datasets.py",
+    "nova/datasets/types.py",
+    "tests/cell/test_motion_group.py",
+    "tests/command_routines/test_command_routine.py",
+    "tests/command_routines/test_routine_execution.py",
+    "tests/nova/cell/motion_group/test_execute_routine.py",
+    "tests/nova/datasets/test_client.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/14/38b03d39ec/0/metadata.json",
+      "transcript": "/14/38b03d39ec/0/full.jsonl",
+      "compact_transcript": "/14/38b03d39ec/0/transcript.jsonl",
+      "content_hash": "/14/38b03d39ec/0/content_hash.txt",
+      "prompt": "/14/38b03d39ec/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 80,
+    "cache_creation_tokens": 191881,
+    "cache_read_tokens": 2772925,
+    "output_tokens": 30285,
+    "api_call_count": 40
+  }
+}
