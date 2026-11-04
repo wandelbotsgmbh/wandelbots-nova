@@ -28,6 +28,7 @@ from nova.utils.collision_setup import (
 from nova.utils.joint_trajectory import combine_trajectories
 from nova.utils.motion_group_setup import (
     clamp_limit_set_to_max,
+    get_coordinate_system_pose,
     get_joint_position_limits_from_motion_group_setup,
     motion_group_setup_from_motion_group_description,
     update_motion_group_setup_with_motion_settings,
@@ -1083,11 +1084,9 @@ class MotionGroup(AbstractRobot):
                 )
 
         if external_tool_coordinate_system is not None:
-            description = await self._fetch_motion_group_description()
-            motion_group_setup.external_tool_coordinate_system = (
-                description.tcps[external_tool_coordinate_system].pose
-                if description.tcps is not None
-                else None
+            coordinate_systems = await self._fetch_coordinate_systems()
+            motion_group_setup.external_tool_coordinate_system = get_coordinate_system_pose(
+                external_tool_coordinate_system, coordinate_systems
             )
 
         return motion_group_setup
