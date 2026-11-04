@@ -1,7 +1,7 @@
-"""Running CommandRoutines through ``MotionGroup`` on a virtual KUKA controller.
+"""Running CommandRoutines on a ``MotionGroup`` with ``CommandRoutine`` on a virtual KUKA controller.
 
 Every test defines the routine it runs, so what it does is visible where it is asserted.
-``plan_and_execute`` returns the started run as soon as NOVA has accepted it, so the tests follow
+``CommandRoutine.execute`` returns the started run as soon as NOVA has accepted it, so the tests follow
 the run by polling the API themselves; the library does not wait (that will use NATS).
 """
 
@@ -13,10 +13,10 @@ from dataclasses import dataclass
 import pytest
 
 from nova import Nova, api
-from nova import datasets as ds
 from nova.actions import joint_ptp
 from nova.cell.controllers import virtual_controller
 from nova.command_routines import (
+    CommandRoutine,
     CommandRoutineError,
     UnsupportedRoutineCommand,
     at_path_fraction,
@@ -77,7 +77,7 @@ async def _context(mg) -> Context:
     )
 
 
-def _routine(ctx: Context, name: str, *commands, **settings) -> api.models.CommandRoutine:
+def _routine(ctx: Context, name: str, *commands, **settings) -> CommandRoutine:
     """A routine written for the robot of ``ctx``, with its start position, TCP and setup."""
     return command_routine(
         name,
@@ -145,7 +145,7 @@ async def _watch_runs(nova: Nova):
 def _markers_passed(
     updates: list[api.models.CommandRoutineRun],
     run: api.models.CommandRoutineRun,
-    routine: api.models.CommandRoutine,
+    routine: CommandRoutine,
 ) -> list[str]:
     """Names of the markers the run was on, in order. A marker's payload is not published."""
     indices = [u.current_command_index for u in updates if u.run == run.run]
@@ -210,7 +210,7 @@ class TestRun:
         )
 
         # WHEN
-        run = await mg.plan_and_execute(routine)
+        run = await routine.execute(mg)
         final = await _final(nova, run)
 
         # THEN
@@ -232,7 +232,7 @@ class TestRun:
         )
 
         # WHEN
-        run = await mg.plan_and_execute(routine)
+        run = await routine.execute(mg)
         final = await _final(nova, run)
 
         # THEN
@@ -256,7 +256,7 @@ class TestRun:
         seen: list = []
 
         # WHEN
-        run = await mg.plan_and_execute(routine)
+        run = await routine.execute(mg)
         final = await _final(nova, run, seen)
 
         # THEN
@@ -277,7 +277,7 @@ class TestRun:
         )
 
         # WHEN
-        run = await mg.plan_and_execute(routine)
+        run = await routine.execute(mg)
         await asyncio.sleep(1.5)  # the routine waits for this input
         await controller.write(IN_1, True)
         final = await _final(nova, run)
@@ -301,7 +301,7 @@ class TestRun:
 
         # WHEN
         async with _watch_runs(nova) as updates:
-            run = await mg.plan_and_execute(routine)
+            run = await routine.execute(mg)
             final = await _final(nova, run)
             await asyncio.sleep(0.5)  # the last messages are still on their way
 
@@ -329,7 +329,7 @@ class TestRun:
         )
 
         # WHEN
-        run = await mg.plan_and_execute(routine)
+        run = await routine.execute(mg)
         final = await _final(nova, run)
 
         # THEN
@@ -339,19 +339,14 @@ class TestRun:
         # GIVEN
         nova, _, mg = robot
         ctx = await _context(mg)
-        run = await mg.plan_and_execute(
-            _routine(
-                ctx,
-                "stop",
-                move_joint_ptp(ctx.moved),
-                wait_for_time(1500),
-                move_joint_ptp(ctx.start),
-            )
+        routine = _routine(
+            ctx, "stop", move_joint_ptp(ctx.moved), wait_for_time(1500), move_joint_ptp(ctx.start)
         )
+        run = await routine.execute(mg)
 
         # WHEN
         run = await _on_command(nova, run, 1)  # the robot has moved and now waits
-        stopped = await mg.stop_routine(run)
+        stopped = await CommandRoutine.stop(mg, run)
 
         # THEN
         assert stopped.state == _State.STOPPED
@@ -366,7 +361,7 @@ class TestPlan:
         routine = _routine(ctx, "plan", move_joint_ptp(ctx.moved), move_joint_ptp(ctx.start))
 
         # WHEN
-        trajectory = await mg.plan(routine)
+        trajectory = await routine.plan(mg)
 
         # THEN
         assert len(trajectory.joint_positions) > 1
@@ -394,7 +389,7 @@ class TestAtTrigger:
                 command_routine=routine, controller=controller.id
             ),
         )
-        run = await mg.plan_and_execute(routine)
+        run = await routine.execute(mg)
         final = await _final(nova, run)
 
         # THEN
@@ -439,8 +434,8 @@ class TestDatasetPoses:
 
         # WHEN
         try:
-            routine = await ds.resolve_command_routine(nova, dataset, "dataset-pose", cell=cell)
-            run = await mg.plan_and_execute(routine)
+            routine = await CommandRoutine.resolve(nova, dataset, "dataset-pose", cell=cell)
+            run = await routine.execute(mg)
             final = await _final(nova, run)
         finally:
             await nova.api.datasets_api.delete_dataset(cell=cell, dataset=dataset)
@@ -471,7 +466,7 @@ class TestOtherMotionGroup:
                 assert await mg_used.joints() == pytest.approx(ctx.start, abs=1e-2)
 
                 # WHEN
-                run = await mg_used.plan_and_execute(routine)
+                run = await routine.execute(mg_used)
                 final = await _final(nova, run)
 
                 # THEN
@@ -491,7 +486,7 @@ class TestErrors:
         # WHEN
         # THEN
         with pytest.raises(CommandRoutineError) as raised:
-            await mg.plan_and_execute(routine)
+            await routine.execute(mg)
         assert type(raised.value) is CommandRoutineError
         assert await mg.joints() == pytest.approx(ctx.start, abs=1e-3)  # nothing moved
 
@@ -504,5 +499,5 @@ class TestErrors:
         # WHEN
         # THEN
         with pytest.raises(UnsupportedRoutineCommand):
-            await mg.plan_and_execute(routine)
+            await routine.execute(mg)
         assert await mg.joints() == pytest.approx(ctx.start, abs=1e-3)  # nothing moved

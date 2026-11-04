@@ -15,7 +15,6 @@ from nova.actions.path_trigger_resolver import (
     has_path_triggers,
     resolve_set_outputs,
 )
-from nova.command_routines.exceptions import error_from_api_exception
 from nova.config import ENABLE_TRAJECTORY_TUNING
 from nova.core.gateway import ApiGateway
 from nova.exceptions import LoadPlanFailed, NoInverseKinematicsSolutionFound, PlanTrajectoryFailed
@@ -161,64 +160,6 @@ class MotionGroup(AbstractRobot):
         self._current_motion: str | None = None
         super().__init__(id=motion_group_id)
 
-    async def _plan_routine(self, routine: api.models.CommandRoutine) -> api.models.JointTrajectory:
-        """Let NOVA plan the routine for this motion group, whatever motion group it names."""
-        try:
-            planned = await self._api_client.command_routines_api.plan_command_routine(
-                cell=self._cell,
-                plan_command_routine_request=api.models.PlanCommandRoutineRequest(
-                    command_routine=routine,
-                    controller=self._controller_id,
-                    motion_group_override=None
-                    if routine.motion_group is not None and routine.motion_group.id == self.id
-                    else api.models.MotionGroupReference(id=self.id),
-                ),
-            )
-        except api.ApiException as exc:
-            raise error_from_api_exception(exc) from exc
-        if planned.joint_trajectory is None:
-            raise ValueError(f"Routine '{routine.command_routine}' is I/O-only, nothing to plan")
-        return planned.joint_trajectory
-
-    async def _start_routine(
-        self, routine: api.models.CommandRoutine
-    ) -> api.models.CommandRoutineRun:
-        """Start the routine on NOVA on this motion group; NOVA plans and runs it."""
-        try:
-            return await self._api_client.command_routines_api.start_command_routine_run(
-                cell=self._cell,
-                start_command_routine_run_request=api.models.StartCommandRoutineRunRequest(
-                    command_routine=routine,
-                    controller=self._controller_id,
-                    motion_group_override=None
-                    if routine.motion_group is not None and routine.motion_group.id == self.id
-                    else api.models.MotionGroupReference(id=self.id),
-                ),
-            )
-        except api.ApiException as exc:
-            raise error_from_api_exception(exc) from exc
-
-    async def stop_routine(
-        self, run: api.models.CommandRoutineRun | str
-    ) -> api.models.CommandRoutineRun:
-        """Stop a CommandRoutine run: the robot stops and no further outputs of the run are written.
-
-        Stopping a run that already ended succeeds and leaves its state unchanged.
-
-        Args:
-            run: The run, or its id, as returned by ``plan_and_execute``.
-
-        Returns:
-            The stopped run.
-        """
-        run_id = run if isinstance(run, str) else run.run
-        try:
-            return await self._api_client.command_routines_api.stop_command_routine_run(
-                cell=self._cell, run=run_id
-            )
-        except api.ApiException as exc:
-            raise error_from_api_exception(exc) from exc
-
     @property
     def id(self) -> str:
         """The unique identifier for this motion group in the shape "motion_group_id@controller_id" e.g. "0@ur10e".
@@ -227,6 +168,21 @@ class MotionGroup(AbstractRobot):
             str: The unique identifier for this motion group.
         """
         return self._motion_group_id
+
+    @property
+    def api_client(self) -> ApiGateway:
+        """The API gateway this motion group talks to NOVA through."""
+        return self._api_client
+
+    @property
+    def cell(self) -> str:
+        """The id of the cell this motion group belongs to."""
+        return self._cell
+
+    @property
+    def controller_id(self) -> str:
+        """The id of the controller this motion group belongs to."""
+        return self._controller_id
 
     @property
     def current_motion(self) -> str | None:

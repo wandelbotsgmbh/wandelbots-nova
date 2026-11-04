@@ -3,7 +3,7 @@
 Build a routine by passing an ordered list of commands to :func:`command_routine`.
 The command, pose, path and trigger factories in :mod:`nova.command_routines.commands`
 construct the individual pieces; :func:`with_settings` shares motion settings across a
-group of motions. A routine runs through ``MotionGroup.plan`` / ``plan_and_execute``. NOVA's
+group of motions. :class:`CommandRoutine` resolves, plans and executes a routine on a motion group. NOVA's
 rejections of it are raised as :class:`CommandRoutineError`, or :class:`UnsupportedRoutineCommand`
 for a feature it does not implement yet.
 """
@@ -32,9 +32,10 @@ from nova.command_routines.commands import (
     wait_for_time,
 )
 from nova.command_routines.exceptions import CommandRoutineError, UnsupportedRoutineCommand
-from nova.command_routines.routine import command_routine, with_settings
+from nova.command_routines.command_routines import CommandRoutine, command_routine, with_settings
 
 __all__ = [
+    "CommandRoutine",
     "CommandRoutineError",
     "UnsupportedRoutineCommand",
     "command_routine",

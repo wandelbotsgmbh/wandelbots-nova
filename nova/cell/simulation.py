@@ -142,14 +142,6 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
             raise ValueError("Mounting is None")
         return Pose(mounting)
 
-    async def _plan_routine(self, routine: api.models.CommandRoutine) -> api.models.JointTrajectory:
-        raise NotImplementedError("SimulatedRobot cannot plan CommandRoutines")
-
-    async def _start_routine(
-        self, routine: api.models.CommandRoutine
-    ) -> api.models.CommandRoutineRun:
-        raise NotImplementedError("SimulatedRobot cannot run CommandRoutines")
-
     async def _plan(
         self,
         actions: list[Action],

@@ -1,13 +1,11 @@
 """
-Run a CommandRoutine on a virtual KUKA KR16, with poses taught in the dataset of `datasets.py`.
+Run a CommandRoutine stored in a Dataset on a virtual KUKA KR16.
 
-The routine moves to the dataset poses `pick` and `place` and back, switches an output between the
-motions and waits one second. NOVA plans and runs the whole routine with its own context.
-`plan_and_execute` returns once NOVA has accepted the run, not when the robot is done.
-
-`pick` and `place` are taught in the world frame, so they can be used as the routine's inline
-poses as they are. A routine stored in a Dataset on the NOVA instance refers to its poses by id
-instead; resolve it with `ds.resolve_command_routine` before running it.
+The program's preconditions load the Dataset `pick-and-place` from the NOVA instance. The routine
+`pick-and-place` is taken from it and resolved by NOVA: its references to the dataset's poses and
+frames become inline poses in the world frame, so it runs without the dataset. NOVA plans and runs
+the whole routine with its own context. `execute` returns once NOVA has accepted the run, not when
+the robot is done.
 
 See `docs/command_routines.md` for what is supported.
 """
@@ -16,16 +14,10 @@ import nova
 from nova import api, run_program
 from nova import datasets as ds
 from nova.cell import virtual_controller
-from nova.command_routines import (
-    command_routine,
-    move_cartesian_ptp,
-    set_io,
-    wait_for_time,
-    with_settings,
-)
+from nova.command_routines import CommandRoutine
 
-# Output that exists on the virtual KUKA controller.
-OUTPUT = "OUT#1"
+DATASET = "pick-and-place"
+ROUTINE = "pick-and-place"
 
 
 @nova.program(
@@ -39,46 +31,29 @@ OUTPUT = "OUT#1"
                 type="kuka-kr16_r2010_2",
             )
         ],
-        dataset=ds.local_dataset("example_dataset.json"),
+        dataset=ds.remote_dataset(DATASET),
         cleanup_controllers=False,
     ),
 )
 async def start(ctx: nova.ProgramContext):
-    """Run a routine with explicit motions, set_io and a wait."""
+    """Run a routine of the program's dataset."""
+    assert ctx.dataset is not None, "This program requires its dataset to be loaded."
     controller = await ctx.cell.controller("kuka-kr16-r2010")
     motion_group = controller[0]
     tcp = (await motion_group.tcp_names())[0]
 
-    def taught(pose_id: str) -> api.models.InlinePose:
-        pose = ctx.dataset.poses[pose_id]
-        return api.models.InlinePose(
-            pose=pose.pose.to_api_model(),
-            frame=pose.frame,
-            tcp=pose.tcp,
-            kinematic_configuration=pose.kinematic_configuration,
-        )
+    # The routine as stored in the dataset, extracted from the dataset of the preconditions.
+    stored = ctx.dataset.command_routines[ROUTINE]
 
-    slow = api.models.MotionSettings(
-        limits_override=api.models.LimitsOverride(tcp_velocity_limit=50)
-    )
-
-    routine = command_routine(
-        "pick-and-place",
-        tcp=tcp,
-        motion_group_setup=await motion_group.get_setup(tcp),
-        start_joint_position=list(await motion_group.joints()),
-        commands=[
-            move_cartesian_ptp(taught("pick")),
-            set_io(OUTPUT, True),  # between two motions: written by the controller
-            *with_settings(slow, [move_cartesian_ptp(taught("place"))]),
-            wait_for_time(1000),  # the robot holds for one second
-            set_io(OUTPUT, False),
-            move_cartesian_ptp(taught("pick")),
-        ],
+    # Resolve it, so that its dataset poses become world poses. The TCP and motion group setup
+    # the dataset was taught with do not match this virtual controller, so take both from it.
+    resolved = await CommandRoutine.resolve(ctx.nova, ctx.dataset.id, stored.command_routine)
+    routine = resolved.model_copy(
+        update={"tcp": tcp, "motion_group_setup": await motion_group.get_setup(tcp)}
     )
 
     print("Starting routine...")
-    run = await motion_group.plan_and_execute(routine)
+    run = await routine.execute(motion_group)
     print(f"NOVA runs the routine now: run {run.run} is {run.state.value}.")
 
 

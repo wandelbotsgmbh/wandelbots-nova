@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from nova import api
 from nova.command_routines import (
+    CommandRoutine,
     at_path_fraction,
     command_routine,
     io_value,
@@ -114,7 +115,7 @@ def test_invalid_routine_id_is_rejected():
 
 def test_routine_round_trips_through_json():
     routine = command_routine("routine", commands=[move_joint_ptp([0.0] * 6), set_io("out", True)])
-    restored = api.models.CommandRoutine.model_validate_json(routine.model_dump_json())
+    restored = CommandRoutine.model_validate_json(routine.model_dump_json())
     assert restored == routine
 
 

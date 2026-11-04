@@ -5,6 +5,7 @@ from pydantic import ConfigDict, Field, PrivateAttr
 from pydantic.dataclasses import dataclass
 
 from nova import api
+from nova.command_routines import CommandRoutine
 from nova.datasets.exceptions import FrameResolutionError
 from nova.datasets.frames import FrameTree
 from nova.types import Pose
@@ -80,7 +81,7 @@ class Dataset(api.models.Dataset):
     """
 
     poses: dict[api.models.DatasetPoseId, DatasetPose] = Field(default_factory=dict)
-    command_routines: dict[api.models.CommandRoutineId, api.models.CommandRoutine] = Field(
+    command_routines: dict[api.models.CommandRoutineId, CommandRoutine] = Field(
         default_factory=dict
     )
     frames: dict[api.models.FrameId, DatasetFrame] = Field(default_factory=dict)
@@ -96,7 +97,8 @@ class Dataset(api.models.Dataset):
                 pose.dataset_pose: DatasetPose.model_validate(pose) for pose in api_dataset.poses
             },
             command_routines={
-                routine.command_routine: routine for routine in api_dataset.command_routines
+                routine.command_routine: CommandRoutine.model_validate(routine.model_dump())
+                for routine in api_dataset.command_routines
             },
             frames={
                 frame.frame: DatasetFrame.model_validate(frame) for frame in api_dataset.frames

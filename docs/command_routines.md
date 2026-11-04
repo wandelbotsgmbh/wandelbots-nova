@@ -3,27 +3,25 @@
 A `CommandRoutine` is an ordered list of commands with its own context (motion group, TCP, start
 joint position, default motion settings, motion group setup). You can build one in code
 (`nova.command_routines`) or keep it in a Dataset. NOVA plans and runs the whole routine through
-its command routines API; the SDK sends the routine as it is. `MotionGroup` takes it wherever it
-takes an action list:
+its command routines API; the SDK sends the routine as it is. `command_routine(...)` builds a `CommandRoutine`, a subclass of the generated
+`api.models.CommandRoutine` that resolves, plans and executes itself on a motion group (the
+command routines of a loaded `Dataset` are `CommandRoutine`s too):
 
 | Call | Result |
 | --- | --- |
-| `await mg.plan(routine)` | the `JointTrajectory` NOVA planned for the routine, e.g. to draw its path; nothing moves |
-| `run = await mg.plan_and_execute(routine)` | starts the routine on NOVA and returns the `CommandRoutineRun` (state, current command) once NOVA has accepted it |
-| `await mg.stop_routine(run)` | stops the run (a run or its id): the robot stops and no further outputs are written |
+| `await CommandRoutine.resolve(nova, dataset, "routine-id")` | a routine stored in a Dataset, its poses resolved to world poses by NOVA |
+| `await routine.plan(mg)` | the `JointTrajectory` NOVA planned for the routine, e.g. to draw its path; nothing moves |
+| `run = await routine.execute(mg)` | starts the routine on NOVA and returns the `CommandRoutineRun` (state, current command) once NOVA has accepted it |
+| `await CommandRoutine.stop(mg, run)` | stops the run (a run or its id): the robot stops and no further outputs are written |
 
-`plan_and_execute` does not wait for the robot. NOVA runs the routine on its own; awaiting the end
+`execute` does not wait for the robot. NOVA runs the routine on its own; awaiting the end
 of a run and following its state will come with NATS.
 
-The routine's own context is used. `plan` and `plan_and_execute` run it **on this motion group,
+The routine's own context is used. `plan` and `execute` run it **on the given motion group,
 whatever motion group the routine names**; the routine itself is not changed. A routine that names
-another motion group is planned with the setup NOVA describes for this one, not with the routine's
-`motion_group_setup`. They take no other
-arguments for it (start joint position, motion group setup, payload, `movement_controller`,
-`start_on_io`, ...): such an argument raises `ValueError`, and `tcp` may only repeat the routine's
-TCP. `execute`, `stream_execute` and `stream_plan_and_execute` do not take a routine and raise
-`ValueError`; a routine run is planned by NOVA from the routine itself. A robot that does not talk
-to NOVA (the simulated robot) raises `NotImplementedError`.
+another motion group is planned with the setup NOVA describes for the given one, not with the
+routine's `motion_group_setup`. The methods take no arguments that override the routine's context.
+`MotionGroup.plan`, `plan_and_execute` and the other action-list functions do not take a routine.
 
 Per-command motion settings take precedence over the routine's default settings. The robot must be
 at the routine's start joint position, so move it there first.
@@ -31,7 +29,7 @@ at the routine's start joint position, so move it there first.
 ## From code
 
 ```python
-from nova.command_routines import command_routine, move_joint_ptp, move_linear, set_io
+from nova.command_routines import CommandRoutine, command_routine, move_joint_ptp, move_linear, set_io
 
 routine = command_routine(
     "my-routine",
@@ -40,7 +38,7 @@ routine = command_routine(
     start_joint_position=list(await mg.joints()),
     commands=[move_joint_ptp(target_joints), set_io("OUT#1", True), move_linear(inline_pose)],
 )
-await mg.plan_and_execute(routine)
+await routine.execute(mg)
 ```
 
 Poses in a routine you run must be inline poses in the `world` frame (`api.models.InlinePose`).
@@ -52,10 +50,10 @@ Let NOVA resolve it first: local pose references and poses in a Dataset frame be
 poses, so the routine runs without the Dataset.
 
 ```python
-from nova import datasets as ds
+from nova.command_routines import CommandRoutine
 
-routine = await ds.resolve_command_routine(nova, "my-dataset", "my-routine")
-await mg.plan_and_execute(routine)
+routine = await CommandRoutine.resolve(nova, "my-dataset", "my-routine")
+await routine.execute(mg)
 ```
 
 If the routine's TCP or motion group setup do not match your controller, replace them with
@@ -102,12 +100,12 @@ two things, which cannot be sent today:
 
 ## Stopping and errors
 
-- **Stop:** `await mg.stop_routine(run)` with the run from `plan_and_execute`. Without a stop the
+- **Stop:** `await CommandRoutine.stop(mg, run)` with the run from `execute`. Without a stop the
   routine runs to completion.
 - **Errors**, raised before the robot moves:
   - `UnsupportedRoutineCommand` and `CommandRoutineError` (`nova.command_routines`): see above.
     `UnsupportedRoutineCommand` is a `CommandRoutineError`; the message is NOVA's and names the
     command and its index.
-  - `ValueError`: arguments a routine cannot take, or a routine passed to `execute` or a stream.
-  - `DatasetNotFoundError` / `DatasetError` from `ds.resolve_command_routine`: the Dataset or
+  - `ValueError`: `plan` of an I/O-only routine, which has no trajectory.
+  - `DatasetNotFoundError` / `DatasetError` from `CommandRoutine.resolve`: the Dataset or
     routine does not exist, or a pose cannot be resolved (the error names the pose).

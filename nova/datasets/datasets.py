@@ -54,39 +54,6 @@ async def fetch(
     return Dataset.from_api_model(response)
 
 
-async def resolve_command_routine(
-    nova: Nova,
-    dataset: api.models.DatasetId,
-    command_routine: str,
-    *,
-    cell: str = CELL_NAME,
-    revision: int | None = None,
-) -> api.models.CommandRoutine:
-    """Fetch a command routine of a dataset stored on the NOVA instance, with its poses resolved.
-
-    Every local pose reference and every pose in a dataset frame becomes an inline pose in the
-    `world` frame, so the routine runs without the dataset, e.g. with
-    ``MotionGroup.plan_and_execute(routine)``.
-
-    Args:
-        nova: A NOVA instance.
-        dataset: Identifier of the dataset that holds the routine.
-        command_routine: Identifier of the routine within the dataset.
-        cell: The cell the dataset belongs to.
-        revision: Revision to use. When omitted, the latest revision is used.
-
-    Raises:
-        DatasetNotFoundError: The dataset, its revision or the routine does not exist.
-        DatasetError: A pose of the routine cannot be resolved; the error names the pose.
-    """
-    try:
-        return await nova.api.datasets_api.resolve_dataset_command_routine(
-            cell=cell, dataset=str(dataset), command_routine=command_routine, revision=revision
-        )
-    except api.ApiException as exc:
-        raise _dataset_error(exc) from exc
-
-
 async def read(path: PathLike, *, base_dir: Path | None) -> Dataset:
     """Read a dataset from a local JSON file.
 
