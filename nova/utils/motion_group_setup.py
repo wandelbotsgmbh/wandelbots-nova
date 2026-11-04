@@ -24,7 +24,7 @@ from nova.utils.collision_setup import get_safety_collision_setup_from_motion_gr
 from nova.utils.rotation_conversion import to_rotation_vector
 
 
-def _get_coordinate_system_pose(
+def get_coordinate_system_pose(
     coordinate_system_name: str, coordinate_systems: list[api.models.CoordinateSystem]
 ) -> api.models.Pose:
     for coordinate_system in coordinate_systems:
@@ -78,7 +78,7 @@ def motion_group_setup_from_motion_group_description(
     external_tool_coordinate_system = (
         None
         if external_tool_coordinate_system_name is None
-        else _get_coordinate_system_pose(external_tool_coordinate_system_name, coordinate_systems)
+        else get_coordinate_system_pose(external_tool_coordinate_system_name, coordinate_systems)
     )
 
     return api.models.MotionGroupSetup(
