@@ -16,6 +16,7 @@ Do NOT import this from outside the policy package.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
@@ -51,12 +52,17 @@ def get_ws_target(mg: MotionGroup, path: str) -> tuple[str, dict[str, str]]:
     """
     config = get_api_gateway(mg)._api_client.configuration  # type: ignore[attr-defined]
     host = config.host
-    headers: dict[str, str] = {}
     if host.startswith("https://"):
-        bare = host.removeprefix("https://")
-        if config.username:
-            return f"wss://{config.username}:{config.password}@{bare}{path}", headers
-        if config.access_token:
-            headers["Authorization"] = f"Bearer {config.access_token}"
-        return f"wss://{bare}{path}", headers
-    return f"ws://{host.removeprefix('http://')}{path}", headers
+        scheme, bare = "wss", host.removeprefix("https://")
+    else:
+        scheme, bare = "ws", host.removeprefix("http://")
+    headers: dict[str, str] = {}
+    # Credentials apply to plain http hosts too, as for the REST calls: a
+    # self-hosted instance with an access token rejects an anonymous handshake.
+    if config.username:
+        user = quote(config.username, safe="")
+        password = quote(config.password or "", safe="")
+        return f"{scheme}://{user}:{password}@{bare}{path}", headers
+    if config.access_token:
+        headers["Authorization"] = f"Bearer {config.access_token}"
+    return f"{scheme}://{bare}{path}", headers

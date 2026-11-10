@@ -27,6 +27,7 @@ import time
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import websockets
+from websockets.exceptions import WebSocketException
 
 from novapolicy._sdk import get_cell, get_controller_id, get_ws_target
 
@@ -48,6 +49,11 @@ every cycle anyway, which measured ~8ms on a live instance at this value."""
 DEFAULT_STALE_AFTER_S = 0.2
 """How long a sample stays usable. Past this the stream is treated as absent and
 the caller falls back, rather than feeding the policy a stale velocity."""
+
+
+_RETRY_MIN_S = 1.0
+_RETRY_MAX_S = 10.0
+"""Reconnect backoff of a lost measured-velocity stream."""
 
 
 @runtime_checkable
@@ -99,7 +105,9 @@ class StateStreamVelocities:
         for task in tasks:
             task.cancel()
         for task in tasks:
-            with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
+            with contextlib.suppress(
+                asyncio.CancelledError, OSError, RuntimeError, WebSocketException
+            ):
                 await task
         self._latest.clear()
 
@@ -125,20 +133,36 @@ class StateStreamVelocities:
             rate=self._response_rate_ms,
         )
         url, headers = get_ws_target(mg, path)
-        try:  # ruff: ignore[too-many-nested-blocks]
-            async with websockets.connect(
-                url, open_timeout=10, additional_headers=headers, max_queue=None
-            ) as socket:
-                async for raw in socket:
-                    velocities = _parse_velocities(raw)
-                    if velocities is not None:
-                        self._latest[mg.id] = (time.monotonic(), velocities)
-        except asyncio.CancelledError:
-            raise
-        except (OSError, RuntimeError, ValueError) as exc:
+        retry_s = _RETRY_MIN_S
+        while True:
+            try:
+                await self._read_until_closed(mg, url, headers)
+                retry_s = _RETRY_MIN_S  # it was connected; the next drop starts over
+                reason = "stream closed"
+            except asyncio.CancelledError:
+                raise
+            except (OSError, RuntimeError, ValueError, WebSocketException) as exc:
+                reason = str(exc) or type(exc).__name__
             # A missing measurement is survivable: the caller falls back to
-            # finite differencing, which is worse but not fatal.
-            logger.warning("Measured-velocity stream lost for %s: %s", mg.id, exc)
+            # finite differencing, which is worse but not fatal, until the
+            # stream is back.
+            logger.warning(
+                "Measured-velocity stream lost for %s (%s); reconnecting in %.0f s",
+                mg.id,
+                reason,
+                retry_s,
+            )
+            await asyncio.sleep(retry_s)
+            retry_s = min(retry_s * 2, _RETRY_MAX_S)
+
+    async def _read_until_closed(self, mg: MotionGroup, url: str, headers: dict[str, str]) -> None:
+        async with websockets.connect(
+            url, open_timeout=10, additional_headers=headers, max_queue=None
+        ) as socket:
+            async for raw in socket:
+                velocities = _parse_velocities(raw)
+                if velocities is not None:
+                    self._latest[mg.id] = (time.monotonic(), velocities)
 
 
 def _parse_velocities(raw: str | bytes) -> tuple[float, ...] | None:

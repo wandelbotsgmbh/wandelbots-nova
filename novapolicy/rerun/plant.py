@@ -14,7 +14,6 @@ Three things move when a plant is in the loop, and each gets one line:
 
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING, Any
 
 from novapolicy.rerun.constants import (
@@ -23,6 +22,7 @@ from novapolicy.rerun.constants import (
     TRAIL_WIDTH_UI,
 )
 from novapolicy.rerun.kinematics import joint_tcp_position
+from novapolicy.rerun.logtime import elapsed_since
 import rerun as rr
 
 if TYPE_CHECKING:
@@ -36,7 +36,9 @@ PLANT_TRAIL_COLOR = (120, 160, 255)  # blue — the plant the policy observes
 
 
 def _set_time(step: int, start_time: float, recording: RecordingStream | None) -> None:
-    rr.set_time("policy_time", duration=time.monotonic() - start_time, recording=recording)
+    # The pinned produce instant when written through the logger's sink, so a
+    # backlog does not shift the setpoint against the tracking plots.
+    rr.set_time("policy_time", duration=elapsed_since(start_time), recording=recording)
     rr.set_time("policy_step", sequence=step, recording=recording)
 
 

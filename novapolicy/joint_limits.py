@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 import logging
 from typing import TYPE_CHECKING
 
+from nova import api
+
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
 
@@ -133,7 +135,14 @@ async def fetch_joint_limits(
     for mg in motion_groups:
         try:
             description = await mg.get_description()
-        except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
+        except (
+            OSError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+            AttributeError,
+            api.OpenApiException,  # an error response, e.g. 404 for the model
+        ) as exc:
             # Any failure to read limits degrades to sending unclamped, which is
             # how this behaved before clamping existed. It must never be the
             # reason a run does not start.

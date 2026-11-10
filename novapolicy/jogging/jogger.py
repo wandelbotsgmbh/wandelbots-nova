@@ -605,9 +605,15 @@ class _BaseJogger:
         if self._estop is not None:
             await self._estop.stop()
             self._estop = None
-        for session in self._sessions.values():
-            with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
-                await session.stop()
+        # In parallel: each stop waits for its server to settle.
+        results = await asyncio.gather(
+            *(session.stop() for session in self._sessions.values()), return_exceptions=True
+        )
+        for result in results:
+            if isinstance(result, BaseException) and not isinstance(
+                result, (asyncio.CancelledError, OSError, RuntimeError)
+            ):
+                raise result
         logger.info("%s stopped", self.__class__.__name__)
         return False
 

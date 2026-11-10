@@ -136,6 +136,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._pending_request: PendingChunk | None = None
         self._pending_request_event = asyncio.Event()
         self._stop_requested = False
+        self._stop_acknowledged = False
         self._stop_settled = asyncio.Event()
         self._queued_chunk_count = 0
         self._scheduled_chunk_count = 0
@@ -549,6 +550,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
         self._running = True
         self._pending_request_event.clear()
+        # A session can be started again after stop(); the last stop is over.
+        self._stop_requested = False
+        self._stop_acknowledged = False
+        self._stop_settled.clear()
 
         initial_state = await self._motion_group.get_state()
         self._current_joints = list(initial_state.joints)
@@ -678,7 +683,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 if state.tcp is not None:
                     self._current_tcp_name = state.tcp
                 self._jog_tracker.update_from_state(state)
-                if self._stop_requested and not _jogging_running(state):
+                # Only a state after the server acknowledged the stop says the
+                # stop took effect: a paused state before it is no answer.
+                if self._stop_acknowledged and not _jogging_running(state):
                     self._stop_settled.set()
                 state_timestamp = getattr(state, "timestamp", None)
                 self._clock.observe_state_timestamp(state_timestamp)
@@ -787,6 +794,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     ) -> None:
         """Monitor acknowledgements and failures without gating outgoing chunks."""
         async for response in response_stream:
+            if isinstance(response, api.models.StopActionChunksResponse):
+                self._stop_acknowledged = True
+                continue
             if not self._running:
                 if self._stop_requested:
                     continue  # the stream stays open until the stop settles

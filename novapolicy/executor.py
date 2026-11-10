@@ -143,6 +143,21 @@ class ExecutionResult:
     """Last observed robot state (per motion group). Useful to know where the robot stopped."""
 
 
+def _check_buffered_mode(
+    buffer_window_ms: float, schema: PolicySchema, plant: VirtualPlant | None
+) -> None:
+    """Reject a buffered-mode setup before anything moves."""
+    if plant is not None and not isinstance(plant, VirtualPlant):
+        msg = "plant must implement novapolicy.plant.VirtualPlant"
+        raise TypeError(msg)
+    if plant is not None and buffer_window_ms <= 0:
+        msg = "a plant is followed through the ring buffer; set buffer_window_ms > 0"
+        raise ValueError(msg)
+    if buffer_window_ms > 0 and schema.tcp_action_groups():
+        msg = "buffer_window_ms supports joint targets only; this schema has TCP actions."
+        raise ValueError(msg)
+
+
 class PolicyExecutor:
     """Runs one policy episode: observe → query policy → send actions → repeat.
 
@@ -255,17 +270,12 @@ class PolicyExecutor:
         self._io_tasks: set[asyncio.Task[None]] = set()
         self._policy_timelines: dict[str, _PolicyTimeline] = {}
         self._buffer_window_ms = max(0.0, buffer_window_ms)
+        _check_buffered_mode(self._buffer_window_ms, schema, plant)
         self._target_buffers: dict[str, list[TimedPoint]] = {}
         self._buffer_anchor_ms: float | None = None
         self._buffer_timeline_ms = 0.0
         self._clamp_to_joint_limits = clamp_to_joint_limits
         self._joint_limits: dict[str, JointLimits] = {}
-        if plant is not None and not isinstance(plant, VirtualPlant):
-            msg = "plant must implement novapolicy.plant.VirtualPlant"
-            raise TypeError(msg)
-        if plant is not None and self._buffer_window_ms <= 0:
-            msg = "a plant is followed through the ring buffer; set buffer_window_ms > 0"
-            raise ValueError(msg)
         self._plant = plant
         self._rerun: PolicyRerunLogger | None = None
         self._logged_first_images = False
@@ -355,9 +365,15 @@ class PolicyExecutor:
         if self.status.phase is not Phase.ERROR:
             await self._drain_sessions()
 
-        for session in self._sessions.values():
-            with contextlib.suppress(MotionError, EmergencyStopError, OSError, RuntimeError):
-                await session.stop()
+        # In parallel: each stop waits for its server to settle.
+        results = await asyncio.gather(
+            *(session.stop() for session in self._sessions.values()), return_exceptions=True
+        )
+        for result in results:
+            if isinstance(result, BaseException) and not isinstance(
+                result, (MotionError, EmergencyStopError, OSError, RuntimeError)
+            ):
+                raise result
 
         # Wait for pending IO tasks
         if self._io_tasks:
@@ -868,7 +884,10 @@ class PolicyExecutor:
         if self._rerun is not None and self._plant is None:
             self._rerun.log_target_tracking(trimmed, robot_states, step)
 
-        connected = self._connected_motion(trimmed, robot_states)
+        # The buffer is its own continuity: a bridge or an endpoint ramp would
+        # hand it several steps for what is one policy target.
+        buffered = self._buffer_window_ms > 0
+        connected = None if buffered else self._connected_motion(trimmed, robot_states)
         if connected is not None:
             return await self._send_connected_policy_chunk(
                 connected,
@@ -879,7 +898,7 @@ class PolicyExecutor:
             )
 
         sent_chunk = self._align_seam_to_observation(
-            self._apply_endpoint_ramp(trimmed), observation_time
+            trimmed if buffered else self._apply_endpoint_ramp(trimmed), observation_time
         )
         await self._schema.run_computed_actions(action)
         self._log_policy_action(action, step)
@@ -1227,7 +1246,9 @@ class PolicyExecutor:
             chunk = self._plant.shape(chunk)
         chunk = self._clamp_chunk(chunk)
         if self._buffer_window_ms > 0:
-            return self._send_buffered(chunk)
+            target_chunks = self._send_buffered(chunk)
+            self._schedule_ios(chunk)
+            return target_chunks
 
         place = placement(chunk, execution=self._execution)
         server_dt_ms = (
@@ -1280,16 +1301,18 @@ class PolicyExecutor:
                 action_timestep=chunk.action_timestep,
             )
             target_chunks[group_id] = session.queued_chunk_count
-
-        if chunk.ios:
-            for group_id, ios in chunk.ios.items():
-                session = self._sessions.get(group_id)
-                if session is None:
-                    continue
-                task = asyncio.create_task(session.write_ios(ios))
-                self._io_tasks.add(task)
-                task.add_done_callback(self._io_tasks.discard)
+        self._schedule_ios(chunk)
         return target_chunks
+
+    def _schedule_ios(self, chunk: ActionChunk) -> None:
+        """Write the chunk's IO actions, alongside the motion in either send path."""
+        for group_id, ios in (chunk.ios or {}).items():
+            session = self._sessions.get(group_id)
+            if session is None:
+                continue
+            task = asyncio.create_task(session.write_ios(ios))
+            self._io_tasks.add(task)
+            task.add_done_callback(self._io_tasks.discard)
 
     def _clamp_chunk(self, chunk: ActionChunk) -> ActionChunk:
         """Hold every joint target inside the robot's limits before it is sent.
@@ -1350,6 +1373,9 @@ class PolicyExecutor:
         )
         now = self._buffer_timeline_ms / 1000.0
 
+        if chunk.tcp:
+            msg = "buffer_window_ms supports joint targets only; this chunk carries TCP poses."
+            raise ValueError(msg)
         target_chunks: dict[str, int] = {}
         for group_id, steps in chunk.joints.items():
             session = self._sessions.get(group_id)
@@ -1389,10 +1415,6 @@ class PolicyExecutor:
                 action_timestep=chunk.action_timestep,
             )
             target_chunks[group_id] = session.queued_chunk_count
-
-        if chunk.tcp:
-            msg = "buffer_window_ms supports joint targets only; this chunk carries TCP poses."
-            raise ValueError(msg)
         return target_chunks
 
     def _policy_server_timestamp_ms(
