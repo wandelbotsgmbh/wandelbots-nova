@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import math
 import os
 import time
 from datetime import datetime
@@ -21,7 +22,30 @@ from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.helper_scripts.code_server_helpers import get_rerun_address
 from nova_rerun_bridge.safety_zones import log_safety_zones
 from nova_rerun_bridge.stream_state import stream_motion_group
-from nova_rerun_bridge.trajectory import TimingMode, log_motion
+from nova_rerun_bridge.trajectory import (
+    MotionGroupTimeline,
+    TimingMode,
+    log_motion,
+    place_points,
+    robot_frame,
+)
+
+
+def _resolve_show_collision(
+    show_collision: Optional[bool], link_chain: Optional[bool], tool: Optional[bool]
+) -> Optional[bool]:
+    """Settle the collision setting from the viewer's two collision flags.
+
+    ``Rerun`` passes ``show_collision_link_chain`` and ``show_collision_tool``.
+    Both kinds of volume come out of the URDF's ``<collision>``, so either one
+    draws them; ``show_collision``, when set, wins over both.
+    """
+    if link_chain is None and tool is None:
+        return show_collision
+    if show_collision is not False:
+        # The caller set the new one; it wins over what it replaced.
+        return show_collision
+    return bool(link_chain or tool)
 
 
 class NovaRerunBridge:
@@ -36,6 +60,7 @@ class NovaRerunBridge:
     Args:
         nova (Nova): Instance of Nova client
         spawn (bool, optional): Whether to spawn Rerun viewer. Defaults to True.
+        state_sample_interval_ms: Target interval between live robot-state samples.
         wall_clock (bool, optional): Place each trajectory on the timeline at the
             real elapsed time since this bridge was created instead of directly
             after the motion group's previous trajectory. The default packs every
@@ -50,22 +75,36 @@ class NovaRerunBridge:
         nova: Nova,
         spawn: bool = True,
         recording_id=None,
-        show_collision_link_chain: bool = False,
-        show_collision_tool: bool = True,
         show_safety_link_chain: bool = True,
+        show_collision: bool | None = False,
+        show_collision_link_chain: bool | None = None,
+        show_collision_tool: bool | None = None,
+        state_sample_interval_ms: float = 1000.0 / 30.0,
+        tcp_tools: dict[str, str] | None = None,
         wall_clock: bool = False,
     ) -> None:
         # Store the Nova instance for API calls
         self.nova = nova
+        self.tcp_tools: dict[str, str] = tcp_tools or {}
+        """Tool mesh per TCP id, exported onto that TCP's frame in the URDF so
+        the tool rides the robot instead of being drawn beside it."""
         self._streaming_tasks: dict[MotionGroup, asyncio.Task] = {}
-        # Track timing per motion group - each motion group has its own timeline
-        self._motion_group_timers: dict[str, float] = {}
+        # Timing per motion group: one clock each, so plans logged one after
+        # another line up instead of landing on top of each other.
+        self._timeline = MotionGroupTimeline()
         # Wall-clock mode: trajectories start at the real elapsed time instead
         self.wall_clock = wall_clock
         self._wall_clock_origin = time.monotonic()
-        self.show_collision_link_chain = show_collision_link_chain
-        self.show_collision_tool = show_collision_tool
         self.show_safety_link_chain = show_safety_link_chain
+        self.show_collision = _resolve_show_collision(
+            show_collision, show_collision_link_chain, show_collision_tool
+        )
+        """Whether the URDF's collision geometry is drawn, see-through. Off by
+        default; ``None`` draws it only where the model carries no visual
+        mesh."""
+        if not math.isfinite(state_sample_interval_ms) or state_sample_interval_ms <= 0:
+            raise ValueError("state_sample_interval_ms must be a positive finite value")
+        self.state_sample_interval_ms = state_sample_interval_ms
 
         self._log_sink_id: int | None = None
         recording_id = recording_id or f"nova_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -92,6 +131,23 @@ class NovaRerunBridge:
             # the viewer cannot be spawned/connected.
             logger.warning(f"Rerun initialization failed; continuing without Rerun viewer: {e}")
 
+    async def _controllers(self, cell) -> list:
+        """The cell's controllers, by name if their configurations do not parse.
+
+        Listing them reads each controller's configuration, and one this client
+        cannot parse -- a manufacturer whose name its enum does not carry, say
+        -- fails the whole call. A blueprint needs the names and their motion
+        groups, so it falls back to those rather than going without.
+        """
+        try:
+            return await cell.controllers()
+        except Exception as exc:  # noqa: BLE001  # a blueprint is not worth a run
+            logger.warning("Could not list controllers ({}); falling back to names", exc)
+            names = await self.nova._api_client.controller_api.list_robot_controllers(
+                cell=cell.cell_id
+            )
+            return [await cell.controller(name) for name in names]
+
     async def setup_blueprint(self) -> None:
         """Configure and send blueprint configuration to Rerun.
 
@@ -99,13 +155,12 @@ class NovaRerunBridge:
         """
         cell = self.nova.cell()
 
-        controllers = await cell.controllers()
-        motion_groups = []
-
+        controllers = await self._controllers(cell)
         if not controllers:
             logger.warning("No controllers found")
             return
 
+        motion_groups = []
         for controller in controllers:
             for motion_group in await controller.motion_groups():
                 motion_groups.append(motion_group.id)
@@ -183,9 +238,6 @@ class NovaRerunBridge:
         log_collision_setups({setup_id: collision_setups[setup_id]})
         return {setup_id: collision_setups[setup_id]}
 
-    def _log_collision_setup(self, collision_setups: dict[str, api.models.CollisionSetup]) -> None:
-        log_collision_setups(collision_setups)
-
     async def log_safety_zones(self, motion_group: MotionGroup) -> None:
         rr.reset_time()
         rr.set_time(TIME_INTERVAL_NAME, duration=0)
@@ -208,30 +260,21 @@ class NovaRerunBridge:
         """Log motion trajectory to Rerun viewer.
 
         Args:
-            motion_id: The motion identifier
-            timing_mode: DEPRECATED - Timing mode (ignored in new implementation)
-            time_offset: Time offset for visualization
+            trajectory: The trajectory to log
+            tcp: TCP identifier
+            collision_setups: The plan's collision setups
+            motion_group: The motion group that will drive it
+            timing_mode: Where it starts against what was logged before; see
+                :class:`~nova_rerun_bridge.trajectory.TimingMode`
+            time_offset: Read as *timing_mode* says
             tool_asset: Optional tool asset file path
         """
-        if timing_mode != TimingMode.CONTINUE:
-            import warnings
-
-            warnings.warn(
-                "timing_mode parameter is deprecated and will be removed in a future version. "
-                "Timing is now handled automatically per motion group.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         try:
-            # Where on the timeline this trajectory starts: the real elapsed
-            # time (wall-clock mode) or right after the motion group's previous
-            # trajectory (default, no gaps).
-            motion_group_id = motion_group.id
-            if self.wall_clock:
-                current_time = self.elapsed_seconds()
-            else:
-                current_time = self._motion_group_timers.get(motion_group_id, 0.0)
-
+            if self.wall_clock and timing_mode is TimingMode.CONTINUE:
+                # Wall-clock mode: start at the real elapsed time instead of right
+                # after the motion group's previous trajectory, so waiting stays visible.
+                timing_mode = TimingMode.RESET
+                time_offset = self.elapsed_seconds() + time_offset
             logger.debug(
                 f"Calling log_motion function with trajectory points: {len(trajectory.joint_positions or [])}"
             )
@@ -240,18 +283,14 @@ class NovaRerunBridge:
                 tcp=tcp,
                 motion_group=motion_group,
                 collision_setups=collision_setups,
-                time_offset=current_time + time_offset,
+                timing_mode=timing_mode,
+                time_offset=time_offset,
                 tool_asset=tool_asset,
-                show_collision_link_chain=self.show_collision_link_chain,
-                show_collision_tool=self.show_collision_tool,
+                tool_assets=self.tcp_tools or None,
+                timeline=self._timeline,
                 show_safety_link_chain=self.show_safety_link_chain,
+                show_collision=self.show_collision,
             )
-            # Update the timer for this motion group based on trajectory duration
-            if trajectory and trajectory.times:
-                last_trajectory_time = trajectory.times[-1]
-                self._motion_group_timers[motion_group_id] = (
-                    current_time + time_offset + last_trajectory_time
-                )
             logger.debug("log_motion completed successfully")
         except RuntimeError as e:
             if "Session is closed" in str(e):
@@ -281,31 +320,20 @@ class NovaRerunBridge:
             joint_trajectory: The joint trajectory to log
             tcp: TCP identifier
             motion_group: Motion group for planning
-            timing_mode: DEPRECATED - Timing mode (ignored in new implementation)
-            time_offset: Time offset for visualization
+            timing_mode: Where it starts against what was logged before; see
+                :class:`~nova_rerun_bridge.trajectory.TimingMode`
+            time_offset: Read as *timing_mode* says
             tool_asset: Optional tool asset file path
         """
-        if timing_mode != TimingMode.CONTINUE:
-            import warnings
-
-            warnings.warn(
-                "timing_mode parameter is deprecated and will be removed in a future version. "
-                "Timing is now handled automatically per motion group.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-
         if len(trajectory.joint_positions) == 0:
             raise ValueError("No joint trajectory provided")
-
-        # TODO: this is not needed anymore since we pass the data directly
-        # load_plan_response = await motion_group._load_planned_motion(trajectory=trajectory, tcp=tcp)
 
         await self.log_motion(
             trajectory=trajectory,
             tcp=tcp,
             motion_group=motion_group,
             collision_setups=collision_setups,
+            timing_mode=timing_mode,
             time_offset=time_offset,
             tool_asset=tool_asset,
         )
@@ -317,18 +345,19 @@ class NovaRerunBridge:
     def continue_after_sync(self) -> None:
         """No longer needed with per-motion-group timing.
 
-        This method is now a no-op since timing is automatically managed
-        per motion group. Each motion group maintains its own independent timeline.
+        A no-op: every motion group carries its own clock, so trajectories
+        already follow each other without being told to. Each motion group maintains its own independent timeline.
 
         .. deprecated::
             continue_after_sync() is deprecated and will be removed in a future version.
-            Timing is now handled automatically per motion group.
+            Every motion group carries its own clock; see
+            :class:`~nova_rerun_bridge.trajectory.TimingMode`.
         """
         import warnings
 
         warnings.warn(
-            "continue_after_sync() is deprecated and will be removed in a future version. "
-            "Timing is now handled automatically per motion group.",
+            "continue_after_sync() is deprecated and will be removed in a future "
+            "version: each motion group carries its own clock.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -336,6 +365,10 @@ class NovaRerunBridge:
     async def log_error_feedback(
         self, error_feedback: api.models.PlanTrajectoryFailedResponse
     ) -> None:
+        """Draw why a plan failed, so the viewer says more than "it failed"."""
+        if isinstance(error_feedback.error_feedback, api.models.FeedbackJointLimitExceeded):
+            await self._log_joint_limit_exceeded(error_feedback)
+
         if isinstance(error_feedback.error_feedback, api.models.FeedbackOutOfWorkspace):
             if (
                 error_feedback.error_feedback.invalid_tcp_pose
@@ -419,7 +452,15 @@ class NovaRerunBridge:
             return
 
         task = asyncio.create_task(
-            stream_motion_group(self, nova=self.nova, motion_group=motion_group, tcp_name=None)
+            stream_motion_group(
+                self,
+                nova=self.nova,
+                motion_group=motion_group,
+                tcp_name=None,
+                target_frequency=1000.0 / self.state_sample_interval_ms,
+                show_collision=self.show_collision,
+                tool_assets=self.tcp_tools or None,
+            )
         )
         self._streaming_tasks[motion_group] = task
 
@@ -428,6 +469,39 @@ class NovaRerunBridge:
         for task in self._streaming_tasks.values():
             task.cancel()
         self._streaming_tasks.clear()
+
+    async def _log_joint_limit_exceeded(
+        self, error_feedback: api.models.PlanTrajectoryFailedResponse
+    ) -> None:
+        """Report the joint that hit its limit, and where the arm was when it did.
+
+        The feedback names a joint index and the whole pose at the violation, and
+        nothing else in the viewer says which joint is at fault, so this is the
+        only place a reader learns it. The offending joint's own value is
+        included because the limit itself is not exposed anywhere in the API:
+        seeing the value that was refused is how the bound gets established.
+        """
+        feedback = error_feedback.error_feedback
+        if not isinstance(feedback, api.models.FeedbackJointLimitExceeded):
+            return
+        index = feedback.joint_index
+        joints = list(feedback.joint_position or [])
+        at_fault = joints[index] if index is not None and 0 <= index < len(joints) else None
+
+        detail = ", ".join(f"j{i}={value * 180 / math.pi:.1f}" for i, value in enumerate(joints))
+        message = (
+            f"joint limit exceeded on joint {index}"
+            + (f" at {at_fault * 180 / math.pi:.1f} deg" if at_fault is not None else "")
+            + (
+                f" ({error_feedback.error_location_on_trajectory:.0%} along the plan)"
+                if error_feedback.error_location_on_trajectory is not None
+                else ""
+            )
+            + f" | pose [deg]: {detail}"
+        )
+        rr.log("logs/motion", rr.TextLog(message, level=rr.TextLogLevel.ERROR))
+        rr.log("motion/errors/FeedbackJointLimitExceeded", rr.TextDocument(message), static=True)
+        logger.error(message)
 
     async def log_actions(
         self,
@@ -459,7 +533,7 @@ class NovaRerunBridge:
 
         # Use motion group specific timing if available
         if motion_group is not None:
-            motion_group_time = self._motion_group_timers.get(motion_group.id, 0.0)
+            motion_group_time = self._timeline.times.get(motion_group.id, 0.0)
             rr.set_time(TIME_INTERVAL_NAME, duration=motion_group_time)
         else:
             # Fallback to time 0 if no motion group provided
@@ -553,6 +627,17 @@ class NovaRerunBridge:
 
         entity_path = f"motion/{motion_group.id}/actions" if motion_group else "motion/actions"
 
+        # Forward kinematics reports a pose relative to whatever the motion group
+        # is mounted on, so the points have to be moved into the robot's frame and
+        # the entity joined to its frame graph. Without both, a multi-motion-group
+        # robot draws every action marker down at the world origin instead of at
+        # the arm it belongs to.
+        if positions and motion_group is not None:
+            transform, anchor = robot_frame(motion_group.id, last_joints)
+            positions = place_points(positions, transform)
+            if anchor:
+                rr.log(entity_path, rr.CoordinateFrame(frame=anchor), static=True)
+
         # Log all positions with labels and colors
         if positions:
             # Prepare labels
@@ -607,6 +692,11 @@ class NovaRerunBridge:
             # Fallback: return a pose at origin
             return Pose((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
 
+    @property
+    def _motion_group_timers(self) -> dict[str, float]:
+        """The motion group clocks, under the name they had before."""
+        return self._timeline.times
+
     def get_motion_group_time(self, motion_group_id: str) -> float:
         """Get the current timeline position for a motion group.
 
@@ -616,7 +706,7 @@ class NovaRerunBridge:
         Returns:
             Current time position for the motion group (0.0 if not seen before)
         """
-        return self._motion_group_timers.get(motion_group_id, 0.0)
+        return self._timeline.times.get(motion_group_id, 0.0)
 
     def reset_motion_group_time(self, motion_group_id: str) -> None:
         """Reset the timeline for a specific motion group back to 0.
@@ -624,7 +714,7 @@ class NovaRerunBridge:
         Args:
             motion_group_id: The motion group identifier to reset
         """
-        self._motion_group_timers[motion_group_id] = 0.0
+        self._timeline.times[motion_group_id] = 0.0
 
     async def __aenter__(self) -> "NovaRerunBridge":
         """Context manager entry point.

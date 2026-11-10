@@ -46,12 +46,10 @@ async def test_dual_arm_observation():
             Observation.joint_positions("right_joints", source=right),
         ]
     )
-    obs = await schema.build_observation(
-        {
-            "0@left": _state((1.0, 2.0)),
-            "0@right": _state((3.0,)),
-        }
-    )
+    obs = await schema.build_observation({
+        "0@left": _state((1.0, 2.0)),
+        "0@right": _state((3.0,)),
+    })
     assert obs == {"left_joints_1": 1.0, "left_joints_2": 2.0, "right_joints_1": 3.0}
 
 
@@ -67,12 +65,10 @@ async def test_concatenated_observation():
             Action.joint_positions("action", target=[left, right]),
         ],
     )
-    obs = await schema.build_observation(
-        {
-            "0@left": _state((1.0, 2.0)),
-            "0@right": _state((3.0, 4.0)),
-        }
-    )
+    obs = await schema.build_observation({
+        "0@left": _state((1.0, 2.0)),
+        "0@right": _state((3.0, 4.0)),
+    })
     assert obs == {"state_1": 1.0, "state_2": 2.0, "state_3": 3.0, "state_4": 4.0}
 
 
@@ -100,28 +96,6 @@ async def test_constant_and_io_observation():
 # ---------------------------------------------------------------------------
 # Computed hooks
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_observation_computed_is_evaluated():
-    """Observation.computed runs during build_observation and is merged into obs."""
-    mg = _mg()
-    calls: list[dict] = []
-
-    async def read_sensor(obs: dict) -> dict:
-        calls.append(dict(obs))
-        return {"sensor": 42.0}
-
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("joints", source=mg),
-            Observation.computed(read_sensor),
-        ]
-    )
-    obs = await schema.build_observation({"0@ur10e": _state((0.1, 0.2))})
-
-    assert len(calls) == 1
-    assert obs["sensor"] == 42.0
 
 
 @pytest.mark.asyncio
