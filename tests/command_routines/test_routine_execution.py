@@ -18,6 +18,18 @@ from nova.datasets import DatasetError, DatasetNotFoundError
 pytestmark = pytest.mark.asyncio
 
 
+def _plan(**kwargs) -> api.models.PlanCommandRoutineResponse:
+    return api.models.PlanCommandRoutineResponse(
+        command_routine="routine",
+        joint_trajectory=api.models.JointTrajectory(
+            joint_positions=[[0.0] * 6, [0.1] * 6], times=[0.0, 1.0], locations=[0.0, 1.0]
+        ),
+        motions=[api.models.CommandRoutinePlanMotion(command_index=0)],
+        commands=[],
+        **kwargs,
+    )
+
+
 def _run(state=api.models.CommandRoutineRunState.RUNNING) -> api.models.CommandRoutineRun:
     return api.models.CommandRoutineRun(
         run="run-1",
@@ -30,13 +42,7 @@ def _run(state=api.models.CommandRoutineRunState.RUNNING) -> api.models.CommandR
 @pytest.fixture
 def routines_api():
     routines_api = MagicMock()
-    routines_api.plan_command_routine = AsyncMock(
-        return_value=api.models.PlanCommandRoutineResponse(
-            joint_trajectory=api.models.JointTrajectory(
-                joint_positions=[[0.0] * 6, [0.1] * 6], times=[0.0, 1.0], locations=[0.0, 1.0]
-            )
-        )
-    )
+    routines_api.plan_command_routine = AsyncMock(return_value=_plan())
     routines_api.start_command_routine_run = AsyncMock(return_value=_run())
     routines_api.get_command_routine_run = AsyncMock()
     routines_api.stop_command_routine_run = AsyncMock(
@@ -75,7 +81,7 @@ class TestPlan:
         routine = _routine(motion_group="0@other")
 
         # WHEN
-        trajectory = await routine.plan(motion_group)
+        plan = await routine.plan(motion_group)
 
         # THEN NOVA plans it for this controller and motion group, and the routine stays as authored
         request = routines_api.plan_command_routine.await_args.kwargs[
@@ -87,33 +93,57 @@ class TestPlan:
             id="0@test-controller"
         )
         assert request.command_routine == routine
-        assert trajectory.times == [0.0, 1.0]
+        assert plan.joint_trajectory.times == [0.0, 1.0]
         routines_api.start_command_routine_run.assert_not_awaited()
 
-    async def test_io_only_routine_has_nothing_to_plan(self, motion_group, routines_api):
+    async def test_io_only_routine_is_planned_without_a_trajectory(
+        self, motion_group, routines_api
+    ):
         # GIVEN
-        routines_api.plan_command_routine.return_value = api.models.PlanCommandRoutineResponse()
+        routines_api.plan_command_routine.return_value = api.models.PlanCommandRoutineResponse(
+            command_routine="routine", motions=[], commands=[]
+        )
 
         # WHEN
+        plan = await _routine().plan(motion_group)
+
         # THEN
-        with pytest.raises(ValueError, match="I/O-only"):
-            await _routine().plan(motion_group)
+        assert plan.joint_trajectory is None
 
 
 class TestExecute:
-    async def test_routine_of_this_motion_group_is_not_overridden(self, motion_group, routines_api):
+    async def test_plans_the_routine_and_runs_that_plan(self, motion_group, routines_api):
+        # GIVEN
+        routine = _routine(motion_group="0@test-controller")
+
+        # WHEN
+        await routine.execute(motion_group)
+
+        # THEN the plan NOVA returned is sent as it is, to this controller and motion group
+        planned = await routines_api.plan_command_routine()
+        request = _start_request(routines_api)
+        assert request.joint_trajectory == planned.joint_trajectory
+        assert request.motions == planned.motions
+        assert request.controller == "test-controller"
+        assert request.motion_group == api.models.MotionGroupReference(id="0@test-controller")
+
+    async def test_routine_of_this_motion_group_is_not_overridden_when_planned(
+        self, motion_group, routines_api
+    ):
         # GIVEN a routine that names this motion group
         routine = _routine(motion_group="0@test-controller")
 
         # WHEN
         await routine.execute(motion_group)
 
-        # THEN NOVA runs it with its own setup: only the controller is passed
-        request = _start_request(routines_api)
+        # THEN NOVA plans it with its own setup: only the controller is passed
+        request = routines_api.plan_command_routine.await_args.kwargs[
+            "plan_command_routine_request"
+        ]
         assert request.controller == "test-controller"
         assert request.motion_group_override is None
 
-    async def test_routine_of_another_motion_group_runs_on_this_one(
+    async def test_routine_of_another_motion_group_is_planned_and_run_on_this_one(
         self, motion_group, routines_api
     ):
         # GIVEN
@@ -123,21 +153,34 @@ class TestExecute:
         await routine.execute(motion_group)
 
         # THEN
-        request = _start_request(routines_api)
-        assert request.motion_group_override == api.models.MotionGroupReference(
+        plan_request = routines_api.plan_command_routine.await_args.kwargs[
+            "plan_command_routine_request"
+        ]
+        assert plan_request.motion_group_override == api.models.MotionGroupReference(
             id="0@test-controller"
         )
-        assert request.command_routine == routine
+        assert plan_request.command_routine == routine
+        assert _start_request(routines_api).motion_group.id == "0@test-controller"
+
+    async def test_runs_a_given_plan_without_planning_again(self, motion_group, routines_api):
+        # GIVEN a plan that was drawn before
+        plan = _plan()
+
+        # WHEN
+        await _routine().execute(motion_group, plan)
+
+        # THEN what was drawn is what runs
+        routines_api.plan_command_routine.assert_not_awaited()
+        assert _start_request(routines_api).joint_trajectory == plan.joint_trajectory
 
     async def test_returns_the_started_run_without_waiting(self, motion_group, routines_api):
         # GIVEN
         # WHEN
         run = await _routine().execute(motion_group)
 
-        # THEN the run NOVA accepted is returned, nothing is planned, polled or stopped
+        # THEN the run NOVA accepted is returned, nothing is polled or stopped
         assert run.run == "run-1"
         assert run.state == api.models.CommandRoutineRunState.RUNNING
-        routines_api.plan_command_routine.assert_not_awaited()
         routines_api.get_command_routine_run.assert_not_awaited()
         routines_api.stop_command_routine_run.assert_not_awaited()
 
@@ -149,7 +192,12 @@ class TestExecute:
     ):
         # GIVEN
         routines_api.start_command_routine_run.side_effect = api.ApiException(
-            status=status, data=api.models.Error(message="command 0 'spline' is rejected")
+            status=status,
+            data=api.models.CommandRoutineFailure(
+                code=api.models.CommandRoutineErrorCode.NOT_IMPLEMENTED,
+                message="command 0 'spline' is rejected",
+                command_index=0,
+            ),
         )
 
         # WHEN

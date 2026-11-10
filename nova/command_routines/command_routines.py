@@ -110,9 +110,9 @@ class CommandRoutine(api.models.CommandRoutine):
     """A CommandRoutine that NOVA plans and runs on a motion group.
 
     Extends the generated ``api.models.CommandRoutine`` (all its fields are available) with
-    resolve, plan, execute and stop. NOVA plans and runs the whole routine with its own context (TCP, start joint position,
-    motion group setup, default motion settings); the routine is sent as it is, without being
-    converted into an action list. Poses must be inline poses in the ``world`` frame, resolve a
+    resolve, plan, execute and stop. NOVA plans the whole routine with its own context (TCP, start joint
+    position, motion group setup, default motion settings) and runs that plan; the routine is sent as it
+    is, without being converted into an action list. Poses must be inline poses in the ``world`` frame, resolve a
     routine stored in a Dataset first with :meth:`resolve`.
 
     Examples:
@@ -166,19 +166,21 @@ class CommandRoutine(api.models.CommandRoutine):
             return None
         return api.models.MotionGroupReference(id=motion_group.id)
 
-    async def plan(self, motion_group: MotionGroup) -> api.models.JointTrajectory:
+    async def plan(self, motion_group: MotionGroup) -> api.models.PlanCommandRoutineResponse:
         """Let NOVA plan the routine for ``motion_group`` without moving the robot.
 
         NOVA plans it with the routine's own context; a routine that names another motion group is
-        planned with the setup NOVA describes for ``motion_group``. The trajectory is for display.
+        planned with the setup NOVA describes for ``motion_group``. The plan holds the trajectory
+        (``joint_trajectory``, absent for an I/O-only routine) and where each command happens on it.
+        What is drawn is what runs: pass the plan to :meth:`execute` and the run follows it without
+        planning again.
 
         Raises:
             CommandRoutineError: NOVA rejects the routine; the error names the command.
             UnsupportedRoutineCommand: The routine uses a feature NOVA does not implement yet.
-            ValueError: The routine is I/O-only, there is nothing to plan.
         """
         try:
-            planned = await motion_group.api_client.command_routines_api.plan_command_routine(
+            return await motion_group.api_client.command_routines_api.plan_command_routine(
                 cell=motion_group.cell,
                 plan_command_routine_request=api.models.PlanCommandRoutineRequest(
                     command_routine=self,
@@ -188,26 +190,36 @@ class CommandRoutine(api.models.CommandRoutine):
             )
         except api.ApiException as exc:
             raise error_from_api_exception(exc) from exc
-        if planned.joint_trajectory is None:
-            raise ValueError(f"Routine '{self.command_routine}' is I/O-only, nothing to plan")
-        return planned.joint_trajectory
 
-    async def execute(self, motion_group: MotionGroup) -> api.models.CommandRoutineRun:
-        """Start the routine on ``motion_group``; NOVA plans and runs it.
+    async def execute(
+        self, motion_group: MotionGroup, plan: api.models.PlanCommandRoutineResponse | None = None
+    ) -> api.models.CommandRoutineRun:
+        """Start the routine on ``motion_group``; NOVA runs the plan and never plans again.
 
         Returns the run once NOVA has accepted it, not when the robot is done. :meth:`stop` stops it.
 
+        Args:
+            motion_group: The motion group to run on. It must be at the start of the plan's trajectory.
+            plan: The plan to run, as returned by :meth:`plan`. When omitted, the routine is planned
+                for ``motion_group`` first.
+
         Raises:
-            CommandRoutineError: NOVA rejects the routine; the error names the command.
+            CommandRoutineError: NOVA rejects the plan; the error names the command.
             UnsupportedRoutineCommand: The routine uses a feature NOVA does not implement yet.
         """
+        if plan is None:
+            plan = await self.plan(motion_group)
+        placed = plan.model_copy(
+            update={
+                "controller": motion_group.controller_id,
+                "motion_group": api.models.MotionGroupReference(id=motion_group.id),
+            }
+        )
         try:
             return await motion_group.api_client.command_routines_api.start_command_routine_run(
                 cell=motion_group.cell,
-                start_command_routine_run_request=api.models.StartCommandRoutineRunRequest(
-                    command_routine=self,
-                    controller=motion_group.controller_id,
-                    motion_group_override=self._motion_group_override(motion_group),
+                start_command_routine_run_request=api.models.StartCommandRoutineRunRequest.model_validate(
+                    placed.model_dump()
                 ),
             )
         except api.ApiException as exc:

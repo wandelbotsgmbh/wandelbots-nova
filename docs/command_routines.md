@@ -10,8 +10,8 @@ command routines of a loaded `Dataset` are `CommandRoutine`s too):
 | Call | Result |
 | --- | --- |
 | `await CommandRoutine.resolve(nova, dataset, "routine-id")` | a routine stored in a Dataset, its poses resolved to world poses by NOVA |
-| `await routine.plan(mg)` | the `JointTrajectory` NOVA planned for the routine, e.g. to draw its path; nothing moves |
-| `run = await routine.execute(mg)` | starts the routine on NOVA and returns the `CommandRoutineRun` (state, current command) once NOVA has accepted it |
+| `plan = await routine.plan(mg)` | the plan NOVA made for the routine: `joint_trajectory` (e.g. to draw its path) and where each command happens on it; nothing moves |
+| `run = await routine.execute(mg)` or `routine.execute(mg, plan)` | starts the routine on NOVA and returns the `CommandRoutineRun` (state, current command) once NOVA has accepted it. NOVA runs the plan and never plans again, so what was drawn is what runs; without a `plan`, the routine is planned first |
 | `await CommandRoutine.stop(mg, run)` | stops the run (a run or its id): the robot stops and no further outputs are written |
 
 `execute` does not wait for the robot. NOVA runs the routine on its own; awaiting the end
@@ -106,6 +106,5 @@ two things, which cannot be sent today:
   - `UnsupportedRoutineCommand` and `CommandRoutineError` (`nova.command_routines`): see above.
     `UnsupportedRoutineCommand` is a `CommandRoutineError`; the message is NOVA's and names the
     command and its index.
-  - `ValueError`: `plan` of an I/O-only routine, which has no trajectory.
   - `DatasetNotFoundError` / `DatasetError` from `CommandRoutine.resolve`: the Dataset or
     routine does not exist, or a pose cannot be resolved (the error names the pose).

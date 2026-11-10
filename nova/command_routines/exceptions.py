@@ -15,6 +15,7 @@ def error_from_api_exception(exc: api.ApiException) -> CommandRoutineError:
     NOVA's message already names the command, its index and the reason, so it is reused as-is.
     A 501 means NOVA cannot execute a feature of the routine yet.
     """
-    message = exc.data.message if isinstance(exc.data, api.models.Error) else str(exc)
+    failure = (api.models.Error, api.models.CommandRoutineFailure)
+    message = exc.data.message if isinstance(exc.data, failure) else str(exc)
     error_cls = UnsupportedRoutineCommand if exc.status == 501 else CommandRoutineError
     return error_cls(message)

@@ -42,6 +42,14 @@ class DatasetPose(api.models.DatasetPose):
         """
         if isinstance(self.frame, api.models.WorldFrameReference):
             return self.pose
+        if isinstance(self.frame, api.models.ControllerCoordinateSystemReference):
+            system = self.frame.coordinate_system
+            raise FrameResolutionError(
+                f"Pose '{self.dataset_pose}' is expressed in coordinate system '{system}' of "
+                f"controller '{self.frame.controller}', which the SDK cannot resolve to world.",
+                frame=system,
+                chain=[system],
+            )
         if self._tree is None:
             raise _detached(f"Pose '{self.dataset_pose}'", self.frame.frame)
         return self._tree.world_transform(self.frame.frame) @ self.pose

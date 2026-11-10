@@ -37,10 +37,10 @@ Tags: **[Deferred]** not implemented. **[NOVA]** done by NOVA; the SDK passes th
 
 **User Story:** As a Robot Programmer, I want to run a CommandRoutine with one SDK call using the routine's own context, so that I don't convert it into an action list.
 
-- **R1.1** WHEN `CommandRoutine.execute(motion_group)` is called, THE CommandRoutine SHALL start a Routine Run of the whole routine on NOVA and return the run once NOVA has accepted it. **[Pending]** end-to-end on a NOVA instance.
+- **R1.1** WHEN `CommandRoutine.execute(motion_group)` is called, THE CommandRoutine SHALL plan the routine (or take the plan given), start a Routine Run of that plan on NOVA, which never plans again, and return the run once NOVA has accepted it. **[Pending]** end-to-end on a NOVA instance.
 - **R1.2** THE CommandRoutine SHALL send the routine to NOVA unchanged, with the given motion group as the motion group to run on, whatever motion group the routine references. It is passed as an override only when the routine names another motion group.
 - **R1.3** THE CommandRoutine methods SHALL NOT take arguments that override the Routine Context (start joint position, motion group setup, TCP, payload, singularity handling) or execution arguments of action lists (`movement_controller`, `start_on_io`, `pause_on_io`, `state_stream_rate_msecs`); the routine's own context is always used.
-- **R1.4** WHEN `CommandRoutine.plan(motion_group)` is called, THE CommandRoutine SHALL return the joint trajectory NOVA planned for it on this motion group, without moving the robot. An I/O-only routine has no trajectory (`ValueError`).
+- **R1.4** WHEN `CommandRoutine.plan(motion_group)` is called, THE CommandRoutine SHALL return the plan NOVA made for it on this motion group (joint trajectory and where each command happens on it), without moving the robot. An I/O-only routine has a plan without a trajectory.
 - **R1.5** WHERE a motion command defines its own motion settings, NOVA SHALL apply them instead of the routine's defaults (speed overrides included). **[NOVA]**
 - **R1.6** THE CommandRoutine SHALL run routines built with the existing routine builders and routines resolved from a Dataset (`CommandRoutine.resolve`) in the same way.
 - **R1.7** `MotionGroup` and the action-list APIs SHALL NOT take a routine: a routine is neither planned nor executed through them.
@@ -81,7 +81,7 @@ Tags: **[Deferred]** not implemented. **[NOVA]** done by NOVA; the SDK passes th
 
 - **R6.1** WHEN `CommandRoutine.stop(motion_group, run)` is called with a run or its id, THE CommandRoutine SHALL ask NOVA to stop the run; NOVA stops the robot and writes no further outputs of it. NOVA's rejections are raised as for a start.
 - **R6.2** **[Deferred]** WHEN the task awaiting `execute` is cancelled, THE CommandRoutine SHALL stop the run. It returns once NOVA accepted the run, so there is nothing to cancel yet.
-- **R6.3** **[Deferred]** THE SDK SHALL let the programmer await the end of a run and follow its Execution State and markers, built on NATS (`{instance}.v2.cells.{cell}.routines.runs.{run}`), not on polling.
+- **R6.3** **[Deferred]** THE SDK SHALL let the programmer await the end of a run and follow its Execution State and markers, built on NATS (`{instance}.v2.cells.{cell}.command-routines.runs.{run}`), not on polling.
 
 ### R7 Compatibility
 
@@ -103,7 +103,7 @@ Tags: **[Deferred]** not implemented. **[NOVA]** done by NOVA; the SDK passes th
 | E9 | A run | `CommandRoutine.stop(mg, run)` or `stop(mg, run id)` | NOVA is asked to stop that run; a run integration test sees it `STOPPED` | `TestStop` (unit), `TestRun` (integration) |
 | E10 | A routine of this motion group | `execute(mg)` | only the controller is passed, no motion group override | `TestExecute` (unit) |
 | E11 | NOVA answers 501 or 422 | `execute(mg)` | `UnsupportedRoutineCommand` / `CommandRoutineError` with NOVA's message | `TestExecute` (unit) |
-| E12 | An I/O-only routine | `plan(mg)` | `ValueError`, there is no trajectory | `TestPlan` (unit) |
+| E12 | An I/O-only routine | `plan(mg)` | a plan without a trajectory | `TestPlan` (unit) |
 | E13 | A Dataset routine | `CommandRoutine.resolve(nova, ...)` | NOVA resolves it; not found / unresolvable pose raise `DatasetNotFoundError` / `DatasetError` | `TestResolve` (unit) |
 
 ## Implementation Decisions
@@ -111,7 +111,7 @@ Tags: **[Deferred]** not implemented. **[NOVA]** done by NOVA; the SDK passes th
 - **A dedicated class, not the robot.** `CommandRoutine` (`nova/command_routines/command_routines.py`) inherits from the generated `api.models.CommandRoutine`, so it is a routine with all its fields; `command_routine(...)` builds one, and `Dataset.command_routines` holds them. It offers `resolve` (classmethod, via the Dataset service, as `nova.datasets` calls it through `nova.api.datasets_api`), `plan(motion_group)`, `execute(motion_group)` and `stop(motion_group, run)` (static). The robot classes (`AbstractRobot`, `MotionGroup`, `SimulatedRobot`) know nothing of routines, so the action-list path is unchanged; `MotionGroup` only exposes `api_client`, `cell` and `controller_id` read-only. Routine and action-list use are separated by type: a routine passed to the action-list APIs is not supported.
 - **Errors in `nova.command_routines`.** `CommandRoutine.plan`, `execute` and `stop` call `motion_group.api_client.command_routines_api` (`planCommandRoutine`, `startCommandRoutineRun`, `stopCommandRoutineRun`) and map API errors with `error_from_api_exception` from `nova/command_routines/exceptions.py` (`CommandRoutineError`; `UnsupportedRoutineCommand` for 501), as `nova/datasets` maps its errors. No `Nova` instance is passed down: the motion group carries the gateway, cell and controller.
 - **The motion group to run on is the request's override.** `planCommandRoutine` and `startCommandRoutineRun` take the `controller` the routine runs on (required for a motion routine; NOVA never derives it from a motion group id) and a `motion_group_override`. The CommandRoutine always passes the motion group's controller and, unless the routine names that motion group already, the motion group as the override. NOVA then plans the routine with the setup it describes for this motion group instead of the routine's `motion_group_setup`; a routine that names this motion group keeps its own setup. The routine is left as it is.
-- **No translation and no waiting.** The routine is not converted into actions; NOVA plans and runs it, so the SDK's trajectory execution (cursor, movement controllers, state streaming) is not used. `execute` returns the run once it is accepted, which is the handle for `stop`. Following a run will use NATS, not polling.
+- **No translation and no waiting.** The routine is not converted into actions; NOVA plans and runs it, so the SDK's trajectory execution (cursor, movement controllers, state streaming) is not used. `plan` returns NOVA's plan and `execute` runs a plan (given, or made first) as it is, with this motion group's controller and motion group; `execute` returns the run once it is accepted, which is the handle for `stop`. Following a run will use NATS, not polling.
 - **Errors.** NOVA's messages name the command and reason and are reused as they are. `ValueError` is raised by the SDK for arguments a routine cannot take.
 - **Docs and example.** `docs/command_routines.md` and `examples/command_routine.py`.
 - **Existing code is left alone.** The routine builders from NDX-844 and the action-list behaviour stay unchanged.

@@ -134,7 +134,7 @@ async def _watch_runs(nova: Nova):
         updates.append(api.models.CommandRoutineRun.model_validate_json(message.data))
 
     subscription = await nova.nats.subscribe(
-        f"nova.v2.cells.{nova.cell().cell_id}.routines.runs.*", cb=collect
+        f"nova.v2.cells.{nova.cell().cell_id}.command-routines.runs.*", cb=collect
     )
     try:
         yield updates
@@ -361,10 +361,10 @@ class TestPlan:
         routine = _routine(ctx, "plan", move_joint_ptp(ctx.moved), move_joint_ptp(ctx.start))
 
         # WHEN
-        trajectory = await routine.plan(mg)
+        plan = await routine.plan(mg)
 
         # THEN
-        assert len(trajectory.joint_positions) > 1
+        assert len(plan.joint_trajectory.joint_positions) > 1
         assert await mg.joints() == pytest.approx(ctx.start, abs=1e-3)
 
 
@@ -383,19 +383,13 @@ class TestAtTrigger:
         )
 
         # WHEN
-        planned = await nova.api.command_routines_api.plan_command_routine(
-            cell=nova.cell().cell_id,
-            plan_command_routine_request=api.models.PlanCommandRoutineRequest(
-                command_routine=routine, controller=controller.id
-            ),
-        )
-        run = await routine.execute(mg)
+        plan = await routine.plan(mg)
+        run = await routine.execute(mg, plan)  # what was planned is what runs
         final = await _final(nova, run)
 
         # THEN
-        [trigger] = planned.triggers
-        assert trigger.command_index == 1
-        assert trigger.location == pytest.approx(0.5, abs=0.05)  # inside the first motion
+        [placed] = [c for c in plan.commands if c.command_index == 1]
+        assert placed.location == pytest.approx(0.5, abs=0.05)  # inside the first motion
         assert final.state == _State.COMPLETED, final.error
         assert await controller.read(OUT_1) is True
         await controller.write(OUT_1, False)
