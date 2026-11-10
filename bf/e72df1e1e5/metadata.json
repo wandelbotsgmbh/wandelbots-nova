@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "bfe72df1e1e5",
+  "strategy": "manual-commit",
+  "branch": "feat/command-routine-execution",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/command_routines.md",
+    "nova/command_routines/command_routines.py",
+    "nova/command_routines/exceptions.py",
+    "nova/datasets/types.py",
+    "pyproject.toml",
+    "tests/command_routines/test_routine_execution.py",
+    "tests/nova/cell/motion_group/test_execute_routine.py",
+    "uv.lock"
+  ],
+  "sessions": [
+    {
+      "metadata": "/bf/e72df1e1e5/0/metadata.json",
+      "transcript": "/bf/e72df1e1e5/0/full.jsonl",
+      "compact_transcript": "/bf/e72df1e1e5/0/transcript.jsonl",
+      "content_hash": "/bf/e72df1e1e5/0/content_hash.txt",
+      "prompt": "/bf/e72df1e1e5/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 269242,
+    "cache_creation_tokens": 5916131,
+    "cache_read_tokens": 130842156,
+    "output_tokens": 490507,
+    "api_call_count": 468
+  }
+}

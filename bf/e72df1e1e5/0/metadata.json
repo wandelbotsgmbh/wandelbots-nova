@@ -1,0 +1,140 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "bfe72df1e1e5",
+  "session_id": "d8042bd7-7b25-434a-8293-fa5f445281ca",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-10T10:11:33.213393Z",
+  "branch": "feat/command-routine-execution",
+  "checkpoints_count": 1,
+  "save_step_count": 2,
+  "files_touched": [
+    "docs/command_routines.md",
+    "nova/command_routines/command_routines.py",
+    "nova/command_routines/exceptions.py",
+    "nova/datasets/types.py",
+    "pyproject.toml",
+    "tests/command_routines/test_routine_execution.py",
+    "tests/nova/cell/motion_group/test_execute_routine.py",
+    "uv.lock"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "e4ad98a148bc",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 269242,
+    "cache_creation_tokens": 5916131,
+    "cache_read_tokens": 130842156,
+    "output_tokens": 490507,
+    "api_call_count": 468
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01Lc2w8wgBxoMFDZmjk7UVGh",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "code-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "e4ad98a148bc",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 922,
+        "end": 923,
+        "entry_ids": [
+          "6a9d70e6-cbcf-4f62-878f-6a4a606e7c7b"
+        ],
+        "tool_use_id": "toolu_01Lc2w8wgBxoMFDZmjk7UVGh"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Lc2w8wgBxoMFDZmjk7UVGh"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: code-review",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-call_26ba70fdc3c441bbb6422b83",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "code-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "e4ad98a148bc",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1707,
+        "end": 1708,
+        "entry_ids": [
+          "c926406f-63ea-4ead-8667-3293ca79888a"
+        ],
+        "tool_use_id": "call_26ba70fdc3c441bbb6422b83"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "call_26ba70fdc3c441bbb6422b83"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: code-review",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 33
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-10T10:11:32.916482Z",
+    "agent_lines": 0,
+    "agent_removed": 57,
+    "human_added": 0,
+    "human_modified": 122,
+    "human_removed": 0,
+    "total_committed": 119,
+    "total_lines_changed": 179,
+    "agent_percentage": 31.843575418994412,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 1964,
+      "user_lines_removed": 122,
+      "agent_lines_added": 112,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 29,
+        ".specs/command-routine/execution/issues/01-tracer-run-code-built-motion-routine.md": 19,
+        ".specs/command-routine/execution/issues/03-set-io-in-routines.md": 15,
+        ".specs/command-routine/execution/issues/04-real-controller-validation-and-docs.md": 16,
+        ".specs/command-routine/execution/issues/05-run-routines-through-nova-execution-api.md": 21,
+        ".specs/command-routine/pose-resolution/issues/02-run-routines-from-dataset.md": 16,
+        ".specs/command-routine/pose-resolution/spec.md": 70,
+        "direction_constraint_example.py": 113,
+        "examples/09_trajectory_cursor.py": 194,
+        "examples/abb-irb-1300-demo.json": 681,
+        "pick-and-place.json": 476,
+        "pyproject.toml": 1,
+        "trajectory_cursor_overview.md": 192,
+        "uv.lock": 121
+      },
+      "user_removed_per_file": {
+        "pyproject.toml": 1,
+        "uv.lock": 121
+      }
+    }
+  ]
+}
