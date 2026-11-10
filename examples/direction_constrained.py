@@ -38,7 +38,7 @@ def project_cartesian_pose_direction_constraint(
     world_tcp_rotation = R.from_rotvec(np.asarray(world_tcp_pose.orientation, dtype=float))
     current_constraint_world = world_tcp_rotation.apply(constraint_tcp)
 
-    rotation_correction, _ = R.align_vectors([target_constraint_world], [current_constraint_world])
+    rotation_correction = R.align_vectors([target_constraint_world], [current_constraint_world])[0]
     projected_rotation = rotation_correction * world_tcp_rotation
 
     return Pose(
