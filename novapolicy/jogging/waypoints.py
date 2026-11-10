@@ -142,7 +142,9 @@ def make_waypoints_request(
     )
 
 
-def _joint_coordinates(steps: list[list[float]]) -> list[api.models.WaypointCoordinates]:
+def _joint_coordinates(
+    steps: list[list[float]],
+) -> list[api.models.WaypointCoordinates]:
     """Wrap joint steps [rad] as ``JOINTS`` waypoint coordinates."""
     return [api.models.JointWaypoint(joints=step) for step in steps]
 

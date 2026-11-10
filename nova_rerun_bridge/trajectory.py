@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Sequence
 from enum import Enum, auto
 from typing import Any
 
@@ -60,6 +61,30 @@ _last_end_time = 0.0
 _last_offset = 0.0
 
 _visualizer_cache: dict[str, RobotVisualizer] = {}
+
+
+def place_points(points: list, transform) -> list:
+    """Positions as the robot's own frame sees them."""
+    if transform is None:
+        return points
+    placed = np.asarray(points, dtype=float) @ transform[:3, :3].T + transform[:3, 3]
+    return placed.tolist()
+
+
+def robot_frame(motion_group_id: str, joints: Sequence[float] | None = None):
+    """``(transform, anchor)`` for drawing reported poses of one motion group.
+
+    A pose reported for a motion group is relative to whatever that motion group
+    is mounted on, so anything drawn from one has to be moved into the robot's
+    frame and joined to its frame graph — an entity outside that graph is not
+    drawn at all. Returns ``(None, None)`` before the motion group has a
+    visualizer, i.e. before anything has been logged for it.
+    """
+    visualizer = _visualizer_cache.get(motion_group_id)
+    if visualizer is None:
+        return None, None
+    pose = {motion_group_id: list(joints)} if joints else {}
+    return visualizer.pose_frames(pose).get(motion_group_id), visualizer.world_frame
 
 
 async def log_motion(
@@ -274,10 +299,7 @@ async def log_trajectory(
 
     def place(points: list, transform) -> list:
         """Positions as the robot's own frame sees them."""
-        if transform is None:
-            return points
-        placed = np.asarray(points, dtype=float) @ transform[:3, :3].T + transform[:3, 3]
-        return placed.tolist()
+        return place_points(points, transform)
 
     def in_robot_frame(points: list) -> list:
         """A reported pose, in the robot's frame."""

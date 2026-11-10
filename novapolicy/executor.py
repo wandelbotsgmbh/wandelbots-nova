@@ -20,9 +20,24 @@ from novapolicy.chunking import (
     placement,
     trim_chunk,
 )
-from novapolicy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
+from novapolicy.estop import (
+    EstopMonitor,
+    check_estop,
+    check_sessions,
+    triggered_stop_condition,
+)
 from novapolicy.io import IOStreamManager
+from novapolicy.jogging.live_buffer import (
+    LIVE_LEAD_MS,
+    append_and_prune,
+    horizon,
+    horizon_end_time_s,
+    timeline_timestamp_ms,
+    trajectory_elapsed_ms,
+)
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
+from novapolicy.joint_limits import fetch_joint_limits
+from novapolicy.plant import VirtualPlant
 from novapolicy.policy_client import PolicyClient
 from novapolicy.types import (
     ActionChunk,
@@ -39,6 +54,10 @@ from novapolicy.types import (
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
+    from novapolicy.jogging.live_buffer import (
+        TimedPoint,
+    )
+    from novapolicy.joint_limits import JointLimits
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
     from novapolicy.types import StopCondition
@@ -146,6 +165,9 @@ class PolicyExecutor:
         execution: ExecutionMode = _DEFAULT_EXECUTION,
         n_action_steps: int | None = None,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
+        buffer_window_ms: float = 0.0,
+        clamp_to_joint_limits: bool = True,
+        plant: VirtualPlant | None = None,
     ) -> None:
         """Create a policy executor.
 
@@ -191,6 +213,10 @@ class PolicyExecutor:
                 which remains available to asynchronous policy clients.
             start_joint_position: Optional mapping of motion group to joint pose
                 to PTP-move to before starting waypoint jogging.
+            plant: Optional :class:`~novapolicy.plant.VirtualPlant` for
+                setpoint policies. The policy then observes the plant, and the
+                robot follows the plant's path through the ring buffer, so
+                ``buffer_window_ms`` must be set.
         """
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
@@ -228,6 +254,19 @@ class PolicyExecutor:
         self._io_streams = IOStreamManager(self._motion_groups, schema.io_keys_by_controller())
         self._io_tasks: set[asyncio.Task[None]] = set()
         self._policy_timelines: dict[str, _PolicyTimeline] = {}
+        self._buffer_window_ms = max(0.0, buffer_window_ms)
+        self._target_buffers: dict[str, list[TimedPoint]] = {}
+        self._buffer_anchor_ms: float | None = None
+        self._buffer_timeline_ms = 0.0
+        self._clamp_to_joint_limits = clamp_to_joint_limits
+        self._joint_limits: dict[str, JointLimits] = {}
+        if plant is not None and not isinstance(plant, VirtualPlant):
+            msg = "plant must implement novapolicy.plant.VirtualPlant"
+            raise TypeError(msg)
+        if plant is not None and self._buffer_window_ms <= 0:
+            msg = "a plant is followed through the ring buffer; set buffer_window_ms > 0"
+            raise ValueError(msg)
+        self._plant = plant
         self._rerun: PolicyRerunLogger | None = None
         self._logged_first_images = False
 
@@ -361,7 +400,7 @@ class PolicyExecutor:
             return
         await asyncio.gather(*(ptp(mg, joints) for mg, joints in start_positions.items()))
 
-    async def _run_episode(self) -> None:
+    async def _run_episode(self) -> None:  # ruff: ignore[complex-structure]
         """Orchestrate one episode: create sessions, loop observe→act, tear down.
 
         The ``finally`` here owns only the resources started *inside* this
@@ -372,6 +411,14 @@ class PolicyExecutor:
         Exceptions (MotionError, EmergencyStopError) propagate
         to :meth:`run`.
         """
+        if self._clamp_to_joint_limits and not self._joint_limits:
+            self._joint_limits = await fetch_joint_limits(self._motion_groups)
+
+        # A fresh episode gets a fresh replay window and timeline anchor.
+        self._target_buffers.clear()
+        self._buffer_anchor_ms = None
+        self._buffer_timeline_ms = 0.0
+
         # Create and start sessions
         for mg in self._motion_groups:
             self._sessions[mg.id] = self._create_session(mg)
@@ -421,7 +468,7 @@ class PolicyExecutor:
     # Observe → act loop
     # -------------------------------------------------------------------------
 
-    async def _execute(self) -> ExecutionResult:
+    async def _execute(self) -> ExecutionResult:  # ruff: ignore[complex-structure]
         """Run the observe-act loop until termination.
 
         Raises MotionError, EmergencyStopError directly.
@@ -456,6 +503,10 @@ class PolicyExecutor:
             if not robot_states:
                 await asyncio.sleep(0.01)  # retry shortly
                 continue
+            if self._plant is not None:
+                if step == 0:
+                    self._plant.reset(robot_states)
+                robot_states = self._plant.observe(robot_states)
             observation_time = time.monotonic()
             try:
                 action, start_time = await self._observe_and_infer(robot_states, step, start_time)
@@ -465,7 +516,10 @@ class PolicyExecutor:
             except _StaleStop as stale:
                 await self._drain_sessions()
                 return _result(
-                    f"stale: {stale.what}", step, start_time or time.monotonic(), last_obs
+                    f"stale: {stale.what}",
+                    step,
+                    start_time or time.monotonic(),
+                    last_obs,
                 )
             if step == 0:
                 tick_start = start_time
@@ -663,7 +717,10 @@ class PolicyExecutor:
         """Send continuous bridge+policy motion and defer side effects to its boundary."""
         bridge_steps = {
             group_id: len(steps)
-            for group_id, steps in (*connected.bridge.joints.items(), *connected.bridge.tcp.items())
+            for group_id, steps in (
+                *connected.bridge.joints.items(),
+                *connected.bridge.tcp.items(),
+            )
         }
         logger.info(
             "Policy chunk=%d uses continuous bridge steps=%s policy_start_steps=%s",
@@ -808,7 +865,7 @@ class PolicyExecutor:
             return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
 
         trimmed = trim_chunk(action, self._n_action_steps)
-        if self._rerun is not None:
+        if self._rerun is not None and self._plant is None:
             self._rerun.log_target_tracking(trimmed, robot_states, step)
 
         connected = self._connected_motion(trimmed, robot_states)
@@ -827,6 +884,10 @@ class PolicyExecutor:
         await self._schema.run_computed_actions(action)
         self._log_policy_action(action, step)
         self._send(sent_chunk)
+        if self._rerun is not None and self._plant is not None:
+            # robot_states is what the policy saw: the plant. The robot is
+            # tracked against it, and the raw setpoint is shown beside both.
+            self._rerun.log_plant_tracking(trimmed, robot_states, self._observe(), step)
         return None
 
     async def _observe_and_infer(
@@ -984,7 +1045,12 @@ class PolicyExecutor:
         """Log one policy observation to Rerun when visualization is active."""
         if self._rerun is None:
             return
-        self._rerun.log_observation(robot_states, step)
+        if self._plant is not None:
+            # The policy saw the plant; the robot's own state is streamed by the
+            # logger in the background and must not be overwritten with it.
+            self._rerun.log_plant_observation(robot_states, step)
+        else:
+            self._rerun.log_observation(robot_states, step)
         if images:
             self._rerun.log_images(images)
 
@@ -1157,6 +1223,12 @@ class PolicyExecutor:
         dt_ms`` must exceed the inference latency (increase dt_ms or cut latency
         otherwise).
         """
+        if self._plant is not None:
+            chunk = self._plant.shape(chunk)
+        chunk = self._clamp_chunk(chunk)
+        if self._buffer_window_ms > 0:
+            return self._send_buffered(chunk)
+
         place = placement(chunk, execution=self._execution)
         server_dt_ms = (
             chunk.dt_ms
@@ -1217,6 +1289,110 @@ class PolicyExecutor:
                 task = asyncio.create_task(session.write_ios(ios))
                 self._io_tasks.add(task)
                 task.add_done_callback(self._io_tasks.discard)
+        return target_chunks
+
+    def _clamp_chunk(self, chunk: ActionChunk) -> ActionChunk:
+        """Hold every joint target inside the robot's limits before it is sent.
+
+        NOVA pauses the motion on an out-of-range waypoint, so an unclamped
+        target that a policy only slightly overshoots ends the episode. See
+        :mod:`novapolicy.joint_limits`. TCP targets are left alone: their limits
+        are the robot's workspace, which is not a per-axis bound.
+        """
+        if not self._joint_limits or not chunk.joints:
+            return chunk
+        held: dict[str, list[list[float]]] = {}
+        changed = False
+        for group_id, steps in chunk.joints.items():
+            limits = self._joint_limits.get(group_id)
+            if limits is None:
+                held[group_id] = steps
+                continue
+            clamped = [limits.clamp(step, group_id) for step in steps]
+            changed = changed or clamped != steps
+            held[group_id] = clamped
+        if not changed:
+            return chunk
+        return chunk.model_copy(update={"joints": held})
+
+    def _send_buffered(self, chunk: ActionChunk) -> dict[str, int]:
+        """Send each target through the rolling buffer instead of as a chunk.
+
+        The buffered mode for horizon-1 policies, sharing its mechanism with the
+        joggers' live-target path (see :mod:`novapolicy.jogging.live_buffer`).
+        Each policy target is held and replayed ``buffer_window_ms`` late as part
+        of a continuous horizon of *measured* targets, so the server always has
+        somewhere to be going next and never plans a decelerate-to-standstill.
+
+        The chunk path instead re-derives each send's anchor from server "now",
+        which lands the same target on a slightly different absolute timestamp in
+        every send; a moving joint's target therefore wobbles while a held
+        joint's does not, which the robot executes as vibration. Here a given
+        target maps to one fixed timestamp however often the window is re-sent.
+
+        The cost is latency: the robot trails the live target by about the
+        window, so the tracking plots show a roughly constant lag. That is the
+        design, not a fault. It also means the mode suits moderate rates and
+        debugging rather than a policy running at its full trained rate, where
+        that lag is a large part of the tracking error.
+        """
+        # The trajectory clock is the SERVER's, taken from the slowest-
+        # acknowledged session so the shared timeline only advances as fast as
+        # the arm furthest behind. Wall time drifts from the jogger session
+        # timer the robot actually executes against, and using it stalls the
+        # motion; see trajectory_elapsed_ms.
+        elapsed = [s.session_elapsed_ms for s in self._sessions.values()]
+        now_ms = min(elapsed) if elapsed else 0.0
+        if self._buffer_anchor_ms is None:
+            self._buffer_anchor_ms = now_ms
+        self._buffer_timeline_ms = trajectory_elapsed_ms(
+            now_ms, self._buffer_anchor_ms, self._buffer_timeline_ms
+        )
+        now = self._buffer_timeline_ms / 1000.0
+
+        target_chunks: dict[str, int] = {}
+        for group_id, steps in chunk.joints.items():
+            session = self._sessions.get(group_id)
+            if session is None:
+                logger.warning("Unknown motion group in chunk: %s", group_id)
+                continue
+            if len(steps) != 1:
+                msg = (
+                    f"buffer_window_ms is for horizon-1 policies; '{group_id}' "
+                    f"returned {len(steps)} steps. A chunk already carries its own "
+                    "horizon, so leave buffer_window_ms at 0 for it."
+                )
+                raise ValueError(msg)
+
+            buffer = self._target_buffers.setdefault(group_id, [])
+            append_and_prune(buffer, now, steps[0], window_ms=self._buffer_window_ms)
+            replay = horizon(buffer, single_step_dt_ms=session.single_step_dt_ms)
+            if replay is None:
+                # Too little history to define a spacing. Send the bare target
+                # rather than wait for the window to fill, which would never
+                # move at all; it is a terminal waypoint, so motion is halting
+                # for the first window of a run.
+                session.update_chunk(steps=list(steps), dt_ms=0.0, extend_buffer=False)
+                target_chunks[group_id] = session.queued_chunk_count
+                continue
+
+            replayed, grid_start, step_dt_ms = replay
+            session.update_chunk(
+                steps=replayed,
+                dt_ms=step_dt_ms,
+                first_timestamp_ms=timeline_timestamp_ms(
+                    self._buffer_anchor_ms or 0.0,
+                    horizon_end_time_s(grid_start, self._buffer_window_ms),
+                    lead_ms=LIVE_LEAD_MS,
+                ),
+                extend_buffer=False,
+                action_timestep=chunk.action_timestep,
+            )
+            target_chunks[group_id] = session.queued_chunk_count
+
+        if chunk.tcp:
+            msg = "buffer_window_ms supports joint targets only; this chunk carries TCP poses."
+            raise ValueError(msg)
         return target_chunks
 
     def _policy_server_timestamp_ms(
@@ -1285,6 +1461,7 @@ class PolicyExecutor:
             self._motion_groups,
             camera_names=self._cameras.names,
             use_tcp_offset_for_joint_actions=True,
+            tcp=self._schema.tcp,
         )
         await self._rerun.initialize()
 

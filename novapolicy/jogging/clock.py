@@ -223,7 +223,8 @@ class JoggingTimeClock:
         if not self.synced:
             self.synced = True
             logger.info(
-                "Server time sync established (jogger_session_timestamp_ms=%d)", timestamp_ms
+                "Server time sync established (jogger_session_timestamp_ms=%d)",
+                timestamp_ms,
             )
         elif timestamp_ms <= self._last_server_ts_ms:
             # Repeated or out-of-order state samples do not move the clock

@@ -150,6 +150,11 @@ class _FakeRerun:
     def __init__(self) -> None:
         self.tcp: list[tuple[str, list[float], float | None]] = []
         self.joint: list[tuple[str, list[float], float | None]] = []
+        self.robot: list[tuple[str, float]] = []
+
+    def log_robot_state(self, mg_id, state, *, at):
+        _ = state
+        self.robot.append((mg_id, at))
 
     def log_tcp_tracking(self, mg_id, target, actual, step, *, at=None):
         _ = actual, step
@@ -194,6 +199,7 @@ def test_tracking_is_skipped_when_nothing_was_commanded_for_that_instant() -> No
     jogger._log_state_tracking("mg", "cartesian", object(), 1000, 100.0)
 
     assert fake.tcp == []
+    assert fake.robot == [("mg", 100.0)]  # the 3D robot still moves
 
 
 def test_joint_mode_tracking_uses_the_joint_logger() -> None:
@@ -241,7 +247,7 @@ def test_the_rolling_target_buffer_stays_bounded_before_the_timeline_starts() ->
     pinned at 0.0, so no sample is ever older than it and the window grows for as
     long as the session takes to start.
     """
-    from novapolicy.jogging.jogger import _MAX_LIVE_SAMPLES
+    from novapolicy.jogging.live_buffer import MAX_LIVE_SAMPLES
 
     jogger, _stub, _session = _jogger()
     mg = cast("MotionGroup", _NamedMotionGroup())
@@ -253,10 +259,10 @@ def test_the_rolling_target_buffer_stays_bounded_before_the_timeline_starts() ->
     jogger._loop_t0 = None  # the timeline is not anchored: elapsed is pinned
     assert jogger.elapsed == 0.0
 
-    for _ in range(_MAX_LIVE_SAMPLES * 4):
+    for _ in range(MAX_LIVE_SAMPLES * 4):
         jogger._set_live_target(mg, [1.0] * 6)
 
-    assert len(jogger._target_buffers[mg]) <= _MAX_LIVE_SAMPLES
+    assert len(jogger._target_buffers[mg]) <= MAX_LIVE_SAMPLES
 
 
 def _buffered_jogger(buffer_window_ms: float = 500.0):

@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from nova.types import RobotState
     from novapolicy.nats.protocol import ActionSpec
     from novapolicy.schema import PolicySchema
+    from novapolicy.state_stream import VelocitySource
 
 logger = logging.getLogger(__name__)
 
@@ -158,12 +159,15 @@ class NatsPolicyClient(PolicyClient):
         subject_prefix: str = "policy",
         request_timeout_s: float = 5.0,
         connect_timeout_s: float = 10.0,
+        velocities: VelocitySource | None = None,
     ) -> None:
         self._policy_id = policy_id
         self._servers = [servers] if isinstance(servers, str) else list(servers)
         self._prefix = subject_prefix
         self._timeout_s = request_timeout_s
         self._connect_timeout_s = connect_timeout_s
+        self._velocity_source = velocities
+        self._fallback_warned = False
 
         self._nc: Any = None
         self._info: PolicyInfo | None = None
@@ -213,8 +217,13 @@ class NatsPolicyClient(PolicyClient):
             max_reconnect_attempts=-1,
         )
 
+        if self._velocity_source is not None:
+            await self._velocity_source.start()
+
         info_body = await self._request(
-            info_subject(self._policy_id, self._prefix), encode("info", {}), expect="info"
+            info_subject(self._policy_id, self._prefix),
+            encode("info", {}),
+            expect="info",
         )
         info = PolicyInfo.model_validate(info_body)
         self._info = info
@@ -308,7 +317,12 @@ class NatsPolicyClient(PolicyClient):
         return self._to_chunk(response)
 
     async def close(self) -> None:
-        """Release the session and the broker connection. Safe to call twice."""
+        """Release the session, the velocity streams and the broker connection.
+
+        Safe to call twice.
+        """
+        if self._velocity_source is not None:
+            await self._velocity_source.stop()
         if self._nc is None:
             return
         try:
@@ -381,7 +395,17 @@ class NatsPolicyClient(PolicyClient):
     def _velocities(
         self, block: _Block, joints: NDArray[np.float32], now: float
     ) -> NDArray[np.float32]:
-        """Finite-difference velocities; zero until a previous sample exists."""
+        """Measured velocities where available, finite-differenced otherwise.
+
+        The measurement is the source of truth. Finite differencing at the
+        request cadence measured twice the true magnitude, three times the
+        sample-to-sample noise, and individual errors up to 4.8 rad/s on a
+        7-dof arm, which a residual policy turns into large erratic residuals.
+        See :mod:`novapolicy.state_stream`.
+        """
+        measured = self._measured_velocities(block, joints)
+        if measured is not None:
+            return measured
         prev_joints = self._prev_joints.get(block.motion_group_id)
         prev_t = self._prev_t.get(block.motion_group_id)
         if prev_joints is None or prev_t is None:
@@ -390,6 +414,31 @@ class NatsPolicyClient(PolicyClient):
         if dt <= _MIN_DT_S:
             return np.zeros_like(joints)
         return (joints - prev_joints) / dt
+
+    def _measured_velocities(
+        self, block: _Block, joints: NDArray[np.float32]
+    ) -> NDArray[np.float32] | None:
+        """Measured velocities for one block, or ``None`` to fall back.
+
+        A width mismatch falls back rather than raising: the joint count is
+        already checked against the policy's declared dof in
+        :meth:`_build_proprio`, and a velocity source that disagrees is a
+        misconfigured source, not a reason to stop a moving robot.
+        """
+        if self._velocity_source is None:
+            return None
+        values = self._velocity_source.velocities(block.motion_group_id)
+        if values is None or len(values) != joints.size:
+            if not self._fallback_warned:
+                self._fallback_warned = True
+                logger.warning(
+                    "No measured velocities for '%s'%s; finite-differencing instead, "
+                    "which is noisier than the policy was trained on",
+                    block.motion_group_id,
+                    "" if values is None else f" (width {len(values)} != {joints.size})",
+                )
+            return None
+        return np.asarray(values, dtype=np.float32)
 
     def _build_proprio(
         self, block: _Block, joints: NDArray[np.float32], now: float

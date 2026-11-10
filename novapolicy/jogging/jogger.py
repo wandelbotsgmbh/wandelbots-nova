@@ -20,11 +20,22 @@ import asyncio
 import bisect
 import contextlib
 import logging
-import math
 import time
 from typing import TYPE_CHECKING, TypeAlias, cast, overload
 
-from novapolicy.estop import EstopMonitor, check_estop, check_sessions, triggered_stop_condition
+from novapolicy.estop import (
+    EstopMonitor,
+    check_estop,
+    check_sessions,
+    triggered_stop_condition,
+)
+from novapolicy.jogging.live_buffer import (
+    LIVE_LEAD_MS,
+    append_and_prune,
+    horizon,
+    horizon_end_time_s,
+    trajectory_elapsed_ms,
+)
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.types import WaypointConfig
 
@@ -40,7 +51,6 @@ logger = logging.getLogger(__name__)
 
 _CARTESIAN_DIMS = 6  # x, y, z, rx, ry, rz — fixed by the NOVA waypoint pose
 
-_TimedPoint: TypeAlias = tuple[float, list[float]]
 _Chunk: TypeAlias = list[list[float]]
 
 
@@ -64,88 +74,9 @@ def _is_chunk(value: object) -> bool:
 # time-varying in the time-to-position mapping is executed as a lurch.
 LEAD_MS = 100.0
 
-# Lead used for live targets. This is how far ahead of the robot's current
-# motion a replacement trajectory starts, and therefore how long the controller
-# has to blend onto it. Live targets are replaced ~90 times a second, so the
-# controller performs that join constantly; give it too little room and it
-# occasionally cannot do so smoothly, which comes out as a brief stall and
-# catch-up (the robot stays on the path, but its pace dips).
-#
-# Every waypoint in the buffer was measured rather than projected, so nothing
-# here trades accuracy against distance: the lead can simply be as much room as
-# the controller needs to make the join. On the reference rig, speed evenness
-# improved monotonically from 30ms up to 100ms, where the stalls disappeared
-# altogether; shorter leads stalled on most laps. Where a controller needs more
-# or less room than that, this is the knob.
-#
-# Note this is not about running out of waypoints: lengthening the horizon
-# instead does not help, because the constraint is at the *start* of each
-# replacement, not the end.
-LIVE_LEAD_MS = 100.0
-
-# Quantisation of the session timeline. Anchoring every chunk at a multiple of
-# this keeps successive chunks on ONE absolute grid; without it each replacement
-# lands at a new phase, which on the reference rig was the difference between
-# grossly uneven motion and none measurable at all.
-TIMELINE_GRID_MS = 10.0
-
-# A rolling live-target buffer needs at least two samples to define a spacing.
-_MIN_BUFFER_SAMPLES = 2
-
-# Hard cap on samples retained in the rolling buffer, on top of its time window.
-# That window is measured against ``elapsed``, which holds at 0.0 until the robot
-# reports it is executing motion — so while a caller pushes targets into a
-# session that has not started (or whose state stream has stalled), the age of
-# the oldest sample is always 0 and nothing is ever evicted. The cap is set far
-# above what any real rate needs: a 100Hz caller fills a 500ms buffer with ~50
-# samples.
-_MAX_LIVE_SAMPLES = 256
-
 # How much commanded history is retained for Rerun tracking, in server ms. Only
 # needs to outlast the delivery burst that makes the cached pose stale.
 _COMMAND_HISTORY_MS = 1000
-
-
-def _resample_evenly(
-    samples: list[_TimedPoint], step_s: float, *, start: float | None = None
-) -> list[list[float]]:
-    """Put irregularly-timed samples on an evenly spaced grid.
-
-    Linear interpolation at each grid instant, using the time every sample was
-    actually taken. The values stay the caller's own — only the instants they
-    are read at change — so this resamples a recording rather than predicting
-    anything.
-
-    ``start`` pins the grid to an absolute phase; without it the grid begins at
-    the oldest sample.
-    """
-    start = samples[0][0] if start is None else start
-    end = samples[-1][0]
-    if end < start:
-        return []
-    # Round the span UP so the grid reaches the newest sample. Truncating drops
-    # the last partial interval, and that interval is the leading edge of the
-    # horizon — the freshest thing the buffer knows. A grid point landing past
-    # the newest sample holds its value (``fraction`` is clamped below), which
-    # states the target has stopped rather than guessing where it went next.
-    #
-    # The epsilon absorbs float division: a span of exactly two steps comes out
-    # as 1.9999999999999996 often enough to matter, and truncating that loses a
-    # whole waypoint.
-    span_steps = math.ceil((end - start) / step_s - 1e-9)
-    count = max(_MIN_BUFFER_SAMPLES, span_steps + 1)
-    grid: list[list[float]] = []
-    index = 0
-    for i in range(count):
-        moment = start + i * step_s
-        while index + 2 < len(samples) and samples[index + 1][0] <= moment:
-            index += 1
-        before_t, before = samples[index]
-        after_t, after = samples[min(index + 1, len(samples) - 1)]
-        span = after_t - before_t
-        fraction = 0.0 if span <= 0 else min(1.0, max(0.0, (moment - before_t) / span))
-        grid.append([before[k] + fraction * (after[k] - before[k]) for k in range(len(before))])
-    return grid
 
 
 # ---------------------------------------------------------------------------
@@ -215,25 +146,10 @@ class _BaseJogger:
         # far worse in two separate experiments (10mm+ tracking error and
         # repeated stalls), even though it is the smoother of the two.
         now_ms = self._tick_ms if self._tick_ms is not None else self._acknowledged_ms()
-        elapsed_ms = max(0.0, now_ms - self._ack0_ms)
-        # Quantise to the timeline grid so every chunk anchors at a multiple of
-        # it and successive chunks share one absolute grid, instead of each
-        # landing at a new phase.
-        grid_ms = TIMELINE_GRID_MS
-        if grid_ms > 0:
-            elapsed_ms = math.floor(elapsed_ms / grid_ms) * grid_ms
-        # Never run backwards: server "now" is extrapolated between state
-        # samples, so a late sample can resolve below an earlier estimate, and
-        # content is a function of this value — a backward step commands the
-        # robot to reverse.
-        #
-        # Forward jumps are deliberately NOT limited. They look like the robot
-        # teleporting, but they are the clock *correcting* after our own event
-        # loop was late reading the state stream. Rate-limiting them measured far
-        # worse (the timeline fell a full second behind, so every waypoint landed
-        # in the past and the robot starved): this clock must track the server,
-        # jumps included.
-        self._timeline_ms = max(self._timeline_ms, elapsed_ms)
+        # Quantisation and the never-backwards ratchet are shared with the
+        # executor's buffered mode; see trajectory_elapsed_ms for why each rule
+        # is there.
+        self._timeline_ms = trajectory_elapsed_ms(now_ms, self._ack0_ms, self._timeline_ms)
         return self._timeline_ms / 1000.0
 
     def _acknowledged_ms(self) -> float:
@@ -481,56 +397,19 @@ class _BaseJogger:
 
         now = self.elapsed
         buffer = self._target_buffers.setdefault(mg, [])
-        buffer.append((now, list(values)))
-        # Keep only the trailing window; a sample is dropped once it is older
-        # than buffer_window_ms, so the window length is bounded by time, not by call
-        # rate.
-        cutoff = now - self._buffer_window_ms / 1000.0
-        while len(buffer) > _MIN_BUFFER_SAMPLES and (
-            buffer[1][0] < cutoff or len(buffer) > _MAX_LIVE_SAMPLES
-        ):
-            del buffer[0]
+        append_and_prune(buffer, now, values, window_ms=self._buffer_window_ms)
 
-        span_s = buffer[-1][0] - buffer[0][0]
-        if len(buffer) < _MIN_BUFFER_SAMPLES or span_s <= 0:
+        replay = horizon(buffer, single_step_dt_ms=session.single_step_dt_ms)
+        if replay is None:
             # Not enough history yet (or the timeline has not started ticking):
             # keep the robot live with a plain single target rather than waiting
             # for the window to fill, which would otherwise never move at all.
             self._validate_and_push(mg, values)
             return
+        steps, grid_start, step_dt_ms = replay
 
-        # Waypoints are laid out at a uniform spacing, so the recorded samples
-        # have to be put on a uniform grid *by interpolating at their own
-        # timestamps*. Handing them over as-is with an averaged dt replays each
-        # one at the wrong moment -- the caller's ticks jitter over 10-13ms, and
-        # a quantised timeline collapses some of them -- which time-warps the
-        # trajectory and injects velocity noise into what is otherwise exact
-        # recorded data — on the reference rig, replaying with an averaged dt was
-        # an order of magnitude less even than honouring the timestamps.
-        #
-        # The grid is ONE absolute grid, not one starting wherever the oldest
-        # surviving sample happens to sit: which sample that is changes with
-        # every prune, so anchoring to it lands the same recorded moment on a
-        # slightly different timestamp in each push -- the same re-anchoring
-        # that turns an otherwise clean motion into a vibrating one.
-        # The spacing the controller executes best — a per-controller property,
-        # so it comes from config rather than being hardcoded — but never coarser
-        # than half the window, so a short buffer is still represented by more
-        # than its endpoints.
-        step_dt_s = min(session.single_step_dt_ms / 1000.0, span_s / 2.0)
-        step_dt_ms = step_dt_s * 1000.0
-        grid_start = math.ceil(buffer[0][0] / step_dt_s) * step_dt_s
-        steps = _resample_evenly(buffer, step_dt_s, start=grid_start)
-        if not steps:
-            self._validate_and_push(mg, values)
-            return
-        # The window is the whole horizon: it reaches up to "now" and no further,
-        # because nothing beyond it has been measured yet. ``buffer_window_ms`` therefore
-        # sets the horizon the server profiles against, which is why it has to be
-        # a few hundred milliseconds — the server caps its speed at whatever it
-        # can still brake to a stop within.
         anchor = self._timeline_timestamp_ms(
-            mg, grid_start + self._buffer_window_ms / 1000.0, LIVE_LEAD_MS
+            mg, horizon_end_time_s(grid_start, self._buffer_window_ms), LIVE_LEAD_MS
         )
         eased = self._ease_steps(mg, steps, step_dt_ms)
         session.update_chunk(
@@ -541,6 +420,9 @@ class _BaseJogger:
             ),
             extend_buffer=False,
         )
+        # Log what was actually commanded, not the raw request: during ease-in
+        # they differ by design, and plotting the raw request makes the tracking
+        # error look far worse than the robot is behaving.
         self._record_commanded(mg.id, eased, step_dt_ms, anchor)
         self._log_target(mg.id, steps, step_dt_ms)
 
@@ -629,7 +511,12 @@ class _BaseJogger:
         self._rerun.log_action_chunk(chunk, step=0)
 
     def _log_state_tracking(
-        self, mg_id: str, mode: str, state: RobotState, server_ms: int, generated_at: float
+        self,
+        mg_id: str,
+        mode: str,
+        state: RobotState,
+        server_ms: int,
+        generated_at: float,
     ) -> None:
         """Log commanded-vs-actual for one state packet, at its own instant.
 
@@ -646,6 +533,7 @@ class _BaseJogger:
         """
         if self._rerun is None:
             return
+        self._rerun.log_robot_state(mg_id, state, at=generated_at)
         commanded = self._commanded_at(mg_id, server_ms)
         if commanded is None:
             return
@@ -801,7 +689,9 @@ class _BaseJogger:
         """
         return triggered_stop_condition(self._sessions)
 
-    async def __aiter__(self) -> AsyncIterator[dict[MotionGroup, RobotState] | RobotState]:
+    async def __aiter__(
+        self,
+    ) -> AsyncIterator[dict[MotionGroup, RobotState] | RobotState]:
         """Yield current state at ~100Hz. Raises on faults; a stop condition ends
         the loop normally (see :attr:`stop_condition_triggered`). Use ``break`` to stop.
         """

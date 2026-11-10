@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from novapolicy.types import ActionChunk
     from rerun import RecordingStream
 
-from novapolicy.rerun.logtime import pinned_elapsed
+from novapolicy.rerun.logtime import elapsed_since, pinned_elapsed
 from novapolicy.rerun.sink import LOG_ERRORS, AsyncLogSink
 
 logger = logging.getLogger(__name__)
@@ -97,11 +97,14 @@ class PolicyRerunLogger:
         camera_names: list[str] | None = None,
         *,
         use_tcp_offset_for_joint_actions: bool = False,
+        tcp: str = "",
         state_sample_interval_ms: float | None = None,
     ) -> None:
         self._motion_groups = motion_groups
         self._camera_names = camera_names or []
         self._use_tcp_offset_for_joint_actions = use_tcp_offset_for_joint_actions
+        self._tcp = tcp
+        """TCP the caller is driving, which is not always the controller's active one."""
         from nova.viewers import (
             Rerun,
             get_viewer_manager,
@@ -131,8 +134,11 @@ class PolicyRerunLogger:
         self._start_wall: datetime | None = None
         self._tcp_trail: dict[str, list[list[float]]] = {}  # mg_id -> [[x,y,z], ...]
         self._tcp_target_trail: dict[str, list[list[float]]] = {}
+        self._plant_tcp_trail: dict[str, list[list[float]]] = {}
+        self._setpoint_tcp_trail: dict[str, list[list[float]]] = {}
         self._max_trail_points = 500
         self._streamer: StateStreamer | None = None
+        self._last_robot_state_at: dict[str, float] = {}
         self._recording: RecordingStream | None = None
         # Rerun writes are handed off rather than paid for on the caller's
         # thread: for a jogging control loop the caller is the loop producing
@@ -369,11 +375,23 @@ class PolicyRerunLogger:
                             tcp_offset_matrix,
                         )
 
-                        active_tcp = await mg.active_tcp_name()
+                        # The TCP the caller drives wins over the controller's
+                        # active one. Measured poses come back at the driven TCP,
+                        # so resolving the offset from a different TCP puts the
+                        # commanded and measured sides of every tracking plot in
+                        # different frames — a constant offset the size of the
+                        # tool, which reads as the policy being wildly wrong.
+                        active_tcp = self._tcp or await mg.active_tcp_name()
                         if active_tcp is not None:
                             off = await mg.tcp_offset(active_tcp)
                             self._tcp_offsets[mg.id] = tcp_offset_matrix(off)
-                    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as e:
+                    except (
+                        OSError,
+                        RuntimeError,
+                        ValueError,
+                        TypeError,
+                        KeyError,
+                    ) as e:
                         logger.debug("TCP offset query failed for %s: %s", mg.id, e)
 
                 # TCP geometries for visualization
@@ -441,7 +459,8 @@ class PolicyRerunLogger:
             # Correcting the instant itself, not just the derived elapsed value,
             # is what keeps ``log_time`` below out of the past as well.
             logger.debug(
-                "Ignoring log timestamp %.3fs before session start", self._start_time - moment
+                "Ignoring log timestamp %.3fs before session start",
+                self._start_time - moment,
             )
             moment = time.monotonic()
         elapsed = max(0.0, moment - self._start_time)
@@ -496,6 +515,30 @@ class PolicyRerunLogger:
             )
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_observation error: %s", e)
+
+    def log_plant_observation(self, states: dict[str, RobotState], step: int) -> None:
+        """Log what the policy observed from a virtual plant, beside the robot.
+
+        The robot's own joints, mesh and TCP trail stay with the state streamer;
+        see :mod:`novapolicy.rerun.plant`.
+        """
+        if not self._initialized or self._recording is None:
+            return
+        try:
+            from novapolicy.rerun.plant import log_plant_observation
+
+            log_plant_observation(
+                states,
+                step,
+                start_time=self._start_time,
+                dh_robots=self._dh_robots,
+                tcp_offsets=self._tcp_offsets,
+                tcp_trail=self._plant_tcp_trail,
+                max_trail_points=self._max_trail_points,
+                recording=self._recording,
+            )
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
+            logger.debug("log_plant_observation error: %s", e)
 
     def log_bridge_chunk(self, chunk: ActionChunk, step: int) -> None:
         """Log an interpolated connector in Nova Violet."""
@@ -561,6 +604,7 @@ class PolicyRerunLogger:
         step: int,
         *,
         at: float | None = None,
+        trail: bool = True,
     ) -> None:
         """Log commanded/actual joints and the derived TCP position error."""
         if not self._initialized or self._recording is None:
@@ -578,7 +622,7 @@ class PolicyRerunLogger:
             logger.debug("log_joint_tracking snapshot failed: %s", e)
             return
         recording = self._recording
-        trail = self._tcp_target_trail.get(mg_id)
+        target_trail = self._tcp_target_trail.get(mg_id) if trail else None
 
         def write() -> None:
             from novapolicy.rerun.kinematics import (
@@ -590,7 +634,12 @@ class PolicyRerunLogger:
             )
 
             log_joint_tracking(
-                mg_id, snapshot, joints, step, start_time=self._start_time, recording=recording
+                mg_id,
+                snapshot,
+                joints,
+                step,
+                start_time=self._start_time,
+                recording=recording,
             )
             dh_robot = self._dh_robots.get(mg_id)
             if pose is not None and dh_robot is not None:
@@ -601,12 +650,86 @@ class PolicyRerunLogger:
                     step,
                     start_time=self._start_time,
                     recording=recording,
-                    target_trail=trail,
+                    target_trail=target_trail,
                     max_trail_points=self._max_trail_points,
                     pose_frame=self._pose_frames.get(mg_id),
                 )
 
         self._defer(write, at=at)
+
+    def log_robot_state(self, mg_id: str, state: RobotState, *, at: float) -> None:
+        """Move the 3D robot and TCP trail to a state packet, stamped when it was generated.
+
+        Meant to be called for every state packet. It logs at most one packet per
+        state sample interval of *generation* time, so the robot moves at an even
+        rate in the recording however the packets arrived; the streamer's polling
+        loop stops logging this motion group.
+        """
+        streamer = self._streamer
+        if not self._initialized or self._recording is None or streamer is None:
+            return
+        last = self._last_robot_state_at.get(mg_id)
+        if last is not None and at - last < self._state_sample_interval_ms / 1000.0:
+            return
+        self._last_robot_state_at[mg_id] = at
+        streamer.stop_polling(mg_id)
+        recording = self._recording
+        start_time = self._start_time
+
+        def write() -> None:
+            import rerun as rr
+
+            rr.set_time("policy_time", duration=elapsed_since(start_time), recording=recording)
+            streamer.log_state(mg_id, state)
+
+        self._defer(write, at=at)
+
+    def log_plant_tracking(
+        self,
+        setpoints: ActionChunk,
+        plant_states: dict[str, RobotState],
+        robot_states: dict[str, RobotState],
+        step: int,
+    ) -> None:
+        """Track the robot against the plant it follows, and show the setpoint.
+
+        The plant is the target of the tracking plots; its own TCP trail already
+        draws that path, so no second trail is drawn for it. The policy's raw
+        setpoint gets its own entities; see :mod:`novapolicy.rerun.plant`.
+        """
+        if not self._initialized or self._recording is None:
+            return
+        recording = self._recording
+        for mg_id, plant in plant_states.items():
+            robot = robot_states.get(mg_id)
+            if robot is None:
+                continue
+            self.log_joint_tracking(mg_id, list(plant.joints), robot, step, trail=False)
+            steps = setpoints.joints.get(mg_id)
+            if not steps:
+                continue
+            trail = self._setpoint_tcp_trail.setdefault(mg_id, [])
+
+            def write(
+                mg_id: str = mg_id,
+                setpoint: tuple[float, ...] = tuple(steps[0]),
+                trail: list[list[float]] = trail,
+            ) -> None:
+                from novapolicy.rerun.plant import log_plant_setpoint
+
+                log_plant_setpoint(
+                    mg_id,
+                    list(setpoint),
+                    step,
+                    start_time=self._start_time,
+                    dh_robot=self._dh_robots.get(mg_id),
+                    tcp_offset=self._tcp_offsets.get(mg_id),
+                    trail=trail,
+                    max_trail_points=self._max_trail_points,
+                    recording=recording,
+                )
+
+            self._defer(write)
 
     def log_tcp_tracking(
         self,

@@ -35,3 +35,28 @@ def get_cell(mg: MotionGroup) -> str:
 def get_controller_id(mg: MotionGroup) -> str:
     """Get the controller identifier from a motion group."""
     return mg._controller_id  # type: ignore[return-value]
+
+
+def get_ws_target(mg: MotionGroup, path: str) -> tuple[str, dict[str, str]]:
+    """Websocket URL and headers for an API path, from the gateway's own config.
+
+    ``path`` is relative to the gateway's configured base, which already
+    includes the API prefix (e.g. ``http://host/api/v2``), so it starts at
+    ``/cells/...``. Repeating the prefix yields a 404 on the handshake.
+
+    Mirrors how the generated websocket endpoints connect: basic auth embedded
+    in the URL, OAuth2 as an ``Authorization`` header. One deliberate
+    difference: the generated code sends a literal masked ``"******"`` as the
+    bearer value, a code-gen artifact, so the real token is sent here instead.
+    """
+    config = get_api_gateway(mg)._api_client.configuration  # type: ignore[attr-defined]
+    host = config.host
+    headers: dict[str, str] = {}
+    if host.startswith("https://"):
+        bare = host.removeprefix("https://")
+        if config.username:
+            return f"wss://{config.username}:{config.password}@{bare}{path}", headers
+        if config.access_token:
+            headers["Authorization"] = f"Bearer {config.access_token}"
+        return f"wss://{bare}{path}", headers
+    return f"ws://{host.removeprefix('http://')}{path}", headers

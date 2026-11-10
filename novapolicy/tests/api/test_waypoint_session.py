@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import logging
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1007,3 +1008,56 @@ async def test_drain_waits_for_a_chunk_that_is_still_only_queued():
         await session.stop()
         for p in session._test_patches:  # type: ignore[attr-defined]
             p.stop()
+
+
+# ---------------------------------------------------------------------------
+# Renamed and unknown keyword arguments
+# ---------------------------------------------------------------------------
+
+
+def _bare_session() -> WaypointJoggingSession:
+    """A session for testing ``update_chunk`` alone, which talks to no gateway."""
+    mg = MagicMock()
+    mg.id = "0@ur10e"
+    return WaypointJoggingSession(motion_group=mg, config=WaypointConfig(), tcp="Flange")
+
+
+def test_the_old_name_for_the_offset_still_takes_effect() -> None:
+    """A caller written against ``anchor_offset_steps`` must keep its lead.
+
+    Silently dropping it is what made a ported executor crawl: one live target
+    per tick with no lead, and no error anywhere to say so.
+    """
+    session = _bare_session()
+    session.update_chunk(steps=[[0.0] * 6], dt_ms=0.0, anchor_offset_steps=1)
+    assert session._pending_request is not None
+    assert session._pending_request.timestamp_offset_steps == 1
+
+
+def test_the_old_name_warns_so_the_call_site_gets_fixed(caplog) -> None:
+    session = _bare_session()
+    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.waypoint_session"):
+        session.update_chunk(steps=[[0.0] * 6], dt_ms=0.0, anchor_offset_steps=1)
+    assert any("anchor_offset_steps" in record.getMessage() for record in caplog.records)
+
+
+def test_the_current_name_wins_without_a_warning(caplog) -> None:
+    session = _bare_session()
+    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.waypoint_session"):
+        session.update_chunk(steps=[[0.0] * 6], dt_ms=0.0, timestamp_offset_steps=2)
+    assert session._pending_request is not None
+    assert session._pending_request.timestamp_offset_steps == 2
+    assert not [r for r in caplog.records if "anchor_offset_steps" in r.getMessage()]
+
+
+def test_an_unknown_keyword_is_refused() -> None:
+    """A misspelled motion parameter must not be accepted and ignored."""
+    session = _bare_session()
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        session.update_chunk(steps=[[0.0] * 6], dt_ms=20.0, timestamp_offest_steps=1)
+
+
+def test_the_refusal_names_the_rename() -> None:
+    session = _bare_session()
+    with pytest.raises(TypeError, match="anchor_offset_steps -> timestamp_offset_steps"):
+        session.update_chunk(steps=[[0.0] * 6], dt_ms=20.0, nonsense=True)

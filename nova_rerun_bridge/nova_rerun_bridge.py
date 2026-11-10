@@ -22,7 +22,13 @@ from nova_rerun_bridge.consts import TIME_INTERVAL_NAME
 from nova_rerun_bridge.helper_scripts.code_server_helpers import get_rerun_address
 from nova_rerun_bridge.safety_zones import log_safety_zones
 from nova_rerun_bridge.stream_state import stream_motion_group
-from nova_rerun_bridge.trajectory import MotionGroupTimeline, TimingMode, log_motion
+from nova_rerun_bridge.trajectory import (
+    MotionGroupTimeline,
+    TimingMode,
+    log_motion,
+    place_points,
+    robot_frame,
+)
 
 
 def _resolve_show_collision(
@@ -359,6 +365,10 @@ class NovaRerunBridge:
     async def log_error_feedback(
         self, error_feedback: api.models.PlanTrajectoryFailedResponse
     ) -> None:
+        """Draw why a plan failed, so the viewer says more than "it failed"."""
+        if isinstance(error_feedback.error_feedback, api.models.FeedbackJointLimitExceeded):
+            await self._log_joint_limit_exceeded(error_feedback)
+
         if isinstance(error_feedback.error_feedback, api.models.FeedbackOutOfWorkspace):
             if (
                 error_feedback.error_feedback.invalid_tcp_pose
@@ -459,6 +469,39 @@ class NovaRerunBridge:
         for task in self._streaming_tasks.values():
             task.cancel()
         self._streaming_tasks.clear()
+
+    async def _log_joint_limit_exceeded(
+        self, error_feedback: api.models.PlanTrajectoryFailedResponse
+    ) -> None:
+        """Report the joint that hit its limit, and where the arm was when it did.
+
+        The feedback names a joint index and the whole pose at the violation, and
+        nothing else in the viewer says which joint is at fault, so this is the
+        only place a reader learns it. The offending joint's own value is
+        included because the limit itself is not exposed anywhere in the API:
+        seeing the value that was refused is how the bound gets established.
+        """
+        feedback = error_feedback.error_feedback
+        if not isinstance(feedback, api.models.FeedbackJointLimitExceeded):
+            return
+        index = feedback.joint_index
+        joints = list(feedback.joint_position or [])
+        at_fault = joints[index] if index is not None and 0 <= index < len(joints) else None
+
+        detail = ", ".join(f"j{i}={value * 180 / math.pi:.1f}" for i, value in enumerate(joints))
+        message = (
+            f"joint limit exceeded on joint {index}"
+            + (f" at {at_fault * 180 / math.pi:.1f} deg" if at_fault is not None else "")
+            + (
+                f" ({error_feedback.error_location_on_trajectory:.0%} along the plan)"
+                if error_feedback.error_location_on_trajectory is not None
+                else ""
+            )
+            + f" | pose [deg]: {detail}"
+        )
+        rr.log("logs/motion", rr.TextLog(message, level=rr.TextLogLevel.ERROR))
+        rr.log("motion/errors/FeedbackJointLimitExceeded", rr.TextDocument(message), static=True)
+        logger.error(message)
 
     async def log_actions(
         self,
@@ -583,6 +626,17 @@ class NovaRerunBridge:
             labels.append(f"{len(positions) - 1}: {action_type}")
 
         entity_path = f"motion/{motion_group.id}/actions" if motion_group else "motion/actions"
+
+        # Forward kinematics reports a pose relative to whatever the motion group
+        # is mounted on, so the points have to be moved into the robot's frame and
+        # the entity joined to its frame graph. Without both, a multi-motion-group
+        # robot draws every action marker down at the world origin instead of at
+        # the arm it belongs to.
+        if positions and motion_group is not None:
+            transform, anchor = robot_frame(motion_group.id, last_joints)
+            positions = place_points(positions, transform)
+            if anchor:
+                rr.log(entity_path, rr.CoordinateFrame(frame=anchor), static=True)
 
         # Log all positions with labels and colors
         if positions:

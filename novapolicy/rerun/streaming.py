@@ -62,6 +62,8 @@ class StateStreamer:
         self._running = False
         self._tick_counter = 0
         self._logged_scheduled_chunks: dict[str, int] = {}
+        self._last_state_at: dict[str, float] = {}
+        self._not_polled: set[str] = set()
 
     def start(self, sessions: dict[str, WaypointJoggingSession]) -> None:
         """Start the background streaming task."""
@@ -100,8 +102,8 @@ class StateStreamer:
 
                 for mg_id, session in self._sessions.items():
                     state = session.current_state
-                    if state is not None:
-                        self._log_state(mg_id, state)
+                    if state is not None and mg_id not in self._not_polled:
+                        self._log_state_when_generated(mg_id, session, state, elapsed)
                     self._log_controller_timing(mg_id, session)
 
                 if self._image_reader is not None and elapsed >= next_image_time:
@@ -176,6 +178,42 @@ class StateStreamer:
             ),
             recording=self._recording,
         )
+
+    def stop_polling(self, mg_id: str) -> None:
+        """Leave this motion group's state to :meth:`log_state`, called per packet."""
+        self._not_polled.add(mg_id)
+
+    def log_state(self, mg_id: str, state: RobotState) -> None:
+        """Log one state at the time already set on the recording."""
+        self._log_state(mg_id, state)
+
+    def _log_state_when_generated(
+        self,
+        mg_id: str,
+        session: WaypointJoggingSession,
+        state: RobotState,
+        elapsed: float,
+    ) -> None:
+        """Log the cached state once, at the instant it was generated.
+
+        State packets arrive in bursts, with gaps near 100 ms. Logged at "now"
+        on every tick, the cached state repeats through each gap and the plot
+        shows a stop the robot never made.
+        """
+        import rerun as rr  # ruff: ignore[import-outside-top-level]
+
+        generated_at = session.current_state_generated_at
+        if generated_at is None:
+            self._log_state(mg_id, state)
+            return
+        if generated_at == self._last_state_at.get(mg_id):
+            return  # nothing new arrived since the last tick
+        self._last_state_at[mg_id] = generated_at
+        rr.set_time(
+            "policy_time", duration=generated_at - self._start_time, recording=self._recording
+        )
+        self._log_state(mg_id, state)
+        rr.set_time("policy_time", duration=elapsed, recording=self._recording)
 
     def _log_state(self, mg_id: str, state: RobotState) -> None:
         """Log a single state sample for one motion group."""

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import logging
 import math
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from websockets.exceptions import InvalidStatus
 
@@ -51,6 +51,18 @@ MIN_LEAD_MS = 20.0
 # when the server has genuinely stopped reporting progress — a stalled link, or a
 # session the robot never started executing.
 _DRAIN_TIMEOUT_S = 3.0
+
+# How long stop() waits, after StopActionChunksRequest, for the state stream to
+# report the session no longer RUNNING before it closes the stream anyway.
+_STOP_TIMEOUT_S = 2.0
+
+
+def _jogging_running(state: api.models.MotionGroupState) -> bool:
+    """Whether the state reports a jogging session that is RUNNING."""
+    details = state.execute.details if state.execute is not None else None
+    return isinstance(details, api.models.JoggingDetails) and isinstance(
+        details.state, api.models.JoggingRunning
+    )
 
 
 @dataclass(slots=True)
@@ -123,6 +135,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         # yield-time so timestamps are computed as late as possible.
         self._pending_request: PendingChunk | None = None
         self._pending_request_event = asyncio.Event()
+        self._stop_requested = False
+        self._stop_settled = asyncio.Event()
         self._queued_chunk_count = 0
         self._scheduled_chunk_count = 0
         self._scheduled_until_server_ms = 0
@@ -187,6 +201,15 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         The observer runs inside the state-stream task and must be cheap.
         """
         self._state_observer = observer
+
+    @property
+    def current_state_generated_at(self) -> float | None:
+        """Monotonic instant the cached :attr:`current_state` was generated.
+
+        ``None`` before the first jogger timestamp; see
+        :attr:`~novapolicy.jogging.clock.JoggingTimeClock.last_sample_wall`.
+        """
+        return self._clock.last_sample_wall
 
     @property
     def current_state_server_ms(self) -> int | None:
@@ -380,7 +403,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         server_dt_ms: float | None = None,
         action_timestep: int = -1,
         extend_buffer: bool = True,
-        **_kwargs: object,
+        **legacy: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
 
@@ -405,6 +428,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             action_timestep: Absolute policy timestep represented by ``steps[0]``.
                 Logged with the scheduled request in Rerun.
         """
+        if legacy:
+            timestamp_offset_steps = self._resolve_legacy(legacy, timestamp_offset_steps)
+
         if not steps:
             return
 
@@ -460,6 +486,42 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             )
 
         # Request is built later at yield time.
+
+    _RENAMED: ClassVar[dict[str, str]] = {"anchor_offset_steps": "timestamp_offset_steps"}
+    """Parameters that were renamed, mapped to their current names."""
+
+    def _resolve_legacy(self, legacy: dict[str, object], timestamp_offset_steps: int) -> int:
+        """Honour a renamed parameter, and refuse one that is merely unknown.
+
+        Swallowing unknown keywords silently drops motion parameters: a caller
+        written against the older name for ``timestamp_offset_steps`` lost its
+        lead entirely, and the only symptom was a robot that crawled. So a
+        renamed parameter still works and says so, and anything unrecognised is
+        an error rather than a quiet behaviour change.
+        """
+        offset = timestamp_offset_steps
+        unknown = sorted(key for key in legacy if key not in self._RENAMED)
+        if unknown:
+            renamed = ", ".join(f"{old} -> {new}" for old, new in self._RENAMED.items())
+            msg = (
+                f"update_chunk() got unexpected keyword argument(s): {', '.join(unknown)}. "
+                f"Renamed parameters still accepted: {renamed}."
+            )
+            raise TypeError(msg)
+        for old, new in self._RENAMED.items():
+            if old not in legacy:
+                continue
+            value = legacy[old]
+            logger.warning(
+                "%s: update_chunk(%s=...) is the old name for %s; passing it on. "
+                "Rename it at the call site.",
+                self.motion_group_id,
+                old,
+                new,
+            )
+            if isinstance(value, (int, float)):
+                offset = int(value)
+        return offset
 
     def _extend_to_min_horizon(
         self, steps: list[list[float]], effective_dt_ms: float
@@ -587,6 +649,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         :meth:`drain` first to let the accepted waypoints run out.
         """
         self._running = False
+        await self._request_server_stop()
 
         for task in (self._jogging_task, self._state_task):
             if task is not None:
@@ -615,6 +678,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 if state.tcp is not None:
                     self._current_tcp_name = state.tcp
                 self._jog_tracker.update_from_state(state)
+                if self._stop_requested and not _jogging_running(state):
+                    self._stop_settled.set()
                 state_timestamp = getattr(state, "timestamp", None)
                 self._clock.observe_state_timestamp(state_timestamp)
                 # Extract server jogger session timestamp for time synchronization.
@@ -694,6 +759,28 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     # Jogging loop (waypoint mode)
     # -------------------------------------------------------------------------
 
+    async def _request_server_stop(self) -> None:
+        """End the session on the server with StopActionChunksRequest.
+
+        Closing the stream without it leaves NOVA reporting the session as
+        RUNNING, with its timer frozen: the next jogging session syncs its clock
+        to that timer, and the next trajectory execution fails on the jogging
+        details.
+        """
+        task = self._jogging_task
+        if task is None or task.done() or not self._ready.is_set():
+            return
+        self._stop_requested = True
+        self._pending_request_event.set()  # wakes the request generator
+        try:
+            await asyncio.wait_for(self._stop_settled.wait(), _STOP_TIMEOUT_S)
+        except TimeoutError:
+            logger.warning(
+                "%s: the server did not report the jogging session stopped within %.1f s",
+                self.motion_group_id,
+                _STOP_TIMEOUT_S,
+            )
+
     async def _consume_jogging_responses(
         self,
         response_stream: AsyncGenerator[api.models.ExecuteActionChunksResponse, None],
@@ -701,6 +788,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """Monitor acknowledgements and failures without gating outgoing chunks."""
         async for response in response_stream:
             if not self._running:
+                if self._stop_requested:
+                    continue  # the stream stays open until the stop settles
                 return
             if not self._ready.is_set():
                 self._ready.set()
@@ -793,6 +882,14 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._start_waypoint_tracking_measurement(request)
 
             yield request
+
+        if self._stop_requested:
+            yield api.models.StopActionChunksRequest()
+            # Closing the stream before the state leaves RUNNING can leave the
+            # server reporting it as RUNNING.
+            settled = asyncio.create_task(self._stop_settled.wait())
+            _ = await asyncio.wait((settled, response_task), return_when=asyncio.FIRST_COMPLETED)
+            settled.cancel()
 
     def _record_dropped_chunk(self, pending: PendingChunk, step_timestamps: list[int]) -> None:
         """Account for a chunk that was dropped for being entirely in the past.

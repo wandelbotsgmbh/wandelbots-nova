@@ -66,6 +66,7 @@ def send_blueprint(
             contents=[
                 f"policy/{mg_id}/joints/**",
                 f"policy/{mg_id}/joint_target/**",
+                f"policy/{mg_id}/setpoint/**",
             ],
             name=f"Joints target/actual {mg_id}",
             time_ranges=_whole_policy_timeline(),
