@@ -1,6 +1,8 @@
 """
 Example: Plan and execute a direction-constrained motion.
 
+See also https://docs.wandelbots.com/nova/latest/nova-api/core-concepts/direction-constraint.
+
 To plan with direction constraints the robot first has to move to a valid position that satisfies the constraint.
 Such a valid position can be determined by projecting the current position to the constraint.
 Either in cartesian space or joint space.
