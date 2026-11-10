@@ -11,7 +11,6 @@ buffer's 500 ms.
 import math
 
 import nova
-from nova import api
 from nova.cell import virtual_controller
 from novapolicy import jog_joints
 
@@ -27,7 +26,7 @@ HOME = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
         controllers=[
             virtual_controller(
                 name=CONTROLLER,
-                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                manufacturer=nova.api.models.Manufacturer.UNIVERSALROBOTS,
                 type="universalrobots-ur10e",
             )
         ],

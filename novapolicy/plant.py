@@ -29,11 +29,9 @@ class VirtualPlant(Protocol):
 
     def reset(self, states: dict[str, RobotState]) -> None:
         """Place the plant on the robot's measured state before the first step."""
-        ...
 
     def observe(self, states: dict[str, RobotState]) -> dict[str, RobotState]:
         """The states the policy should see; joints replaced by the plant's."""
-        ...
 
     def shape(self, chunk: ActionChunk) -> ActionChunk:
         """Advance the plant one step on the chunk's first targets.
@@ -41,4 +39,3 @@ class VirtualPlant(Protocol):
         Returns a one-step chunk holding the plant's joint positions after this
         step: the point the robot is asked to pass through next.
         """
-        ...

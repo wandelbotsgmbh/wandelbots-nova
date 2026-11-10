@@ -25,7 +25,6 @@ import time
 import numpy as np
 
 import nova
-from nova import api
 from nova.cell import virtual_controller
 from novapolicy import jog_joints
 from novapolicy.types import WaypointConfig
@@ -102,7 +101,7 @@ def evaluate(targets: np.ndarray, measured: np.ndarray, start: float) -> dict:
         controllers=[
             virtual_controller(
                 name=CONTROLLER,
-                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                manufacturer=nova.api.models.Manufacturer.UNIVERSALROBOTS,
                 type="universalrobots-ur10e",
             )
         ],

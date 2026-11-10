@@ -20,7 +20,6 @@ Do not "simplify" this onto the typed stream. That is the bug it exists for.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import time
@@ -60,13 +59,14 @@ _RETRY_MAX_S = 10.0
 class VelocitySource(Protocol):
     """What a policy client needs from a source of measured velocities."""
 
-    async def start(self) -> None: ...
+    async def start(self) -> None:
+        """Begin reading measured velocities."""
 
-    async def stop(self) -> None: ...
+    async def stop(self) -> None:
+        """Stop reading and forget the latest values."""
 
     def velocities(self, motion_group_id: str) -> tuple[float, ...] | None:
         """Latest measured velocities, or ``None`` when absent or stale."""
-        ...
 
 
 class StateStreamVelocities:
@@ -104,11 +104,8 @@ class StateStreamVelocities:
         tasks, self._tasks = self._tasks, []
         for task in tasks:
             task.cancel()
-        for task in tasks:
-            with contextlib.suppress(
-                asyncio.CancelledError, OSError, RuntimeError, WebSocketException
-            ):
-                await task
+        # Each reader ends in its cancellation; nothing a reader raised matters now.
+        await asyncio.gather(*tasks, return_exceptions=True)
         self._latest.clear()
 
     def velocities(self, motion_group_id: str) -> tuple[float, ...] | None:
