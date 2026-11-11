@@ -56,7 +56,7 @@ class Gr00tMsgSerializer:
     def _decode_custom_classes(obj: object) -> object:
         if not isinstance(obj, dict):
             return obj
-        if _NUMPY_FLAG in obj or _NUMPY_FLAG.decode() in obj:
+        if _is_msgpack_numpy(obj):
             return _decode_msgpack_numpy(obj)
         if "__ndarray_class__" not in obj:
             return obj
@@ -75,29 +75,37 @@ class Gr00tMsgSerializer:
         return {"__ndarray_class__": True, "as_npy": output.getvalue()}
 
 
-_NUMPY_FLAG = b"nd"
-"""Key msgpack-numpy marks an array (``True``) or a numpy scalar (``False``) with."""
+_MSGPACK_NUMPY_KEYS = ("nd", "type", "data")
+"""Keys every msgpack-numpy array or scalar carries; ``nd`` alone is too common a name."""
+
+
+def _field(obj: dict[Any, Any], name: str) -> object:
+    """A msgpack-numpy field; keys arrive as bytes or str, depending on the packer."""
+    return obj.get(name.encode(), obj.get(name))
+
+
+def _is_msgpack_numpy(obj: dict[Any, Any]) -> bool:
+    return all(_field(obj, key) is not None for key in _MSGPACK_NUMPY_KEYS)
 
 
 def _decode_msgpack_numpy(obj: dict[Any, Any]) -> object:
-    """Array or scalar from msgpack-numpy's ``{nd, type, kind, shape, data}``.
-
-    Its keys arrive as bytes or as strings, depending on how the server packed them.
-    """
+    """Array or scalar from msgpack-numpy's ``{nd, type, kind, shape, data}``."""
 
     def field(name: str) -> object:
-        return obj.get(name.encode(), obj.get(name))
+        return _field(obj, name)
 
     data, dtype = field("data"), field("type")
     if not isinstance(data, bytes) or not isinstance(dtype, (str, bytes)):
         msg = "Invalid msgpack-numpy payload in GR00T response"
         raise TypeError(msg)
     if field("kind") not in {None, b"", ""}:
-        msg = "Structured (record) arrays in a GR00T response are not supported"
+        # 'O' would mean pickle.loads on the server's bytes; 'V' is a record array.
+        msg = f"Unsupported msgpack-numpy array kind {field('kind')!r} in GR00T response"
         raise TypeError(msg)
     # A copy: frombuffer is read-only, and the npy path hands out writable arrays.
     values = np.frombuffer(data, dtype=np.dtype(dtype)).copy()
-    if field("nd") is True:
+    # Truthy, as the server's own check: an array, else a numpy scalar.
+    if field("nd"):
         shape = field("shape")
         if not isinstance(shape, (list, tuple)):
             msg = "Invalid msgpack-numpy payload in GR00T response: no shape"

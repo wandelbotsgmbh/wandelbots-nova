@@ -85,12 +85,13 @@ class _RecordingGr00tServer(threading.Thread):
                 if self.action_response is not None:
                     resp = self.action_response
                 else:
-                    # Default: echo back joints as 4-step action
-                    first_state_key = next(iter(obs.get("state", {})))
-                    arr = obs["state"][first_state_key]
-                    current = arr[:, -1:, :]
-                    action = np.repeat(current, 4, axis=1).astype(np.float32)
-                    resp = ({first_state_key: action}, {"dt_ms": 33.0})
+                    # Default: echo every state back as a 4-step action, as a real
+                    # server answers with every action key it was trained on.
+                    action = {
+                        key: np.repeat(arr[:, -1:, :], 4, axis=1).astype(np.float32)
+                        for key, arr in obs.get("state", {}).items()
+                    }
+                    resp = (action, {"dt_ms": 33.0})
             elif endpoint == "get_modality_config":
                 resp = self._modality_config or {"state": {}, "action": {}}
             else:
@@ -887,3 +888,65 @@ def test_serializer_still_round_trips_its_own_npy_arrays() -> None:
 
     assert isinstance(decoded, dict)
     np.testing.assert_array_equal(decoded["action"], action)
+
+
+def test_serializer_reads_any_truthy_nd_as_an_array() -> None:
+    import msgpack
+
+    action = np.arange(6, dtype=np.float32).reshape(1, 1, 6)
+    packed = _msgpack_numpy(action) | {b"nd": 1}
+
+    decoded = Gr00tMsgSerializer.from_bytes(msgpack.packb({"action": packed}))
+
+    assert isinstance(decoded, dict)
+    np.testing.assert_array_equal(decoded["action"], action)
+
+
+def test_serializer_refuses_object_arrays() -> None:
+    import msgpack
+
+    packed = _msgpack_numpy(np.zeros(1, dtype=np.float32)) | {b"kind": b"O"}
+
+    with pytest.raises(TypeError, match="kind"):
+        Gr00tMsgSerializer.from_bytes(msgpack.packb({"action": packed}))
+
+
+def test_serializer_leaves_a_plain_dict_with_an_nd_key_alone() -> None:
+    import msgpack
+
+    decoded = Gr00tMsgSerializer.from_bytes(msgpack.packb({"info": {"nd": True, "steps": 3}}))
+
+    assert decoded == {"info": {"nd": True, "steps": 3}}
+
+
+async def _actions_from(response: tuple[dict, dict]) -> ActionChunk:
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server.action_response = response
+    server.start()
+    time.sleep(0.1)
+    try:
+        schema = PolicySchema(observations=[Observation.joint_positions("arm", source=_mg())])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+        try:
+            return await client.get_actions({"0@ur10e": _state((0.0,) * 6)}, schema)
+        finally:
+            await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_an_action_this_client_cannot_decode_raises() -> None:
+    """A server that changed its array serialization must not leave the robot silently idle."""
+    undecodable = {"format": "unknown", "values": [0.0] * 6}
+
+    with pytest.raises(TypeError, match="'arm' must be an array"):
+        await _actions_from(({"arm": undecodable}, {"dt_ms": 33.0}))
+
+
+@pytest.mark.asyncio
+async def test_an_answer_without_any_expected_action_raises() -> None:
+    with pytest.raises(TypeError, match="none of the expected actions"):
+        await _actions_from(({"other": np.zeros((1, 1, 6), dtype=np.float32)}, {"dt_ms": 33.0}))

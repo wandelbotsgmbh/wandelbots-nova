@@ -378,10 +378,9 @@ class Gr00tPolicyClient(PolicyClient):
         ios: dict[str, dict[str, bool | int | float | str]] = {}
 
         for key, mgs in schema.joint_action_keys:
-            arr = action.get(key)
-            if not isinstance(arr, np.ndarray) or arr.ndim != _ACTION_NDIM:
+            typed_arr = _action_array(action, key)
+            if typed_arr is None:
                 continue
-            typed_arr = cast("np.ndarray[Any, np.dtype[np.float32]]", arr)
             for mg in mgs:
                 joint_data = typed_arr[0].astype(np.float32)
                 actual_dof = self._actual_dof.get(mg.id)
@@ -403,13 +402,50 @@ class Gr00tPolicyClient(PolicyClient):
         # Decode TCP actions
         tcp_targets: dict[str, list[list[float]]] = {}
         for key, mg in schema.tcp_action_keys:
-            arr = action.get(key)
-            if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
-                typed_arr = cast("np.ndarray[Any, np.dtype[np.float32]]", arr)
+            typed_arr = _action_array(action, key)
+            if typed_arr is not None:
                 tcp_targets[mg.id] = typed_arr[0].astype(np.float32).tolist()
+
+        _require_some_motion(schema, action, decoded=bool(joints or tcp_targets))
 
         dt_ms = float(cast("float", info.get("dt_ms", self._dt_ms)))
         return ActionChunk(joints=joints, tcp=tcp_targets, ios=ios or None, dt_ms=dt_ms)
+
+
+def _require_some_motion(schema: PolicySchema, action: dict[str, object], *, decoded: bool) -> None:
+    """Raise when the schema expects motion and the answer carried none of it."""
+    expected = [key for key, _ in schema.joint_action_keys]
+    expected += [key for key, _ in schema.tcp_action_keys]
+    if expected and not decoded:
+        msg = (
+            f"GR00T answered with none of the expected actions {expected}; "
+            f"response keys: {sorted(action)}"
+        )
+        raise TypeError(msg)
+
+
+def _action_array(
+    action: dict[str, object], key: str
+) -> np.ndarray[Any, np.dtype[np.float32]] | None:
+    """The ``(batch, horizon, dof)`` array under ``key``, or ``None`` if the key is absent.
+
+    A model may leave out an action it was not trained on, so an absent key is
+    skipped. A key that is present but holds no such array raises instead: that
+    is what a server that changed its array serialization looks like, and
+    skipping it once left the robot standing still with nothing in the log.
+    """
+    if key not in action:
+        return None
+    arr = action[key]
+    if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
+        return cast("np.ndarray[Any, np.dtype[np.float32]]", arr)
+    got = f"{type(arr).__name__} {getattr(arr, 'shape', '')}".strip()
+    msg = (
+        f"GR00T action '{key}' must be an array of shape (batch, horizon, dof), got {got}. "
+        f"Response keys: {sorted(action)}. If the server was updated, it may use an array "
+        "serialization this client does not decode."
+    )
+    raise TypeError(msg)
 
 
 # ---------------------------------------------------------------------------
