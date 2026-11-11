@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "db7753c1a359",
+  "strategy": "manual-commit",
+  "branch": "fix/ignore-previous-trajectory-frames",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "examples/welding.py",
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "tests/cell/multi_group_doubles.py",
+    "tests/cell/test_move_forward_adapter.py",
+    "tests/cell/test_process_motion_group_state.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/db/7753c1a359/0/metadata.json",
+      "transcript": "/db/7753c1a359/0/full.jsonl",
+      "compact_transcript": "/db/7753c1a359/0/transcript.jsonl",
+      "content_hash": "/db/7753c1a359/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 3701,
+    "cache_creation_tokens": 1031112,
+    "cache_read_tokens": 6472801,
+    "output_tokens": 22994,
+    "api_call_count": 52
+  }
+}
