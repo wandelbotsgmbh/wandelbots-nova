@@ -847,3 +847,43 @@ async def test_validate_schema_fails_on_missing_image_key() -> None:
         await client.close()
     finally:
         server.close()
+
+
+def _msgpack_numpy(value: np.ndarray | np.generic, *, bytes_keys: bool = True) -> dict:
+    """``value`` the way msgpack-numpy packs it, as newer GR00T servers answer."""
+    array = np.asarray(value)
+    packed: dict = {
+        "nd": isinstance(value, np.ndarray),
+        "type": array.dtype.str,
+        "data": array.tobytes(),
+    }
+    if packed["nd"]:
+        packed |= {"kind": b"", "shape": list(array.shape)}
+    return {key.encode(): item for key, item in packed.items()} if bytes_keys else packed
+
+
+@pytest.mark.parametrize("bytes_keys", [True, False])
+def test_serializer_decodes_msgpack_numpy_arrays_and_scalars(bytes_keys: bool) -> None:
+    import msgpack
+
+    action = np.arange(18, dtype=np.float32).reshape(1, 3, 6)
+    payload = msgpack.packb({
+        "action": _msgpack_numpy(action, bytes_keys=bytes_keys),
+        "scale": _msgpack_numpy(np.float32(2.5), bytes_keys=bytes_keys),
+    })
+
+    decoded = Gr00tMsgSerializer.from_bytes(payload)
+
+    assert isinstance(decoded, dict)
+    np.testing.assert_array_equal(decoded["action"], action)
+    assert decoded["action"].flags.writeable
+    assert decoded["scale"] == np.float32(2.5)
+
+
+def test_serializer_still_round_trips_its_own_npy_arrays() -> None:
+    action = np.ones((1, 16, 6), dtype=np.float32)
+
+    decoded = Gr00tMsgSerializer.from_bytes(Gr00tMsgSerializer.to_bytes({"action": action}))
+
+    assert isinstance(decoded, dict)
+    np.testing.assert_array_equal(decoded["action"], action)
