@@ -19,6 +19,7 @@ Examples on how to use the wandelbots-nova library.
 13. [Palletizing with a dataset frame](palletizing.py)
 14. [Pose transformations with `@` and `~`](pose_transformations.py)
 15. [Robot-robot interlock: two robots, one shared zone](interlock_two_robots.py)
+16. [Plan and execute trajectories with direction constraints on the TCP](direction_constrained.py)
 
 ## Usage
 
