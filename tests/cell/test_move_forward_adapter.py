@@ -79,7 +79,7 @@ async def _responses():
 def _context(**overrides) -> MovementControllerContext:
     defaults = dict(
         combined_actions=CombinedActions(items=()),
-        motion_id="test-motion",
+        motion_id="traj-1",
         motion_group_state_stream_gen=_finite_states(),
     )
     defaults.update(overrides)
