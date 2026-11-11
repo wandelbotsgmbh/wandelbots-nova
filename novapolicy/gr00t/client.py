@@ -40,6 +40,11 @@ _IMAGE_NDIM_SINGLE = 3  # (H, W, C)
 _IMAGE_NDIM_TEMPORAL = 4  # (T, H, W, C)
 _IMAGE_CHANNELS = 3
 _ACTION_NDIM = 3
+_PROTOCOL_HINT = (
+    "This client speaks the GR00T N1.6+ policy server protocol "
+    "(gr00t/policy/server_client.py); N1 and N1.5 servers (gr00t/eval/service.py) "
+    "take a flat observation and answer with the action alone."
+)
 
 
 class Gr00tPolicyClient(PolicyClient):
@@ -190,15 +195,24 @@ class Gr00tPolicyClient(PolicyClient):
             )
 
         t0 = _time.monotonic()
-        response = await asyncio.to_thread(
-            self._transport.call,
-            "get_action",
-            {"observation": groot_obs, "options": options},
-        )
+        try:
+            response = await asyncio.to_thread(
+                self._transport.call,
+                "get_action",
+                {"observation": groot_obs, "options": options},
+            )
+        except RuntimeError as exc:
+            # An N1/N1.5 server reads the request as a flat observation and
+            # fails on it; say what to check rather than only its KeyError.
+            msg = f"{exc}. {_PROTOCOL_HINT}"
+            raise RuntimeError(msg) from exc
 
         inference_latency = _time.monotonic() - t0
         if not isinstance(response, (list, tuple)) or len(response) != _RESPONSE_PAIR_SIZE:
-            msg = "GR00T get_action response must be a 2-tuple of (action, info)"
+            msg = (
+                "GR00T get_action response must be a 2-tuple of (action, info), "
+                f"got {type(response).__name__}. {_PROTOCOL_HINT}"
+            )
             raise TypeError(msg)
 
         action_raw = require_dict(response[0], name="GR00T action")

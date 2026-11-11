@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -52,8 +53,39 @@ def _state(
     return s
 
 
+_WIRE_FORMATS = ("npy", "msgpack-numpy")
+"""How GR00T policy servers pack arrays in their answers.
+
+``npy`` is N1.6 to the N1.7 release (``{__ndarray_class__, as_npy}``);
+``msgpack-numpy`` is Isaac-GR00T ``main`` since 2026-05 (``{nd, type, shape, data}``).
+Both decode requests in the npy format this client sends.
+"""
+
+
+def _encode_response(response: object, wire_format: str) -> bytes:
+    if wire_format == "npy":
+        return Gr00tMsgSerializer.to_bytes(response)
+    import msgpack
+
+    def default(obj: object) -> object:
+        if isinstance(obj, (np.ndarray, np.generic)):
+            return _msgpack_numpy(obj)
+        return obj
+
+    return msgpack.packb(response, default=default)
+
+
+@pytest.fixture(autouse=True, params=_WIRE_FORMATS)
+def server_wire_format(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Run every test against both GR00T server generations."""
+    monkeypatch.setattr(_RecordingGr00tServer, "wire_format", request.param)
+    return request.param
+
+
 class _RecordingGr00tServer(threading.Thread):
     """GR00T ZMQ server that records observations and returns configurable actions."""
+
+    wire_format: ClassVar[str] = "npy"
 
     def __init__(self, port: int) -> None:
         super().__init__(daemon=True)
@@ -97,7 +129,7 @@ class _RecordingGr00tServer(threading.Thread):
             else:
                 resp = {"error": f"Unknown: {endpoint}"}
 
-            self.sock.send(Gr00tMsgSerializer.to_bytes(resp))
+            self.sock.send(_encode_response(resp, self.wire_format))
 
     def close(self) -> None:
         self._shutdown.set()
@@ -950,3 +982,17 @@ async def test_an_action_this_client_cannot_decode_raises() -> None:
 async def test_an_answer_without_any_expected_action_raises() -> None:
     with pytest.raises(TypeError, match="none of the expected actions"):
         await _actions_from(({"other": np.zeros((1, 1, 6), dtype=np.float32)}, {"dt_ms": 33.0}))
+
+
+@pytest.mark.asyncio
+async def test_an_n1_5_style_answer_names_the_protocol_it_needs() -> None:
+    """N1/N1.5 servers answer get_action with the action dict alone."""
+    with pytest.raises(TypeError, match=r"N1\.6"):
+        await _actions_from({"arm": np.zeros((1, 1, 6), dtype=np.float32)})
+
+
+@pytest.mark.asyncio
+async def test_a_server_error_on_get_action_names_the_protocol_it_needs() -> None:
+    """An N1/N1.5 server fails on the N1.6 request; the error says what to check."""
+    with pytest.raises(RuntimeError, match=r"KeyError.*N1\.6"):
+        await _actions_from({"error": "KeyError: 'state.arm'"})
