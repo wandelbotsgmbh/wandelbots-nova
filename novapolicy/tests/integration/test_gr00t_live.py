@@ -5,7 +5,7 @@ change to their wire format once left every action undecodable without an error.
 This asks a real server for one action and checks that every action it serves
 decodes for this client. Run it before and after a server update:
 
-    GR00T_HOST=172.31.11.129 GR00T_PORT=30555 uv run --with pyzmq --with msgpack \\
+    GR00T_HOST=<host> GR00T_PORT=<port> uv run --with pyzmq --with msgpack \\
         pytest -m integration novapolicy/tests/integration/test_gr00t_live.py
 
 Skipped unless ``GR00T_HOST`` is set, so CI without access to a server skips it.

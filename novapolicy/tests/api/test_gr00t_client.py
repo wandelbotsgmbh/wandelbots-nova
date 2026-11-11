@@ -77,7 +77,11 @@ def _encode_response(response: object, wire_format: str) -> bytes:
 
 @pytest.fixture(autouse=True, params=_WIRE_FORMATS)
 def server_wire_format(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> str:
-    """Run every test against both GR00T server generations."""
+    """Run every test against both GR00T server generations.
+
+    Every test in this module talks to a fake server; the serializer's own
+    tests live in ``tests/unit/test_gr00t_serializer.py`` and run once.
+    """
     monkeypatch.setattr(_RecordingGr00tServer, "wire_format", request.param)
     return request.param
 
@@ -895,62 +899,6 @@ def _msgpack_numpy(value: np.ndarray | np.generic, *, bytes_keys: bool = True) -
     return {key.encode(): item for key, item in packed.items()} if bytes_keys else packed
 
 
-@pytest.mark.parametrize("bytes_keys", [True, False])
-def test_serializer_decodes_msgpack_numpy_arrays_and_scalars(bytes_keys: bool) -> None:
-    import msgpack
-
-    action = np.arange(18, dtype=np.float32).reshape(1, 3, 6)
-    payload = msgpack.packb({
-        "action": _msgpack_numpy(action, bytes_keys=bytes_keys),
-        "scale": _msgpack_numpy(np.float32(2.5), bytes_keys=bytes_keys),
-    })
-
-    decoded = Gr00tMsgSerializer.from_bytes(payload)
-
-    assert isinstance(decoded, dict)
-    np.testing.assert_array_equal(decoded["action"], action)
-    assert decoded["action"].flags.writeable
-    assert decoded["scale"] == np.float32(2.5)
-
-
-def test_serializer_still_round_trips_its_own_npy_arrays() -> None:
-    action = np.ones((1, 16, 6), dtype=np.float32)
-
-    decoded = Gr00tMsgSerializer.from_bytes(Gr00tMsgSerializer.to_bytes({"action": action}))
-
-    assert isinstance(decoded, dict)
-    np.testing.assert_array_equal(decoded["action"], action)
-
-
-def test_serializer_reads_any_truthy_nd_as_an_array() -> None:
-    import msgpack
-
-    action = np.arange(6, dtype=np.float32).reshape(1, 1, 6)
-    packed = _msgpack_numpy(action) | {b"nd": 1}
-
-    decoded = Gr00tMsgSerializer.from_bytes(msgpack.packb({"action": packed}))
-
-    assert isinstance(decoded, dict)
-    np.testing.assert_array_equal(decoded["action"], action)
-
-
-def test_serializer_refuses_object_arrays() -> None:
-    import msgpack
-
-    packed = _msgpack_numpy(np.zeros(1, dtype=np.float32)) | {b"kind": b"O"}
-
-    with pytest.raises(TypeError, match="kind"):
-        Gr00tMsgSerializer.from_bytes(msgpack.packb({"action": packed}))
-
-
-def test_serializer_leaves_a_plain_dict_with_an_nd_key_alone() -> None:
-    import msgpack
-
-    decoded = Gr00tMsgSerializer.from_bytes(msgpack.packb({"info": {"nd": True, "steps": 3}}))
-
-    assert decoded == {"info": {"nd": True, "steps": 3}}
-
-
 async def _actions_from(response: tuple[dict, dict]) -> ActionChunk:
     port = _find_free_port()
     server = _RecordingGr00tServer(port)
@@ -992,7 +940,42 @@ async def test_an_n1_5_style_answer_names_the_protocol_it_needs() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_server_error_on_get_action_names_the_protocol_it_needs() -> None:
-    """An N1/N1.5 server fails on the N1.6 request; the error says what to check."""
-    with pytest.raises(RuntimeError, match=r"KeyError.*N1\.6"):
-        await _actions_from({"error": "KeyError: 'state.arm'"})
+async def test_an_io_only_answer_is_a_valid_one() -> None:
+    """A model that only drives a gripper answers without the joint action."""
+    from novapolicy.schema import BoolMapping
+
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server.action_response = ({"gripper": np.array([[[1.0]]], dtype=np.float32)}, {})
+    server.start()
+    time.sleep(0.1)
+    try:
+        mg = _mg()
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.io(
+                    "gripper", source=mg, io="digital_out[0]", mapping=BoolMapping(on=1.0)
+                ),
+            ]
+        )
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+        try:
+            result = await client.get_actions({"0@ur10e": _state((0.0,) * 6)}, schema)
+        finally:
+            await client.close()
+    finally:
+        server.close()
+
+    assert result.joints == {}
+    assert result.ios == {"0@ur10e": {"digital_out[0]": True}}
+
+
+@pytest.mark.asyncio
+async def test_an_action_without_the_batch_axis_decodes() -> None:
+    steps = np.arange(12, dtype=np.float32).reshape(2, 6)  # (horizon, dof)
+
+    result = await _actions_from(({"arm": steps}, {"dt_ms": 33.0}))
+
+    assert result.joints == {"0@ur10e": steps.tolist()}

@@ -195,17 +195,11 @@ class Gr00tPolicyClient(PolicyClient):
             )
 
         t0 = _time.monotonic()
-        try:
-            response = await asyncio.to_thread(
-                self._transport.call,
-                "get_action",
-                {"observation": groot_obs, "options": options},
-            )
-        except RuntimeError as exc:
-            # An N1/N1.5 server reads the request as a flat observation and
-            # fails on it; say what to check rather than only its KeyError.
-            msg = f"{exc}. {_PROTOCOL_HINT}"
-            raise RuntimeError(msg) from exc
+        response = await asyncio.to_thread(
+            self._transport.call,
+            "get_action",
+            {"observation": groot_obs, "options": options},
+        )
 
         inference_latency = _time.monotonic() - t0
         if not isinstance(response, (list, tuple)) or len(response) != _RESPONSE_PAIR_SIZE:
@@ -420,16 +414,18 @@ class Gr00tPolicyClient(PolicyClient):
             if typed_arr is not None:
                 tcp_targets[mg.id] = typed_arr[0].astype(np.float32).tolist()
 
-        _require_some_motion(schema, action, decoded=bool(joints or tcp_targets))
+        _require_some_action(schema, action, decoded=bool(joints or tcp_targets or ios))
 
         dt_ms = float(cast("float", info.get("dt_ms", self._dt_ms)))
         return ActionChunk(joints=joints, tcp=tcp_targets, ios=ios or None, dt_ms=dt_ms)
 
 
-def _require_some_motion(schema: PolicySchema, action: dict[str, object], *, decoded: bool) -> None:
-    """Raise when the schema expects motion and the answer carried none of it."""
-    expected = [key for key, _ in schema.joint_action_keys]
-    expected += [key for key, _ in schema.tcp_action_keys]
+def _require_some_action(schema: PolicySchema, action: dict[str, object], *, decoded: bool) -> None:
+    """Raise when the schema expects motion and the answer decoded to nothing at all.
+
+    An answer with IO actions only (a gripper, say) is a valid one.
+    """
+    expected = schema.motion_action_keys
     if expected and not decoded:
         msg = (
             f"GR00T answered with none of the expected actions {expected}; "
@@ -451,11 +447,13 @@ def _action_array(
     if key not in action:
         return None
     arr = action[key]
+    if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM - 1:
+        arr = arr[None]  # (horizon, dof) without the batch axis, as RTC also accepts
     if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
         return cast("np.ndarray[Any, np.dtype[np.float32]]", arr)
     got = f"{type(arr).__name__} {getattr(arr, 'shape', '')}".strip()
     msg = (
-        f"GR00T action '{key}' must be an array of shape (batch, horizon, dof), got {got}. "
+        f"GR00T action '{key}' must be an array of shape ([batch,] horizon, dof), got {got}. "
         f"Response keys: {sorted(action)}. If the server was updated, it may use an array "
         "serialization this client does not decode."
     )

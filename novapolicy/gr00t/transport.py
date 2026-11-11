@@ -94,13 +94,13 @@ def _decode_msgpack_numpy(obj: dict[Any, Any]) -> object:
     def field(name: str) -> object:
         return _field(obj, name)
 
-    data, dtype = field("data"), field("type")
-    if not isinstance(data, bytes) or not isinstance(dtype, (str, bytes)):
-        msg = "Invalid msgpack-numpy payload in GR00T response"
-        raise TypeError(msg)
     if field("kind") not in {None, b"", ""}:
         # 'O' would mean pickle.loads on the server's bytes; 'V' is a record array.
         msg = f"Unsupported msgpack-numpy array kind {field('kind')!r} in GR00T response"
+        raise TypeError(msg)
+    data, dtype = field("data"), field("type")
+    if not isinstance(data, bytes) or not isinstance(dtype, (str, bytes)):
+        msg = "Invalid msgpack-numpy payload in GR00T response"
         raise TypeError(msg)
     # A copy: frombuffer is read-only, and the npy path hands out writable arrays.
     values = np.frombuffer(data, dtype=np.dtype(dtype)).copy()
@@ -111,6 +111,9 @@ def _decode_msgpack_numpy(obj: dict[Any, Any]) -> object:
             msg = "Invalid msgpack-numpy payload in GR00T response: no shape"
             raise TypeError(msg)
         return values.reshape(tuple(shape))
+    if values.size != 1:
+        msg = f"Invalid msgpack-numpy scalar in GR00T response: {values.size} values"
+        raise TypeError(msg)
     return values[0]
 
 

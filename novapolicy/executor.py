@@ -321,6 +321,7 @@ class PolicyExecutor:
         self._stop_event.clear()
         self._policy_timelines.clear()
         self.result = None
+        self._reported_missing_motion = False  # once per run, not per executor
         self.status = ExecutorStatus(phase=Phase.CONNECTING, message="Connecting...")
         try:
             await self._run_episode()
@@ -600,10 +601,9 @@ class PolicyExecutor:
         A client that cannot decode its server's reply hands back an empty chunk,
         which otherwise only shows as a robot that never moves until the timeout.
         """
-        if action.joints or action.tcp or self._reported_missing_motion:
+        if action.joints or action.tcp or action.ios or self._reported_missing_motion:
             return
-        expected = [key for key, _ in self._schema.joint_action_keys]
-        expected += [key for key, _ in self._schema.tcp_action_keys]
+        expected = self._schema.motion_action_keys
         if not expected:
             return
         self._reported_missing_motion = True

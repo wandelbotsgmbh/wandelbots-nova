@@ -602,6 +602,11 @@ class PolicySchema:
         return result
 
     @property
+    def motion_action_keys(self) -> list[str]:
+        """Every joint and TCP action key the policy is expected to answer with."""
+        return [key for key, _ in self.joint_action_keys] + [key for key, _ in self.tcp_action_keys]
+
+    @property
     def constants(self) -> dict[str, Any]:
         return {o.key: o.value for o in self._observations if isinstance(o, _ObsConstant)}
 
