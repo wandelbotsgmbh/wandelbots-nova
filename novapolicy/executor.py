@@ -279,6 +279,7 @@ class PolicyExecutor:
         self._plant = plant
         self._rerun: PolicyRerunLogger | None = None
         self._logged_first_images = False
+        self._reported_missing_motion = False
 
         self.status = ExecutorStatus()
         self.result: ExecutionResult | None = None
@@ -320,6 +321,7 @@ class PolicyExecutor:
         self._stop_event.clear()
         self._policy_timelines.clear()
         self.result = None
+        self._reported_missing_motion = False  # once per run, not per executor
         self.status = ExecutorStatus(phase=Phase.CONNECTING, message="Connecting...")
         try:
             await self._run_episode()
@@ -586,11 +588,30 @@ class PolicyExecutor:
                 images,
                 self._all_io_values or None,
             )
+        self._report_missing_motion(action)
         # Units first: a relative target is a delta in the policy's units, and
         # adding a degree-space delta to a radian state is exactly the error the
         # operators exist to prevent.
         action = self._schema.apply_inverse_ops(action)
         return self._apply_relative_mode(action, robot_states)
+
+    def _report_missing_motion(self, action: ActionChunk) -> None:
+        """Log once when the policy's answer moves none of the expected motion groups.
+
+        A client that cannot decode its server's reply hands back an empty chunk,
+        which otherwise only shows as a robot that never moves until the timeout.
+        """
+        if action.joints or action.tcp or action.ios or self._reported_missing_motion:
+            return
+        expected = self._schema.motion_action_keys
+        if not expected:
+            return
+        self._reported_missing_motion = True
+        logger.error(
+            "The policy returned no motion for any motion group (expected %s). "
+            "Check that the policy client decodes its server's reply.",
+            ", ".join(expected),
+        )
 
     def _synchronize_policy_action_timestep(self) -> None:
         """Advance a queue policy to the first safely replaceable NOVA action.

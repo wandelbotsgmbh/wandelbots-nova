@@ -32,8 +32,9 @@ except ImportError:  # pragma: no cover
 class Gr00tMsgSerializer:
     """Msgpack serializer compatible with GR00T's ndarray transport.
 
-    Encodes numpy arrays as ``{__ndarray_class__: True, as_npy: <bytes>}``
-    and decodes them back on the receiving side.
+    Encodes numpy arrays as ``{__ndarray_class__: True, as_npy: <bytes>}``.
+    Decodes that format and the msgpack-numpy one (``{nd, type, shape, data}``),
+    which newer GR00T servers answer with.
     """
 
     @staticmethod
@@ -53,7 +54,11 @@ class Gr00tMsgSerializer:
 
     @staticmethod
     def _decode_custom_classes(obj: object) -> object:
-        if not isinstance(obj, dict) or "__ndarray_class__" not in obj:
+        if not isinstance(obj, dict):
+            return obj
+        if _is_msgpack_numpy(obj):
+            return _decode_msgpack_numpy(obj)
+        if "__ndarray_class__" not in obj:
             return obj
         array_bytes = obj.get("as_npy")
         if not isinstance(array_bytes, bytes):
@@ -68,6 +73,48 @@ class Gr00tMsgSerializer:
         output = io.BytesIO()
         np.save(output, cast("Any", obj), allow_pickle=False)
         return {"__ndarray_class__": True, "as_npy": output.getvalue()}
+
+
+_MSGPACK_NUMPY_KEYS = ("nd", "type", "data")
+"""Keys every msgpack-numpy array or scalar carries; ``nd`` alone is too common a name."""
+
+
+def _field(obj: dict[Any, Any], name: str) -> object:
+    """A msgpack-numpy field; keys arrive as bytes or str, depending on the packer."""
+    return obj.get(name.encode(), obj.get(name))
+
+
+def _is_msgpack_numpy(obj: dict[Any, Any]) -> bool:
+    return all(_field(obj, key) is not None for key in _MSGPACK_NUMPY_KEYS)
+
+
+def _decode_msgpack_numpy(obj: dict[Any, Any]) -> object:
+    """Array or scalar from msgpack-numpy's ``{nd, type, kind, shape, data}``."""
+
+    def field(name: str) -> object:
+        return _field(obj, name)
+
+    if field("kind") not in {None, b"", ""}:
+        # 'O' would mean pickle.loads on the server's bytes; 'V' is a record array.
+        msg = f"Unsupported msgpack-numpy array kind {field('kind')!r} in GR00T response"
+        raise TypeError(msg)
+    data, dtype = field("data"), field("type")
+    if not isinstance(data, bytes) or not isinstance(dtype, (str, bytes)):
+        msg = "Invalid msgpack-numpy payload in GR00T response"
+        raise TypeError(msg)
+    # A copy: frombuffer is read-only, and the npy path hands out writable arrays.
+    values = np.frombuffer(data, dtype=np.dtype(dtype)).copy()
+    # Truthy, as the server's own check: an array, else a numpy scalar.
+    if field("nd"):
+        shape = field("shape")
+        if not isinstance(shape, (list, tuple)):
+            msg = "Invalid msgpack-numpy payload in GR00T response: no shape"
+            raise TypeError(msg)
+        return values.reshape(tuple(shape))
+    if values.size != 1:
+        msg = f"Invalid msgpack-numpy scalar in GR00T response: {values.size} values"
+        raise TypeError(msg)
+    return values[0]
 
 
 class Gr00tZmqTransport:

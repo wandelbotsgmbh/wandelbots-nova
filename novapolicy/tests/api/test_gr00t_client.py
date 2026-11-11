@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -52,8 +53,43 @@ def _state(
     return s
 
 
+_WIRE_FORMATS = ("npy", "msgpack-numpy")
+"""How GR00T policy servers pack arrays in their answers.
+
+``npy`` is N1.6 to the N1.7 release (``{__ndarray_class__, as_npy}``);
+``msgpack-numpy`` is Isaac-GR00T ``main`` since 2026-05 (``{nd, type, shape, data}``).
+Both decode requests in the npy format this client sends.
+"""
+
+
+def _encode_response(response: object, wire_format: str) -> bytes:
+    if wire_format == "npy":
+        return Gr00tMsgSerializer.to_bytes(response)
+    import msgpack
+
+    def default(obj: object) -> object:
+        if isinstance(obj, (np.ndarray, np.generic)):
+            return _msgpack_numpy(obj)
+        return obj
+
+    return msgpack.packb(response, default=default)
+
+
+@pytest.fixture(autouse=True, params=_WIRE_FORMATS)
+def server_wire_format(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Run every test against both GR00T server generations.
+
+    Every test in this module talks to a fake server; the serializer's own
+    tests live in ``tests/unit/test_gr00t_serializer.py`` and run once.
+    """
+    monkeypatch.setattr(_RecordingGr00tServer, "wire_format", request.param)
+    return request.param
+
+
 class _RecordingGr00tServer(threading.Thread):
     """GR00T ZMQ server that records observations and returns configurable actions."""
+
+    wire_format: ClassVar[str] = "npy"
 
     def __init__(self, port: int) -> None:
         super().__init__(daemon=True)
@@ -85,18 +121,19 @@ class _RecordingGr00tServer(threading.Thread):
                 if self.action_response is not None:
                     resp = self.action_response
                 else:
-                    # Default: echo back joints as 4-step action
-                    first_state_key = next(iter(obs.get("state", {})))
-                    arr = obs["state"][first_state_key]
-                    current = arr[:, -1:, :]
-                    action = np.repeat(current, 4, axis=1).astype(np.float32)
-                    resp = ({first_state_key: action}, {"dt_ms": 33.0})
+                    # Default: echo every state back as a 4-step action, as a real
+                    # server answers with every action key it was trained on.
+                    action = {
+                        key: np.repeat(arr[:, -1:, :], 4, axis=1).astype(np.float32)
+                        for key, arr in obs.get("state", {}).items()
+                    }
+                    resp = (action, {"dt_ms": 33.0})
             elif endpoint == "get_modality_config":
                 resp = self._modality_config or {"state": {}, "action": {}}
             else:
                 resp = {"error": f"Unknown: {endpoint}"}
 
-            self.sock.send(Gr00tMsgSerializer.to_bytes(resp))
+            self.sock.send(_encode_response(resp, self.wire_format))
 
     def close(self) -> None:
         self._shutdown.set()
@@ -847,3 +884,127 @@ async def test_validate_schema_fails_on_missing_image_key() -> None:
         await client.close()
     finally:
         server.close()
+
+
+def _msgpack_numpy(value: np.ndarray | np.generic, *, bytes_keys: bool = True) -> dict:
+    """``value`` the way msgpack-numpy packs it, as newer GR00T servers answer."""
+    array = np.asarray(value)
+    packed: dict = {
+        "nd": isinstance(value, np.ndarray),
+        "type": array.dtype.str,
+        "data": array.tobytes(),
+    }
+    if packed["nd"]:
+        packed |= {"kind": b"", "shape": list(array.shape)}
+    return {key.encode(): item for key, item in packed.items()} if bytes_keys else packed
+
+
+async def _actions_from(response: tuple[dict, dict]) -> ActionChunk:
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server.action_response = response
+    server.start()
+    time.sleep(0.1)
+    try:
+        schema = PolicySchema(observations=[Observation.joint_positions("arm", source=_mg())])
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+        try:
+            return await client.get_actions({"0@ur10e": _state((0.0,) * 6)}, schema)
+        finally:
+            await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_an_action_this_client_cannot_decode_raises() -> None:
+    """A server that changed its array serialization must not leave the robot silently idle."""
+    undecodable = {"format": "unknown", "values": [0.0] * 6}
+
+    with pytest.raises(TypeError, match="'arm' must be an array"):
+        await _actions_from(({"arm": undecodable}, {"dt_ms": 33.0}))
+
+
+@pytest.mark.asyncio
+async def test_an_answer_without_any_expected_action_raises() -> None:
+    with pytest.raises(TypeError, match="none of the expected actions"):
+        await _actions_from(({"other": np.zeros((1, 1, 6), dtype=np.float32)}, {"dt_ms": 33.0}))
+
+
+@pytest.mark.asyncio
+async def test_an_n1_5_style_answer_names_the_protocol_it_needs() -> None:
+    """N1/N1.5 servers answer get_action with the action dict alone."""
+    with pytest.raises(TypeError, match=r"N1\.6"):
+        await _actions_from({"arm": np.zeros((1, 1, 6), dtype=np.float32)})
+
+
+@pytest.mark.asyncio
+async def test_an_io_only_answer_is_a_valid_one() -> None:
+    """A model that only drives a gripper answers without the joint action."""
+    from novapolicy.schema import BoolMapping
+
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server.action_response = ({"gripper": np.array([[[1.0]]], dtype=np.float32)}, {})
+    server.start()
+    time.sleep(0.1)
+    try:
+        mg = _mg()
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.io(
+                    "gripper", source=mg, io="digital_out[0]", mapping=BoolMapping(on=1.0)
+                ),
+            ]
+        )
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@ur10e"])
+        try:
+            result = await client.get_actions({"0@ur10e": _state((0.0,) * 6)}, schema)
+        finally:
+            await client.close()
+    finally:
+        server.close()
+
+    assert result.joints == {}
+    assert result.ios == {"0@ur10e": {"digital_out[0]": True}}
+
+
+@pytest.mark.asyncio
+async def test_an_action_without_the_batch_axis_decodes() -> None:
+    steps = np.arange(12, dtype=np.float32).reshape(2, 6)  # (horizon, dof)
+
+    result = await _actions_from(({"arm": steps}, {"dt_ms": 33.0}))
+
+    assert result.joints == {"0@ur10e": steps.tolist()}
+
+
+@pytest.mark.asyncio
+async def test_a_key_shared_by_two_arms_gives_each_arm_its_own_joints() -> None:
+    """The server echoes the concatenated state; each arm must get its own half back."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server.start()
+    time.sleep(0.1)
+    try:
+        left, right = _mg("0@left", "left"), _mg("0@right", "right")
+        schema = PolicySchema(
+            observations=[Observation.joint_positions("arms", source=[left, right])]
+        )
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@left", "0@right"])
+        left_joints = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+        right_joints = (-1.0, -2.0, -3.0, -4.0, -5.0, -6.0)
+        try:
+            result = await client.get_actions(
+                {"0@left": _state(left_joints), "0@right": _state(right_joints)}, schema
+            )
+        finally:
+            await client.close()
+    finally:
+        server.close()
+
+    np.testing.assert_allclose(result.joints["0@left"], [left_joints] * 4, atol=1e-6)
+    np.testing.assert_allclose(result.joints["0@right"], [right_joints] * 4, atol=1e-6)
