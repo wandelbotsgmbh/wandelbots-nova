@@ -3,16 +3,9 @@
   "checkpoint_id": "bfe72df1e1e5",
   "strategy": "manual-commit",
   "branch": "feat/command-routine-execution",
-  "checkpoints_count": 1,
+  "checkpoints_count": 12,
   "files_touched": [
-    "docs/command_routines.md",
-    "nova/command_routines/command_routines.py",
-    "nova/command_routines/exceptions.py",
-    "nova/datasets/types.py",
-    "pyproject.toml",
-    "tests/command_routines/test_routine_execution.py",
-    "tests/nova/cell/motion_group/test_execute_routine.py",
-    "uv.lock"
+    ".specs/command-routine/execution/spec.md"
   ],
   "sessions": [
     {
@@ -24,10 +17,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 269242,
-    "cache_creation_tokens": 5916131,
-    "cache_read_tokens": 130842156,
-    "output_tokens": 490507,
-    "api_call_count": 468
+    "input_tokens": 269336,
+    "cache_creation_tokens": 6786827,
+    "cache_read_tokens": 144004293,
+    "output_tokens": 532778,
+    "api_call_count": 515
   }
 }
