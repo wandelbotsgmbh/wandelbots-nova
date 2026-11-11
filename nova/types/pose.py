@@ -38,10 +38,23 @@ def _pose_from_args(
             and kinematic_configuration is not None
         ):
             raise ValueError(
-                "Cannot specify kinematic_configuration when passing a ConfiguredPose or DatasetPose "
+                "Cannot specify kinematic_configuration when passing a ConfiguredPose "
                 "with a kinematic_configuration"
             )
         return Pose.from_dataset_pose(configured_pose)
+    if len(args) == 1 and isinstance(args[0], api.models.AnchoredPose):
+        anchored_pose = args[0]
+        if (
+            isinstance(
+                anchored_pose.kinematic_configuration, api.models.SpecifiedKinematicConfiguration
+            )
+            and kinematic_configuration is not None
+        ):
+            raise ValueError(
+                "Cannot specify kinematic_configuration when passing an AnchoredPose or "
+                "DatasetPose with a specified kinematic_configuration"
+            )
+        return Pose.from_dataset_pose(anchored_pose)
     if len(args) == 1 and isinstance(args[0], api.models.Pose):
         return Pose.from_api_model(args[0], kinematic_configuration=kinematic_configuration)
     if (
@@ -101,10 +114,13 @@ class Pose(pydantic.BaseModel, Sized):
         >>> kc2 = api.models.KinematicConfiguration(kinematic_branch=kb, axis_ranges=ar)
         >>> Pose((1, 2, 3, 4, 5, 6), kinematic_configuration=kc2).kinematic_configuration == kc2
         True
-        >>> Pose(api.models.DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6])))
+        >>> world = api.models.WorldFrameReference()
+        >>> unspecified = api.models.UnspecifiedKinematicConfiguration()
+        >>> Pose(api.models.DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), frame=world, tcp='Flange', kinematic_configuration=unspecified))
         Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
         >>> kc = api.models.KinematicConfiguration(kinematic_branch=api.models.KinematicBranch(shoulder_branch='FRONT', elbow_branch='UP', wrist_branch='NO_FLIP'))
-        >>> Pose(api.models.DatasetPose(dataset_pose='p2', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), kinematic_configuration=kc)).kinematic_configuration == kc
+        >>> specified = api.models.SpecifiedKinematicConfiguration(**kc.model_dump())
+        >>> Pose(api.models.DatasetPose(dataset_pose='p2', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), frame=world, tcp='Flange', kinematic_configuration=specified)).kinematic_configuration == kc
         True
         """
         if not args:
@@ -228,7 +244,7 @@ class Pose(pydantic.BaseModel, Sized):
         Examples:
         >>> Pose((1, 2, 3, 0, 0, 0)) @ Pose((1, 2, 3, 0, 0, 0))
         Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
-        >>> Pose((1, 2, 3, 0, 0, 0)) @ Pose(api.models.DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[0, 0, 0])))
+        >>> Pose((1, 2, 3, 0, 0, 0)) @ Pose(api.models.DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[0, 0, 0]), frame=api.models.WorldFrameReference(), tcp='Flange', kinematic_configuration=api.models.UnspecifiedKinematicConfiguration()))
         Pose(position=Vector3d(x=2.0, y=4.0, z=6.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None)
         """
 
@@ -384,31 +400,42 @@ class Pose(pydantic.BaseModel, Sized):
 
     @classmethod
     def from_dataset_pose(
-        cls, dataset_pose: api.models.DatasetPose | api.models.ConfiguredPose
+        cls, dataset_pose: api.models.AnchoredPose | api.models.ConfiguredPose
     ) -> Pose:
-        """Create a Pose from a ConfiguredPose (or DatasetPose subtype), preserving its
-        kinematic configuration.
+        """Create a Pose from an AnchoredPose (e.g. a DatasetPose) or a ConfiguredPose,
+        preserving its kinematic configuration.
+
+        An `unspecified` kinematic configuration maps to `None`. The anchored pose's `tcp` is not
+        part of a `Pose`; read it from the anchored pose itself.
 
         Example:
-        >>> dp = api.models.DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), kinematic_configuration=None)
+        >>> dp = api.models.DatasetPose(dataset_pose='p1', dataset='d1', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), frame=api.models.WorldFrameReference(), tcp='Flange', kinematic_configuration=api.models.UnspecifiedKinematicConfiguration())
         >>> Pose.from_dataset_pose(dp)
         Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None)
 
         A pose that is taught relative to a dataset frame is not a world pose, so it cannot be
         used as a motion target without resolving the frame first:
-        >>> dp = api.models.DatasetPose(dataset_pose='p1', dataset='d1', frame='fixture', pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]))
+        >>> dp = api.models.DatasetPose(dataset_pose='p1', dataset='d1', frame=api.models.DatasetFrameReference(frame='fixture'), pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), tcp='Flange', kinematic_configuration=api.models.UnspecifiedKinematicConfiguration())
         >>> Pose.from_dataset_pose(dp)
         Traceback (most recent call last):
         ValueError: Pose 'p1' is expressed in frame 'fixture', not in world. Call as_world() on the dataset pose to resolve it.
         """
-        if dataset_pose.frame is not None:
+        frame = getattr(dataset_pose, "frame", None)
+        if isinstance(frame, api.models.DatasetFrameReference):
             name = getattr(dataset_pose, "dataset_pose", None)
             subject = f"Pose '{name}'" if name else "Pose"
             raise ValueError(
-                f"{subject} is expressed in frame '{dataset_pose.frame}', not in world. "
+                f"{subject} is expressed in frame '{frame.frame}', not in world. "
                 "Call as_world() on the dataset pose to resolve it."
             )
-        return cls(dataset_pose.pose, kinematic_configuration=dataset_pose.kinematic_configuration)
+        configuration = dataset_pose.kinematic_configuration
+        if isinstance(configuration, api.models.UnspecifiedKinematicConfiguration):
+            configuration = None
+        elif isinstance(configuration, api.models.SpecifiedKinematicConfiguration):
+            configuration = api.models.KinematicConfiguration.model_validate(
+                configuration.model_dump(exclude={"type"})
+            )
+        return cls(dataset_pose.pose, kinematic_configuration=configuration)
 
     @classmethod
     def from_euler(

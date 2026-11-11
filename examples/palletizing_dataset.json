@@ -11,7 +11,7 @@
         "position": [1020, 0, 1500],
         "orientation": [3.1416, 0, 0]
       },
-      "kinematic_configuration": null,
+      "kinematic_configuration": { "type": "unspecified" },
       "dataset_pose": "pick",
       "dataset": "palletizing",
       "name": "pick",
@@ -19,7 +19,8 @@
       "created_at": "2026-09-23T08:00:00.000000Z",
       "updated_at": "2026-09-23T08:00:00.000000Z",
       "metadata": null,
-      "frame": null
+      "frame": { "type": "world" },
+      "tcp": "Flange"
     }
   ],
   "command_routines": [],

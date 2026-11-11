@@ -41,7 +41,7 @@ def test_builds_mixed_routine():
 
 def test_move_linear_coerces_pose_id():
     command = move_linear("approach")
-    assert command.target == api.models.LocalPoseReference(pose_id="approach")
+    assert command.target == api.models.LocalPoseReference(dataset_pose="approach")
     assert isinstance(command.path_type, api.models.PathTypeLine)
 
 
