@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from typing import Any
 
+    from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.schema import PolicySchema
 
@@ -231,6 +232,32 @@ class Gr00tPolicyClient(PolicyClient):
                 chunk = chunk.model_copy(update={"seam_backdate_steps": backdate})
         return chunk
 
+    def _split_joint_action(
+        self, key: str, mgs: list[MotionGroup], steps: np.ndarray[Any, np.dtype[np.float32]]
+    ) -> dict[str, list[list[float]]]:
+        """Each motion group's own columns of a ``(horizon, dof)`` action.
+
+        A key shared by several groups carries their joints side by side, in the
+        order the state concatenated them, so each group takes the next
+        ``dof`` columns rather than the first ones.
+        """
+        if len(mgs) == 1 and mgs[0].id not in self._actual_dof:
+            return {mgs[0].id: steps.tolist()}  # nothing observed to size it by
+        split: dict[str, list[list[float]]] = {}
+        offset = 0
+        for mg in mgs:
+            dof = self._actual_dof.get(mg.id)
+            if dof is None or offset + dof > steps.shape[1]:
+                msg = (
+                    f"GR00T action '{key}' has {steps.shape[1]} columns, which do not "
+                    f"split into the joints of {[g.id for g in mgs]} "
+                    f"(joints observed: {[self._actual_dof.get(g.id) for g in mgs]})"
+                )
+                raise TypeError(msg)
+            split[mg.id] = steps[:, offset : offset + dof].tolist()
+            offset += dof
+        return split
+
     async def close(self) -> None:
         """Close the socket and terminate the ZMQ context."""
         await asyncio.to_thread(self._transport.close)
@@ -389,12 +416,7 @@ class Gr00tPolicyClient(PolicyClient):
             typed_arr = _action_array(action, key)
             if typed_arr is None:
                 continue
-            for mg in mgs:
-                joint_data = typed_arr[0].astype(np.float32)
-                actual_dof = self._actual_dof.get(mg.id)
-                if actual_dof and joint_data.shape[1] > actual_dof:
-                    joint_data = joint_data[:, :actual_dof]
-                joints[mg.id] = joint_data.tolist()
+            joints.update(self._split_joint_action(key, mgs, typed_arr[0].astype(np.float32)))
 
         # Decode IO actions
         for key, mg, hw_key, mapping in schema.io_action_keys:

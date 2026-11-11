@@ -979,3 +979,32 @@ async def test_an_action_without_the_batch_axis_decodes() -> None:
     result = await _actions_from(({"arm": steps}, {"dt_ms": 33.0}))
 
     assert result.joints == {"0@ur10e": steps.tolist()}
+
+
+@pytest.mark.asyncio
+async def test_a_key_shared_by_two_arms_gives_each_arm_its_own_joints() -> None:
+    """The server echoes the concatenated state; each arm must get its own half back."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server.start()
+    time.sleep(0.1)
+    try:
+        left, right = _mg("0@left", "left"), _mg("0@right", "right")
+        schema = PolicySchema(
+            observations=[Observation.joint_positions("arms", source=[left, right])]
+        )
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect(["0@left", "0@right"])
+        left_joints = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+        right_joints = (-1.0, -2.0, -3.0, -4.0, -5.0, -6.0)
+        try:
+            result = await client.get_actions(
+                {"0@left": _state(left_joints), "0@right": _state(right_joints)}, schema
+            )
+        finally:
+            await client.close()
+    finally:
+        server.close()
+
+    np.testing.assert_allclose(result.joints["0@left"], [left_joints] * 4, atol=1e-6)
+    np.testing.assert_allclose(result.joints["0@right"], [right_joints] * 4, atol=1e-6)
