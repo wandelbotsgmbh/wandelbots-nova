@@ -21,29 +21,6 @@ plan request, in particular the robot limits:
 from nova import api
 from nova.types.motion_settings import MotionSettings
 from nova.utils.collision_setup import get_safety_collision_setup_from_motion_group_description
-from nova.utils.rotation_conversion import to_rotation_vector
-
-
-def get_coordinate_system_pose(
-    coordinate_system_name: str, coordinate_systems: list[api.models.CoordinateSystem]
-) -> api.models.Pose:
-    for coordinate_system in coordinate_systems:
-        if coordinate_system.coordinate_system == coordinate_system_name:
-            position = coordinate_system.position
-
-            orientation_type = (
-                coordinate_system.orientation_type or api.models.OrientationType.ROTATION_VECTOR
-            )
-
-            orientation = (
-                to_rotation_vector(coordinate_system.orientation, orientation_type)
-                if coordinate_system.orientation is not None
-                else None
-            )
-
-            return api.models.Pose(position=position, orientation=orientation)
-
-    raise ValueError(f"Coordinate system {coordinate_system_name} could not be found.")
 
 
 def controller_global_limits(
@@ -66,20 +43,13 @@ def motion_group_setup_from_motion_group_description(
     motion_group_description: api.models.MotionGroupDescription,
     tcp_name: str | None = None,
     payload: api.models.Payload | None = None,
-    external_tool_coordinate_system_name: str | None = None,
-    coordinate_systems: list[api.models.CoordinateSystem] = [],
+    external_tool_coordinate_system: api.models.Pose | None = None,
 ) -> api.models.MotionGroupSetup:
     collision_setup = get_safety_collision_setup_from_motion_group_description(
         motion_group_description=motion_group_description, tcp_name=tcp_name
     )
     tcps = motion_group_description.tcps
     tcp_offset = tcps[tcp_name].pose if tcp_name is not None and tcps is not None else None
-
-    external_tool_coordinate_system = (
-        None
-        if external_tool_coordinate_system_name is None
-        else get_coordinate_system_pose(external_tool_coordinate_system_name, coordinate_systems)
-    )
 
     return api.models.MotionGroupSetup(
         motion_group_model=motion_group_description.motion_group_model,
