@@ -154,3 +154,38 @@ async def test_tuning_mode_honors_the_resolved_rate(monkeypatch):
     await asyncio.wait_for(stream.__anext__(), 1.0)
     assert upstream.open_rates == [77], "the tuning stream must carry the resolved rate"
     await stream.aclose()
+
+
+async def test_tuning_mode_skips_execute_frames_without_details(monkeypatch):
+    """Between trajectories NOVA reports ``execute`` with ``details=None``; the
+    tuning relay must skip it like the normal relay instead of raising."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from tests.cell.multi_group_doubles import execute_detail, state
+    from tests.cell.test_execute_shared_stream import _with_tcp
+
+    motion_group = _motion_group(FakeUpstream())
+    motion_group._api_client.motion_group_api = MagicMock()
+    motion_group._api_client.motion_group_api.get_current_motion_group_state = AsyncMock(
+        return_value=_with_tcp(state(True))
+    )
+    monkeypatch.setattr("nova.cell.motion_group.ENABLE_TRAJECTORY_TUNING", True)
+
+    between = _with_tcp(state(True, api.models.Execute(joint_position=[0.0] * 6, details=None)))
+    running = _with_tcp(state(False, execute_detail(0.5)))
+
+    class FakeTuner:
+        def __init__(self, plan_fn, execute_fn):
+            pass
+
+        async def tune(self, actions, motion_group_state_stream_fn):
+            yield between
+            yield running
+
+    monkeypatch.setattr("nova.cell.motion_group.TrajectoryTuner", FakeTuner)
+
+    async with asyncio.timeout(5):
+        motion_states = [
+            s async for s in motion_group.stream_execute(_joint_trajectory(), tcp=None, actions=[])
+        ]
+    assert [s.path_parameter for s in motion_states] == [0.5]
