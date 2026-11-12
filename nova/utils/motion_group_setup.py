@@ -43,12 +43,14 @@ def motion_group_setup_from_motion_group_description(
     motion_group_description: api.models.MotionGroupDescription,
     tcp_name: str | None = None,
     payload: api.models.Payload | None = None,
+    external_tool_coordinate_system: api.models.Pose | None = None,
 ) -> api.models.MotionGroupSetup:
     collision_setup = get_safety_collision_setup_from_motion_group_description(
         motion_group_description=motion_group_description, tcp_name=tcp_name
     )
     tcps = motion_group_description.tcps
     tcp_offset = tcps[tcp_name].pose if tcp_name is not None and tcps is not None else None
+
     return api.models.MotionGroupSetup(
         motion_group_model=motion_group_description.motion_group_model,
         cycle_time=motion_group_description.cycle_time or 8,
@@ -57,6 +59,7 @@ def motion_group_setup_from_motion_group_description(
         tcp_offset=tcp_offset,
         payload=payload,
         collision_setups={"safety": collision_setup},
+        external_tool_coordinate_system=external_tool_coordinate_system,
     )
 
 

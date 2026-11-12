@@ -3663,7 +3663,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-api-client"
-version = "26.7.0"
+version = "26.9.0.dev122"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -3678,9 +3678,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e1/59/2fc434b1801692aab00acbf19a0f50e550340e4f72cafa99096dffdb5fbe/wandelbots_api_client-26.7.0.tar.gz", hash = "sha256:4ee9bdb54e8d1327c6a250bfcabc260744a53b835e3df14d1000dde3905bdeeb", size = 495183, upload-time = "2026-09-17T13:59:54.084Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/80/89/84bfec6837ea4e95ad037bcf26228e92e679ad27f99882842fab54578090/wandelbots_api_client-26.9.0.dev122.tar.gz", hash = "sha256:b43486b116079995a67ce22227955b3e6af67ab779bcf72e12d6194f26bff6cc", size = 513743, upload-time = "2026-11-12T07:22:23.06Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/0f/9587d06af3c7b8d65cfbe4e6f924bf47082d00e070c99a38dea1f22b61f2/wandelbots_api_client-26.7.0-py3-none-any.whl", hash = "sha256:22e8a2737499c6cc958c84c2273e02cc45acdc4ed45e0a8b731c1f64e3abc094", size = 1114338, upload-time = "2026-09-17T13:59:57.516Z" },
+    { url = "https://files.pythonhosted.org/packages/82/0b/c6f8d7d7417de291e64448539550ab5d1faa6480643248d812386bf6f271/wandelbots_api_client-26.9.0.dev122-py3-none-any.whl", hash = "sha256:fe426e5fd696dfa47c99b2dcc0ee7af893537319168e9075c50f81abd47227bd", size = 1147076, upload-time = "2026-11-12T07:22:20.134Z" },
 ]
 
 [[package]]
@@ -3838,7 +3838,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'wandelscript'", specifier = ">=0.12,<0.20" },
     { name = "urllib3", specifier = ">=2.8.0" },
     { name = "uvicorn", marker = "extra == 'novax'", specifier = ">=0.34.0" },
-    { name = "wandelbots-api-client", specifier = "==26.7.0" },
+    { name = "wandelbots-api-client", specifier = "==26.9.0.dev122" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
 provides-extras = ["nova-rerun-bridge", "wandelscript", "novax", "novapolicy", "novapolicy-gr00t", "novapolicy-lerobot", "novapolicy-nats", "benchmark"]

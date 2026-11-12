@@ -88,6 +88,7 @@ class MultiMotionGroupPlanner:
         actions: ActionsLike,
         tcp: Mapping[str, str | None] | None = None,
         start_joint_position: Mapping[str, tuple[float, ...]] | None = None,
+        external_tool_coordinate_system: Mapping[str, str | None] | None = None,
     ) -> api.models.MultiJointTrajectory:
         """Plan a synchronized collision-free trajectory for the action list.
 
@@ -110,6 +111,9 @@ class MultiMotionGroupPlanner:
                 has no TCP.
             start_joint_position: The start joint position per group. A group
                 left out starts from its current joints.
+            external_tool_coordinate_system: The external tool coordinate system
+                per group, keyed by group name. A group left out - or mapped
+                to ``None`` - has no external tool coordinate system.
 
         Returns:
             The synchronized trajectory, ready for :meth:`TrajectoryExecutor.execute`.
@@ -125,7 +129,12 @@ class MultiMotionGroupPlanner:
             raise ValueError("No actions provided")
 
         setups = {
-            name: await motion_group.get_setup(tcp_name=self._tcp_for(name, tcp))
+            name: await motion_group.get_setup(
+                tcp_name=self._get_from_optional_map(name, tcp),
+                external_tool_coordinate_system_name=self._get_from_optional_map(
+                    name, external_tool_coordinate_system
+                ),
+            )
             for name, motion_group in self._motion_groups.items()
         }
         current: dict[str, tuple[float, ...]] = {
@@ -136,7 +145,9 @@ class MultiMotionGroupPlanner:
         segments: list[api.models.MultiJointTrajectory] = []
         for action in actions_list:
             if isinstance(action, MultiCollisionFreeMotion):
-                segment = await self._plan_multi_collision_free(action, tcp, current, setups)
+                segment = await self._plan_multi_collision_free(
+                    action, tcp, current, setups, external_tool_coordinate_system
+                )
             elif isinstance(action, WaitAction):
                 segment = self._build_wait_segment(current, action.wait_for_in_seconds)
             elif isinstance(action, WriteAction):
@@ -159,8 +170,10 @@ class MultiMotionGroupPlanner:
             )
         return combine_multi_trajectories(segments)
 
-    def _tcp_for(self, name: str, tcp: Mapping[str, str | None] | None) -> str | None:
-        return tcp.get(name) if tcp is not None else None
+    def _get_from_optional_map(
+        self, name: str, mapping: Mapping[str, str | None] | None
+    ) -> str | None:
+        return mapping.get(name) if mapping is not None else None
 
     async def _plan_multi_collision_free(
         self,
@@ -168,6 +181,7 @@ class MultiMotionGroupPlanner:
         tcp: Mapping[str, str | None] | None,
         current: Mapping[str, tuple[float, ...]],
         setups: Mapping[str, api.models.MotionGroupSetup],
+        external_tool_coordinate_system: Mapping[str, str | None] | None = None,
     ) -> api.models.MultiJointTrajectory:
         if set(action.targets) != set(self._motion_groups):
             raise ValueError(
@@ -178,10 +192,18 @@ class MultiMotionGroupPlanner:
         path_definitions: dict[str, api.models.JointPTPMotion] = {}
         for name, target in action.targets.items():
             motion_group = self._motion_groups[name]
-            group_tcp = self._tcp_for(name, tcp)
+            group_tcp = self._get_from_optional_map(name, tcp)
+            group_external_tool_coordinate_system = self._get_from_optional_map(
+                name, external_tool_coordinate_system
+            )
             start = current[name]
             target_joints = await self._resolve_target(
-                target, group_tcp, start, motion_group, setups[name]
+                target,
+                group_tcp,
+                start,
+                motion_group,
+                setups[name],
+                group_external_tool_coordinate_system,
             )
             settings = action.settings.get(name)
             path_definitions[name] = api.models.JointPTPMotion(
@@ -242,6 +264,7 @@ class MultiMotionGroupPlanner:
         start: tuple[float, ...],
         motion_group: MotionGroup,
         setup: api.models.MotionGroupSetup,
+        external_tool_coordinate_system: str | None,
     ) -> tuple[float, ...]:
         """Resolve a target to joints, solving IK for a pose and picking the
         solution closest to the start."""
@@ -253,7 +276,10 @@ class MultiMotionGroupPlanner:
                 "joint-space target instead."
             )
         solutions = await motion_group._inverse_kinematics(
-            poses=[target], tcp=tcp, motion_group_setup=setup
+            poses=[target],
+            tcp=tcp,
+            motion_group_setup=setup,
+            external_tool_coordinate_system=external_tool_coordinate_system,
         )
         if not solutions or not solutions[0]:
             raise NoInverseKinematicsSolutionFound(target)

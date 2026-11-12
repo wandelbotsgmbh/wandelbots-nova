@@ -79,6 +79,7 @@ class MultiMotionGroup:
         actions: ActionsLike,
         tcp: Mapping[str, str | None] | None = None,
         start_joint_position: Mapping[str, tuple[float, ...]] | None = None,
+        external_tool_coordinate_system: Mapping[str, str | None] | None = None,
     ) -> api.models.MultiJointTrajectory:
         """Plan one synchronized collision-free trajectory for the action list.
 
@@ -87,7 +88,9 @@ class MultiMotionGroup:
         errors. Returns a pure trajectory — :class:`WriteAction` entries carry no
         joint samples and become the IO overlay only at :meth:`execute` time.
         """
-        return await self._planner.plan(actions, tcp, start_joint_position)
+        return await self._planner.plan(
+            actions, tcp, start_joint_position, external_tool_coordinate_system
+        )
 
     async def execute(
         self,
@@ -95,6 +98,7 @@ class MultiMotionGroup:
         tcp: Mapping[str, str | None] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
         actions: ActionsLike | None = None,
+        external_tool_coordinate_system: Mapping[str, str | None] | None = None,
     ) -> None:
         """Execute the trajectory front to end, synchronized through the barrier.
 
@@ -102,7 +106,13 @@ class MultiMotionGroup:
         name; pass the same ``actions`` list given to :meth:`plan` to fire its
         location-anchored IO. Delegates to :meth:`TrajectoryExecutor.execute`.
         """
-        await self._executor.execute(trajectory, tcp=tcp, actions=actions, groups=groups)
+        await self._executor.execute(
+            trajectory,
+            tcp=tcp,
+            actions=actions,
+            groups=groups,
+            external_tool_coordinate_system=external_tool_coordinate_system,
+        )
 
     @asynccontextmanager
     async def attach(
@@ -111,11 +121,16 @@ class MultiMotionGroup:
         tcp: Mapping[str, str | None] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
         actions: ActionsLike | None = None,
+        external_tool_coordinate_system: Mapping[str, str | None] | None = None,
     ) -> AsyncGenerator[MultiTrajectoryCursor, None]:
         """Open an interactive session over the trajectory, delegating to
         :meth:`TrajectoryExecutor.attach`."""
         async with self._executor.attach(
-            trajectory, tcp=tcp, actions=actions, groups=groups
+            trajectory,
+            tcp=tcp,
+            actions=actions,
+            groups=groups,
+            external_tool_coordinate_system=external_tool_coordinate_system,
         ) as cursor:
             yield cursor
 
@@ -125,6 +140,7 @@ class MultiMotionGroup:
         tcp: Mapping[str, str | None] | None = None,
         start_joint_position: Mapping[str, tuple[float, ...]] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
+        external_tool_coordinate_system: Mapping[str, str | None] | None = None,
     ) -> None:
         """Plan and execute in one call, passing ``actions`` to both halves — the
         multi-group counterpart of :meth:`MotionGroup.plan_and_execute`.
@@ -136,8 +152,16 @@ class MultiMotionGroup:
         if actions_list and all(isinstance(a, (WaitAction, WriteAction)) for a in actions_list):
             await self._executor.apply_non_motion_actions(actions_list)
             return
-        trajectory = await self.plan(actions_list, tcp, start_joint_position)
-        await self.execute(trajectory, tcp, groups=groups, actions=actions_list)
+        trajectory = await self.plan(
+            actions_list, tcp, start_joint_position, external_tool_coordinate_system
+        )
+        await self.execute(
+            trajectory,
+            tcp,
+            groups=groups,
+            actions=actions_list,
+            external_tool_coordinate_system=external_tool_coordinate_system,
+        )
 
     @classmethod
     def builder(

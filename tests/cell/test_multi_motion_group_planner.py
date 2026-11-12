@@ -167,7 +167,9 @@ class TestRequestAssembly:
             multi_collision_free({"a": (1.0,) * 6}, algorithm=algorithm), tcp={"a": "flange"}
         )
 
-        group.get_setup.assert_awaited_once_with(tcp_name="flange")
+        group.get_setup.assert_awaited_once_with(
+            tcp_name="flange", external_tool_coordinate_system_name=None
+        )
         assert _request_of(api_client).algorithm_settings.max_iterations == 42
 
     async def test_pose_target_resolves_ik_nearest_to_start(self):
