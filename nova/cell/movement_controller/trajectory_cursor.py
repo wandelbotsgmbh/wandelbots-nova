@@ -1341,6 +1341,16 @@ class TrajectoryCursor:
             ):
                 ready_event.set()
 
+                # Since NOVA 26.8.0 the first frames can still report the previous trajectory
+                # as RUNNING. Such a frame would put the machine into `executing` before our
+                # own trajectory parks at its start, which then reads as a user pause.
+                details = motion_group_state.execute and motion_group_state.execute.details
+                if details is not None and getattr(details, "trajectory", None) not in (
+                    None,
+                    self.motion_id,
+                ):
+                    continue
+
                 # Arm the state machine when an operation is active and the machine
                 # is at rest. This happens *before* the frame is processed, which is
                 # the contract the machine's rest-state rules rely on: a RUNNING

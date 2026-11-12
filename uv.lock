@@ -3663,7 +3663,7 @@ wheels = [
 
 [[package]]
 name = "wandelbots-api-client"
-version = "26.7.0"
+version = "26.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -3678,9 +3678,9 @@ dependencies = [
     { name = "urllib3" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e1/59/2fc434b1801692aab00acbf19a0f50e550340e4f72cafa99096dffdb5fbe/wandelbots_api_client-26.7.0.tar.gz", hash = "sha256:4ee9bdb54e8d1327c6a250bfcabc260744a53b835e3df14d1000dde3905bdeeb", size = 495183, upload-time = "2026-09-17T13:59:54.084Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/c1/fb6b42da52d4f56af60a94fbcdcfb020dcac2dc84adb86d7ae58eb7fc9da/wandelbots_api_client-26.8.0.tar.gz", hash = "sha256:9783661529ea9af107349f8e07ad001fd81c08e2c1b564274c0c432a8bedd73d", size = 496631, upload-time = "2026-10-28T14:17:00.113Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/0f/9587d06af3c7b8d65cfbe4e6f924bf47082d00e070c99a38dea1f22b61f2/wandelbots_api_client-26.7.0-py3-none-any.whl", hash = "sha256:22e8a2737499c6cc958c84c2273e02cc45acdc4ed45e0a8b731c1f64e3abc094", size = 1114338, upload-time = "2026-09-17T13:59:57.516Z" },
+    { url = "https://files.pythonhosted.org/packages/88/0f/51944445aa1aa753aa243d7cbc1704b2aa3fa0eab4ca48fefd91b806e3a8/wandelbots_api_client-26.8.0-py3-none-any.whl", hash = "sha256:6d362be3466c68f47523c9768e08f2468eff6580ba690f9ae6bba4364b8beb7f", size = 1117317, upload-time = "2026-10-28T14:16:56.661Z" },
 ]
 
 [[package]]
@@ -3838,7 +3838,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'wandelscript'", specifier = ">=0.12,<0.20" },
     { name = "urllib3", specifier = ">=2.8.0" },
     { name = "uvicorn", marker = "extra == 'novax'", specifier = ">=0.34.0" },
-    { name = "wandelbots-api-client", specifier = "==26.7.0" },
+    { name = "wandelbots-api-client", specifier = "==26.8.0" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
 provides-extras = ["nova-rerun-bridge", "wandelscript", "novax", "novapolicy", "novapolicy-gr00t", "novapolicy-lerobot", "novapolicy-nats", "benchmark"]
