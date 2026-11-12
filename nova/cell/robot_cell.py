@@ -517,6 +517,7 @@ class AbstractRobot(Device):
             start_joint_position=start_joint_position,
             payload_override=payload_override,
             singularity_handling=singularity_handling,
+            external_tool_coordinate_system=external_tool_coordinate_system,
         )
         motion_state_stream = self.stream_execute(
             joint_trajectory,
