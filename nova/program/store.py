@@ -11,6 +11,7 @@ from pydantic import BaseModel, ValidationError
 
 from nova import api
 from nova.cell.cell import Cell
+from nova.core.nats_state import nats_usable
 
 _T = TypeVar("_T", bound=BaseModel)
 _NATS_PROGRAMS_BUCKET_TEMPLATE = "nova_cells_{cell}_programs"
@@ -96,8 +97,8 @@ class _KeyValueStore(Generic[_T]):
 
     @property
     def is_connected(self) -> bool:
-        """Check if client is connected"""
-        return self._nats_client.is_connected
+        """Whether store operations can go through (connected or reconnecting, not closed)."""
+        return nats_usable(self._nats_client)
 
     async def _key_value(self) -> KeyValue:
         """Get the KeyValue store.
@@ -113,7 +114,7 @@ class _KeyValueStore(Generic[_T]):
             if self._kv_bucket is not None:
                 return self._kv_bucket
 
-            if not self._nats_client.is_connected:
+            if not nats_usable(self._nats_client):
                 raise RuntimeError(
                     f"NATS client is not connected for: {self._nats_client.connected_url}"
                 )
