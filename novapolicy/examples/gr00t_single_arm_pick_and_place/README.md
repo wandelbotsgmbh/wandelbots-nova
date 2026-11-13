@@ -10,7 +10,7 @@ policy's training episodes on the same cell.
 | `run_continuous.py` | Policy, streaming: re-infers as fast as the server answers, chunks merged on a timestep queue |
 | `replay_pick_and_place.py` | Replays a training episode's recorded joint path with the Zimmer gripper gripping and releasing at the recorded frames (a wrapper around the generic [`../replay/replay_episode.py`](../replay/replay_episode.py)) |
 | `policy.toml` | Everything declared about the policy, the cell and the guards; the scripts read it |
-| `gr00t_ur10e.py` | Shared implementation of the two `run_*` scripts |
+| `gr00t_ur10e.py` | Shared implementation of the two `run_*` scripts: the Zimmer gripper and the run, on top of [`novapolicy.gr00t.declared`](../../gr00t/declared.py) |
 
 Without `--execute` every script is a dry run: nothing moves. With `--execute` it asks
 for `yes` before the gripper or the arm moves. Keep a hand on the e-stop.

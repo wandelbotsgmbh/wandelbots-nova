@@ -52,6 +52,7 @@ tcp = "umi_corrected"             # finger-pad midpoint, the sim's IK point
 home_deg = [90.0, -90.0, 90.0, -90.0, -90.0, 0.0]
 camera_server = "http://172.31.11.253/cell/realsense"
 gripper_host = "172.31.13.49"     # Turck TBEN-S2-4IOL for the Zimmer GEH6060IL
+gripper_open_gap_mm = 80.0        # Zimmer GEH6060IL jaw gap after homing
 
 [cell.cameras]
 wrist = "427622271414"            # D405 on the flange
