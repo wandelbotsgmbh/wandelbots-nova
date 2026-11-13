@@ -41,8 +41,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import logging
 import math
+import sys
 import time
 from typing import Any, cast
 
@@ -50,8 +52,9 @@ import numpy as np
 from PIL import Image
 from scipy.spatial.transform import Rotation
 
-from nova import ProgramContext, program, run_program, viewers
+from nova import ProgramContext, api, program, run_program, viewers
 from nova.actions import joint_ptp, linear
+from nova.cell.motion_group import MotionGroup
 from nova.types import MotionSettings, Pose, RobotState
 from novapolicy import (
     Action,
@@ -93,17 +96,16 @@ TRAINING_DT_MS = 1000.0 / 30.0
 SPEED_FACTOR = 1.0
 DT_MS = TRAINING_DT_MS / SPEED_FACTOR
 N_ACTION_STEPS = 8
-# Sequential: near the table, run at most NEAR_TABLE_CHUNK_MS per chunk so the policy
-# re-observes (and corrects its placement over the cube) often during the descent.
+# Sequential: near the table, run half chunks so the policy re-observes (and corrects its
+# placement over the cube) twice as often during the descent.
 NEAR_TABLE_Z_MM = 120.0
-NEAR_TABLE_CHUNK_MS = 400.0
+NEAR_TABLE_STEPS = N_ACTION_STEPS // 2
 TIMEOUT_S = 300.0
-# Execution mode, set by the entry script. Sequential (default, run_sequential.py): run
+# Execution mode, chosen by the entry script. Sequential (default, run_sequential.py): run
 # N_ACTION_STEPS per chunk to standstill, observe, infer again. Continuous
 # (run_continuous.py): re-infer as fast as the server answers; TcpPlanQueue merges each new
 # 16-step chunk on the timestep timeline and smooths it with the [1, 2, 1] / 4 filter
 # (two passes) the LeRobot client uses.
-CONTINUOUS = False
 SMOOTHING_PASSES = 2
 HOLD_STEPS = 5  # waypoints of a hold-in-place chunk while the gripper is busy
 # Continuous seams, as the LeRobot async queue does it: the steps that executed while
@@ -111,7 +113,7 @@ HOLD_STEPS = 5  # waypoints of a hold-in-place chunk while the gripper is busy
 # stay exactly as published; later overlapping steps are blended old/new 0.3/0.7.
 QUEUE_MARGIN_STEPS = 2
 QUEUE_OLD_WEIGHT = 0.3
-MAX_CHUNKS = 120  # sim ~34 chunks of 8; real approach ~2x, plus 4-step chunks near the table
+MAX_CHUNKS = 120  # sequential: sim ~34 chunks of 8; real approach ~2x, half chunks near table
 
 # --- Cameras (RealSense manager, same WebRTC signaling API as novapolicy) -----
 CAMERA_SERVER = "http://172.31.11.253/cell/realsense"
@@ -190,6 +192,30 @@ WORKSPACE_X_MM = (-460.0, 275.0)
 WORKSPACE_Y_MM = (-800.0, -240.0)
 
 
+def open_gripper_session(host: str = GRIPPER_HOST) -> Any:
+    """Connect to the Zimmer gripper, home it and open it (moves the jaws). Blocking."""
+    # Imported here so dry runs work without the (optional) gripper package installed.
+    zimmer = importlib.import_module("zimmer_gripper_controller")
+    session = zimmer.GripperSession(zimmer.SessionConfig(modbus=zimmer.ModbusConfig(host=host)))
+    session.connect()
+    session.wait_until_ready()
+    session.set_force_percent(GRIPPER_FORCE_PERCENT)
+    session.set_velocity_percent(GRIPPER_VELOCITY_PERCENT)
+    return session
+
+
+async def lift_if_low(mg: MotionGroup, settings: MotionSettings = HOME_SETTINGS) -> None:
+    """Below SAFE_Z_MM, move straight up to it, so a following joint move cannot sweep
+    the gripper over the cube or the table."""
+    pose = (await mg.get_state(TCP)).pose
+    if pose.position.z >= SAFE_Z_MM:
+        return
+    print(f"Lifting straight up from z {pose.position.z:.0f} to {SAFE_Z_MM:.0f} mm...")
+    up = Pose((pose.position.x, pose.position.y, SAFE_Z_MM, *pose.orientation))
+    actions = [linear(up, settings=settings)]
+    await mg.execute(await mg.plan(actions, TCP), TCP, actions=actions)
+
+
 class ZimmerGripper:
     """Feeds the Zimmer jaw gap to the policy and executes its ``gripper`` action.
 
@@ -203,6 +229,7 @@ class ZimmerGripper:
         self._host = host
         self._session: Any = None  # created in connect(); dry runs never connect
         self._task: asyncio.Task[None] | None = None
+        self._task_started = False  # the scheduled grip()/open() has left its delay
         self._closed: bool | None = None
         self._holding = False
         self.last_action: list[float] = []  # raw 16-step `gripper` action of the last chunk
@@ -210,22 +237,14 @@ class ZimmerGripper:
 
     async def connect(self) -> None:
         """Start the controller, home, and open (moves the jaws)."""
-        # Imported here so dry runs work without the gripper package installed.
-        from zimmer_gripper_controller import (  # ty: ignore[unresolved-import]
-            GripperSession,
-            ModbusConfig,
-            SessionConfig,
-        )
-
-        self._session = GripperSession(SessionConfig(modbus=ModbusConfig(host=self._host)))
-        self._session.connect()
-        await asyncio.to_thread(self._session.wait_until_ready)
-        self._session.set_force_percent(GRIPPER_FORCE_PERCENT)
-        self._session.set_velocity_percent(GRIPPER_VELOCITY_PERCENT)
+        self._session = await asyncio.to_thread(open_gripper_session, self._host)
         self._closed = False
 
     async def close(self) -> None:
-        if self._task is not None:
+        """Let a running grip()/open() finish; drop one still waiting for its step."""
+        if self._task is not None and not self._task.done():
+            if not self._task_started:
+                self._task.cancel()  # the run ended before the command's step came
             await asyncio.gather(self._task, return_exceptions=True)
         if self._session is not None:
             self._session.close()
@@ -284,10 +303,12 @@ class ZimmerGripper:
             return  # previous grip/open still running; re-decide on the next chunk
         index, close = switch
         self._closed = close
+        self._task_started = False
         self._task = asyncio.create_task(self._command(close=close, delay_s=index * DT_MS / 1000))
 
     async def _command(self, *, close: bool, delay_s: float = 0.0) -> None:
         await asyncio.sleep(delay_s)
+        self._task_started = True
         try:  # ruff: ignore[too-many-statements-in-try-clause]
             if close:
                 result = await asyncio.to_thread(self._session.grip)
@@ -343,32 +364,15 @@ def deltas_to_absolute(
         else:
             p += dp
             r = cast("Rotation", dr * r)  # base frame: pre-multiply
-        prev_rv = out[-1][3:6] if out else start[3:6]
-        out.append([*p.tolist(), *continuous_rotvec(r.as_rotvec(), prev_rv)])
-    return out
-
-
-def continuous_rotvec(rv: np.ndarray, prev: list[float]) -> list[float]:
-    """Pick the rotvec equivalent of ``rv`` closest to ``prev``.
-
-    Near pi (tool-down) scipy flips the sign of the axis. NOVA's chunk ramps
-    interpolate rotvecs component-wise, so a flip would swing the wrist.
-    """
-    angle = float(np.linalg.norm(rv))
-    if angle < 1e-9:
-        return rv.tolist()
-    alt = rv * (angle - 2.0 * math.pi) / angle  # same rotation, other side of pi
-    prev_arr = np.asarray(prev, dtype=float)
-    best = alt if np.linalg.norm(alt - prev_arr) < np.linalg.norm(rv - prev_arr) else rv
-    return best.tolist()
+        out.append([*p.tolist(), *r.as_rotvec().tolist()])
+    # Near pi (tool down) scipy flips the rotation vector's sign; keep it continuous
+    # with the start pose, as the executor's bridges and ramps interpolate component-wise.
+    return unwrap_tcp_rotations(out, start[3:6])
 
 
 def executed_steps(start: list[float]) -> int:
-    """Steps to run from a chunk that starts at ``start``: at most NEAR_TABLE_CHUNK_MS near
-    the table (4 steps at 100 ms, all 8 at training speed)."""
-    if start[2] >= NEAR_TABLE_Z_MM:
-        return N_ACTION_STEPS
-    return min(N_ACTION_STEPS, max(2, round(NEAR_TABLE_CHUNK_MS / DT_MS)))
+    """Sequential: steps to run from a chunk that starts at ``start``, half near the table."""
+    return NEAR_TABLE_STEPS if start[2] < NEAR_TABLE_Z_MM else N_ACTION_STEPS
 
 
 def tilt_deg(pose: list[float]) -> float:
@@ -490,9 +494,12 @@ class TcpPlanQueue:
 class SingleArmGr00tClient(Gr00tPolicyClient):
     """GR00T client for the ``arm_joints``/``eef_delta`` model on this cell."""
 
-    def __init__(self, *args: Any, gripper: ZimmerGripper, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self, *args: Any, gripper: ZimmerGripper, continuous: bool = False, **kwargs: Any
+    ) -> None:
+        super().__init__(*args, dt_ms=DT_MS, **kwargs)
         self._gripper = gripper
+        self._continuous = continuous
         self.chunks = 0
         self._queue = TcpPlanQueue()
 
@@ -503,7 +510,7 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
     @property
     def requires_first_waypoint_bridge(self) -> bool:
         # Continuous: chunks carry absolute timesteps; only the first one is bridged.
-        return CONTINUOUS
+        return self._continuous
 
     def synchronize_action_timestep(self, timestep: int) -> None:
         self._queue.replaceable = timestep
@@ -534,7 +541,9 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
     def _decode_action(
         self, schema: PolicySchema, action: dict[str, object], info: dict[str, object]
     ) -> ActionChunk:
-        chunk = super()._decode_action(schema, action, info)
+        # The step spacing is DT_MS (training rate x SPEED_FACTOR), whatever the server's
+        # info says: the guards, the plan queue and the gripper timing all assume it.
+        chunk = super()._decode_action(schema, action, info).model_copy(update={"dt_ms": DT_MS})
         # Not a NOVA IO: the Action.computed hook reads it from the gripper bridge.
         self._gripper.last_action = np.asarray(action["gripper"], dtype=float).reshape(-1).tolist()
         return chunk
@@ -549,13 +558,13 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
         # While the jaws close or open, hold the arm where it is instead of letting it play
         # out a lookahead that may already lift. The policy is asked again once they settle.
         if self._gripper.busy:
-            if CONTINUOUS:
+            if self._continuous:
                 held = await self._hold_queue(schema)
                 if held is not None:
                     return held
             return await self._hold_chunk(states, schema)
         # Sequential execution: the previous chunk has finished, so the arm stands still here.
-        if not CONTINUOUS and self.chunks >= MAX_CHUNKS:
+        if not self._continuous and self.chunks >= MAX_CHUNKS:
             msg = f"Chunk limit reached ({MAX_CHUNKS}); stopping at standstill"
             raise RuntimeError(msg)
         self.chunks += 1
@@ -570,11 +579,11 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
                 raise RuntimeError(msg)
             pose = states[mg_id].pose
             start = [*pose.position, *pose.orientation]
-            if CONTINUOUS:
+            if self._continuous:
                 first, targets = self._queue.merge(deltas_to_absolute(start, deltas), latency_ms)
                 check_targets(start, targets)
                 # Steps that run before the next chunk replaces this one.
-                self._gripper.executed_steps = math.ceil(latency_ms / chunk.dt_ms) + 1
+                self._gripper.executed_steps = math.ceil(latency_ms / DT_MS) + 1
                 return chunk.model_copy(update={"tcp": {mg_id: targets}, "action_timestep": first})
             targets = deltas_to_absolute(start, deltas)[: executed_steps(start)]
             check_targets(start, targets)
@@ -602,93 +611,100 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
         return ActionChunk(tcp=tcp, dt_ms=DT_MS)
 
 
-EXECUTE = False
+def make_program(*, continuous: bool, execute: bool) -> Any:
+    """The NOVA program for one execution mode; dry run unless ``execute``."""
+
+    @program(id="gr00t_ur10e_calibration", name="GR00T UR10e Calibration", viewer=viewers.Rerun())
+    async def gr00t_ur10e_calibration(ctx: ProgramContext) -> None:
+        mg = (await ctx.nova.cell().controller(CONTROLLER))[0]
+
+        # Full frames; to_training_view() crops and resizes them before inference.
+        cameras = WebRTCCameras(api_url=CAMERA_SERVER, frame_history=1)
+        images = {
+            "wrist": cameras.device(CAM_WRIST),
+            "side": cameras.device(CAM_SIDE),
+            "top": cameras.device(CAM_TOP),
+        }
+        gripper = ZimmerGripper(GRIPPER_HOST)
+
+        async def dry_run_gripper_state(_obs: dict[str, Any]) -> dict[str, float]:
+            return {"gripper": GRIPPER_DRY_RUN_STATE}
+
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm_joints", source=mg, action=False),
+                # Not sent to the model; pins `umi_corrected` for state + Cartesian jogging.
+                Observation.tcp("tcp_pose", source=mg, tcp=TCP),
+                Observation.computed(gripper.observe if execute else dry_run_gripper_state),
+                *(Observation.image(key, source=src) for key, src in images.items()),
+                Observation.constant("language", value=TASK),
+            ],
+            actions=[
+                Action.tcp("eef_delta", target=mg, mode="absolute"),
+                Action.computed(gripper.act),
+            ],
+        )
+
+        client = SingleArmGr00tClient(
+            host=GROOT_HOST, port=GROOT_PORT, gripper=gripper, continuous=continuous
+        )
+        await client.connect([mg.id])
+        try:
+            print(f"GR00T server: {await client.get_server_info()}")
+            if not execute:
+                await dry_run(mg, client, schema, images, gripper)
+                return
+            answer = await asyncio.to_thread(
+                input,
+                f"This homes and opens the gripper, moves {CONTROLLER} to home {HOME_DEG}, "
+                "and starts the policy. Type 'yes': ",
+            )
+            if answer.strip().lower() != "yes":
+                print("Aborted, nothing moved.")
+                return
+            await run_policy(mg, client, schema, gripper, continuous=continuous)
+        finally:
+            await client.close()  # the executor closes it too; closing twice is safe
+
+    return gr00t_ur10e_calibration
 
 
-@program(id="gr00t_ur10e_calibration", name="GR00T UR10e Calibration", viewer=viewers.Rerun())
-async def gr00t_ur10e_calibration(ctx: ProgramContext):
-    cell = ctx.nova.cell()
-    controller = await cell.controller(CONTROLLER)
-    mg = controller[0]
-
-    # Full frames; to_training_view() crops and resizes them before inference.
-    cameras = WebRTCCameras(api_url=CAMERA_SERVER, frame_history=1)
-    images = {
-        "wrist": cameras.device(CAM_WRIST),
-        "side": cameras.device(CAM_SIDE),
-        "top": cameras.device(CAM_TOP),
-    }
-    gripper = ZimmerGripper(GRIPPER_HOST)
-
-    async def dry_run_gripper_state(_obs: dict[str, Any]) -> dict[str, float]:
-        return {"gripper": GRIPPER_DRY_RUN_STATE}
-
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("arm_joints", source=mg, action=False),
-            # Not sent to the model; pins `umi_corrected` for state + Cartesian jogging.
-            Observation.tcp("tcp_pose", source=mg, tcp=TCP),
-            Observation.computed(gripper.observe if EXECUTE else dry_run_gripper_state),
-            *(Observation.image(key, source=src) for key, src in images.items()),
-            Observation.constant("language", value=TASK),
-        ],
-        actions=[
-            Action.tcp("eef_delta", target=mg, mode="absolute"),
-            Action.computed(gripper.act),
-        ],
-    )
-
-    client = SingleArmGr00tClient(host=GROOT_HOST, port=GROOT_PORT, dt_ms=DT_MS, gripper=gripper)
-    await client.connect([mg.id])
-    print(f"GR00T server: {await client.get_server_info()}")
-
-    if not EXECUTE:
-        await dry_run(mg, client, schema, images, gripper)
-        return
-
-    answer = await asyncio.to_thread(
-        input,
-        f"This homes and opens the gripper, moves {CONTROLLER} to home {HOME_DEG}, "
-        "and starts the policy. Type 'yes': ",
-    )
-    if answer.strip().lower() != "yes":
-        print("Aborted, nothing moved.")
-        return
-
+async def run_policy(
+    mg: MotionGroup,
+    client: SingleArmGr00tClient,
+    schema: PolicySchema,
+    gripper: ZimmerGripper,
+    *,
+    continuous: bool,
+) -> None:
+    """Gripper home + open, lift if low, joint move home, then run the policy."""
     try:
         print("Connecting gripper (homing + open)...")
         await gripper.connect()
-
-        start = (await mg.get_state(TCP)).pose
-        if start.position.z < SAFE_Z_MM:
-            print(f"Lifting straight up from z {start.position.z:.0f} to {SAFE_Z_MM:.0f} mm...")
-            up = Pose((start.position.x, start.position.y, SAFE_Z_MM, *start.orientation))
-            lift = [linear(up, settings=HOME_SETTINGS)]
-            await mg.execute(await mg.plan(lift, TCP), TCP, actions=lift)
+        await lift_if_low(mg)
         print("Moving to home...")
         actions = [joint_ptp(HOME, settings=HOME_SETTINGS)]
-        trajectory = await mg.plan(actions, TCP)
-        await mg.execute(trajectory, TCP, actions=actions)
+        await mg.execute(await mg.plan(actions, TCP), TCP, actions=actions)
 
         executor = PolicyExecutor(
             schema,
             client,
             timeout_s=TIMEOUT_S,
-            execution=ContinuousExecution() if CONTINUOUS else SequentialExecution(),
+            execution=ContinuousExecution() if continuous else SequentialExecution(),
             # Continuous: keep the whole 16-step horizon as lookahead; each new chunk
             # replaces its tail. Sequential: the client already trimmed each chunk.
-            n_action_steps=0 if CONTINUOUS else N_ACTION_STEPS,
+            n_action_steps=0 if continuous else N_ACTION_STEPS,
         )
-        mode = "continuous" if CONTINUOUS else "sequential"
+        mode = "continuous" if continuous else "sequential"
         print(f"Running GR00T policy ({mode}) for up to {TIMEOUT_S}s...")
         t0 = time.monotonic()
         try:
             result = await executor.run()
-            dt = time.monotonic() - t0
-            print(f"\nDone: reason={result.reason} steps={result.steps} duration={dt:.1f}s")
-        except Exception as e:
-            dt = time.monotonic() - t0
-            print(f"\nError after {dt:.1f}s: {type(e).__name__}: {e}")
+        except Exception:
+            logger.exception("Policy run failed after %.1fs", time.monotonic() - t0)
+            raise
+        dt = time.monotonic() - t0
+        print(f"\nDone: reason={result.reason} steps={result.steps} duration={dt:.1f}s")
     finally:
         await gripper.close()
 
@@ -743,10 +759,10 @@ async def dry_run(mg, client, schema, images, gripper) -> None:
 
 
 def cli(*, continuous: bool = False) -> None:
-    """Entry point of ``run_continuous.py`` / ``run_sequential.py``."""
-    global EXECUTE, CONTINUOUS
+    """Entry point of ``run_sequential.py`` / ``run_continuous.py``; exits 1 if the run fails."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--execute", action="store_true", help="move robot + gripper (asks first)")
-    EXECUTE = parser.parse_args().execute
-    CONTINUOUS = continuous
-    run_program(gr00t_ur10e_calibration)
+    execute = parser.parse_args().execute
+    runner = run_program(make_program(continuous=continuous, execute=execute))
+    if runner.program_run.state == api.models.ProgramRunState.FAILED:
+        sys.exit(1)

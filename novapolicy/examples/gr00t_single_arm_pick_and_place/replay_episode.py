@@ -23,28 +23,21 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
+from gr00t_ur10e import CONTROLLER, TCP, lift_if_low, open_gripper_session
 import numpy as np
 import pyarrow.parquet as pq
 
 from nova import Nova, api
-from nova.actions import joint_ptp, linear
+from nova.actions import joint_ptp
 from nova.cell.motion_group import MotionGroup
-from nova.types import MotionSettings, Pose
-
-CONTROLLER = "ur10e-calibration"
-TCP = "umi_corrected"
-GRIPPER_HOST = "172.31.13.49"
-GRIPPER_FORCE_PERCENT = 50  # also the closing speed in Zimmer force mode
-GRIPPER_VELOCITY_PERCENT = 100
+from nova.types import MotionSettings
 
 TCP_VELOCITY_MM_S = 100.0  # the recording moved at ~240 mm/s (median) in sim time
 SUBSAMPLE = 5  # every 5th recorded frame (6 Hz) as a joint waypoint, blended
-SAFE_Z_MM = 200.0  # below this, lift straight up before any joint move
 MOTION = MotionSettings(
     tcp_velocity_limit=TCP_VELOCITY_MM_S,
     blending=api.models.BlendingAuto(min_velocity_in_percent=50),
 )
-LIFT = MotionSettings(tcp_velocity_limit=TCP_VELOCITY_MM_S)
 
 
 def load_episode(path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -72,15 +65,6 @@ def segments(gripper: np.ndarray) -> list[tuple[int, int, bool | None]]:
 def waypoints(joints: np.ndarray, start: int, end: int) -> list[tuple[float, ...]]:
     frames = [*range(start, end, SUBSAMPLE), end]
     return [tuple(float(q) for q in joints[i]) for i in dict.fromkeys(frames)]
-
-
-async def lift_if_low(mg: MotionGroup) -> None:
-    pose = (await mg.get_state(TCP)).pose
-    if pose.position.z < SAFE_Z_MM:
-        print(f"Lifting straight up from z {pose.position.z:.0f} to {SAFE_Z_MM:.0f} mm...")
-        up = Pose((pose.position.x, pose.position.y, SAFE_Z_MM, *pose.orientation))
-        actions = [linear(up, settings=LIFT)]
-        await mg.execute(await mg.plan(actions, TCP), TCP, actions=actions)
 
 
 async def run_path(mg: MotionGroup, path: list[tuple[float, ...]], *, execute: bool) -> None:
@@ -151,18 +135,7 @@ async def main(args: argparse.Namespace) -> None:
                 print("Aborted, nothing moved.")
                 return
 
-            from zimmer_gripper_controller import (  # ty: ignore[unresolved-import]
-                GripperSession,
-                ModbusConfig,
-                SessionConfig,
-            )
-
-            gripper = GripperSession(SessionConfig(modbus=ModbusConfig(host=GRIPPER_HOST)))
-            gripper.connect()
-            await asyncio.to_thread(gripper.wait_until_ready)  # homes, then opens
-            gripper.set_force_percent(GRIPPER_FORCE_PERCENT)
-            gripper.set_velocity_percent(GRIPPER_VELOCITY_PERCENT)
-
+            gripper = await asyncio.to_thread(open_gripper_session)  # homes, then opens
             await lift_if_low(mg)
             print("Moving to the episode's start joints...")
             await run_path(mg, [tuple(joints[0])], execute=True)
