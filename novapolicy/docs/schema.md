@@ -110,10 +110,12 @@ trained with a differential-IK controller output them:
 
 ```python
 Action.tcp(
-    "eef_delta", target=mg, mode="relative",
-    accumulate=True,               # each step applies to the pose the previous one reached
-    frame="base",                  # or "tool": offsets in the tool's axes
-    position_ops=[Scale(0.001)],   # the policy's positions are in metres
+    "eef_delta",
+    target=mg,
+    mode="relative",
+    accumulate=True,  # each step applies to the pose the previous one reached
+    frame="base",  # or "tool": offsets in the tool's axes
+    position_ops=[Scale(0.001)],  # the policy's positions are in metres
 )
 ```
 

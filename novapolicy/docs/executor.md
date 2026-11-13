@@ -180,6 +180,32 @@ the hold.
 With 20 Hz and 1s lookahead chunks, there is ~95% overlap between
 consecutive chunks, providing ample buffer.
 
+### TCP limits
+
+`PolicyExecutor(tcp_limits=TcpLimits(...))` checks the TCP targets of every chunk before it is
+sent, after the schema's unit operators and relative targets are resolved, and only for the steps
+that run (after `n_action_steps`). A chunk that breaks a limit ends the run with `TcpLimitError`,
+naming the step and the limit.
+
+```python
+from novapolicy import PolicyExecutor, TcpLimits
+
+limits = TcpLimits(
+    max_speed_mm_s=650,  # between consecutive targets, at the chunk's dt_ms
+    max_rotation_speed_deg_s=150,
+    max_chunk_travel_mm=250,  # from the TCP position at inference time
+    x_mm=(-460, 275),
+    y_mm=(-800, -240),
+    z_mm=(25, 1000),  # the table is z = 0
+)
+executor = PolicyExecutor(schema, client, tcp_limits=limits)
+```
+
+These are software limits in the executor's own path, not a safety system. They catch a policy
+that leaves the space it was trained in; safety belongs on the robot controller.
+`resolve_actions(schema, chunk, states)` returns the targets the executor would send for a raw
+policy chunk, for dry runs.
+
 ## Stale inputs and how a run ends
 
 A camera can freeze and a policy service can hang. Both mean the same thing to the executor — the
