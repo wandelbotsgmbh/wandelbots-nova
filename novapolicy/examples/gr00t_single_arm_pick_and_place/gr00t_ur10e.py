@@ -288,7 +288,7 @@ def build(
                 target=mg,
                 mode="relative",
                 accumulate=True,  # each step applies to the pose the previous one reached
-                frame="base",
+                use_tool_coordinate_system=False,  # deltas in the robot base (= world here)
                 position_ops=[Scale(0.001), Scale(1.0 / GAIN_POSITION)],  # metres, realized
                 orientation_ops=[Scale(1.0 / GAIN_ROTATION)],
             ),

@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from nova.types import RobotState
     from novapolicy.cameras import CameraSource
     from novapolicy.ops import ValueOp
-    from novapolicy.types import ActionChunk, ActionMode, TcpFrame
+    from novapolicy.types import ActionChunk, ActionMode
 
 logger = logging.getLogger(__name__)
 
@@ -362,7 +362,7 @@ class Action:
         *,
         mode: ActionMode = "absolute",
         accumulate: bool = False,
-        frame: TcpFrame = "base",
+        use_tool_coordinate_system: bool = False,
         position_ops: list[ValueOp] | None = None,
         orientation_ops: list[ValueOp] | None = None,
     ) -> _ActTcp:
@@ -371,14 +371,19 @@ class Action:
         ``mode="relative"``: the policy returns offsets ``[dx, dy, dz, rx, ry, rz]``
         (position, rotation vector) that the executor composes with the pose at
         inference time. ``accumulate=True`` applies each step to the pose the previous
-        step reached instead (per-step deltas); ``frame="tool"`` expresses the offsets
-        in tool axes instead of base axes. Rotations turn the tool about the TCP.
+        step reached instead (per-step deltas). As in NOVA's TCP jogging,
+        ``use_tool_coordinate_system=True`` expresses the offsets in the tool coordinate
+        system given by the TCP instead of the world coordinate system the TCP pose is
+        reported in. Rotations turn the tool about the TCP.
 
         ``position_ops`` / ``orientation_ops`` convert units on the way back, before the
         offsets are composed: ``position_ops=[Scale(0.001)]`` for a policy in metres.
         """
-        if mode != "relative" and (accumulate or frame != "base"):
-            msg = "Action.tcp: accumulate and frame apply to mode='relative' only"
+        if mode != "relative" and (accumulate or use_tool_coordinate_system):
+            msg = (
+                "Action.tcp: accumulate and use_tool_coordinate_system apply to "
+                "mode='relative' only"
+            )
             raise ValueError(msg)
         return _ActTcp(
             key=key,
@@ -386,7 +391,9 @@ class Action:
             mode=mode,
             position_ops=list(position_ops or []),
             orientation_ops=list(orientation_ops or []),
-            delta=TcpDelta(accumulate=accumulate, frame=frame),
+            delta=TcpDelta(
+                accumulate=accumulate, use_tool_coordinate_system=use_tool_coordinate_system
+            ),
         )
 
     @staticmethod

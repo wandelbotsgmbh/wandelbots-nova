@@ -23,7 +23,7 @@ The server tells the keys, not their meaning. From the training setup, find out:
 |---|---|
 | Joint targets, absolute TCP targets, or TCP deltas? | `Action.joint_positions`, `Action.tcp(mode="absolute")`, or `Action.tcp(mode="relative")` |
 | Deltas per step, applied to the pose the previous step reached? | `accumulate=True` |
-| Deltas in the robot base or in the tool frame? | `frame="base"` / `frame="tool"` |
+| Deltas in the world (robot base) or in the tool coordinate system? | `use_tool_coordinate_system=False` / `True`, as in NOVA's TCP jogging |
 | Units (metres, degrees)? | `position_ops=[Scale(0.001)]`, `ops=[Rad2Deg()]` |
 | Which point on the tool (TCP) do the poses refer to? | `Observation.tcp(..., tcp=...)` |
 | Rate, camera resolution, prompt | `dt_ms`, `WebRTCCameras(resize=..., resize_mode="crop")`, `Observation.constant("language", ...)` |
@@ -80,7 +80,7 @@ schema = PolicySchema(
             target=mg,
             mode="relative",
             accumulate=True,
-            frame="base",
+            use_tool_coordinate_system=False,
             position_ops=[Scale(0.001), Scale(1 / 0.24)],  # metres; 24 % realized in training
             orientation_ops=[Scale(1 / 0.30)],
         ),

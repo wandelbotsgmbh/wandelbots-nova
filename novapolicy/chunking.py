@@ -22,7 +22,7 @@ from novapolicy.types import ActionChunk, ContinuousExecution
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from novapolicy.types import ExecutionMode, TcpFrame, TcpLimits
+    from novapolicy.types import ExecutionMode, TcpLimits
 
 logger = logging.getLogger(__name__)
 
@@ -513,9 +513,10 @@ class TcpDelta:
     accumulate: bool = False
     """False: every step is an offset from the pose at inference time. True: every step
     applies to the pose the previous step reached."""
-    frame: TcpFrame = "base"
-    """Axes the offset is expressed in: the robot base, or the tool at the pose the step
-    starts from."""
+    use_tool_coordinate_system: bool = False
+    """As in NOVA's TCP jogging: True expresses the offset in the tool coordinate system
+    (given by the TCP) at the pose the step starts from; False in the coordinate system
+    the TCP pose is reported in (world)."""
 
 
 def apply_relative_mode(
@@ -528,7 +529,7 @@ def apply_relative_mode(
 
     For motion groups in ``relative_mgs``, joint deltas accumulate across steps.
     TCP steps compose with the pose at inference time as ``tcp_deltas`` declares
-    (default: each an offset from that pose, in base axes): positions add, rotations
+    (default: each an offset from that pose, in world axes): positions add, rotations
     compose as rotations about the TCP, and the result is unwrapped onto the starting
     rotation vector. Returns the chunk unmodified when ``relative_mgs`` is empty.
     """
@@ -576,8 +577,8 @@ def compose_tcp_deltas(
 ) -> list[list[float]]:
     """Absolute TCP targets ``[x, y, z, rx, ry, rz]`` (mm, rotation vector) from offsets.
 
-    A rotation offset turns the tool about the TCP: pre-multiplied in base axes,
-    post-multiplied in tool axes. A rotation vector is not additive, so adding them
+    A rotation offset turns the tool about the TCP: pre-multiplied in world axes,
+    post-multiplied in the tool coordinate system. A rotation vector is not additive, so adding them
     component-wise would turn a tool-down pose (rotation near pi) the wrong way.
     """
     p0, r0 = np.asarray(start[:3], dtype=float), Rotation.from_rotvec(start[3:6])
@@ -586,7 +587,7 @@ def compose_tcp_deltas(
     for step in steps:
         base_p, base_r = (p, r) if delta.accumulate else (p0, r0)
         dp, rv = np.asarray(step[:3], dtype=float), np.asarray(step[3:6], dtype=float)
-        if delta.frame == "tool":
+        if delta.use_tool_coordinate_system:
             p = base_p + base_r.apply(dp)
             r = cast("Rotation", base_r * Rotation.from_rotvec(rv))
         else:

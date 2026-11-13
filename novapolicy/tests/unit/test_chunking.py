@@ -513,7 +513,9 @@ def test_accumulated_tcp_deltas_chain_from_step_to_step():
 
 
 def test_tool_frame_tcp_deltas_follow_the_tool_axes():
-    out = compose_tcp_deltas(_DOWN, [[0.0, 0.0, 10.0, 0.0, 0.0, 0.0]], TcpDelta(frame="tool"))
+    out = compose_tcp_deltas(
+        _DOWN, [[0.0, 0.0, 10.0, 0.0, 0.0, 0.0]], TcpDelta(use_tool_coordinate_system=True)
+    )
     assert out[0][:3] == pytest.approx([-100.0, -500.0, 290.0])  # tool z points down
 
 

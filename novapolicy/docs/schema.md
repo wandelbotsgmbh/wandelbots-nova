@@ -114,7 +114,7 @@ Action.tcp(
     target=mg,
     mode="relative",
     accumulate=True,  # each step applies to the pose the previous one reached
-    frame="base",  # or "tool": offsets in the tool's axes
+    use_tool_coordinate_system=False,  # True: offsets in the tool coordinate system
     position_ops=[Scale(0.001)],  # the policy's positions are in metres
 )
 ```
