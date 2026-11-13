@@ -22,19 +22,28 @@ The gripper is a Zimmer GEH6060IL on a Turck IO-Link master, driven by the
 ``zimmer-gripper-controller`` package over Modbus TCP. It enters the policy
 through ``Observation.computed`` (state) and ``Action.computed`` (command).
 
+Execution is continuous by default: the policy is re-queried as fast as the
+server answers, and :class:`TcpPlanQueue` keeps each chunk on the executor's
+timestep timeline (frozen head, old/new blending, smoothing), like the LeRobot
+async queue. ``--sequential`` runs one chunk at a time to standstill instead.
+The tool orientation is held fixed; position follows the policy.
+
 The default is a DRY RUN: one real observation, one inference, print the
 targets. Nothing is commanded, and the gripper is not connected (connecting
 starts its homing, which moves the jaws). Pass ``--execute`` to move the robot
 and the gripper; it asks for confirmation first.
 
+``replay_gr00t_training_episode_ur10e.py`` next to this file replays a training
+episode on the same cell, which checks the cell against the training scene.
+
 Run (dry run, no motion):
     NOVA_API=http://wandelbox-hhmnwy PYTHONPATH=. uv run --extra novapolicy-gr00t \
         --extra nova-rerun-bridge --with python-statemachine \
         --with ~/Git/zimmer-gripper-controller \
-        python novapolicy/examples/execute_gr00t_ur10e_calibration.py
+        python novapolicy/examples/gr00t_single_arm_pick_and_place/execute_gr00t_ur10e_calibration.py
 
 Run (moves the robot and the gripper):
-    ... python novapolicy/examples/execute_gr00t_ur10e_calibration.py --execute
+    ... python novapolicy/examples/gr00t_single_arm_pick_and_place/execute_gr00t_ur10e_calibration.py --execute
 """
 
 from __future__ import annotations
@@ -52,11 +61,12 @@ from scipy.spatial.transform import Rotation
 from zimmer_gripper_controller import GripperSession, ModbusConfig, SessionConfig
 
 from nova import ProgramContext, program, run_program, viewers
-from nova.actions import joint_ptp
-from nova.types import MotionSettings, RobotState
+from nova.actions import joint_ptp, linear
+from nova.types import MotionSettings, Pose, RobotState
 from novapolicy import (
     Action,
     ActionChunk,
+    ContinuousExecution,
     Gr00tPolicyClient,
     Observation,
     PolicyExecutor,
@@ -64,6 +74,7 @@ from novapolicy import (
     SequentialExecution,
     WebRTCCameras,
 )
+from novapolicy.chunking import smooth_action_chunk, unwrap_tcp_rotations
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +85,9 @@ TCP = "umi_corrected"
 HOME_DEG = (90.0, -90.0, 90.0, -90.0, -90.0, 0.0)
 HOME = tuple(math.radians(d) for d in HOME_DEG)
 HOME_SETTINGS = MotionSettings(tcp_velocity_limit=100.0)
+# Below this TCP height, first move straight up to it before the joint move home, so the
+# joint interpolation cannot sweep the gripper over the cube or the table.
+SAFE_Z_MM = 200.0
 
 # --- GR00T server -------------------------------------------------------------
 GROOT_HOST = "172.31.11.129"
@@ -90,6 +104,18 @@ N_ACTION_STEPS = 8
 NEAR_TABLE_Z_MM = 120.0
 NEAR_TABLE_STEPS = 4
 TIMEOUT_S = 300.0
+# Execution mode. Continuous (default): re-infer as fast as the server answers and replace
+# the buffered tail with each new 16-step chunk, smoothed with the [1, 2, 1] / 4 filter
+# (two passes) the LeRobot client uses. --sequential: run N_ACTION_STEPS per chunk, stop,
+# observe, infer again (the mode of the first supervised runs).
+CONTINUOUS = True
+SMOOTHING_PASSES = 2
+HOLD_STEPS = 5  # waypoints of a hold-in-place chunk while the gripper is busy
+# Continuous seams, as the LeRobot async queue does it: steps that execute while the
+# next inference runs (~400 ms, measured 130-390 ms) stay exactly as published; later
+# overlapping steps are blended old/new 0.3/0.7.
+QUEUE_FROZEN_STEPS = math.ceil(400.0 / DT_MS) + 1
+QUEUE_OLD_WEIGHT = 0.3
 MAX_CHUNKS = 120  # sim ~34 chunks of 8; real approach ~2x, plus 4-step chunks near the table
 
 # --- Cameras (RealSense manager, same WebRTC signaling API as novapolicy) -----
@@ -151,7 +177,7 @@ EEF_DELTA_ROT_GAIN = 0.0
 
 # --- Safety guards on decoded chunks ------------------------------------------
 MAX_STEP_MM = 25.0  # largest allowed move between two consecutive targets (sim max 20)
-MAX_CHUNK_TRAVEL_MM = 160.0  # largest allowed distance from the start pose
+MAX_CHUNK_TRAVEL_MM = 250.0  # largest allowed distance from the start pose (16 steps)
 MAX_STEP_DEG = 5.0  # largest allowed rotation between two consecutive targets
 MAX_TILT_DEG = 15.0  # largest allowed angle between the tool axis and straight down
 # The controller's safety plane (the table) is z = 0 in the base frame. The TCP is the
@@ -195,6 +221,11 @@ class ZimmerGripper:
         if self._task is not None:
             await asyncio.gather(self._task, return_exceptions=True)
         self._session.close()
+
+    @property
+    def busy(self) -> bool:
+        """A grip()/open_and_wait() is still running."""
+        return self._task is not None and not self._task.done()
 
     async def wait_idle(self) -> None:
         """Wait for a running grip()/open_and_wait() to finish."""
@@ -365,6 +396,79 @@ def check_targets(start: list[float], targets: list[list[float]]) -> None:
         prev = t
 
 
+class TcpPlanQueue:
+    """Absolute TCP plan keyed by policy timestep on the executor's NOVA timeline.
+
+    The executor places a chunk with ``action_timestep >= 0`` by its absolute timestep
+    and reports the first replaceable one before every request
+    (``synchronize_action_timestep``). Each new prediction keeps the frozen head
+    (what runs while the next inference is in flight) exactly as published, blends
+    the overlap with the previous plan, and is smoothed with that head retained, so
+    replacements meet without the jumps of a hard replace.
+    """
+
+    def __init__(self) -> None:
+        self.replaceable = 0
+        self.published: dict[int, list[float]] = {}
+
+    def reset(self) -> None:
+        self.replaceable = 0
+        self.published = {}
+
+    def _head(self) -> dict[int, list[float]]:
+        start, stop = self.replaceable - 1, self.replaceable + QUEUE_FROZEN_STEPS
+        return {ts: v for ts, v in self.published.items() if start <= ts < stop}
+
+    def _publish(
+        self, plan: dict[int, list[float]], retained: int
+    ) -> tuple[int, list[list[float]]]:
+        keys = sorted(plan)
+        if keys != list(range(keys[0], keys[0] + len(keys))):
+            msg = f"TCP plan has a gap in its timesteps: {keys}"
+            raise RuntimeError(msg)
+        steps = [plan[ts] for ts in keys]
+        chunk = ActionChunk(tcp={"_": steps}, dt_ms=DT_MS)
+        smoothed = smooth_action_chunk(
+            chunk, passes=SMOOTHING_PASSES, retained_prefix_steps=retained
+        ).tcp["_"]
+        self.published = dict(zip(keys, smoothed, strict=True))
+        return keys[0], smoothed
+
+    def merge(self, targets: list[list[float]]) -> tuple[int, list[list[float]]]:
+        """Merge targets for timesteps ``replaceable, replaceable + 1, ...``."""
+        plan = self._head()
+        retained = len(plan)
+        # A fresh pose reading near a half-turn can come back with the rotation vector's
+        # sign flipped; blending +v with -v component-wise is a different orientation.
+        # Express the new targets on the published plan's side before blending.
+        if plan:
+            targets = unwrap_tcp_rotations(targets, plan[min(plan)][3:6])
+        for index, value in enumerate(targets):
+            ts = self.replaceable + index
+            if ts in plan:
+                continue  # frozen: already executing or about to
+            old = self.published.get(ts)
+            plan[ts] = (
+                value
+                if old is None
+                else [
+                    QUEUE_OLD_WEIGHT * o + (1.0 - QUEUE_OLD_WEIGHT) * n
+                    for o, n in zip(old, value, strict=True)
+                ]
+            )
+        return self._publish(plan, retained)
+
+    def hold(self) -> tuple[int, list[list[float]]] | None:
+        """Keep the frozen head, then stand still at its last target."""
+        plan = self._head()
+        if not plan:
+            return None
+        last = max(plan)
+        for offset in range(1, HOLD_STEPS + 1):
+            plan[last + offset] = plan[last]
+        return self._publish(plan, len(plan))
+
+
 class SingleArmGr00tClient(Gr00tPolicyClient):
     """GR00T client for the ``arm_joints``/``eef_delta`` model on this cell."""
 
@@ -372,6 +476,19 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
         super().__init__(*args, **kwargs)
         self._gripper = gripper
         self.chunks = 0
+        self._queue = TcpPlanQueue()
+
+    async def connect(self, motion_group_ids: list[str]) -> None:
+        self._queue.reset()
+        await super().connect(motion_group_ids)
+
+    @property
+    def requires_first_waypoint_bridge(self) -> bool:
+        # Continuous: chunks carry absolute timesteps; only the first one is bridged.
+        return CONTINUOUS
+
+    def synchronize_action_timestep(self, timestep: int) -> None:
+        self._queue.replaceable = timestep
 
     async def validate_schema(self, schema: PolicySchema) -> None:
         """Like the stock check, but ``gripper`` comes from an ``Observation.computed``."""
@@ -411,16 +528,23 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
         images: dict[str, Any] | None = None,
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
-        # A grip/open started by the last chunk finishes before the next observation,
-        # so the policy never lifts on jaws that are still closing.
-        await self._gripper.wait_idle()
+        # While the jaws close or open, hold the arm where it is instead of letting it play
+        # out a lookahead that may already lift. The policy is asked again once they settle.
+        if self._gripper.busy:
+            if CONTINUOUS:
+                held = await self._hold_queue(schema)
+                if held is not None:
+                    return held
+            return await self._hold_chunk(states, schema)
         # Sequential execution: the previous chunk has finished, so the arm stands still here.
-        if self.chunks >= MAX_CHUNKS:
+        if not CONTINUOUS and self.chunks >= MAX_CHUNKS:
             msg = f"Chunk limit reached ({MAX_CHUNKS}); stopping at standstill"
             raise RuntimeError(msg)
         self.chunks += 1
         frames = to_training_view(images) if images else images
+        t0 = time.monotonic()
         chunk = await super().get_actions(states, schema, frames, io_values)
+        latency_ms = (time.monotonic() - t0) * 1000.0
         tcp: dict[str, list[list[float]]] = {}
         for mg_id, deltas in chunk.tcp.items():
             if states[mg_id].tcp != TCP:
@@ -428,12 +552,36 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
                 raise RuntimeError(msg)
             pose = states[mg_id].pose
             start = [*pose.position, *pose.orientation]
-            steps = executed_steps(start)
-            targets = deltas_to_absolute(start, deltas)[:steps]
+            if CONTINUOUS:
+                first, targets = self._queue.merge(deltas_to_absolute(start, deltas))
+                check_targets(start, targets)
+                # Steps that run before the next chunk replaces this one.
+                self._gripper.executed_steps = math.ceil(latency_ms / chunk.dt_ms) + 1
+                return chunk.model_copy(update={"tcp": {mg_id: targets}, "action_timestep": first})
+            targets = deltas_to_absolute(start, deltas)[: executed_steps(start)]
             check_targets(start, targets)
             tcp[mg_id] = targets
-            self._gripper.executed_steps = steps
+            self._gripper.executed_steps = len(targets)
         return chunk.model_copy(update={"tcp": tcp})
+
+    async def _hold_queue(self, schema: PolicySchema) -> ActionChunk | None:
+        await asyncio.sleep(DT_MS / 1000.0)  # no inference here; don't spin the executor loop
+        held = self._queue.hold()
+        if held is None:
+            return None
+        self._gripper.last_action = []  # nothing new for the gripper hook to act on
+        first, targets = held
+        tcp = {mg.id: targets for _key, mg in schema.tcp_action_keys}
+        return ActionChunk(tcp=tcp, dt_ms=DT_MS, action_timestep=first)
+
+    async def _hold_chunk(self, states: dict[str, RobotState], schema: PolicySchema) -> ActionChunk:
+        await asyncio.sleep(DT_MS / 1000.0)  # no inference here; don't spin the executor loop
+        self._gripper.last_action = []  # nothing new for the gripper hook to act on
+        tcp = {}
+        for _key, mg in schema.tcp_action_keys:
+            pose = states[mg.id].pose
+            tcp[mg.id] = [[*pose.position, *pose.orientation]] * HOLD_STEPS
+        return ActionChunk(tcp=tcp, dt_ms=DT_MS)
 
 
 EXECUTE = False
@@ -493,6 +641,12 @@ async def gr00t_ur10e_calibration(ctx: ProgramContext):
         print("Connecting gripper (homing + open)...")
         await gripper.connect()
 
+        start = (await mg.get_state(TCP)).pose
+        if start.position.z < SAFE_Z_MM:
+            print(f"Lifting straight up from z {start.position.z:.0f} to {SAFE_Z_MM:.0f} mm...")
+            up = Pose((start.position.x, start.position.y, SAFE_Z_MM, *start.orientation))
+            lift = [linear(up, settings=HOME_SETTINGS)]
+            await mg.execute(await mg.plan(lift, TCP), TCP, actions=lift)
         print("Moving to home...")
         actions = [joint_ptp(HOME, settings=HOME_SETTINGS)]
         trajectory = await mg.plan(actions, TCP)
@@ -502,10 +656,13 @@ async def gr00t_ur10e_calibration(ctx: ProgramContext):
             schema,
             client,
             timeout_s=TIMEOUT_S,
-            execution=SequentialExecution(),
-            n_action_steps=N_ACTION_STEPS,
+            execution=ContinuousExecution() if CONTINUOUS else SequentialExecution(),
+            # Continuous: keep the whole 16-step horizon as lookahead; each new chunk
+            # replaces its tail. Sequential: the client already trimmed each chunk.
+            n_action_steps=0 if CONTINUOUS else N_ACTION_STEPS,
         )
-        print(f"Running GR00T policy for up to {TIMEOUT_S}s...")
+        mode = "continuous" if CONTINUOUS else "sequential"
+        print(f"Running GR00T policy ({mode}) for up to {TIMEOUT_S}s...")
         t0 = time.monotonic()
         try:
             result = await executor.run()
@@ -570,5 +727,10 @@ async def dry_run(mg, client, schema, images, gripper) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--execute", action="store_true", help="move robot + gripper (asks first)")
-    EXECUTE = parser.parse_args().execute
+    parser.add_argument(
+        "--sequential", action="store_true", help="stop after each chunk instead of streaming"
+    )
+    args = parser.parse_args()
+    EXECUTE = args.execute
+    CONTINUOUS = not args.sequential
     run_program(gr00t_ur10e_calibration)
