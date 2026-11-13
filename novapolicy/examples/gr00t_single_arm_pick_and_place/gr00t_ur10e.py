@@ -22,14 +22,14 @@ The gripper is a Zimmer GEH6060IL on a Turck IO-Link master, driven by the
 ``zimmer-gripper-controller`` package over Modbus TCP. It enters the policy
 through ``Observation.computed`` (state) and ``Action.computed`` (command).
 
-Shared implementation of ``run_continuous.py`` and ``run_sequential.py``; see README.md
+Shared implementation of ``run_sequential.py`` and ``run_continuous.py``; see README.md
 next to this file for how to start them.
 
-Continuous: the policy is re-queried as fast as the server answers, and
-:class:`TcpPlanQueue` keeps each chunk on the executor's timestep timeline (frozen
-head, old/new blending, smoothing), like the LeRobot async queue. Sequential: one
-chunk at a time, run to standstill. The tool orientation is held fixed; position
-follows the policy.
+Sequential (the default): one chunk at a time, run to standstill. Continuous: the
+policy is re-queried as fast as the server answers, and :class:`TcpPlanQueue` keeps
+each chunk on the executor's timestep timeline (frozen head, old/new blending,
+smoothing), like the LeRobot async queue. The tool orientation is held fixed;
+position follows the policy.
 
 Without ``--execute`` a script does a DRY RUN: one real observation, one inference,
 the targets printed. Nothing is commanded, and the gripper is not connected
@@ -94,11 +94,12 @@ N_ACTION_STEPS = 8
 NEAR_TABLE_Z_MM = 120.0
 NEAR_TABLE_STEPS = 4
 TIMEOUT_S = 300.0
-# Execution mode. Continuous (default): re-infer as fast as the server answers and replace
-# the buffered tail with each new 16-step chunk, smoothed with the [1, 2, 1] / 4 filter
-# (two passes) the LeRobot client uses. --sequential: run N_ACTION_STEPS per chunk, stop,
-# observe, infer again (the mode of the first supervised runs).
-CONTINUOUS = True
+# Execution mode, set by the entry script. Sequential (default, run_sequential.py): run
+# N_ACTION_STEPS per chunk to standstill, observe, infer again. Continuous
+# (run_continuous.py): re-infer as fast as the server answers; TcpPlanQueue merges each new
+# 16-step chunk on the timestep timeline and smooths it with the [1, 2, 1] / 4 filter
+# (two passes) the LeRobot client uses.
+CONTINUOUS = False
 SMOOTHING_PASSES = 2
 HOLD_STEPS = 5  # waypoints of a hold-in-place chunk while the gripper is busy
 # Continuous seams, as the LeRobot async queue does it: steps that execute while the
@@ -724,7 +725,7 @@ async def dry_run(mg, client, schema, images, gripper) -> None:
             await cam.disconnect()
 
 
-def cli(*, continuous: bool) -> None:
+def cli(*, continuous: bool = False) -> None:
     """Entry point of ``run_continuous.py`` / ``run_sequential.py``."""
     global EXECUTE, CONTINUOUS
     parser = argparse.ArgumentParser(description=__doc__)

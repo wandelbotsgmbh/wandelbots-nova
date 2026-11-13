@@ -6,8 +6,8 @@ policy's training episodes on the same cell.
 
 | Script | What it does |
 |---|---|
+| `run_sequential.py` | Policy, stop-and-go (the default mode): runs one chunk to standstill, then observes and infers again |
 | `run_continuous.py` | Policy, streaming: re-infers as fast as the server answers, chunks merged on a timestep queue |
-| `run_sequential.py` | Policy, stop-and-go: runs one chunk to standstill, then observes and infers again |
 | `replay_episode.py` | Replays a training episode's recorded joint path, gripping and releasing at the recorded frames |
 | `gr00t_ur10e.py` | Shared implementation of the two `run_*` scripts |
 
@@ -28,8 +28,8 @@ export NOVA_API=http://<nova-host>
 
 ```bash
 # Policy
-uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/run_continuous.py [--execute]
 uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/run_sequential.py [--execute]
+uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/run_continuous.py [--execute]
 
 # Training-episode replay (episode parquet from the LeRobot training dataset)
 uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/replay_episode.py \
