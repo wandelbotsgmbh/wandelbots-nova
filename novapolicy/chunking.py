@@ -22,7 +22,7 @@ from novapolicy.types import ActionChunk, ContinuousExecution
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from novapolicy.types import ExecutionMode, TcpFrame
+    from novapolicy.types import ExecutionMode, TcpFrame, TcpLimits
 
 logger = logging.getLogger(__name__)
 
@@ -594,6 +594,45 @@ def compose_tcp_deltas(
             r = cast("Rotation", Rotation.from_rotvec(rv) * base_r)
         out.append([*p.tolist(), *r.as_rotvec().tolist()])
     return unwrap_tcp_rotations(out, start[3:6])
+
+
+def tcp_limit_violations(
+    start: list[float], targets: list[list[float]], dt_ms: float, limits: TcpLimits
+) -> list[str]:
+    """Every limit ``targets`` break when the TCP starts at ``start``; empty when none."""
+    broken: list[str] = []
+    prev = start
+    for i, t in enumerate(targets):
+        dt_s = dt_ms / 1000.0 if dt_ms > 0 else float("inf")
+        speed = math.dist(prev[:3], t[:3]) / dt_s
+        turn = cast(
+            "Rotation", Rotation.from_rotvec(t[3:6]) * Rotation.from_rotvec(prev[3:6]).inv()
+        )
+        rot_speed = math.degrees(turn.magnitude()) / dt_s
+        travel = math.dist(start[:3], t[:3])
+        checks = [
+            (limits.max_speed_mm_s, speed, f"speed {speed:.0f} > {limits.max_speed_mm_s} mm/s"),
+            (
+                limits.max_rotation_speed_deg_s,
+                rot_speed,
+                f"rotation {rot_speed:.0f} > {limits.max_rotation_speed_deg_s} deg/s",
+            ),
+            (
+                limits.max_chunk_travel_mm,
+                travel,
+                f"travel {travel:.0f} > {limits.max_chunk_travel_mm} mm",
+            ),
+        ]
+        broken += [
+            f"step {i}: {text}"
+            for limit, value, text in checks
+            if limit is not None and value > limit
+        ]
+        for axis, bounds in enumerate((limits.x_mm, limits.y_mm, limits.z_mm)):
+            if bounds is not None and not bounds[0] <= t[axis] <= bounds[1]:
+                broken.append(f"step {i}: {'xyz'[axis]} {t[axis]:.0f} outside {bounds} mm")
+        prev = t
+    return broken
 
 
 @dataclass(frozen=True, slots=True)

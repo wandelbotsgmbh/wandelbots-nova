@@ -26,10 +26,11 @@ from novapolicy.chunking import (
     interpolate_action_chunk_ramps,
     placement,
     smooth_action_chunk,
+    tcp_limit_violations,
     trim_chunk,
     unwrap_tcp_rotations,
 )
-from novapolicy.types import ActionChunk, ContinuousExecution, SequentialExecution
+from novapolicy.types import ActionChunk, ContinuousExecution, SequentialExecution, TcpLimits
 
 # Strategies for generated chunks --------------------------------------------
 
@@ -522,3 +523,35 @@ def test_tcp_deltas_stay_continuous_near_a_half_turn():
     out = compose_tcp_deltas(start, steps, TcpDelta(accumulate=True))
     rotvecs = np.asarray([s[3:] for s in out])
     assert np.abs(np.diff(rotvecs, axis=0)).max() < 0.1  # no sign flip between steps
+
+
+# tcp_limit_violations -------------------------------------------------------
+
+
+def test_tcp_limits_name_each_broken_limit():
+    dt = 1000.0 / 30.0
+    limits = TcpLimits(
+        max_speed_mm_s=600.0,
+        max_rotation_speed_deg_s=150.0,
+        max_chunk_travel_mm=50.0,
+        y_mm=(-800.0, -240.0),
+        z_mm=(25.0, 1000.0),
+    )
+    ok = [[_DOWN[0] + i, *_DOWN[1:]] for i in range(1, 5)]
+    assert tcp_limit_violations(_DOWN, ok, dt, limits) == []
+    jump = [[_DOWN[0] + 30.0, *_DOWN[1:]]]  # 30 mm in one 33 ms step: 900 mm/s
+    assert "speed" in tcp_limit_violations(_DOWN, jump, dt, limits)[0]
+    turned = Rotation.from_euler("z", 10.0, degrees=True) * _rot(_DOWN)  # 300 deg/s
+    assert (
+        "rotation"
+        in tcp_limit_violations(_DOWN, [[*_DOWN[:3], *turned.as_rotvec()]], dt, limits)[0]
+    )
+    low = [[*_DOWN[:2], 20.0, *_DOWN[3:]]]
+    assert any("z 20 outside" in v for v in tcp_limit_violations(low[0], low, dt, limits))
+    far = [[_DOWN[0] + 15.0 * i, *_DOWN[1:]] for i in range(1, 6)]
+    assert any("travel" in v for v in tcp_limit_violations(_DOWN, far, dt, limits))
+
+
+def test_tcp_limits_reject_inverted_bounds():
+    with pytest.raises(ValueError, match="min < max"):
+        TcpLimits(x_mm=(10.0, -10.0))

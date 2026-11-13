@@ -13,6 +13,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 import math
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -33,6 +34,8 @@ from novapolicy.types import (
     OnStale,
     SequentialExecution,
     StopContext,
+    TcpLimitError,
+    TcpLimits,
     WaypointConfig,
 )
 
@@ -843,6 +846,35 @@ async def test_send_routes_joint_and_tcp_targets_to_their_own_sessions():
     assert tcp_session.update_chunk.call_args.kwargs["steps"] == [
         [500.0, 200.0, 300.0, 0.0, 3.14, 0.0]
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_breaking_tcp_limits_ends_the_run_before_it_is_sent():
+    """TcpLimits are checked on the resolved targets; a breaking chunk never reaches jogging."""
+    eef = _mg("0@ur5e-right")
+    schema = PolicySchema(observations=[Observation.tcp("eef", source=eef, action=True)])
+
+    async def diving_policy(_obs: object) -> ActionChunk:
+        return ActionChunk(tcp={eef.id: [[500.0, 200.0, 10.0, 0.0, 3.14, 0.0]]}, dt_ms=33.0)
+
+    session = _fake_session()
+    session.motion_group_id = eef.id
+    session.current_state.pose = SimpleNamespace(
+        position=[500.0, 200.0, 300.0], orientation=[0.0, 3.14, 0.0]
+    )
+    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+    with (
+        patch("novapolicy.executor.WaypointJoggingSession", return_value=session),
+        patch("novapolicy.executor.EstopMonitor", return_value=estop),
+        pytest.raises(TcpLimitError, match="z 10 outside"),
+    ):
+        await PolicyExecutor(
+            schema,
+            _callback(diving_policy),
+            timeout_s=1.0,
+            tcp_limits=TcpLimits(z_mm=(25.0, 1000.0), max_chunk_travel_mm=1000.0),
+        ).run()
+    session.update_chunk.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
