@@ -22,28 +22,19 @@ The gripper is a Zimmer GEH6060IL on a Turck IO-Link master, driven by the
 ``zimmer-gripper-controller`` package over Modbus TCP. It enters the policy
 through ``Observation.computed`` (state) and ``Action.computed`` (command).
 
-Execution is continuous by default: the policy is re-queried as fast as the
-server answers, and :class:`TcpPlanQueue` keeps each chunk on the executor's
-timestep timeline (frozen head, old/new blending, smoothing), like the LeRobot
-async queue. ``--sequential`` runs one chunk at a time to standstill instead.
-The tool orientation is held fixed; position follows the policy.
+Shared implementation of ``run_continuous.py`` and ``run_sequential.py``; see README.md
+next to this file for how to start them.
 
-The default is a DRY RUN: one real observation, one inference, print the
-targets. Nothing is commanded, and the gripper is not connected (connecting
-starts its homing, which moves the jaws). Pass ``--execute`` to move the robot
+Continuous: the policy is re-queried as fast as the server answers, and
+:class:`TcpPlanQueue` keeps each chunk on the executor's timestep timeline (frozen
+head, old/new blending, smoothing), like the LeRobot async queue. Sequential: one
+chunk at a time, run to standstill. The tool orientation is held fixed; position
+follows the policy.
+
+Without ``--execute`` a script does a DRY RUN: one real observation, one inference,
+the targets printed. Nothing is commanded, and the gripper is not connected
+(connecting starts its homing, which moves the jaws). ``--execute`` moves the robot
 and the gripper; it asks for confirmation first.
-
-``replay_gr00t_training_episode_ur10e.py`` next to this file replays a training
-episode on the same cell, which checks the cell against the training scene.
-
-Run (dry run, no motion):
-    NOVA_API=http://wandelbox-hhmnwy PYTHONPATH=. uv run --extra novapolicy-gr00t \
-        --extra nova-rerun-bridge --with python-statemachine \
-        --with ~/Git/zimmer-gripper-controller \
-        python novapolicy/examples/gr00t_single_arm_pick_and_place/execute_gr00t_ur10e_calibration.py
-
-Run (moves the robot and the gripper):
-    ... python novapolicy/examples/gr00t_single_arm_pick_and_place/execute_gr00t_ur10e_calibration.py --execute
 """
 
 from __future__ import annotations
@@ -58,7 +49,6 @@ from typing import Any, cast
 import numpy as np
 from PIL import Image
 from scipy.spatial.transform import Rotation
-from zimmer_gripper_controller import GripperSession, ModbusConfig, SessionConfig
 
 from nova import ProgramContext, program, run_program, viewers
 from nova.actions import joint_ptp, linear
@@ -202,7 +192,8 @@ class ZimmerGripper:
     """
 
     def __init__(self, host: str) -> None:
-        self._session = GripperSession(SessionConfig(modbus=ModbusConfig(host=host)))
+        self._host = host
+        self._session: Any = None  # created in connect(); dry runs never connect
         self._task: asyncio.Task[None] | None = None
         self._closed: bool | None = None
         self._holding = False
@@ -211,6 +202,14 @@ class ZimmerGripper:
 
     async def connect(self) -> None:
         """Start the controller, home, and open (moves the jaws)."""
+        # Imported here so dry runs work without the gripper package installed.
+        from zimmer_gripper_controller import (  # ty: ignore[unresolved-import]
+            GripperSession,
+            ModbusConfig,
+            SessionConfig,
+        )
+
+        self._session = GripperSession(SessionConfig(modbus=ModbusConfig(host=self._host)))
         self._session.connect()
         await asyncio.to_thread(self._session.wait_until_ready)
         self._session.set_force_percent(GRIPPER_FORCE_PERCENT)
@@ -220,7 +219,8 @@ class ZimmerGripper:
     async def close(self) -> None:
         if self._task is not None:
             await asyncio.gather(self._task, return_exceptions=True)
-        self._session.close()
+        if self._session is not None:
+            self._session.close()
 
     @property
     def busy(self) -> bool:
@@ -724,13 +724,11 @@ async def dry_run(mg, client, schema, images, gripper) -> None:
             await cam.disconnect()
 
 
-if __name__ == "__main__":
+def cli(*, continuous: bool) -> None:
+    """Entry point of ``run_continuous.py`` / ``run_sequential.py``."""
+    global EXECUTE, CONTINUOUS
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--execute", action="store_true", help="move robot + gripper (asks first)")
-    parser.add_argument(
-        "--sequential", action="store_true", help="stop after each chunk instead of streaming"
-    )
-    args = parser.parse_args()
-    EXECUTE = args.execute
-    CONTINUOUS = not args.sequential
+    EXECUTE = parser.parse_args().execute
+    CONTINUOUS = continuous
     run_program(gr00t_ur10e_calibration)

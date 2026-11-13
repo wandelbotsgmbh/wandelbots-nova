@@ -12,11 +12,7 @@ Modes:
                    so the cube can be placed exactly between them (asks first)
     --execute      replay the episode (asks first)
 
-Run:
-    NOVA_API=http://wandelbox-hhmnwy PYTHONPATH=. uv run --extra novapolicy-gr00t \
-        --with python-statemachine --with ~/Git/zimmer-gripper-controller \
-        python novapolicy/examples/gr00t_single_arm_pick_and_place/replay_gr00t_training_episode_ur10e.py \
-        --episode ~/Downloads/episode_000075.parquet [--show-grasp | --execute]
+See README.md next to this file for how to start it.
 """
 
 from __future__ import annotations
@@ -25,17 +21,16 @@ import argparse
 import asyncio
 from itertools import pairwise
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pyarrow.parquet as pq
-from zimmer_gripper_controller import GripperSession, ModbusConfig, SessionConfig
 
-from nova import Nova, NovaConfig, api
+from nova import Nova, api
 from nova.actions import joint_ptp, linear
 from nova.cell.motion_group import MotionGroup
 from nova.types import MotionSettings, Pose
 
-NOVA_HOST = "http://wandelbox-hhmnwy"
 CONTROLLER = "ur10e-calibration"
 TCP = "umi_corrected"
 GRIPPER_HOST = "172.31.13.49"
@@ -121,7 +116,7 @@ async def show_grasp(mg: MotionGroup, joints: np.ndarray, grasp: int | None) -> 
     )
 
 
-async def replay(mg: MotionGroup, joints: np.ndarray, segs: list, gripper: GripperSession) -> None:
+async def replay(mg: MotionGroup, joints: np.ndarray, segs: list, gripper: Any) -> None:
     for start, end, close in segs:
         print(f"Replaying frames {start}-{end}...")
         await run_path(mg, waypoints(joints, start, end), execute=True)
@@ -140,8 +135,8 @@ async def main(args: argparse.Namespace) -> None:
     grasp = next((end for _start, end, close in segs if close), None)
     print(f"Episode: {len(joints)} frames, segments {segs}, grasp at frame {grasp}")
 
-    nova = Nova(NovaConfig(host=NOVA_HOST))
-    gripper: GripperSession | None = None
+    nova = Nova()  # NOVA_API from the environment
+    gripper: Any = None
     try:
         mg = (await nova.cell().controller(CONTROLLER))[0]
         async with mg:
@@ -155,6 +150,12 @@ async def main(args: argparse.Namespace) -> None:
             ):
                 print("Aborted, nothing moved.")
                 return
+
+            from zimmer_gripper_controller import (  # ty: ignore[unresolved-import]
+                GripperSession,
+                ModbusConfig,
+                SessionConfig,
+            )
 
             gripper = GripperSession(SessionConfig(modbus=ModbusConfig(host=GRIPPER_HOST)))
             gripper.connect()
