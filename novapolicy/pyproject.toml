@@ -79,6 +79,8 @@ max-nested-blocks = 3
 "nats/protocol.py" = ["typing-only-third-party-import"]
 "rerun/action_chunk.py" = ["import-outside-top-level"]
 "rerun/logger.py" = ["import-outside-top-level"]
+# Command-line report: its output is the point.
+"gr00t/inspect_policy.py" = ["T20"]
 "**/tests/**" = [
     "assert", "hardcoded-password-string", "suspicious-pickle-import", "magic-value-comparison", "too-many-positional-arguments", "too-many-nested-blocks", "no-self-use",
     "ANN", "FBT", "T20", "import-outside-top-level", "import-private-name", "manual-list-comprehension",
