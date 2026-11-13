@@ -13,6 +13,7 @@ import asyncio
 import types
 from unittest.mock import MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from nova import api
@@ -118,6 +119,42 @@ async def test_monitor_fires_on_non_operational_state():
     await _run_monitor_until(monitor)
     assert isinstance(monitor.error, EmergencyStopError)
     assert monitor.error.safety_state == "SAFETY_STATE_PROTECTIVE_STOP"
+
+
+class _UnparseableThenStates(_FakeStream):
+    """First stream raises a ValidationError (as the SDK does on an unknown enum value)."""
+
+    calls = 0
+
+    async def __anext__(self) -> object:
+        _UnparseableThenStates.calls += 1
+        if _UnparseableThenStates.calls == 1:
+            raise _validation_error()
+        return await super().__anext__()
+
+
+def _validation_error() -> Exception:
+    try:
+        api.models.RobotControllerState.model_validate({"mode": "MODE_UNDEFINED"})
+    except ValidationError as e:
+        return e
+    raise AssertionError("expected a ValidationError")
+
+
+@pytest.mark.asyncio
+async def test_monitor_keeps_watching_after_an_unparseable_state():
+    """Regression: an unknown mode (MODE_UNDEFINED) once switched the monitor off for the run."""
+    _UnparseableThenStates.calls = 0
+    estop = types.SimpleNamespace(safety_state=_SafetyState.SAFETY_STATE_ROBOT_EMERGENCY_STOP)
+    gateway = MagicMock()
+    gateway.controller_api.stream_robot_controller_state = lambda **_kw: _UnparseableThenStates([
+        estop
+    ])
+    monitor = _patched_monitor([])
+    with patch("novapolicy.estop.get_api_gateway", lambda _mg: gateway):
+        await _run_monitor_until(monitor)
+    assert isinstance(monitor.error, EmergencyStopError)
+    assert monitor.error.safety_state == "SAFETY_STATE_ROBOT_EMERGENCY_STOP"
 
 
 @pytest.mark.asyncio
