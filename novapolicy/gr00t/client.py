@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from novapolicy.schema import PolicySchema
 
 _RESPONSE_PAIR_SIZE = 2
+_DEFAULT_LANGUAGE_KEY = "annotation.language.language_instruction"
 _IMAGE_NDIM_SINGLE = 3  # (H, W, C)
 _IMAGE_NDIM_TEMPORAL = 4  # (T, H, W, C)
 _IMAGE_CHANNELS = 3
@@ -95,6 +96,13 @@ class Gr00tPolicyClient(PolicyClient):
         self._dt_ms = dt_ms
         self._tcp_format = tcp_format
         self._actual_dof: dict[str, int] = {}
+        # What the server takes, learned in validate_schema (the executor calls it before
+        # the run): the state keys it expects and the key its language instruction goes in.
+        self._server_state_keys: set[str] | None = None
+        self._language_key = _DEFAULT_LANGUAGE_KEY
+        self.last_raw_action: dict[str, np.ndarray] = {}
+        """The server's last answer, every action key as a ``(horizon, dim)`` array; an
+        ``Action.computed`` hook reads actions that drive hardware outside NOVA from it."""
 
         # RTC (Real-Time Chunking) — client-side state
         self._rtc_config: RTCConfig | None = rtc
@@ -128,6 +136,8 @@ class Gr00tPolicyClient(PolicyClient):
         schema_state_keys = {m.key for m in schema.joint_mappings}
         schema_state_keys |= {m.key for m in schema.tcp_mappings}
         schema_state_keys |= {m.key for m in schema.obs_io_mappings}
+        schema_state_keys |= {k for o in schema.computed_observations for k in o.keys}
+        self._server_state_keys = server_state_keys or None
         missing_state = server_state_keys - schema_state_keys
         if missing_state:
             errors.append(f"Missing state observations: {sorted(missing_state)}")
@@ -141,6 +151,8 @@ class Gr00tPolicyClient(PolicyClient):
 
         # Check language keys
         server_lang_keys = _extract_modality_keys(config, "language")
+        if len(server_lang_keys) == 1:
+            self._language_key = next(iter(server_lang_keys))
         if server_lang_keys:
             has_language = bool(schema.constants.get("language"))
             if not has_language:
@@ -331,6 +343,10 @@ class Gr00tPolicyClient(PolicyClient):
         """Convert raw robot states → GR00T observation format."""
         state_dict = self._build_state_dict(states, schema, io_values)
         await self._fill_computed_state(state_dict, schema)
+        if self._server_state_keys is not None:
+            # An observation the model does not take (a TCP pose that only pins the TCP
+            # for relative actions, say) stays out of the request.
+            state_dict = {k: v for k, v in state_dict.items() if k in self._server_state_keys}
         groot_obs: dict[str, Any] = {"state": state_dict}
 
         if images:
@@ -340,9 +356,7 @@ class Gr00tPolicyClient(PolicyClient):
 
         language = schema.constants.get("language", "")
         if language:
-            groot_obs["language"] = {
-                "annotation.language.language_instruction": [[language]],
-            }
+            groot_obs["language"] = {self._language_key: [[language]]}
 
         return groot_obs
 
@@ -409,6 +423,11 @@ class Gr00tPolicyClient(PolicyClient):
         info: dict[str, object],
     ) -> ActionChunk:
         """Convert GR00T action arrays → ActionChunk."""
+        self.last_raw_action = {
+            key: np.asarray(arr)[0] if np.asarray(arr).ndim == _ACTION_NDIM else np.asarray(arr)
+            for key, arr in action.items()
+            if isinstance(arr, np.ndarray)
+        }
         joints: dict[str, list[list[float]]] = {}
         ios: dict[str, dict[str, bool | int | float | str]] = {}
 

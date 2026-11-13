@@ -19,8 +19,9 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from nova.types import Pose
 from novapolicy.gr00t import Gr00tMsgSerializer, Gr00tPolicyClient
-from novapolicy.schema import Observation, PolicySchema
+from novapolicy.schema import Action, Observation, PolicySchema
 from novapolicy.types import ActionChunk
 
 zmq = pytest.importorskip("zmq")
@@ -1008,3 +1009,55 @@ async def test_a_key_shared_by_two_arms_gives_each_arm_its_own_joints() -> None:
 
     np.testing.assert_allclose(result.joints["0@left"], [left_joints] * 4, atol=1e-6)
     np.testing.assert_allclose(result.joints["0@right"], [right_joints] * 4, atol=1e-6)
+
+
+def _modality(keys: list[str]) -> dict:
+    return {"__ModalityConfig_class__": True, "as_json": {"modality_keys": keys}}
+
+
+@pytest.mark.asyncio
+async def test_the_client_takes_its_keys_from_the_server() -> None:
+    """After validate_schema, the prompt goes under the server's language key, only the
+    server's state keys are sent, a computed state counts, and the raw action is kept."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server._modality_config = {
+        "state": _modality(["arm_joints", "gripper"]),
+        "action": _modality(["eef_delta", "gripper"]),
+        "language": _modality(["annotation.human.task_description"]),
+    }
+    server.start()
+    try:
+        mg = _mg()
+
+        async def gripper(_obs: object) -> dict[str, float]:
+            return {"gripper": 0.0}
+
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm_joints", source=mg, action=False),
+                Observation.tcp("tcp_pose", source=mg, tcp="flange"),  # not a model input
+                Observation.computed(gripper, keys=["gripper"]),
+                Observation.constant("language", value="pick up the cube"),
+            ],
+            actions=[Action.tcp("eef_delta", target=mg, mode="relative")],
+        )
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port)
+        await client.connect([mg.id])
+        await client.validate_schema(schema)
+        state = _state((0.0,) * 6, pose=Pose((0.0, 0.0, 0.0, 0.0, 0.0, 0.0)))
+        server.action_response = (
+            {
+                "eef_delta": np.zeros((1, 16, 6), np.float32),
+                "gripper": -np.ones((1, 16, 1), np.float32),
+            },
+            {},
+        )
+        await client.get_actions({mg.id: state}, schema)
+        obs = server.last_observation
+        assert obs["language"] == {"annotation.human.task_description": [["pick up the cube"]]}
+        assert sorted(obs["state"]) == ["arm_joints", "gripper"]
+        assert client.last_raw_action["gripper"].shape == (16, 1)
+        await client.close()
+    finally:
+        server.close()

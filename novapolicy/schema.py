@@ -30,7 +30,7 @@ from novapolicy.ops import apply_ops, apply_ops_inverse, reject_forward_only
 _TCP_SUFFIXES = ("x", "y", "z", "rx", "ry", "rz")
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
@@ -167,6 +167,7 @@ class _ObsComputed:
     """Async function called each step: ``async (obs_so_far) -> dict``."""
 
     fn: ComputedObsFn
+    keys: tuple[str, ...] = ()
 
 
 ObservationEntry = _ObsJoints | _ObsTcp | _ObsIO | _ObsImage | _ObsConstant | _ObsComputed
@@ -258,8 +259,11 @@ class Observation:
         return _ObsConstant(key=key, value=value)
 
     @staticmethod
-    def computed(fn: ComputedObsFn) -> _ObsComputed:
+    def computed(fn: ComputedObsFn, *, keys: Sequence[str] = ()) -> _ObsComputed:
         """Async function called each step to add external data to the observation.
+
+        ``keys`` names the observation keys the function returns, so a policy client
+        can check before the run that the schema feeds every input its model expects.
 
         Example::
 
@@ -272,7 +276,7 @@ class Observation:
                 Observation.computed(read_force_sensor),
             ])
         """
-        return _ObsComputed(fn=fn)
+        return _ObsComputed(fn=fn, keys=tuple(keys))
 
 
 # ---------------------------------------------------------------------------
