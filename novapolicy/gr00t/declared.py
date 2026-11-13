@@ -10,6 +10,7 @@ deployment script only builds the schema and picks an execution mode:
 - :func:`tcp_targets`, :func:`check_guards`, :func:`frame_images`, :func:`gripper_state`,
   :func:`next_gripper_switch`: the same steps on their own.
 - :class:`PlanQueue`: continuous execution without jumps at chunk seams.
+- :meth:`DeclaredGr00tClient.preview`: one inference converted and checked, for dry runs.
 - :func:`lift_if_low`, :func:`move_home`: lift straight up when low, then the joint move
   to the declared home.
 """
@@ -17,6 +18,7 @@ deployment script only builds the schema and picks an execution mode:
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 import math
 import time
 from typing import TYPE_CHECKING, Any, cast
@@ -44,6 +46,22 @@ Targets = list[list[float]]  # [x, y, z, rx, ry, rz] per step, mm and rotation v
 
 class GuardError(RuntimeError):
     """A chunk would break a guard declared in ``policy.toml``."""
+
+
+class ChunkLimitError(RuntimeError):
+    """Sequential run reached ``max_chunks``; the arm stands still at the last chunk's end."""
+
+
+@dataclass(frozen=True)
+class Preview:
+    """One inference for one motion group, converted and checked but not executed."""
+
+    deltas: list[list[float]]  # the raw end-effector action, all horizon steps
+    targets: Targets  # absolute TCP targets for all horizon steps
+    steps: int  # how many of them would run before the next inference
+    violations: list[str]  # guards the running steps break; empty when none
+    gripper_actions: list[float]  # the raw gripper action
+    inference_ms: float
 
 
 # --- Conversions -------------------------------------------------------------------------------
@@ -395,7 +413,7 @@ class DeclaredGr00tClient(Gr00tPolicyClient):
             return await self._hold(states, schema)
         if not self.continuous and self.max_chunks is not None and self.chunks >= self.max_chunks:
             msg = f"chunk limit reached ({self.max_chunks})"
-            raise RuntimeError(msg)
+            raise ChunkLimitError(msg)
         self.chunks += 1
         p = self.cfg.policy
         frames = frame_images(images, p.image_width, p.image_height) if images else images
@@ -404,11 +422,7 @@ class DeclaredGr00tClient(Gr00tPolicyClient):
         latency_ms = (time.monotonic() - t0) * 1000.0
         tcp: dict[str, Targets] = {}
         for mg_id, deltas in chunk.tcp.items():
-            state = states[mg_id]
-            if state.tcp != self.cfg.cell.tcp:
-                msg = f"state pose is for TCP {state.tcp!r}, policy.toml declares {self.cfg.cell.tcp!r}"
-                raise RuntimeError(msg)
-            start = [*state.pose.position, *state.pose.orientation]
+            start = self._start(states[mg_id])
             targets = tcp_targets(self.cfg, start, deltas)
             if self.continuous:
                 first, targets = self.queue.merge(targets, latency_ms)
@@ -424,6 +438,36 @@ class DeclaredGr00tClient(Gr00tPolicyClient):
         # The declared step spacing, whatever the server says: guards, queue and gripper
         # timing all assume it.
         return chunk.model_copy(update={"tcp": tcp, "dt_ms": self.dt_ms})
+
+    async def preview(
+        self,
+        states: dict[str, RobotState],
+        schema: PolicySchema,
+        images: dict[str, Any] | None = None,
+    ) -> dict[str, Preview]:
+        """One inference, converted and checked like :meth:`get_actions` but neither queued
+        nor raising on a guard: a :class:`Preview` per motion group id. For dry runs."""
+        p = self.cfg.policy
+        frames = frame_images(images, p.image_width, p.image_height) if images else images
+        t0 = time.monotonic()
+        chunk = await super().get_actions(states, schema, frames)
+        inference_ms = (time.monotonic() - t0) * 1000.0
+        out: dict[str, Preview] = {}
+        for mg_id, deltas in chunk.tcp.items():
+            start = self._start(states[mg_id])
+            targets = tcp_targets(self.cfg, start, deltas)
+            steps = len(targets) if self.continuous else self.steps_to_run(start)
+            violations = guard_violations(self.cfg, start, targets[:steps], self.dt_ms)
+            out[mg_id] = Preview(
+                deltas, targets, steps, violations, list(self.gripper_actions), inference_ms
+            )
+        return out
+
+    def _start(self, state: RobotState) -> list[float]:
+        if state.tcp != self.cfg.cell.tcp:
+            msg = f"state pose is for TCP {state.tcp!r}, policy.toml declares {self.cfg.cell.tcp!r}"
+            raise RuntimeError(msg)
+        return [*state.pose.position, *state.pose.orientation]
 
     async def _hold(self, states: dict[str, RobotState], schema: PolicySchema) -> ActionChunk:
         await asyncio.sleep(self.dt_ms / 1000.0)  # no inference; don't spin the executor loop

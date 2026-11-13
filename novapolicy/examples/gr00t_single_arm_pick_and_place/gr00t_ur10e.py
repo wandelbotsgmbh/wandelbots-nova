@@ -35,7 +35,6 @@ from novapolicy import (
     Action,
     ActionChunk,
     ContinuousExecution,
-    Gr00tPolicyClient,
     Observation,
     PolicyExecutor,
     PolicySchema,
@@ -44,14 +43,11 @@ from novapolicy import (
 )
 from novapolicy.gr00t import declared, policy_config
 from novapolicy.gr00t.declared import (
+    ChunkLimitError,
     DeclaredGr00tClient,
-    GuardError,
-    check_guards,
-    frame_images,
     gripper_state,
     move_home,
     next_gripper_switch,
-    tcp_targets,
 )
 
 if TYPE_CHECKING:
@@ -267,6 +263,9 @@ async def run_policy(
         t0 = time.monotonic()
         try:
             result = await executor.run()
+        except ChunkLimitError as e:
+            print(f"\nStopped at standstill: {e}")
+            return
         except Exception:
             logger.exception("Policy run failed after %.1fs", time.monotonic() - t0)
             raise
@@ -280,45 +279,33 @@ async def dry_run(
     mg: MotionGroup, client: DeclaredGr00tClient, schema: PolicySchema, images: dict[str, Any]
 ) -> None:
     """One real observation + inference. Prints targets, commands nothing."""
-    p, tcp = CFG.policy, CFG.cell.tcp
     for cam in images.values():
         await cam.connect()
     try:
-        frames = frame_images(
-            {key: cam.read() for key, cam in images.items()}, p.image_width, p.image_height
-        )
-        state = await mg.get_state(tcp)
+        state = await mg.get_state(CFG.cell.tcp)
+        frames = {key: cam.read() for key, cam in images.items()}
         print(f"TCP: {state.tcp}  joints(deg): {[round(math.degrees(j), 1) for j in state.joints]}")
-        print(f"Frames: { {k: v.shape for k, v in frames.items()} }")
-
-        t0 = time.monotonic()
-        # Raw chunk (skip the declared conversion) so the deltas are visible.
-        raw = await Gr00tPolicyClient.get_actions(client, {mg.id: state}, schema, frames)
-        print(f"Inference: {(time.monotonic() - t0) * 1000:.0f} ms, dt_ms={raw.dt_ms:.1f}")
+        preview = (await client.preview({mg.id: state}, schema, frames))[mg.id]
+        print(f"Inference: {preview.inference_ms:.0f} ms, dt_ms={client.dt_ms:.1f}")
         start = [*state.pose.position, *state.pose.orientation]
-        targets = tcp_targets(CFG, start, raw.tcp[mg.id])
-        steps = client.steps_to_run(start)
         print(f"start pose (mm, rotvec): {np.round(start, 3).tolist()}")
         print(" step  raw eef_delta                              -> target pos (mm)  dpos_mm")
-        for i, (d, t) in enumerate(zip(raw.tcp[mg.id], targets, strict=True)):
+        for i, (d, t) in enumerate(zip(preview.deltas, preview.targets, strict=True)):
             dpos = np.subtract(t[:3], start[:3])
             print(
-                f"{'*' if i < steps else ' '}{i:2d}  {np.round(d, 4).tolist()}  -> "
+                f"{'*' if i < preview.steps else ' '}{i:2d}  {np.round(d, 4).tolist()}  -> "
                 f"{np.round(t[:3], 1).tolist()}  {np.round(dpos, 1).tolist()}"
             )
-        switch = next_gripper_switch(CFG, client.gripper_actions, steps, closed=False)
+        switch = next_gripper_switch(CFG, preview.gripper_actions, preview.steps, closed=False)
         command = (
             "none (stays open)"
             if switch is None
-            else (f"{'grip()' if switch[1] else 'open()'} at step {switch[0]}")
+            else f"{'grip()' if switch[1] else 'open()'} at step {switch[0]}"
         )
-        print(f"Gripper raw: {np.round(client.gripper_actions, 3).tolist()}")
+        print(f"Gripper raw: {np.round(preview.gripper_actions, 3).tolist()}")
         print(f"Gripper command that would be sent: {command}")
-        try:
-            check_guards(CFG, start, targets[:steps], client.dt_ms)  # only these execute
-            print("Guards: OK")
-        except GuardError as e:
-            print(f"Guards: REJECTED - {e}")
+        violations = "; ".join(preview.violations)
+        print(f"Guards: REJECTED - {violations}" if violations else "Guards: OK")
         print("(* = executed per chunk; dry run, nothing commanded)")
     finally:
         for cam in images.values():

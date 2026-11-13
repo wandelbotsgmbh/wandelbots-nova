@@ -15,6 +15,7 @@ from scipy.spatial.transform import Rotation
 from novapolicy.gr00t import policy_config
 from novapolicy.gr00t.client import Gr00tPolicyClient
 from novapolicy.gr00t.declared import (
+    ChunkLimitError,
     DeclaredGr00tClient,
     GuardError,
     PlanQueue,
@@ -265,3 +266,23 @@ async def test_continuous_get_actions_places_chunks_on_the_timestep_timeline(mon
     client.synchronize_action_timestep(5)
     chunk = await client.get_actions(_states(mg, DOWN), _schema(mg))
     assert chunk.action_timestep == 4  # the published step before the replaceable one
+
+
+@pytest.mark.asyncio
+async def test_preview_converts_and_checks_without_raising(monkeypatch):
+    mg = _mg()
+    _serve(monkeypatch, mg, [[0.0, 0.0, -0.5, 0.0, 0.0, 0.0]] * 16)  # dives into the table
+    preview = (await _client(n_action_steps=8).preview(_states(mg, DOWN), _schema(mg)))[mg.id]
+    assert len(preview.targets) == 16
+    assert preview.steps == 8
+    assert any("below" in v for v in preview.violations)
+
+
+@pytest.mark.asyncio
+async def test_the_chunk_limit_raises_its_own_error(monkeypatch):
+    mg = _mg()
+    _serve(monkeypatch, mg, [[0.002, 0.0, 0.0, 0.0, 0.0, 0.0]] * 16)
+    client = _client(max_chunks=1)
+    await client.get_actions(_states(mg, DOWN), _schema(mg))
+    with pytest.raises(ChunkLimitError):
+        await client.get_actions(_states(mg, DOWN), _schema(mg))

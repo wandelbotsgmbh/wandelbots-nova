@@ -3,7 +3,8 @@
 How to take a trained GR00T checkpoint behind a running inference server to a supervised run
 on a real robot. [`examples/gr00t_single_arm_pick_and_place`](../examples/gr00t_single_arm_pick_and_place/)
 is the worked example: an IsaacLab-trained cube pick-and-place on a UR10e with a Zimmer gripper.
-The client API itself is in [docs/gr00t.md](../docs/gr00t.md).
+The stock `Gr00tPolicyClient` is documented in [docs/gr00t.md](../docs/gr00t.md); this guide
+builds on [`declared.py`](declared.py), which runs it as a `policy.toml` declares.
 
 ## 1. Reach the server
 
@@ -78,7 +79,7 @@ example's README has the command for its cell. A replay that picks and places pr
 the robot frame, table and target positions match; whatever goes wrong afterwards is the
 policy. It does not check the TCP: joints replay the same path whatever the TCP is.
 
-## 5. Build the schema and the client
+## 5. Write the run script
 
 [`declared.py`](declared.py) runs the policy as `policy.toml` declares it.
 `DeclaredGr00tClient(cfg)` sends the prompt under the declared language key, keeps the
@@ -86,62 +87,132 @@ declared state keys, frames camera images like the training cameras (crop to the
 aspect, resize to the training resolution), forces the declared step spacing, turns the raw
 end-effector action into absolute TCP targets (frame, unit, gain, rotations about the TCP),
 checks every chunk against the guards and checks the server against the config. A script
-only builds the schema:
+builds the cameras, the schema and the gripper, and runs:
 
 ```python
-from novapolicy import Action, Observation, PolicyExecutor, PolicySchema, SequentialExecution
-from novapolicy.gr00t import policy_config
-from novapolicy.gr00t.declared import DeclaredGr00tClient, move_home
+import asyncio
 
-cfg = policy_config.load("policy.toml")
-mg = (await nova.cell().controller(cfg.cell.controller))[0]
-client = DeclaredGr00tClient(cfg)
-schema = PolicySchema(
-    observations=[
-        Observation.joint_positions(cfg.policy.joints.key, source=mg, action=False),
-        Observation.tcp("tcp_pose", source=mg, tcp=cfg.cell.tcp),  # pins the declared TCP
-        Observation.computed(gripper.observe),  # state NOVA does not have
-        *(Observation.image(key, source=cameras[key]) for key in cfg.policy.video_keys),
-    ],
-    actions=[
-        Action.tcp(cfg.policy.tcp_action.key, target=mg, mode="absolute"),
-        Action.computed(gripper.act),  # an actuator outside NOVA
-    ],
+import nova
+from novapolicy import (
+    Action,
+    Observation,
+    PolicyExecutor,
+    PolicySchema,
+    SequentialExecution,
+    WebRTCCameras,
 )
-await move_home(mg, cfg)  # lifts straight up first when low
-await PolicyExecutor(schema, client, execution=SequentialExecution()).run()
+from novapolicy.gr00t import policy_config
+from novapolicy.gr00t.declared import ChunkLimitError, DeclaredGr00tClient, move_home
+
+
+async def main(execute: bool) -> None:
+    cfg = policy_config.load("policy.toml")
+    async with nova.Nova() as n:  # NOVA_API from the environment
+        mg = (await n.cell().controller(cfg.cell.controller))[0]
+        webrtc = WebRTCCameras(api_url=cfg.cell.camera_server, frame_history=1)
+        cameras = {key: webrtc.device(serial) for key, serial in cfg.cell.cameras.items()}
+        client = DeclaredGr00tClient(cfg, max_chunks=120)
+        gripper = MyGripper(cfg, client)  # see below
+        client.hold_while = lambda: gripper.busy  # the arm holds still while the jaws move
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions(cfg.policy.joints.key, source=mg, action=False),
+                Observation.tcp("tcp_pose", source=mg, tcp=cfg.cell.tcp),  # pins the TCP
+                Observation.computed(gripper.observe),  # state NOVA does not have
+                *(Observation.image(key, source=cameras[key]) for key in cfg.policy.video_keys),
+            ],
+            actions=[
+                Action.tcp(cfg.policy.tcp_action.key, target=mg, mode="absolute"),
+                Action.computed(gripper.act),  # an actuator outside NOVA
+            ],
+        )
+        await client.connect([mg.id])
+        try:
+            await client.validate_schema(schema)  # the server serves the declared policy
+            if not execute:
+                await dry_run(mg, client, schema, cameras)  # step 7
+                return
+            await gripper.connect()  # homing moves the jaws
+            await move_home(mg, cfg)
+            executor = PolicyExecutor(
+                schema, client, timeout_s=300, execution=SequentialExecution()
+            )
+            try:
+                result = await executor.run()
+                print(result.reason, result.steps)
+            except ChunkLimitError as e:  # max_chunks: stops at standstill
+                print(e)
+        finally:
+            await client.close()
 ```
 
-A gripper on its own bus enters through `Observation.computed` / `Action.computed`:
-`gripper_state(cfg, jaw_gap_mm, holding=...)` maps the real jaw gap onto the declared state
-values, and `next_gripper_switch(cfg, client.gripper_actions, client.executed_steps, ...)`
-finds the step of the chunk that switches it. Pass `hold_while=lambda: gripper.busy` so the
-arm holds still while the jaws move. The example's `ZimmerGripper` does all of this.
+**Gripper on its own bus.** It enters through `Observation.computed` / `Action.computed` and
+needs `observe`, `act` and `busy`:
+
+- `observe` returns `{cfg.policy.gripper.state_key: gripper_state(cfg, jaw_gap_mm, holding=...)}`,
+  the real jaw gap mapped onto the declared state values.
+- `act` asks `next_gripper_switch(cfg, client.gripper_actions, client.executed_steps,
+  closed=...)` for the step of the chunk that switches the gripper and commands it after
+  `step * client.dt_ms`, in a task, so the executor loop never blocks.
+- `busy` is True while a command runs; the client holds the arm meanwhile (`hold_while`,
+  set after the gripper exists because the gripper reads the client).
+
+The example's `ZimmerGripper` in
+[`gr00t_ur10e.py`](../examples/gr00t_single_arm_pick_and_place/gr00t_ur10e.py) is a complete
+one for a Zimmer gripper on an IO-Link master (`zimmer-gripper-controller`; connecting homes
+the jaws). The example folder is not a package: copy the class into your script.
 
 ## 6. Choose the execution mode
 
-- **Sequential** (start here, the default): run `n_action_steps` of each chunk to
-  standstill, observe, infer again. Every chunk is checked on its own and the arm stops
-  between chunks. `near_z_mm` / `near_steps` run shorter chunks close to the table, so the
-  policy re-observes and corrects its placement more often; `max_chunks` caps a run.
-- **Continuous** (`continuous=True`, with `ContinuousExecution()` and `n_action_steps=0`):
-  re-infer as fast as the server answers. The client's `PlanQueue` keeps the steps that
-  executed during inference frozen, blends the overlap and smooths it on the executor's
-  timestep timeline, modelled on the LeRobot async queue. A plain hard replace shakes.
+`DeclaredGr00tClient` arguments:
 
-`speed_factor` below 1 plays the steps slower than the training rate for first runs.
+| Argument | Default | Effect |
+|---|---|---|
+| `continuous` | `False` | Sequential: run `n_action_steps` of each chunk to standstill, observe, infer again; every chunk is checked on its own. Continuous: re-infer as fast as the server answers; use with `ContinuousExecution()` and `PolicyExecutor(..., n_action_steps=0)` |
+| `n_action_steps` | 8 | Sequential: steps of each chunk that run |
+| `near_z_mm`, `near_steps` | off | Sequential: below this TCP height run only `near_steps` per chunk, so the policy re-observes and corrects more often close to the table |
+| `speed_factor` | 1.0 | Below 1 plays the steps slower than the training rate; use it for first runs |
+| `max_chunks` | none | Sequential: after this many chunks the client raises `ChunkLimitError` at standstill |
+| `hold_while` | none | While it returns True, the arm holds still and the policy is not asked |
+
+Continuous mode merges chunks on the executor's timestep timeline with `PlanQueue`: the
+steps that executed during inference stay frozen, the overlap is blended and smoothed, as in
+the LeRobot async queue. A plain hard replace shakes. `PolicyExecutor(timeout_s=...)` ends a
+run in either mode.
 
 ## 7. Guard and run
 
 - The guards in `policy.toml` are the deployer's safety choice: TCP speed, chunk travel,
-  rotation step, workspace and table height. `--config` warns where they are
-  tighter than the training episodes' envelope, since they would stop motion the policy
-  learned. The client raises `GuardError` on the first chunk that breaks one, which stops
-  the run; `check_guards` / `guard_violations` check targets on their own.
-- Dry run first: one observation, one inference, the targets and guard result printed, and
-  nothing commanded. Then a supervised run with a chunk limit and a hand on the e-stop.
-- Before moving home, `move_home` (or `lift_if_low`) moves straight up when the tool is
-  low, so the joint move cannot sweep it over the table or the object.
+  rotation step, workspace and table height. `--config` warns where they are tighter than
+  the training episodes' envelope, since they would stop motion the policy learned. The
+  client raises `GuardError` on the first chunk that breaks one, which stops the run.
+- Dry run first. `client.preview(states, schema, frames)` does one inference and returns per
+  motion group the raw action, the targets, the steps that would run, the guards they break
+  and the gripper action, without executing or raising on a guard:
+
+  ```python
+  async def dry_run(mg, client, schema, cameras):
+      for cam in cameras.values():
+          await cam.connect()
+      try:
+          state = await mg.get_state(client.cfg.cell.tcp)
+          frames = {key: cam.read() for key, cam in cameras.items()}
+          preview = (await client.preview({mg.id: state}, schema, frames))[mg.id]
+          for target in preview.targets[: preview.steps]:
+              print([round(v, 1) for v in target[:3]])
+          print("guards:", preview.violations or "OK")
+      finally:
+          for cam in cameras.values():
+              await cam.disconnect()
+  ```
+
+  The gripper is not connected in a dry run, so `observe` must answer without it (the jaws
+  assumed open).
+- Then a supervised run with a chunk limit and a hand on the e-stop.
+- `move_home(mg, cfg)` first moves straight up to `safe_z_mm` (default 200 mm) when the TCP
+  is lower, so the joint move cannot sweep the tool over the table or the object, then moves
+  to the declared home; both at `speed_mm_s` (default 100 mm/s). `lift_if_low` is the first
+  half on its own.
 
 ## Things to keep in mind
 
