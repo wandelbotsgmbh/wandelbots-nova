@@ -23,8 +23,6 @@ from novapolicy.gr00t.declared import (
     gripper_state,
     next_gripper_switch,
     tcp_targets,
-    tilt_deg,
-    yaw_deg,
 )
 from novapolicy.schema import Action, Observation, PolicySchema
 from novapolicy.types import ActionChunk
@@ -67,7 +65,6 @@ def test_tcp_targets_rotates_about_the_tcp_in_the_base_frame():
     expected = Rotation.from_rotvec([0.0, 0.0, yaw]) * Rotation.from_rotvec(DOWN[3:])
     got = Rotation.from_rotvec(targets[0][3:])
     assert (got * expected.inv()).magnitude() == pytest.approx(0.0, abs=1e-9)
-    assert yaw_deg(targets[0]) - yaw_deg(DOWN) == pytest.approx(10.0)
 
 
 def test_tcp_targets_in_the_tool_frame_follow_the_tool_axes():
@@ -96,16 +93,6 @@ def test_check_guards_accepts_a_small_motion_and_names_each_broken_guard():
     outside = [[*DOWN[:1], -100.0, *DOWN[2:]]]
     with pytest.raises(GuardError, match="outside workspace"):
         check_guards(CFG, [*DOWN[:1], -101.0, *DOWN[2:]], outside, DT)
-
-
-def test_tilt_and_yaw_guards_use_the_run_reference():
-    tilted = Rotation.from_euler("x", 30.0, degrees=True) * Rotation.from_rotvec(DOWN[3:])
-    assert tilt_deg([*DOWN[:3], *tilted.as_rotvec()]) == pytest.approx(30.0)
-    turned = Rotation.from_euler("z", 40.0, degrees=True) * Rotation.from_rotvec(DOWN[3:])
-    pose = [*DOWN[:3], *turned.as_rotvec()]
-    check_guards(CFG, pose, [pose], DT)  # the chunk's start is the default reference
-    with pytest.raises(GuardError, match="yaw"):
-        check_guards(CFG, pose, [pose], DT, reference_yaw=yaw_deg(DOWN))
 
 
 def test_gripper_state_maps_the_jaw_gap_onto_the_declared_values():

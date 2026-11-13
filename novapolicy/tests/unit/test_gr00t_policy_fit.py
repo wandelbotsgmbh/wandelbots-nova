@@ -124,30 +124,16 @@ def test_forward_kinematics_matches_nova_at_home():
     assert Rotation.from_matrix(pose[:3, :3]).magnitude() == pytest.approx(math.pi, abs=1e-6)
 
 
-def test_orientation_envelope_and_merge():
-    """Tilt and yaw (relative to each episode's start) are measured and merged across episodes."""
-    down = Rotation.from_rotvec([0.0, math.pi, 0.0])
-
-    def poses(yaws_deg, tilt_deg):
-        out = []
-        for yaw in yaws_deg:
-            r = (
-                Rotation.from_euler("z", yaw, degrees=True)
-                * down
-                * Rotation.from_euler("x", tilt_deg, degrees=True)
-            )
-            out.append(pose_matrix([0.0, -500.0, 300.0], r.as_rotvec()))
-        return out
-
-    joints = np.zeros((4, 6))
-    first = path_summary(poses([10, 0, -20, 5], 0.0), joints, 30.0)
-    assert first.tilt_max == pytest.approx(0.0, abs=1e-3)
-    assert (first.yaw_lo, first.yaw_hi) == (pytest.approx(-30.0), pytest.approx(0.0))
-    second = path_summary(poses([0, 15, 15, 15], 12.0), joints, 30.0)
-    merged = merge_summaries([first, second])
-    assert merged.tilt_max == pytest.approx(12.0)
-    assert (merged.yaw_lo, merged.yaw_hi, merged.episodes) == (
-        pytest.approx(-30.0),
-        pytest.approx(15.0),
-        2,
+def test_path_envelope_and_merge():
+    """TCP bounds and speeds are measured and merged across episodes."""
+    down = [0.0, math.pi, 0.0]
+    joints = np.zeros((3, 6))
+    first = path_summary([pose_matrix([x, -500.0, 300.0], down) for x in (0, 10, 20)], joints, 30.0)
+    assert first.speed_max == pytest.approx(300.0)
+    second = path_summary(
+        [pose_matrix([0.0, y, 100.0], down) for y in (-500, -480, -460)], joints, 30.0
     )
+    merged = merge_summaries([first, second])
+    assert merged.lo == pytest.approx([0.0, -500.0, 100.0])
+    assert merged.hi == pytest.approx([20.0, -460.0, 300.0])
+    assert (merged.speed_max, merged.episodes) == (pytest.approx(600.0), 2)

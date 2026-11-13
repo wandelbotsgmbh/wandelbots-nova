@@ -64,8 +64,6 @@ top = "314522065367"              # D415, bird's-eye view
 max_tcp_speed_mm_s = 650.0
 max_chunk_travel_mm = 250.0
 max_rotation_step_deg = 5.0
-max_tilt_deg = 23.0
-max_yaw_deg = 30.0
 workspace_x_mm = [-460.0, 275.0]
 workspace_y_mm = [-800.0, -240.0]
 min_tcp_z_mm = 25.0               # the table (safety plane) is z = 0

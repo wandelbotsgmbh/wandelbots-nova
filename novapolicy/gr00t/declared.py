@@ -86,20 +86,8 @@ def tcp_targets(cfg: PolicyConfig, start: list[float], deltas: list[list[float]]
     return unwrap_tcp_rotations(out, start[3:6])
 
 
-def tilt_deg(pose: list[float]) -> float:
-    """Angle between the tool z-axis and straight down (base -z)."""
-    tool_z = Rotation.from_rotvec(pose[3:6]).apply([0.0, 0.0, 1.0])
-    return math.degrees(math.acos(max(-1.0, min(1.0, -tool_z[2]))))
-
-
-def yaw_deg(pose: list[float]) -> float:
-    """Heading of the tool x-axis in the base xy-plane."""
-    tool_x = Rotation.from_rotvec(pose[3:6]).apply([1.0, 0.0, 0.0])
-    return math.degrees(math.atan2(tool_x[1], tool_x[0]))
-
-
 def guard_violations(
-    cfg: PolicyConfig, start: list[float], targets: Targets, dt_ms: float, reference_yaw: float
+    cfg: PolicyConfig, start: list[float], targets: Targets, dt_ms: float
 ) -> list[str]:
     """Every guard a chunk breaks, as readable text; empty when it breaks none."""
     g = cfg.guards
@@ -112,15 +100,11 @@ def guard_violations(
             "Rotation", Rotation.from_rotvec(t[3:6]) * Rotation.from_rotvec(prev[3:6]).inv()
         )
         step_deg = math.degrees(relative.magnitude())
-        tilt = tilt_deg(t)
-        yaw = (yaw_deg(t) - reference_yaw + 180.0) % 360.0 - 180.0
         x, y, z = t[:3]
         checks = [
             (step_mm > max_step_mm, f"step {step_mm:.1f} > {max_step_mm:.1f} mm"),
             (step_deg > g.max_rotation_step_deg, f"rotation step {step_deg:.1f} deg"),
             (math.dist(start[:3], t[:3]) > g.max_chunk_travel_mm, "chunk travel"),
-            (tilt > g.max_tilt_deg, f"tilt {tilt:.1f} > {g.max_tilt_deg} deg"),
-            (abs(yaw) > g.max_yaw_deg, f"yaw {yaw:+.1f} beyond +-{g.max_yaw_deg} deg"),
             (not g.workspace_x_mm[0] <= x <= g.workspace_x_mm[1], f"x {x:.0f} outside workspace"),
             (not g.workspace_y_mm[0] <= y <= g.workspace_y_mm[1], f"y {y:.0f} outside workspace"),
             (z < g.min_tcp_z_mm, f"z {z:.0f} below {g.min_tcp_z_mm} mm"),
@@ -135,14 +119,9 @@ def check_guards(
     start: list[float],
     targets: Targets,
     dt_ms: float,
-    reference_yaw: float | None = None,
 ) -> None:
-    """Raise :class:`GuardError` if a chunk breaks a declared guard.
-
-    ``reference_yaw`` is the run's start heading for ``max_yaw_deg`` (default: ``start``).
-    """
-    ref = yaw_deg(start) if reference_yaw is None else reference_yaw
-    if broken := guard_violations(cfg, start, targets, dt_ms, ref):
+    """Raise :class:`GuardError` if a chunk breaks a declared guard."""
+    if broken := guard_violations(cfg, start, targets, dt_ms):
         raise GuardError("; ".join(broken))
 
 
@@ -323,7 +302,6 @@ class DeclaredGr00tClient(Gr00tPolicyClient):
         self.chunks = 0
         self.gripper_actions: list[float] = []
         self.executed_steps = n_action_steps
-        self.reference_yaw: float | None = None  # the run's start heading, for max_yaw_deg
 
     def steps_to_run(self, start: list[float]) -> int:
         """Sequential: steps of a chunk starting at ``start`` that run."""
@@ -338,7 +316,6 @@ class DeclaredGr00tClient(Gr00tPolicyClient):
 
     async def connect(self, motion_group_ids: list[str]) -> None:
         self.queue.reset()
-        self.reference_yaw = None
         self.chunks = 0
         await super().connect(motion_group_ids)
 
@@ -432,18 +409,16 @@ class DeclaredGr00tClient(Gr00tPolicyClient):
                 msg = f"state pose is for TCP {state.tcp!r}, policy.toml declares {self.cfg.cell.tcp!r}"
                 raise RuntimeError(msg)
             start = [*state.pose.position, *state.pose.orientation]
-            if self.reference_yaw is None:
-                self.reference_yaw = yaw_deg(start)
             targets = tcp_targets(self.cfg, start, deltas)
             if self.continuous:
                 first, targets = self.queue.merge(targets, latency_ms)
-                check_guards(self.cfg, start, targets, self.dt_ms, self.reference_yaw)
+                check_guards(self.cfg, start, targets, self.dt_ms)
                 self.executed_steps = math.ceil(latency_ms / self.dt_ms) + 1
                 return chunk.model_copy(
                     update={"tcp": {mg_id: targets}, "action_timestep": first, "dt_ms": self.dt_ms}
                 )
             targets = targets[: self.steps_to_run(start)]
-            check_guards(self.cfg, start, targets, self.dt_ms, self.reference_yaw)
+            check_guards(self.cfg, start, targets, self.dt_ms)
             tcp[mg_id] = targets
             self.executed_steps = len(targets)
         # The declared step spacing, whatever the server says: guards, queue and gripper

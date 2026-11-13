@@ -23,8 +23,7 @@ Sections (a complete file: ``examples/gr00t_single_arm_pick_and_place/policy.tom
                            home_deg, camera_server, gripper_host, gripper_open_gap_mm
     [cell.cameras]         video key -> camera serial number
     [guards]               max_tcp_speed_mm_s, max_chunk_travel_mm, max_rotation_step_deg,
-                           max_tilt_deg, max_yaw_deg (vs. the run's start heading; 180 = no
-                           limit), workspace_x_mm, workspace_y_mm ([min, max]), min_tcp_z_mm
+                           workspace_x_mm, workspace_y_mm ([min, max]), min_tcp_z_mm
 """
 
 from __future__ import annotations
@@ -133,8 +132,6 @@ class Guards:
     max_tcp_speed_mm_s: float
     max_chunk_travel_mm: float
     max_rotation_step_deg: float
-    max_tilt_deg: float
-    max_yaw_deg: float
     workspace_x_mm: list[float]
     workspace_y_mm: list[float]
     min_tcp_z_mm: float

@@ -134,7 +134,7 @@ arm holds still while the jaws move. The example's `ZimmerGripper` does all of t
 ## 7. Guard and run
 
 - The guards in `policy.toml` are the deployer's safety choice: TCP speed, chunk travel,
-  rotation step, tilt, yaw, workspace and table height. `--config` warns where they are
+  rotation step, workspace and table height. `--config` warns where they are
   tighter than the training episodes' envelope, since they would stop motion the policy
   learned. The client raises `GuardError` on the first chunk that breaks one, which stops
   the run; `check_guards` / `guard_violations` check targets on their own.

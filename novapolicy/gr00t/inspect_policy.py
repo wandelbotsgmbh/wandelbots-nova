@@ -377,8 +377,7 @@ def _print_episode(e: EpisodeEvidence) -> None:
     v = e.envelope
     print(
         f"  envelope: x {v.lo[0]:.0f}..{v.hi[0]:.0f}, y {v.lo[1]:.0f}..{v.hi[1]:.0f}, z >= "
-        f"{v.lo[2]:.0f} mm; speed max {v.speed_max:.0f} mm/s; tilt <= {v.tilt_max:.1f} deg; "
-        f"yaw {v.yaw_lo:+.1f}..{v.yaw_hi:+.1f} deg"
+        f"{v.lo[2]:.0f} mm; speed max {v.speed_max:.0f} mm/s"
     )
 
 
@@ -603,11 +602,6 @@ def _check_guards(cfg: policy_config.PolicyConfig, ev: Evidence) -> list[Check]:
             f"max speed {g.max_tcp_speed_mm_s} < trained {v.speed_max:.0f} mm/s",
         ),
         (g.min_tcp_z_mm > v.lo[2], f"min z {g.min_tcp_z_mm} > trained {v.lo[2]:.0f} mm"),
-        (g.max_tilt_deg < v.tilt_max, f"max tilt {g.max_tilt_deg} < trained {v.tilt_max:.1f} deg"),
-        (
-            g.max_yaw_deg < max(abs(v.yaw_lo), abs(v.yaw_hi)),
-            f"max yaw {g.max_yaw_deg} < trained {max(abs(v.yaw_lo), abs(v.yaw_hi)):.1f} deg",
-        ),
         (
             not g.workspace_x_mm[0] <= v.lo[0] <= v.hi[0] <= g.workspace_x_mm[1],
             f"workspace x {g.workspace_x_mm} vs. trained {v.lo[0]:.0f}..{v.hi[0]:.0f}",
@@ -691,8 +685,7 @@ def template(ev: Evidence, controller: str, tcp: str) -> str:
         v = e.envelope
         hints["guards"] = (
             f"training envelope: speed <= {v.speed_max:.0f} mm/s, x {v.lo[0]:.0f}..{v.hi[0]:.0f}, "
-            f"y {v.lo[1]:.0f}..{v.hi[1]:.0f}, z >= {v.lo[2]:.0f}, tilt <= {v.tilt_max:.1f}, "
-            f"yaw {v.yaw_lo:+.1f}..{v.yaw_hi:+.1f}"
+            f"y {v.lo[1]:.0f}..{v.hi[1]:.0f}, z >= {v.lo[2]:.0f}"
         )
     height, width = next(iter(ev.images.values()), (None, None))
     lines = [
@@ -755,8 +748,6 @@ def template(ev: Evidence, controller: str, tcp: str) -> str:
                 "max_tcp_speed_mm_s",
                 "max_chunk_travel_mm",
                 "max_rotation_step_deg",
-                "max_tilt_deg",
-                "max_yaw_deg",
                 "workspace_x_mm",
                 "workspace_y_mm",
                 "min_tcp_z_mm",

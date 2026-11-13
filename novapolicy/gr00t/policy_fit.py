@@ -207,35 +207,19 @@ class PathSummary:
     hi: np.ndarray  # xyz max (mm)
     speed_median: float  # mm/s
     speed_max: float
-    tilt_max: float  # deg between the tool z-axis and straight down
-    yaw_lo: float  # deg, tool heading relative to the episode's start heading
-    yaw_hi: float
     episodes: int = 1
 
 
-def _tilt_and_yaw(poses: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
-    """Per pose: tilt from straight down, and heading relative to the first pose (deg)."""
-    rotations = Rotation.from_matrix(np.array([p[:3, :3] for p in poses]))
-    tool_z, tool_x = rotations.apply([0.0, 0.0, 1.0]), rotations.apply([1.0, 0.0, 0.0])
-    tilt = np.degrees(np.arccos(np.clip(-tool_z[:, 2], -1.0, 1.0)))
-    yaw = np.degrees(np.unwrap(np.arctan2(tool_x[:, 1], tool_x[:, 0])))
-    return tilt, yaw - yaw[0]
-
-
 def path_summary(poses: list[np.ndarray], joints: np.ndarray, fps: float) -> PathSummary:
-    """Start pose, TCP bounds, speeds and orientation range of an episode."""
+    """Start pose, TCP bounds and speeds of an episode."""
     positions = np.array([p[:3, 3] for p in poses])
     speeds = np.linalg.norm(np.diff(positions, axis=0), axis=1) * fps
-    tilt, yaw = _tilt_and_yaw(poses)
     return PathSummary(
         start_joints=[float(q) for q in joints[0]],
         lo=positions.min(axis=0),
         hi=positions.max(axis=0),
         speed_median=float(np.median(speeds)),
         speed_max=float(speeds.max()),
-        tilt_max=float(tilt.max()),
-        yaw_lo=float(yaw.min()),
-        yaw_hi=float(yaw.max()),
     )
 
 
@@ -248,8 +232,5 @@ def merge_summaries(summaries: list[PathSummary]) -> PathSummary:
         hi=np.max([s.hi for s in summaries], axis=0),
         speed_median=float(np.median([s.speed_median for s in summaries])),
         speed_max=max(s.speed_max for s in summaries),
-        tilt_max=max(s.tilt_max for s in summaries),
-        yaw_lo=min(s.yaw_lo for s in summaries),
-        yaw_hi=max(s.yaw_hi for s in summaries),
         episodes=sum(s.episodes for s in summaries),
     )
