@@ -601,6 +601,8 @@ def tcp_limit_violations(
 ) -> list[str]:
     """Every limit ``targets`` break when the TCP starts at ``start``; empty when none."""
     broken: list[str] = []
+    if dt_ms <= 0 and (limits.max_speed_mm_s is not None or limits.max_rotation_speed_deg_s):
+        broken.append(f"dt_ms {dt_ms}: speed limits need the chunk's step spacing")
     prev = start
     for i, t in enumerate(targets):
         dt_s = dt_ms / 1000.0 if dt_ms > 0 else float("inf")

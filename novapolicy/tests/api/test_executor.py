@@ -23,6 +23,7 @@ import pytest
 from novapolicy.executor import Phase, PolicyExecutor
 from novapolicy.ops import Rad2Deg
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
+from novapolicy.queued_client import QueuedPolicyClient
 from novapolicy.schema import Action, Observation, ObservationEntry, PolicySchema
 from novapolicy.types import (
     ActionChunk,
@@ -902,6 +903,42 @@ async def test_a_resolved_chunk_is_sent_without_resolving_it_again():
     ):
         await PolicyExecutor(schema, _callback(resolved_policy), timeout_s=0.05).run()
     assert session.update_chunk.call_args.kwargs["steps"][-1] == target
+
+
+@pytest.mark.asyncio
+async def test_a_queued_client_runs_continuously_on_the_timestep_timeline(robot: _Robot):
+    """QueuedPolicyClient through the executor: the chunk is resolved once, not twice.
+
+    The fake session's clock does not advance, so the run stays at its first chunk;
+    merging across replacements is covered by test_queued_client.py.
+    """
+    eef = _mg(MG_ID)
+    schema = PolicySchema(
+        observations=[Observation.tcp("eef", source=eef)],
+        actions=[Action.tcp("eef", target=eef, mode="relative", accumulate=True)],
+    )
+    robot.session.current_state.pose = SimpleNamespace(
+        position=[400.0, 200.0, 300.0], orientation=[0.0, 3.14, 0.0]
+    )
+
+    async def creep(_obs: object) -> ActionChunk:
+        await asyncio.sleep(0.01)
+        return ActionChunk(tcp={MG_ID: [[0.5, 0.0, 0.0, 0.0, 0.0, 0.0]] * 16}, dt_ms=33.0)
+
+    result = await PolicyExecutor(
+        schema,
+        QueuedPolicyClient(_callback(creep)),
+        timeout_s=0.3,
+        execution=ContinuousExecution(),
+        n_action_steps=0,
+        tcp_limits=TcpLimits(max_speed_mm_s=100.0),  # a second resolve would break it
+    ).run()
+
+    assert result.reason == "timeout"
+    calls = robot.session.update_chunk.call_args_list
+    assert calls
+    xs = [step[0] for step in calls[0].kwargs["steps"]]
+    assert all(399.0 < x < 410.0 for x in xs)  # absolute, resolved once from 400 mm
 
 
 # ---------------------------------------------------------------------------

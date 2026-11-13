@@ -117,7 +117,7 @@ class QueuedPolicyClient(PolicyClient):
         if self._smoothing_passes > 0:
             merged = smooth_action_chunk(
                 merged, passes=self._smoothing_passes, retained_prefix_steps=retained
-            )
+            ).model_copy(update={"resolved": True})  # the filter rebuilds the chunk
         self._queue.publish(zip([ts for ts, _v in plan], self._flatten(merged, None), strict=True))
         return merged
 

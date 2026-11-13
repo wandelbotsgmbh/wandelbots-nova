@@ -84,3 +84,18 @@ async def test_rotation_vectors_do_not_flip_across_a_seam():
     rotvecs = [s[3:] for s in second.tcp[mg]]
     jumps = [max(abs(a - b) for a, b in zip(r0, r1, strict=True)) for r0, r1 in pairwise(rotvecs)]
     assert max(jumps) < 0.2
+
+
+@pytest.mark.asyncio
+async def test_with_smoothing_the_frozen_head_stays_exactly_as_published():
+    noisy = [[float(i % 3), 0.0, 0.0, 0.0, 0.0, 0.0] for i in range(8)]
+    client, schema, states, mg = _setup([noisy, noisy], margin_steps=2)
+    client = QueuedPolicyClient(client.policy, margin_steps=2)  # default smoothing
+    first = await client.get_actions(states, schema)
+    assert first.resolved  # smoothing must not drop the flag
+    published = {first.action_timestep + i: s for i, s in enumerate(first.tcp[mg])}
+    client.synchronize_action_timestep(3)
+    second = await client.get_actions(states, schema)
+    head = second.tcp[mg][:3]  # the predecessor (timestep 2) and the frozen timesteps 3, 4
+    for offset, step in enumerate(head):
+        assert step == pytest.approx(published[second.action_timestep + offset], abs=1e-3)
