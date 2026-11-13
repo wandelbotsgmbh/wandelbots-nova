@@ -1,14 +1,15 @@
-"""Fit what a GR00T policy's end-effector actions mean, from one training episode.
+"""Read the schema settings a GR00T policy needs from one of its training episodes.
 
 The episode's recorded joints, run through the robot's forward kinematics (DH parameters
 and TCP from NOVA), give the TCP path the training robot actually moved. Comparing that
 path with the recorded actions shows which frame the deltas are in, how much of each
-commanded step the training controller realized (the gains), whether the actions are
-deltas or absolute targets, and how the gripper is driven. Use the result for the
-``Action.tcp(mode="relative", ...)`` options and ``Scale`` operators in
-``gr00t_ur10e.py``. Optional: when the training config states these, read them there.
+commanded step the training controller realized (the gains, by least squares), whether
+the actions are deltas or absolute targets, and how the gripper is driven. The output maps
+onto the ``Action.tcp(mode="relative", ...)`` options, the ``Scale`` operators, the gripper
+values and the ``TcpLimits`` in ``gr00t_ur10e.py``. Optional: when the training config
+states these, read them there.
 
-    NOVA_API=http://<nova> uv run python fit_episode.py --episode episode_000075.parquet \
+    NOVA_API=http://<nova> uv run python settings_from_episode.py --episode episode_000075.parquet \
         [--controller ur10e-calibration --tcp umi_corrected]
 
 Columns default to this policy's dataset: ``observation.state`` = [6 joints (rad), gripper],

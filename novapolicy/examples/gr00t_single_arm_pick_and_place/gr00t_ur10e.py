@@ -66,7 +66,8 @@ PROMPT = "pick up the cube and place it on the yellow square"
 RATE_HZ = 30.0  # sim dt 1/120 s, decimation 4
 IMAGE_SIZE = (320, 240)  # the sim cameras' resolution (4:3)
 # The sim's DifferentialIK tracked each relative pose command for 4 substeps and realized
-# only part of it; fitted from a training episode (fit_episode.py): realized / commanded.
+# only part of it; measured from a training episode (settings_from_episode.py): realized /
+# commanded.
 GAIN_POSITION, GAIN_ROTATION = 0.24, 0.30
 # Gripper: BinaryJointPositionAction, a negative command closes. State: the UMI finger
 # joint, 0.0 open, -0.023 closed, -0.0136 when the fingers hold the cube.

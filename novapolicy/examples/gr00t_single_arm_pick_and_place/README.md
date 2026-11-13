@@ -9,7 +9,7 @@ policy's training episodes on the same cell.
 | `run_sequential.py` | Policy, stop-and-go (the default mode): runs one chunk to standstill, then observes and infers again |
 | `run_continuous.py` | Policy, streaming: re-infers as fast as the server answers, chunks merged on a timestep queue |
 | `gr00t_ur10e.py` | Shared implementation of the two `run_*` scripts: the policy's facts, the cell and the limits as constants at the top, the schema, the Zimmer gripper and the run |
-| `fit_episode.py` | Measures from a training episode what the actions mean (frame, gains, gripper polarity) and the training envelope |
+| `settings_from_episode.py` | Reads the schema settings from a training episode: action frame and gains, delta vs. absolute, gripper polarity and values, and the envelope the limits should cover |
 
 Without `--execute` every script is a dry run: nothing moves. With `--execute` it asks
 for `yes` before the gripper or the arm moves. Keep a hand on the e-stop.
@@ -51,7 +51,7 @@ the cell. The ones the training config does not state, checked against a trainin
 (nothing moves):
 
 ```bash
-uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/fit_episode.py \
+uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/settings_from_episode.py \
     --episode <episode_000075.parquet>
 ```
 

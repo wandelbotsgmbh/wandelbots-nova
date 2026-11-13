@@ -32,7 +32,7 @@ The server tells the keys, not their meaning. From the training setup, find out:
 The training config usually states these. A policy trained with a differential-IK controller
 (IsaacLab's relative pose command) outputs commands, and the simulated robot realized only part of
 each one; an extra `Scale` converts commanded to realized motion. The example's
-[`fit_episode.py`](../examples/gr00t_single_arm_pick_and_place/fit_episode.py) measures frame, gain
+[`settings_from_episode.py`](../examples/gr00t_single_arm_pick_and_place/settings_from_episode.py) measures frame, gain
 and gripper polarity from one training episode when the config does not say.
 
 The TCP must be known: nothing in the data recovers it unless the training tool rotated a lot.
@@ -120,7 +120,7 @@ A `dt_ms` above the training step plays the policy slower; use it for first runs
 - `TcpLimits` (speed, rotation speed, chunk travel, x/y/z bounds) are checked on every chunk
   after units and relative targets are resolved; a breaking chunk ends the run with
   `TcpLimitError`. They are the deployer's choice, not facts of the policy: keep them wider than
-  the motion the policy learned (`fit_episode.py` prints the training envelope).
+  the motion the policy learned (`settings_from_episode.py` prints the training envelope).
 - Dry run first: one real observation and one inference, the targets printed and checked, nothing
   commanded. `resolve_actions(schema, chunk, states)` gives the targets the executor would send.
 - Then a supervised run with a hand on the e-stop. Before moving home, move straight up when the
