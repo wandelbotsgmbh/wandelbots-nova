@@ -877,6 +877,33 @@ async def test_a_chunk_breaking_tcp_limits_ends_the_run_before_it_is_sent():
     session.update_chunk.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_a_resolved_chunk_is_sent_without_resolving_it_again():
+    """A queued client's chunk is already absolute; relative mode must not apply twice."""
+    eef = _mg("0@ur5e-right")
+    schema = PolicySchema(
+        observations=[Observation.tcp("eef", source=eef)],
+        actions=[Action.tcp("eef", target=eef, mode="relative")],
+    )
+    target = [500.0, 200.0, 300.0, 0.0, 3.14, 0.0]
+
+    async def resolved_policy(_obs: object) -> ActionChunk:
+        return ActionChunk(tcp={eef.id: [target]}, dt_ms=33.0, resolved=True)
+
+    session = _fake_session()
+    session.motion_group_id = eef.id
+    session.current_state.pose = SimpleNamespace(
+        position=[400.0, 200.0, 300.0], orientation=[0.0, 3.14, 0.0]
+    )
+    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+    with (
+        patch("novapolicy.executor.WaypointJoggingSession", return_value=session),
+        patch("novapolicy.executor.EstopMonitor", return_value=estop),
+    ):
+        await PolicyExecutor(schema, _callback(resolved_policy), timeout_s=0.05).run()
+    assert session.update_chunk.call_args.kwargs["steps"][-1] == target
+
+
 # ---------------------------------------------------------------------------
 # RTC requires overlapping placement
 # ---------------------------------------------------------------------------

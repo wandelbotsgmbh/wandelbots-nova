@@ -46,6 +46,11 @@ class TimestampedActionQueue:
         return not self._actions
 
     @property
+    def actions(self) -> list[tuple[int, NDArray[np.float32]]]:
+        """The queued ``(timestep, action)`` pairs in timestep order (a copy)."""
+        return list(self._actions)
+
+    @property
     def latest_timestep(self) -> int:
         return self._latest_timestep
 
@@ -87,8 +92,18 @@ class TimestampedActionQueue:
             return True
         return len(self._actions) / self._chunk_size < threshold
 
-    def merge(self, predictions: Iterable[tuple[int, NDArray[np.float32]]]) -> bool:
-        """Merge a timestamped prediction into the replaceable future queue."""
+    def merge(
+        self,
+        predictions: Iterable[tuple[int, NDArray[np.float32]]],
+        *,
+        frozen_steps: int | None = None,
+    ) -> bool:
+        """Merge a timestamped prediction into the replaceable future queue.
+
+        ``frozen_steps`` overrides the constructor's count for this merge, e.g. to cover
+        the steps that executed while the prediction was being computed.
+        """
+        frozen = self._frozen_steps if frozen_steps is None else frozen_steps
         decoded = list(predictions)
         self._chunk_size = max(self._chunk_size, len(decoded))
         current = dict(self._actions)
@@ -104,7 +119,7 @@ class TimestampedActionQueue:
                 continue
 
             previous_count = self._prediction_counts.get(timestep, 1)
-            if timestep <= self._latest_timestep + self._frozen_steps:
+            if timestep <= self._latest_timestep + frozen:
                 future[timestep] = self._published.get(timestep, current[timestep])
                 future_counts[timestep] = previous_count
             elif self._aggregation is AsyncQueueAggregation.AVERAGE:

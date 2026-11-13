@@ -109,6 +109,11 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     frozen-step count only when overlap is unclamped, hence the field name.)
     0 = no RTC / no backdate."""
 
+    resolved: bool = False
+    """The targets are already in NOVA units and absolute (the schema's operators and
+    relative modes applied), as :class:`~novapolicy.queued_client.QueuedPolicyClient`
+    returns them; the executor sends them as they are."""
+
 
 @dataclass(frozen=True, slots=True)
 class EndpointRamp:

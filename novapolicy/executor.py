@@ -610,6 +610,8 @@ class PolicyExecutor:
         # Units first: a relative target is a delta in the policy's units, and
         # adding a degree-space delta to a radian state is exactly the error the
         # operators exist to prevent.
+        if action.resolved:
+            return action
         return resolve_actions(self._schema, action, robot_states)
 
     def _report_missing_motion(self, action: ActionChunk) -> None:
