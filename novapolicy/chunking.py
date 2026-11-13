@@ -12,14 +12,17 @@ from dataclasses import dataclass
 from itertools import pairwise
 import logging
 import math
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+
+import numpy as np
+from scipy.spatial.transform import Rotation
 
 from novapolicy.types import ActionChunk, ContinuousExecution
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from novapolicy.types import ExecutionMode
+    from novapolicy.types import ExecutionMode, TcpFrame
 
 logger = logging.getLogger(__name__)
 
@@ -503,16 +506,31 @@ def _euclidean_distance(left: list[float], right: list[float]) -> float:
     return math.sqrt(sum((b - a) ** 2 for a, b in zip(left, right, strict=True)))
 
 
+@dataclass(frozen=True, slots=True)
+class TcpDelta:
+    """How a relative TCP action's steps apply (see ``Action.tcp``)."""
+
+    accumulate: bool = False
+    """False: every step is an offset from the pose at inference time. True: every step
+    applies to the pose the previous step reached."""
+    frame: TcpFrame = "base"
+    """Axes the offset is expressed in: the robot base, or the tool at the pose the step
+    starts from."""
+
+
 def apply_relative_mode(
     chunk: ActionChunk,
     states: dict[str, Any],
     relative_mgs: Iterable[str],
+    tcp_deltas: dict[str, TcpDelta] | None = None,
 ) -> ActionChunk:
     """Convert relative (delta) action targets to absolute positions.
 
-    For motion groups in ``relative_mgs``, each step is an offset from the
-    robot's state at inference time; joint deltas accumulate across steps.
-    Returns the chunk unmodified when ``relative_mgs`` is empty.
+    For motion groups in ``relative_mgs``, joint deltas accumulate across steps.
+    TCP steps compose with the pose at inference time as ``tcp_deltas`` declares
+    (default: each an offset from that pose, in base axes): positions add, rotations
+    compose as rotations about the TCP, and the result is unwrapped onto the starting
+    rotation vector. Returns the chunk unmodified when ``relative_mgs`` is empty.
     """
     relative_mgs = list(relative_mgs)
     if not relative_mgs:
@@ -538,10 +556,9 @@ def apply_relative_mode(
 
         # Relative TCP actions.
         if mg_id in new_tcp and hasattr(state, "pose") and state.pose is not None:
-            current_tcp = list(state.pose.position) + list(state.pose.orientation)
-            new_tcp[mg_id] = [
-                [c + d for c, d in zip(current_tcp, step, strict=True)] for step in new_tcp[mg_id]
-            ]
+            start = [*state.pose.position, *state.pose.orientation]
+            delta = (tcp_deltas or {}).get(mg_id, TcpDelta())
+            new_tcp[mg_id] = compose_tcp_deltas(start, new_tcp[mg_id], delta)
 
     return ActionChunk(
         joints=new_joints,
@@ -552,6 +569,31 @@ def apply_relative_mode(
         action_timestep=chunk.action_timestep,
         seam_backdate_steps=chunk.seam_backdate_steps,
     )
+
+
+def compose_tcp_deltas(
+    start: list[float], steps: list[list[float]], delta: TcpDelta
+) -> list[list[float]]:
+    """Absolute TCP targets ``[x, y, z, rx, ry, rz]`` (mm, rotation vector) from offsets.
+
+    A rotation offset turns the tool about the TCP: pre-multiplied in base axes,
+    post-multiplied in tool axes. A rotation vector is not additive, so adding them
+    component-wise would turn a tool-down pose (rotation near pi) the wrong way.
+    """
+    p0, r0 = np.asarray(start[:3], dtype=float), Rotation.from_rotvec(start[3:6])
+    p, r = p0, r0
+    out: list[list[float]] = []
+    for step in steps:
+        base_p, base_r = (p, r) if delta.accumulate else (p0, r0)
+        dp, rv = np.asarray(step[:3], dtype=float), np.asarray(step[3:6], dtype=float)
+        if delta.frame == "tool":
+            p = base_p + base_r.apply(dp)
+            r = cast("Rotation", base_r * Rotation.from_rotvec(rv))
+        else:
+            p = base_p + dp
+            r = cast("Rotation", Rotation.from_rotvec(rv) * base_r)
+        out.append([*p.tolist(), *r.as_rotvec().tolist()])
+    return unwrap_tcp_rotations(out, start[3:6])
 
 
 @dataclass(frozen=True, slots=True)

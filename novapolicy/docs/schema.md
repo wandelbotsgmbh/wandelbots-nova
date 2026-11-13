@@ -103,6 +103,25 @@ policy's action output is interpreted:
 Observation.joint_positions("arm", source=mg, mode="relative")
 ```
 
+Relative joint steps accumulate. Relative TCP steps are offsets from the pose at inference
+time; rotation offsets turn the tool about the TCP (composed as rotations, not added as
+vectors). Two options on `Action.tcp` cover per-step end-effector deltas, as policies
+trained with a differential-IK controller output them:
+
+```python
+Action.tcp(
+    "eef_delta", target=mg, mode="relative",
+    accumulate=True,               # each step applies to the pose the previous one reached
+    frame="base",                  # or "tool": offsets in the tool's axes
+    position_ops=[Scale(0.001)],   # the policy's positions are in metres
+)
+```
+
+If the training controller realized only a fraction of each commanded step, an extra
+`Scale` converts commanded to realized motion: `position_ops=[Scale(0.001), Scale(1 / 0.24)]`
+plays 24 % of each commanded position step, `orientation_ops=[Scale(1 / 0.3)]` 30 % of each
+rotation.
+
 ## TCP actions
 
 Policies that output Cartesian targets instead of joint positions. Set

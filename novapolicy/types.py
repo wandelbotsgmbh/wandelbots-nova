@@ -20,6 +20,7 @@ ValueType = int | str | bool | float | Pose
 
 # Mode literals used across the package
 ActionMode = Literal["absolute", "relative"]
+TcpFrame = Literal["base", "tool"]
 JoggingMode = Literal["joint", "cartesian"]
 
 _MIN_ENDPOINT_RAMP_STEPS = 2

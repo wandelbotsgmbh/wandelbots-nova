@@ -1480,7 +1480,12 @@ class PolicyExecutor:
 
     def _apply_relative_mode(self, chunk: ActionChunk, states: dict[str, Any]) -> ActionChunk:
         """Convert relative (delta) action targets to absolute (see chunking)."""
-        return apply_relative_mode(chunk, states, self._schema.relative_motion_groups())
+        return apply_relative_mode(
+            chunk,
+            states,
+            self._schema.relative_motion_groups(),
+            self._schema.relative_tcp_deltas(),
+        )
 
     @property
     def _all_io_values(self) -> dict[str, object]:

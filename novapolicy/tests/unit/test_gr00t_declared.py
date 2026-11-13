@@ -286,3 +286,30 @@ async def test_the_chunk_limit_raises_its_own_error(monkeypatch):
     await client.get_actions(_states(mg, DOWN), _schema(mg))
     with pytest.raises(ChunkLimitError):
         await client.get_actions(_states(mg, DOWN), _schema(mg))
+
+
+def test_the_core_relative_tcp_path_reproduces_tcp_targets():
+    """Golden check before declared.py goes: Action.tcp(mode='relative', accumulate=True)
+    with the declared unit and gains as Scale ops gives the same targets."""
+    from novapolicy.chunking import TcpDelta, compose_tcp_deltas
+    from novapolicy.ops import Scale
+
+    a = CFG.policy.tcp_action
+    rng = np.random.default_rng(0)
+    deltas = (rng.normal(0.0, 0.01, (16, 6))).tolist()
+    pos_ops = [Scale(0.001), Scale(1.0 / a.gain_position)]
+    rot_ops = [Scale(1.0 / a.gain_rotation)]
+    mg = _mg()
+    schema = PolicySchema(
+        observations=[Observation.tcp("tcp_pose", source=mg, tcp=CFG.cell.tcp)],
+        actions=[
+            Action.tcp(
+                "eef_delta", target=mg, mode="relative", accumulate=True,
+                position_ops=pos_ops, orientation_ops=rot_ops,
+            )
+        ],
+    )  # fmt: skip
+    scaled = schema.apply_inverse_ops(ActionChunk(tcp={mg.id: deltas})).tcp[mg.id]
+    for start in (DOWN, [*DOWN[:3], 0.0, -math.pi, 0.0], [*DOWN[:3], -0.06, 3.04, 0.02]):
+        core = compose_tcp_deltas(start, scaled, TcpDelta(accumulate=True))
+        assert np.allclose(core, tcp_targets(CFG, start, deltas), atol=1e-6)

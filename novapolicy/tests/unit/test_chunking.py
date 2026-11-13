@@ -12,11 +12,15 @@ import math
 from types import SimpleNamespace
 
 from hypothesis import given, settings, strategies as st
+import numpy as np
 import pytest
+from scipy.spatial.transform import Rotation
 
 from novapolicy.chunking import (
+    TcpDelta,
     apply_relative_mode,
     chunk_duration_s,
+    compose_tcp_deltas,
     connect_action_chunk,
     create_bridge_chunk,
     interpolate_action_chunk_ramps,
@@ -476,3 +480,45 @@ def test_continuous_execution_anchors_at_now_backdated_by_the_seam(seam):
     place = placement(chunk, execution=ContinuousExecution())
     assert place.first_timestamp_ms is None
     assert place.timestamp_offset_steps == -seam
+
+
+# compose_tcp_deltas ---------------------------------------------------------
+
+
+_DOWN = [-100.0, -500.0, 300.0, math.pi, 0.0, 0.0]  # tool pointing straight down
+
+
+def _rot(pose: list[float]) -> Rotation:
+    return Rotation.from_rotvec(pose[3:6])
+
+
+def test_relative_tcp_rotations_compose_instead_of_adding():
+    """A yaw offset on a tool-down pose turns the tool about base z, not about a summed vector."""
+    yaw = math.radians(10.0)
+    out = compose_tcp_deltas(_DOWN, [[0.0, 0.0, 0.0, 0.0, 0.0, yaw]], TcpDelta())
+    expected = Rotation.from_rotvec([0.0, 0.0, yaw]) * _rot(_DOWN)
+    assert (_rot(out[0]) * expected.inv()).magnitude() == pytest.approx(0.0, abs=1e-9)
+    assert out[0][:3] == pytest.approx(_DOWN[:3])  # rotating about the TCP keeps it in place
+
+
+def test_accumulated_tcp_deltas_chain_from_step_to_step():
+    out = compose_tcp_deltas(
+        _DOWN, [[1.0, 0.0, -2.0, 0.0, 0.0, 0.0]] * 3, TcpDelta(accumulate=True)
+    )
+    assert [s[0] for s in out] == pytest.approx([-99.0, -98.0, -97.0])
+    assert [s[2] for s in out] == pytest.approx([298.0, 296.0, 294.0])
+    offsets = compose_tcp_deltas(_DOWN, [[1.0, 0.0, -2.0, 0.0, 0.0, 0.0]] * 3, TcpDelta())
+    assert [s[0] for s in offsets] == pytest.approx([-99.0] * 3)  # the default does not chain
+
+
+def test_tool_frame_tcp_deltas_follow_the_tool_axes():
+    out = compose_tcp_deltas(_DOWN, [[0.0, 0.0, 10.0, 0.0, 0.0, 0.0]], TcpDelta(frame="tool"))
+    assert out[0][:3] == pytest.approx([-100.0, -500.0, 290.0])  # tool z points down
+
+
+def test_tcp_deltas_stay_continuous_near_a_half_turn():
+    start = [*_DOWN[:3], 0.0, -math.pi, 0.0]
+    steps = [[0.0, 0.0, 0.0, 0.0, 0.0, math.radians(2.0)]] * 10
+    out = compose_tcp_deltas(start, steps, TcpDelta(accumulate=True))
+    rotvecs = np.asarray([s[3:] for s in out])
+    assert np.abs(np.diff(rotvecs, axis=0)).max() < 0.1  # no sign flip between steps
