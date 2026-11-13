@@ -44,6 +44,7 @@ import asyncio
 import importlib
 import logging
 import math
+from pathlib import Path
 import sys
 import time
 from typing import Any, cast
@@ -68,31 +69,34 @@ from novapolicy import (
     WebRTCCameras,
 )
 from novapolicy.chunking import smooth_action_chunk, unwrap_tcp_rotations
+from novapolicy.gr00t import policy_config
 
 logger = logging.getLogger(__name__)
 
-# --- Cell ---------------------------------------------------------------------
-CONTROLLER = "ur10e-calibration"
-# Midpoint between the finger pads, matching the sim IK point (GRASP_OFFSET).
-TCP = "umi_corrected"
-HOME_DEG = (90.0, -90.0, 90.0, -90.0, -90.0, 0.0)
+# --- Declared config (policy.toml): policy facts, the cell, the guards -----------------
+CONFIG_PATH = Path(__file__).with_name("policy.toml")
+CFG = policy_config.load(CONFIG_PATH)
+P, CELL, GUARDS = CFG.policy, CFG.cell, CFG.guards
+
+CONTROLLER = CELL.controller
+TCP = CELL.tcp
+HOME_DEG = tuple(CELL.home_deg)
 HOME = tuple(math.radians(d) for d in HOME_DEG)
+GROOT_HOST, GROOT_PORT = CFG.server.host, CFG.server.port
+LANGUAGE_KEY = P.language_key
+TASK = P.prompt
+TRAINING_DT_MS = P.dt_ms
+CAMERA_SERVER = CELL.camera_server
+IMAGE_SIZE = (P.image_width, P.image_height)
+GRIPPER_HOST = CELL.gripper_host
+
+# --- Execution (not part of the policy) -------------------------------------------------
 HOME_SETTINGS = MotionSettings(tcp_velocity_limit=100.0)
 # Below this TCP height, first move straight up to it before the joint move home, so the
 # joint interpolation cannot sweep the gripper over the cube or the table.
 SAFE_Z_MM = 200.0
-
-# --- GR00T server -------------------------------------------------------------
-GROOT_HOST = "172.31.11.129"
-GROOT_PORT = 30555
-LANGUAGE_KEY = "annotation.human.task_description"
-TASK = "pick up the cube and place it on the yellow square"
-# Training env controls at 30 Hz (sim dt 1/120, decimation 4); one eef_delta per step.
-TRAINING_DT_MS = 1000.0 / 30.0
-# Playback speed relative to the training data. 1.0 plays one policy step per 33.3 ms,
-# as recorded: training episode 75 moved its TCP at a median 229 mm/s (p95 416, max
-# 605 mm/s, in sim time). Below 1.0 the same path runs slower (0.33 = the 100 ms steps
-# of the first supervised runs).
+# Playback speed relative to the training rate: 1.0 plays one policy step per
+# 1 / rate_hz; below 1.0 the same path runs slower.
 SPEED_FACTOR = 1.0
 DT_MS = TRAINING_DT_MS / SPEED_FACTOR
 N_ACTION_STEPS = 8
@@ -109,87 +113,29 @@ TIMEOUT_S = 300.0
 SMOOTHING_PASSES = 2
 HOLD_STEPS = 5  # waypoints of a hold-in-place chunk while the gripper is busy
 # Continuous seams, as the LeRobot async queue does it: the steps that executed while
-# this inference was in flight (its measured latency, 130-390 ms so far) plus a margin
-# stay exactly as published; later overlapping steps are blended old/new 0.3/0.7.
+# this inference was in flight (its measured latency) plus a margin stay exactly as
+# published; later overlapping steps are blended old/new 0.3/0.7.
 QUEUE_MARGIN_STEPS = 2
 QUEUE_OLD_WEIGHT = 0.3
-MAX_CHUNKS = 120  # sequential: sim ~34 chunks of 8; real approach ~2x, half chunks near table
+MAX_CHUNKS = 120  # sequential: a cap on chunks per run
 
-# --- Cameras (RealSense manager, same WebRTC signaling API as novapolicy) -----
-CAMERA_SERVER = "http://172.31.11.253/cell/realsense"
-CAM_WRIST = "427622271414"  # D405
-CAM_SIDE = "319522063360"  # D415, angled view across the table
-CAM_TOP = "314522065367"  # D415, bird's-eye view straight down
-# Sim cameras rendered 320x240 (4:3). Real frames are 16:9: centre-crop to 4:3, then resize.
-IMAGE_SIZE = (320, 240)
-
-# --- Zimmer gripper -------------------------------------------------------------
-# Turck TBEN-S2-4IOL. Homing opens the jaws to an 80.00 mm gap; the open() that
-# wait_until_ready() sends after it aims for 78.44 mm (1 mm device limit) and reports
-# diagnosis 0x0301 without moving. The library classes 0x0301 as recoverable, not an error.
-GRIPPER_HOST = "172.31.13.49"
-# In Zimmer force mode the grip force also sets the closing speed (open -> 50 mm gap:
-# 20% 3.7 s, 50% 1.8 s, 100% 1.5 s; drive velocity has no effect). 50% for the PLA cube.
+# --- Zimmer gripper hardware ------------------------------------------------------------
+# Homing opens the jaws to an 80.00 mm gap. In force mode the grip force also sets the
+# closing speed (open -> 50 mm gap: 20% 3.7 s, 50% 1.8 s, 100% 1.5 s). 50% for the PLA cube.
 GRIPPER_FORCE_PERCENT = 50
 GRIPPER_VELOCITY_PERCENT = 100  # positioning moves (open_and_wait) only
 GRIPPER_OPEN_GAP_M = 0.080
-# Training env (UR10ePlaceCubeEnvCfg) + checkpoint-14000 statistics:
-# - state `gripper` is the UMI PrismaticJoint, limits [-0.023, 0.0]; 0.0 = open,
-#   -0.023 = closed. The trained data only spans [-0.0151, 0.0001] (fingers stop on the
-#   cube), so the value sent is clipped to that. The jaw gap maps linearly onto the joint.
-# - action `gripper` is BinaryJointPositionAction, -1 / +1: < 0 closes.
-GRIPPER_STATE_OPEN = 0.0
-GRIPPER_STATE_CLOSED = -0.023
-GRIPPER_STATE_TRAINED_RANGE = (-0.0151, 0.0001)
-# Training episode 75 reads -0.0136 while the fingers hold the cube. Sent after a grip
-# that reports holding, whatever the real cube's width makes the jaw gap.
-GRIPPER_STATE_HOLDING = -0.0136
-GRIPPER_ACTION_MODE = "binary"  # "binary": grip()/open(); "gap": move_to_gap_m(value)
-GRIPPER_CLOSE_BELOW = 0.0  # binary mode: policy value below this grips
-GRIPPER_DRY_RUN_STATE = GRIPPER_STATE_OPEN  # sent in the dry run (gripper not connected)
 
-# --- eef_delta convention ------------------------------------------------------
-# Server passes eef_delta through raw (ABSOLUTE/NON_EEF/DEFAULT). It is the training env's
-# arm action: DifferentialIK, command_type="pose", use_relative_mode=True, scale 1.0 —
-# [dx, dy, dz] in metres + rotation vector in rad, in the robot root frame, applied each
-# 30 Hz step to the *measured* pose of the fingertip point (target = current + delta,
-# rotation pre-multiplied). That is the "base" mode below.
-# Frame evidence: the checkpoint's mean delta (-0.0025, +0.0032) matches the net
-# home -> yellow square move in NOVA base (-215, +258) mm in sign and ratio; the scene
-# frame (NOVA rotated -90 deg about z, from TARGET_XY vs. GOAL_XY) gives (-258, -215).
-# So the root frame is NOVA's base frame: no rotation.
-EEF_DELTA_POSITION_SCALE = 1000.0  # policy unit -> mm (1000 = metres)
-EEF_DELTA_FRAME = "base"  # "base" or "tool"
-EEF_DELTA_CUMULATIVE = True  # True: step-to-step deltas; False: each vs. chunk start
-# Each delta is an IK *command* the sim PD tracked for only 4 substeps, so the robot moved
-# less than the delta per step. GAIN = realized / commanded motion, fitted on training
-# episode 75 (FK with NOVA's DH + umi_corrected on arm_joints vs. eef_delta, 271 frames):
-# position 0.24 (R^2 0.84; the -90/+90/180 deg frames all fit R^2 < 0.2), rotation 0.30
-# (R^2 0.59). Same episode: 7.9 mm realized per step on average, 20 mm at most.
-EEF_DELTA_POS_GAIN = 0.24
-# Fitted rotation gain is 0.30, but on real images the policy keeps commanding about
-# -0.022 rad/step of yaw and never corrects it (run 4: 78 deg yaw + 34 deg tilt after
-# ~184 steps; the sim episode rotated 6.7 deg in total). Hold the orientation instead.
-EEF_DELTA_ROT_GAIN = 0.0
-
-# --- Safety guards on decoded chunks ------------------------------------------
-# Largest allowed TCP speed between two consecutive targets: above the training data's
-# 605 mm/s peak. As a distance per step at the current DT_MS.
-MAX_TCP_SPEED_MM_S = 650.0
-MAX_STEP_MM = MAX_TCP_SPEED_MM_S * DT_MS / 1000.0
-MAX_CHUNK_TRAVEL_MM = 250.0  # largest allowed distance from the start pose (16 steps)
-MAX_STEP_DEG = 5.0  # largest allowed rotation between two consecutive targets
-MAX_TILT_DEG = 15.0  # largest allowed angle between the tool axis and straight down
-# The controller's safety plane (the table) is z = 0 in the base frame. The TCP is the
-# finger-pad midpoint, so it sits ~half a cube height above the table when gripping.
-# Episode 75 grasped at z 41.7 and released at z 29.8 (min 29.5).
-MIN_TCP_Z_MM = 25.0
-# Absolute workspace box in NOVA base (mm): the training cube range x [0.36, 0.70],
-# y [-0.40, -0.06] m and target (0.42, 0.0) m, mapped from the scene frame
-# (x_nova = y_scene, y_nova = -x_scene), plus the home TCP. Episode 75's TCP path spans
-# x [-376, 181], y [-758, -271], z >= 29.5 (grasp at z 41.7, release at z 29.8).
-WORKSPACE_X_MM = (-460.0, 275.0)
-WORKSPACE_Y_MM = (-800.0, -240.0)
+# --- Guards (declared in policy.toml) ----------------------------------------------------
+MAX_TCP_SPEED_MM_S = GUARDS.max_tcp_speed_mm_s
+MAX_STEP_MM = MAX_TCP_SPEED_MM_S * DT_MS / 1000.0  # the speed limit as a distance per step
+MAX_CHUNK_TRAVEL_MM = GUARDS.max_chunk_travel_mm
+MAX_STEP_DEG = GUARDS.max_rotation_step_deg
+MAX_TILT_DEG = GUARDS.max_tilt_deg
+MAX_YAW_DEG = GUARDS.max_yaw_deg
+MIN_TCP_Z_MM = GUARDS.min_tcp_z_mm
+WORKSPACE_X_MM = tuple(GUARDS.workspace_x_mm)
+WORKSPACE_Y_MM = tuple(GUARDS.workspace_y_mm)
 
 
 def open_gripper_session(host: str = GRIPPER_HOST) -> Any:
@@ -265,12 +211,12 @@ class ZimmerGripper:
         if state.has_error:
             msg = f"Gripper error: diag=0x{state.diagnosis:04X} {state.last_error_text}"
             raise RuntimeError(msg)
-        opening = min(max(state.jaw_gap_m / GRIPPER_OPEN_GAP_M, 0.0), 1.0)
-        joint = GRIPPER_STATE_CLOSED + opening * (GRIPPER_STATE_OPEN - GRIPPER_STATE_CLOSED)
+        g = P.gripper
         if self._closed and self._holding:
-            return {"gripper": GRIPPER_STATE_HOLDING}
-        low, high = GRIPPER_STATE_TRAINED_RANGE
-        return {"gripper": min(max(joint, low), high)}
+            return {g.state_key: g.state_holding}
+        # The jaw gap mapped linearly between the declared open and closed state values.
+        opening = min(max(state.jaw_gap_m / GRIPPER_OPEN_GAP_M, 0.0), 1.0)
+        return {g.state_key: g.state_closed + opening * (g.state_open - g.state_closed)}
 
     def next_switch(self, *, closed: bool | None = None) -> tuple[int, bool] | None:
         """First executed step whose open/closed decision differs from ``closed``.
@@ -279,7 +225,7 @@ class ZimmerGripper:
         """
         current = self._closed if closed is None else closed
         for index, value in enumerate(self.last_action[: self.executed_steps]):
-            close = value < GRIPPER_CLOSE_BELOW
+            close = P.gripper.closes(value)
             if close != current:
                 return index, close
         return None
@@ -291,10 +237,6 @@ class ZimmerGripper:
         that step's offset, so a close at step 5 is not held back to the next chunk.
         """
         if not self.last_action:
-            return
-        if GRIPPER_ACTION_MODE == "gap":
-            gap = action_to_gap_m(self.last_action[0])
-            await asyncio.to_thread(self._session.move_to_gap_m, gap)
             return
         switch = self.next_switch()
         if switch is None:
@@ -322,11 +264,6 @@ class ZimmerGripper:
             logger.exception("Gripper command failed")
 
 
-def action_to_gap_m(value: float) -> float:
-    """Gap mode: map the -1 (closed) .. +1 (open) policy action to a jaw gap."""
-    return (min(max(value, -1.0), 1.0) + 1.0) / 2.0 * GRIPPER_OPEN_GAP_M
-
-
 def to_training_view(frames: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
     """Centre-crop each frame to the sim cameras' 4:3 and resize to ``IMAGE_SIZE``."""
     out: dict[str, np.ndarray] = {}
@@ -344,26 +281,29 @@ def to_training_view(frames: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
 def deltas_to_absolute(
     start: list[float],
     deltas: list[list[float]],
-    pos_gain: float = EEF_DELTA_POS_GAIN,
-    rot_gain: float = EEF_DELTA_ROT_GAIN,
+    pos_gain: float = P.tcp_action.gain_position,
+    rot_gain: float = P.tcp_action.gain_rotation,
 ) -> list[list[float]]:
-    """Compose ``eef_delta`` steps onto ``start`` ([x, y, z, rx, ry, rz], mm / rotvec)."""
-    p_start = np.asarray(start[:3], dtype=float)
-    r_start = Rotation.from_rotvec(start[3:6])
-    p = p_start.copy()
-    r: Rotation = r_start
+    """Compose per-step TCP deltas onto ``start`` ([x, y, z, rx, ry, rz], mm / rotvec), as
+    declared in ``policy.tcp_action``: each step applied to the pose the previous one
+    reached, rotations pre-multiplied about the TCP."""
+    action = P.tcp_action
+    p = np.asarray(start[:3], dtype=float)
+    r: Rotation = Rotation.from_rotvec(start[3:6])
     out: list[list[float]] = []
+    to_nova = Rotation.from_euler("z", action.base_rotation_z_deg, degrees=True)
     for step in deltas:
-        dp = np.asarray(step[:3], dtype=float) * EEF_DELTA_POSITION_SCALE * pos_gain
-        dr = Rotation.from_rotvec(np.asarray(step[3:6], dtype=float) * rot_gain)
-        if not EEF_DELTA_CUMULATIVE:
-            p, r = p_start.copy(), r_start
-        if EEF_DELTA_FRAME == "tool":
-            p += r.apply(dp)
-            r *= dr
+        dp = np.asarray(step[:3], dtype=float) * action.position_scale_mm * pos_gain
+        rv = np.asarray(step[3:6], dtype=float) * rot_gain
+        # Position and rotation delta in NOVA's base frame.
+        if action.frame == "tool":
+            dp, rv = r.apply(dp), r.apply(rv)
         else:
-            p += dp
-            r = cast("Rotation", dr * r)  # base frame: pre-multiply
+            dp, rv = to_nova.apply(dp), to_nova.apply(rv)
+        p += dp
+        # Rotate about the TCP (pre-multiplied, base frame); a tool-frame delta expressed in
+        # base axes gives the same result as post-multiplying in tool axes.
+        r = cast("Rotation", Rotation.from_rotvec(rv) * r)
         out.append([*p.tolist(), *r.as_rotvec().tolist()])
     # Near pi (tool down) scipy flips the rotation vector's sign; keep it continuous
     # with the start pose, as the executor's bridges and ramps interpolate component-wise.
@@ -381,34 +321,63 @@ def tilt_deg(pose: list[float]) -> float:
     return math.degrees(math.acos(max(-1.0, min(1.0, -tool_z[2]))))
 
 
-def check_targets(start: list[float], targets: list[list[float]]) -> None:
-    """Raise if a chunk jumps further than the guards allow."""
+def yaw_deg(pose: list[float]) -> float:
+    """Heading of the tool x-axis in the base xy-plane, in degrees."""
+    tool_x = Rotation.from_rotvec(pose[3:6]).apply([1.0, 0.0, 0.0])
+    return math.degrees(math.atan2(tool_x[1], tool_x[0]))
+
+
+def yaw_offset_deg(pose: list[float], reference_yaw: float) -> float:
+    """Signed yaw of ``pose`` relative to ``reference_yaw``, in (-180, 180]."""
+    return (yaw_deg(pose) - reference_yaw + 180.0) % 360.0 - 180.0
+
+
+def guard_violations(
+    start: list[float], prev: list[float], target: list[float], reference_yaw: float
+) -> list[str]:
+    """The guards ``target`` breaks, coming from ``prev`` in a chunk that starts at ``start``."""
+    step_mm = math.dist(prev[:3], target[:3])
+    step_deg = math.degrees(
+        cast(
+            "Rotation", Rotation.from_rotvec(target[3:6]) * Rotation.from_rotvec(prev[3:6]).inv()
+        ).magnitude()
+    )
+    travel_mm = math.dist(start[:3], target[:3])
+    tilt, yaw = tilt_deg(target), yaw_offset_deg(target, reference_yaw)
+    x, y, z = target[:3]
+    checks = [
+        (step_mm > MAX_STEP_MM, f"step {step_mm:.1f} > {MAX_STEP_MM:.1f} mm"),
+        (step_deg > MAX_STEP_DEG, f"rotation step {step_deg:.1f} > {MAX_STEP_DEG} deg"),
+        (
+            travel_mm > MAX_CHUNK_TRAVEL_MM,
+            f"chunk travel {travel_mm:.0f} > {MAX_CHUNK_TRAVEL_MM} mm",
+        ),
+        (tilt > MAX_TILT_DEG, f"tilt {tilt:.1f} > {MAX_TILT_DEG} deg"),
+        (
+            abs(yaw) > MAX_YAW_DEG,
+            f"yaw {yaw:+.1f} beyond +-{MAX_YAW_DEG} deg",
+        ),
+        (not WORKSPACE_X_MM[0] <= x <= WORKSPACE_X_MM[1], f"x {x:.0f} outside {WORKSPACE_X_MM}"),
+        (not WORKSPACE_Y_MM[0] <= y <= WORKSPACE_Y_MM[1], f"y {y:.0f} outside {WORKSPACE_Y_MM}"),
+        (z < MIN_TCP_Z_MM, f"z {z:.0f} below {MIN_TCP_Z_MM} mm"),
+    ]
+    return [text for broken, text in checks if broken]
+
+
+def check_targets(
+    start: list[float], targets: list[list[float]], reference_yaw: float | None = None
+) -> None:
+    """Raise if a chunk breaks a guard.
+
+    ``reference_yaw`` is the run's start heading for ``MAX_YAW_DEG`` (default: ``start``).
+    """
+    ref = yaw_deg(start) if reference_yaw is None else reference_yaw
     prev = start
-    for i, t in enumerate(targets):
-        step_mm = math.dist(prev[:3], t[:3])
-        step_deg = math.degrees(
-            (Rotation.from_rotvec(t[3:6]) * Rotation.from_rotvec(prev[3:6]).inv()).magnitude()
-        )
-        travel_mm = math.dist(start[:3], t[:3])
-        in_box = (
-            WORKSPACE_X_MM[0] <= t[0] <= WORKSPACE_X_MM[1]
-            and WORKSPACE_Y_MM[0] <= t[1] <= WORKSPACE_Y_MM[1]
-            and t[2] >= MIN_TCP_Z_MM
-        )
-        if (
-            step_mm > MAX_STEP_MM
-            or step_deg > MAX_STEP_DEG
-            or tilt_deg(t) > MAX_TILT_DEG
-            or travel_mm > MAX_CHUNK_TRAVEL_MM
-            or not in_box
-        ):
-            msg = (
-                f"eef_delta step {i} exceeds guards: step={step_mm:.1f} mm, "
-                f"rot={step_deg:.1f} deg, tilt={tilt_deg(t):.1f} deg, travel={travel_mm:.1f} mm, "
-                f"pos={[round(v, 1) for v in t[:3]]}"
-            )
+    for i, target in enumerate(targets):
+        if broken := guard_violations(start, prev, target, ref):
+            msg = f"eef_delta step {i} exceeds guards: {'; '.join(broken)}"
             raise RuntimeError(msg)
-        prev = t
+        prev = target
 
 
 class TcpPlanQueue:
@@ -502,9 +471,11 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
         self._continuous = continuous
         self.chunks = 0
         self._queue = TcpPlanQueue()
+        self._reference_yaw: float | None = None  # the run's start heading, for MAX_YAW_DEG
 
     async def connect(self, motion_group_ids: list[str]) -> None:
         self._queue.reset()
+        self._reference_yaw = None
         await super().connect(motion_group_ids)
 
     @property
@@ -516,11 +487,29 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
         self._queue.replaceable = timestep
 
     async def validate_schema(self, schema: PolicySchema) -> None:
-        """Like the stock check, but ``gripper`` comes from an ``Observation.computed``."""
+        """The server must serve the policy declared in policy.toml, and the schema feed it."""
         info = await self.get_server_info()
-        provided = {m.key for m in schema.joint_mappings} | {"gripper"}
-        missing = set(cast("list[str]", info["state_keys"])) - provided
-        missing |= set(cast("list[str]", info["video_keys"])) - set(schema.image_sources)
+        served = {
+            "state_keys": sorted(cast("list[str]", info["state_keys"])),
+            "action_keys": sorted(cast("list[str]", info["action_keys"])),
+            "video_keys": sorted(cast("list[str]", info["video_keys"])),
+            "language_keys": sorted(cast("list[str]", info["language_keys"])),
+            "action_horizon": info["action_horizon"],
+        }
+        declared = {
+            "state_keys": sorted(P.state_keys),
+            "action_keys": sorted(P.action_keys),
+            "video_keys": sorted(P.video_keys),
+            "language_keys": [P.language_key],
+            "action_horizon": P.action_horizon,
+        }
+        if mismatch := {k: (declared[k], v) for k, v in served.items() if v != declared[k]}:
+            details = "; ".join(f"{k}: declared {d}, served {v}" for k, (d, v) in mismatch.items())
+            msg = f"The GR00T server does not serve the policy in {CONFIG_PATH.name}: {details}"
+            raise ValueError(msg)
+        provided = {m.key for m in schema.joint_mappings} | {P.gripper.state_key}
+        missing = set(P.state_keys) - provided
+        missing |= set(P.video_keys) - set(schema.image_sources)
         if missing:
             msg = f"Schema does not provide GR00T inputs: {sorted(missing)}"
             raise ValueError(msg)
@@ -534,7 +523,7 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
     ) -> dict[str, Any]:
         obs = await super()._build_groot_obs(states, schema, images, io_values)
         # The TCP observation only exists to pin the TCP; the model does not take it.
-        obs["state"] = {k: v for k, v in obs["state"].items() if k in {"arm_joints", "gripper"}}
+        obs["state"] = {k: v for k, v in obs["state"].items() if k in P.state_keys}
         obs["language"] = {LANGUAGE_KEY: [[TASK]]}
         return obs
 
@@ -545,7 +534,8 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
         # info says: the guards, the plan queue and the gripper timing all assume it.
         chunk = super()._decode_action(schema, action, info).model_copy(update={"dt_ms": DT_MS})
         # Not a NOVA IO: the Action.computed hook reads it from the gripper bridge.
-        self._gripper.last_action = np.asarray(action["gripper"], dtype=float).reshape(-1).tolist()
+        values = np.asarray(action[P.gripper.action_key], dtype=float).reshape(-1)
+        self._gripper.last_action = values.tolist()
         return chunk
 
     async def get_actions(
@@ -579,14 +569,16 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
                 raise RuntimeError(msg)
             pose = states[mg_id].pose
             start = [*pose.position, *pose.orientation]
+            if self._reference_yaw is None:
+                self._reference_yaw = yaw_deg(start)
             if self._continuous:
                 first, targets = self._queue.merge(deltas_to_absolute(start, deltas), latency_ms)
-                check_targets(start, targets)
+                check_targets(start, targets, self._reference_yaw)
                 # Steps that run before the next chunk replaces this one.
                 self._gripper.executed_steps = math.ceil(latency_ms / DT_MS) + 1
                 return chunk.model_copy(update={"tcp": {mg_id: targets}, "action_timestep": first})
             targets = deltas_to_absolute(start, deltas)[: executed_steps(start)]
-            check_targets(start, targets)
+            check_targets(start, targets, self._reference_yaw)
             tcp[mg_id] = targets
             self._gripper.executed_steps = len(targets)
         return chunk.model_copy(update={"tcp": tcp})
@@ -620,19 +612,15 @@ def make_program(*, continuous: bool, execute: bool) -> Any:
 
         # Full frames; to_training_view() crops and resizes them before inference.
         cameras = WebRTCCameras(api_url=CAMERA_SERVER, frame_history=1)
-        images = {
-            "wrist": cameras.device(CAM_WRIST),
-            "side": cameras.device(CAM_SIDE),
-            "top": cameras.device(CAM_TOP),
-        }
+        images = {key: cameras.device(serial) for key, serial in CELL.cameras.items()}
         gripper = ZimmerGripper(GRIPPER_HOST)
 
         async def dry_run_gripper_state(_obs: dict[str, Any]) -> dict[str, float]:
-            return {"gripper": GRIPPER_DRY_RUN_STATE}
+            return {P.gripper.state_key: P.gripper.state_open}
 
         schema = PolicySchema(
             observations=[
-                Observation.joint_positions("arm_joints", source=mg, action=False),
+                Observation.joint_positions(P.joints.key, source=mg, action=False),
                 # Not sent to the model; pins `umi_corrected` for state + Cartesian jogging.
                 Observation.tcp("tcp_pose", source=mg, tcp=TCP),
                 Observation.computed(gripper.observe if execute else dry_run_gripper_state),
@@ -640,7 +628,7 @@ def make_program(*, continuous: bool, execute: bool) -> Any:
                 Observation.constant("language", value=TASK),
             ],
             actions=[
-                Action.tcp("eef_delta", target=mg, mode="absolute"),
+                Action.tcp(P.tcp_action.key, target=mg, mode="absolute"),
                 Action.computed(gripper.act),
             ],
         )
@@ -650,7 +638,8 @@ def make_program(*, continuous: bool, execute: bool) -> Any:
         )
         await client.connect([mg.id])
         try:
-            print(f"GR00T server: {await client.get_server_info()}")
+            await client.validate_schema(schema)  # the executor checks again before running
+            print(f"GR00T server serves the policy declared in {CONFIG_PATH.name}")
             if not execute:
                 await dry_run(mg, client, schema, images, gripper)
                 return
@@ -717,7 +706,7 @@ async def dry_run(mg, client, schema, images, gripper) -> None:
         frames = to_training_view({key: cam.read() for key, cam in images.items()})
         state = await mg.get_state(TCP)
         print(f"TCP: {state.tcp}  joints(deg): {[round(math.degrees(j), 1) for j in state.joints]}")
-        print(f"Gripper state sent (not connected in dry run): {GRIPPER_DRY_RUN_STATE}")
+        print(f"Gripper state sent (not connected in dry run): {P.gripper.state_open}")
         print(f"Frames: { {k: v.shape for k, v in frames.items()} }")
 
         t0 = time.monotonic()
@@ -725,7 +714,8 @@ async def dry_run(mg, client, schema, images, gripper) -> None:
         raw = await Gr00tPolicyClient.get_actions(client, {mg.id: state}, schema, frames)
         print(f"Inference: {(time.monotonic() - t0) * 1000:.0f} ms, dt_ms={raw.dt_ms}")
         start = [*state.pose.position, *state.pose.orientation]
-        print(f"Gains: position {EEF_DELTA_POS_GAIN}, rotation {EEF_DELTA_ROT_GAIN}")
+        a = P.tcp_action
+        print(f"Gains: position {a.gain_position}, rotation {a.gain_rotation}")
         targets = deltas_to_absolute(start, raw.tcp[mg.id])
         print(f"start pose (mm, rotvec): {np.round(start, 3).tolist()}")
         print(" step  raw eef_delta                              -> target pos (mm)  dpos_mm")
@@ -736,15 +726,12 @@ async def dry_run(mg, client, schema, images, gripper) -> None:
                 f"{mark}{i:2d}  {np.round(d, 4).tolist()}  -> "
                 f"{np.round(t[:3], 1).tolist()}  {np.round(dpos, 1).tolist()}"
             )
-        if GRIPPER_ACTION_MODE == "gap":
-            command = f"move_to_gap_m({action_to_gap_m(gripper.last_action[0]):.4f})"
-        else:
-            switch = gripper.next_switch(closed=False)  # dry run: jaws assumed open
-            command = (
-                "none (stays open)"
-                if switch is None
-                else f"{'grip()' if switch[1] else 'open()'} at step {switch[0]}"
-            )
+        switch = gripper.next_switch(closed=False)  # dry run: jaws assumed open
+        command = (
+            "none (stays open)"
+            if switch is None
+            else f"{'grip()' if switch[1] else 'open()'} at step {switch[0]}"
+        )
         print(f"Gripper raw (16 steps): {np.round(gripper.last_action, 3).tolist()}")
         print(f"Gripper command that would be sent: {command}")
         try:
