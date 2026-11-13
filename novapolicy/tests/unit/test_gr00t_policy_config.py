@@ -25,6 +25,7 @@ def test_the_example_config_loads():
     assert cfg.policy.gripper.closes(-1.0)
     assert not cfg.policy.gripper.closes(1.0)
     assert cfg.cell.cameras["top"] == "314522065367"
+    assert cfg.cell.gripper_open_gap_mm == 80.0
 
 
 @pytest.mark.parametrize(
@@ -40,6 +41,7 @@ def test_the_example_config_loads():
             "missing ['rate_hz']",
         ),
         ('top = "314522065367"', 'front = "314522065367"', "must map exactly the video keys"),
+        ("gripper_open_gap_mm = 80.0", "", "missing ['gripper_open_gap_mm']"),
         ("min_tcp_z_mm = 25.0", "min_tcp_z_mm = 25.0\n", ""),
         ("workspace_x_mm = [-460.0, 275.0]", "workspace_x_mm = [275.0, -460.0]", "[min, max]"),
         ('key = "eef_delta"', 'key = "eef_pose"', "not among the declared state/action keys"),

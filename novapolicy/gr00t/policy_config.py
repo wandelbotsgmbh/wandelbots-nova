@@ -20,7 +20,7 @@ Sections (a complete file: ``examples/gr00t_single_arm_pick_and_place/policy.tom
     [policy.gripper]       state_key, action_key, action ("binary"), close_when
                            ("negative" | "positive"), state_open, state_closed, state_holding
     [cell]                 controller, tcp (the point the end-effector values refer to),
-                           home_deg, camera_server, gripper_host
+                           home_deg, camera_server, gripper_host, gripper_open_gap_mm
     [cell.cameras]         video key -> camera serial number
     [guards]               max_tcp_speed_mm_s, max_chunk_travel_mm, max_rotation_step_deg,
                            max_tilt_deg, max_yaw_deg (vs. the run's start heading; 180 = no
@@ -124,6 +124,7 @@ class Cell:
     home_deg: list[float]
     camera_server: str
     gripper_host: str
+    gripper_open_gap_mm: float  # the real gripper's fully open jaw gap
     cameras: dict[str, str]
 
 

@@ -743,6 +743,7 @@ def template(ev: Evidence, controller: str, tcp: str) -> str:
         f"home_deg = {todo}",
         f"camera_server = {todo}",
         f"gripper_host = {todo}",
+        f"gripper_open_gap_mm = {todo}",
         "",
         "[cell.cameras]  # video key -> camera serial",
         *[f"{key} = {todo}" for key in ev.keys["video"]],

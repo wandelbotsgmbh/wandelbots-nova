@@ -79,46 +79,74 @@ policy. It does not check the TCP: joints replay the same path whatever the TCP 
 
 ## 5. Build the schema and the client
 
-- **State:** `Observation.joint_positions(key, source=mg, action=False)` when the policy's
-  actions are not joint targets; `Observation.computed` for state NOVA does not have (a
-  gripper on its own bus); `Observation.tcp(..., tcp=...)` to pin the TCP even if the model
-  does not take it.
-- **Cameras:** one `Observation.image` per video key. Frame the real images like the training
-  cameras: crop to the training aspect, then resize to the training resolution.
-- **Actions:** `Action.tcp(key, mode="absolute")` for end-effector targets,
-  `Action.joint_positions` for joint targets, `Action.computed` for actuators outside NOVA.
-- **Client:** subclass `Gr00tPolicyClient` where the model needs it. The example's
-  `SingleArmGr00tClient` reads everything from `policy.toml`: it sends the prompt under the
-  declared language key, turns the raw end-effector deltas into absolute TCP targets as
-  declared (frame, unit, gain, rotations about the TCP), and forces the step spacing to the
-  declared rate.
+[`declared.py`](declared.py) runs the policy as `policy.toml` declares it.
+`DeclaredGr00tClient(cfg)` sends the prompt under the declared language key, keeps the
+declared state keys, frames camera images like the training cameras (crop to the training
+aspect, resize to the training resolution), forces the declared step spacing, turns the raw
+end-effector action into absolute TCP targets (frame, unit, gain, rotations about the TCP),
+checks every chunk against the guards and checks the server against the config. A script
+only builds the schema:
+
+```python
+from novapolicy import Action, Observation, PolicyExecutor, PolicySchema, SequentialExecution
+from novapolicy.gr00t import policy_config
+from novapolicy.gr00t.declared import DeclaredGr00tClient, move_home
+
+cfg = policy_config.load("policy.toml")
+mg = (await nova.cell().controller(cfg.cell.controller))[0]
+client = DeclaredGr00tClient(cfg)
+schema = PolicySchema(
+    observations=[
+        Observation.joint_positions(cfg.policy.joints.key, source=mg, action=False),
+        Observation.tcp("tcp_pose", source=mg, tcp=cfg.cell.tcp),  # pins the declared TCP
+        Observation.computed(gripper.observe),  # state NOVA does not have
+        *(Observation.image(key, source=cameras[key]) for key in cfg.policy.video_keys),
+    ],
+    actions=[
+        Action.tcp(cfg.policy.tcp_action.key, target=mg, mode="absolute"),
+        Action.computed(gripper.act),  # an actuator outside NOVA
+    ],
+)
+await move_home(mg, cfg)  # lifts straight up first when low
+await PolicyExecutor(schema, client, execution=SequentialExecution()).run()
+```
+
+A gripper on its own bus enters through `Observation.computed` / `Action.computed`:
+`gripper_state(cfg, jaw_gap_mm, holding=...)` maps the real jaw gap onto the declared state
+values, and `next_gripper_switch(cfg, client.gripper_actions, client.executed_steps, ...)`
+finds the step of the chunk that switches it. Pass `hold_while=lambda: gripper.busy` so the
+arm holds still while the jaws move. The example's `ZimmerGripper` does all of this.
 
 ## 6. Choose the execution mode
 
-- **Sequential** (start here): run `n_action_steps` of each chunk to standstill, observe,
-  infer again. Every chunk is checked on its own and the arm stops between chunks.
-- **Continuous:** re-infer as fast as the server answers and replace the buffered tail. Chunks
-  must meet without jumps: keep the steps that executed during inference frozen, blend the
-  overlap and smooth it on the executor's timestep timeline (the example's `TcpPlanQueue`,
-  modelled on the LeRobot async queue). A plain hard replace shakes.
+- **Sequential** (start here, the default): run `n_action_steps` of each chunk to
+  standstill, observe, infer again. Every chunk is checked on its own and the arm stops
+  between chunks. `near_z_mm` / `near_steps` run shorter chunks close to the table, so the
+  policy re-observes and corrects its placement more often; `max_chunks` caps a run.
+- **Continuous** (`continuous=True`, with `ContinuousExecution()` and `n_action_steps=0`):
+  re-infer as fast as the server answers. The client's `PlanQueue` keeps the steps that
+  executed during inference frozen, blends the overlap and smooths it on the executor's
+  timestep timeline, modelled on the LeRobot async queue. A plain hard replace shakes.
 
-Play steps at the training rate times a speed factor below 1 for the first runs.
+`speed_factor` below 1 plays the steps slower than the training rate for first runs.
 
 ## 7. Guard and run
 
 - The guards in `policy.toml` are the deployer's safety choice: TCP speed, chunk travel,
   rotation step, tilt, yaw, workspace and table height. `--config` warns where they are
   tighter than the training episodes' envelope, since they would stop motion the policy
-  learned.
-- Check every chunk before it is sent and stop the run on any violation.
-- Dry run first (one observation, one inference, print the targets), then a supervised run
-  with a chunk limit and a hand on the e-stop.
+  learned. The client raises `GuardError` on the first chunk that breaks one, which stops
+  the run; `check_guards` / `guard_violations` check targets on their own.
+- Dry run first: one observation, one inference, the targets and guard result printed, and
+  nothing commanded. Then a supervised run with a chunk limit and a hand on the e-stop.
+- Before moving home, `move_home` (or `lift_if_low`) moves straight up when the tool is
+  low, so the joint move cannot sweep it over the table or the object.
 
 ## Things to keep in mind
 
 - **Rotation vectors:** near a half-turn the same orientation reads as `+v` or `-v`. Unwrap
   rotation vectors (`novapolicy.chunking.unwrap_tcp_rotations`) before interpolating or
-  blending them component-wise.
+  blending them component-wise; `tcp_targets` and `PlanQueue` already do.
 - **Commanded vs. realized actions:** an action that is a command to a controller (for example
   an IK target relative to the measured pose) can move the robot less than it says. How much
   depends on the training controller, so it can only be approximated on another robot:
