@@ -18,6 +18,7 @@ from novapolicy.chunking import (
     connect_action_chunk,
     interpolate_action_chunk_ramps,
     placement,
+    tcp_limit_violations,
     trim_chunk,
 )
 from novapolicy.estop import (
@@ -48,6 +49,7 @@ from novapolicy.types import (
     OnStale,
     SequentialExecution,
     StopContext,
+    TcpLimitError,
     WaypointConfig,
 )
 
@@ -60,7 +62,7 @@ if TYPE_CHECKING:
     from novapolicy.joint_limits import JointLimits
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
-    from novapolicy.types import StopCondition
+    from novapolicy.types import StopCondition, TcpLimits
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +160,17 @@ def _check_buffered_mode(
         raise ValueError(msg)
 
 
+def resolve_actions(
+    schema: PolicySchema, chunk: ActionChunk, states: dict[str, RobotState]
+) -> ActionChunk:
+    """A policy's raw chunk as the executor sends it: units converted back (the schema's
+    operators), then relative targets composed with ``states``. Use it for dry runs."""
+    chunk = schema.apply_inverse_ops(chunk)
+    return apply_relative_mode(
+        chunk, states, schema.relative_motion_groups(), schema.relative_tcp_deltas()
+    )
+
+
 class PolicyExecutor:
     """Runs one policy episode: observe → query policy → send actions → repeat.
 
@@ -183,6 +196,7 @@ class PolicyExecutor:
         buffer_window_ms: float = 0.0,
         clamp_to_joint_limits: bool = True,
         plant: VirtualPlant | None = None,
+        tcp_limits: TcpLimits | None = None,
     ) -> None:
         """Create a policy executor.
 
@@ -228,6 +242,9 @@ class PolicyExecutor:
                 which remains available to asynchronous policy clients.
             start_joint_position: Optional mapping of motion group to joint pose
                 to PTP-move to before starting waypoint jogging.
+            tcp_limits: Optional :class:`~novapolicy.types.TcpLimits` checked on the
+                TCP targets of every chunk before it is sent; a chunk that breaks one
+                ends the run with :class:`~novapolicy.types.TcpLimitError`.
             plant: Optional :class:`~novapolicy.plant.VirtualPlant` for
                 setpoint policies. The policy then observes the plant, and the
                 robot follows the plant's path through the ring buffer, so
@@ -275,6 +292,7 @@ class PolicyExecutor:
         self._buffer_anchor_ms: float | None = None
         self._buffer_timeline_ms = 0.0
         self._clamp_to_joint_limits = clamp_to_joint_limits
+        self._tcp_limits = tcp_limits
         self._joint_limits: dict[str, JointLimits] = {}
         self._plant = plant
         self._rerun: PolicyRerunLogger | None = None
@@ -592,8 +610,9 @@ class PolicyExecutor:
         # Units first: a relative target is a delta in the policy's units, and
         # adding a degree-space delta to a radian state is exactly the error the
         # operators exist to prevent.
-        action = self._schema.apply_inverse_ops(action)
-        return self._apply_relative_mode(action, robot_states)
+        if action.resolved:
+            return action
+        return resolve_actions(self._schema, action, robot_states)
 
     def _report_missing_motion(self, action: ActionChunk) -> None:
         """Log once when the policy's answer moves none of the expected motion groups.
@@ -902,6 +921,7 @@ class PolicyExecutor:
             return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
 
         trimmed = trim_chunk(action, self._n_action_steps)
+        self._check_tcp_limits(trimmed, robot_states)
         if self._rerun is not None and self._plant is None:
             self._rerun.log_target_tracking(trimmed, robot_states, step)
 
@@ -929,6 +949,18 @@ class PolicyExecutor:
             # tracked against it, and the raw setpoint is shown beside both.
             self._rerun.log_plant_tracking(trimmed, robot_states, self._observe(), step)
         return None
+
+    def _check_tcp_limits(self, chunk: ActionChunk, states: dict[str, RobotState]) -> None:
+        """Raise if a TCP target the chunk will run breaks ``tcp_limits``."""
+        if self._tcp_limits is None:
+            return
+        for group_id, targets in chunk.tcp.items():
+            state = states.get(group_id)
+            if state is None or getattr(state, "pose", None) is None:
+                continue
+            start = [*state.pose.position, *state.pose.orientation]
+            if broken := tcp_limit_violations(start, targets, chunk.dt_ms, self._tcp_limits):
+                raise TcpLimitError(group_id, broken)
 
     async def _observe_and_infer(
         self,
@@ -1477,10 +1509,6 @@ class PolicyExecutor:
         if self._n_action_steps_cfg is not None:
             return self._n_action_steps_cfg
         return self._policy.n_action_steps or 0
-
-    def _apply_relative_mode(self, chunk: ActionChunk, states: dict[str, Any]) -> ActionChunk:
-        """Convert relative (delta) action targets to absolute (see chunking)."""
-        return apply_relative_mode(chunk, states, self._schema.relative_motion_groups())
 
     @property
     def _all_io_values(self) -> dict[str, object]:

@@ -350,6 +350,7 @@ arm, keyboard, gamepad, spacemouse) in your own script. See
 | [docs/executor.md](docs/executor.md) | Advanced: explicit sequential/continuous execution modes, asynchronous inference, RTC, and the client/server timestamp protocol                                |
 | [docs/schema.md](docs/schema.md)     | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions                                                                             |
 | [docs/gr00t.md](docs/gr00t.md)       | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/rtc.md](docs/rtc.md) for real-time chunking) |
+| [gr00t/README.md](gr00t/README.md)   | Setting up a GR00T policy on a robot: what the actions mean, checking the cell, schema, execution mode, limits |
 | [lerobot/README.md](lerobot/README.md) | LeRobot async inference, checkpoint-derived `chunk_size` / `n_action_steps`, and remote-checkpoint configuration                                                        |
 | [docs/rerun.md](docs/rerun.md)       | Optional real-time 3D visualization of execution                                                                                                                       |
 
@@ -357,6 +358,7 @@ arm, keyboard, gamepad, spacemouse) in your own script. See
 
 ▶ [`execute_custom_policy_on_dual_arm.py`](examples/execute_custom_policy_on_dual_arm.py): two UR5e robots with cameras, IOs, and stop conditions\
 ▶ [`execute_gr00t_dual_arm.py`](examples/execute_gr00t_dual_arm.py): dual arm with GR00T ZMQ + 4 cameras\
+▶ [`gr00t_single_arm_pick_and_place/`](examples/gr00t_single_arm_pick_and_place/): an IsaacLab-trained GR00T pick-and-place on a real UR10e with a Zimmer gripper, plus a training-episode replay\
 ▶ [`jogging/`](examples/jogging/): standalone jogging (single/dual arm, joint/TCP, chunked), no policy\
 ▶ [`pick_and_place_umi_ur10e.py`](examples/pick_and_place_umi_ur10e.py): the same pick-and-place the choreo3 checkpoints learn, written out by hand — a way to prove a cell before a policy runs on it
 

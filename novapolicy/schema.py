@@ -24,12 +24,13 @@ import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from novapolicy._sdk import get_controller_id
+from novapolicy.chunking import TcpDelta
 from novapolicy.ops import apply_ops, apply_ops_inverse, reject_forward_only
 
 _TCP_SUFFIXES = ("x", "y", "z", "rx", "ry", "rz")
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
@@ -166,6 +167,7 @@ class _ObsComputed:
     """Async function called each step: ``async (obs_so_far) -> dict``."""
 
     fn: ComputedObsFn
+    keys: tuple[str, ...] = ()
 
 
 ObservationEntry = _ObsJoints | _ObsTcp | _ObsIO | _ObsImage | _ObsConstant | _ObsComputed
@@ -257,8 +259,11 @@ class Observation:
         return _ObsConstant(key=key, value=value)
 
     @staticmethod
-    def computed(fn: ComputedObsFn) -> _ObsComputed:
+    def computed(fn: ComputedObsFn, *, keys: Sequence[str] = ()) -> _ObsComputed:
         """Async function called each step to add external data to the observation.
+
+        ``keys`` names the observation keys the function returns, so a policy client
+        can check before the run that the schema feeds every input its model expects.
 
         Example::
 
@@ -271,7 +276,7 @@ class Observation:
                 Observation.computed(read_force_sensor),
             ])
         """
-        return _ObsComputed(fn=fn)
+        return _ObsComputed(fn=fn, keys=tuple(keys))
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +321,7 @@ class _ActTcp:
     mode: ActionMode = "absolute"
     position_ops: list[ValueOp] = field(default_factory=list)
     orientation_ops: list[ValueOp] = field(default_factory=list)
+    delta: TcpDelta = field(default_factory=TcpDelta)
 
 
 ComputedActFn = Callable[["ActionChunk"], Awaitable[None]]
@@ -355,16 +361,39 @@ class Action:
         target: MotionGroup,
         *,
         mode: ActionMode = "absolute",
+        accumulate: bool = False,
+        use_tool_coordinate_system: bool = False,
         position_ops: list[ValueOp] | None = None,
         orientation_ops: list[ValueOp] | None = None,
     ) -> _ActTcp:
-        """TCP pose action — executor uses Cartesian waypoint jogging."""
+        """TCP pose action — executor uses Cartesian waypoint jogging.
+
+        ``mode="relative"``: the policy returns offsets ``[dx, dy, dz, rx, ry, rz]``
+        (position, rotation vector) that the executor composes with the pose at
+        inference time. ``accumulate=True`` applies each step to the pose the previous
+        step reached instead (per-step deltas). As in NOVA's TCP jogging,
+        ``use_tool_coordinate_system=True`` expresses the offsets in the tool coordinate
+        system given by the TCP instead of the world coordinate system the TCP pose is
+        reported in. Rotations turn the tool about the TCP.
+
+        ``position_ops`` / ``orientation_ops`` convert units on the way back, before the
+        offsets are composed: ``position_ops=[Scale(0.001)]`` for a policy in metres.
+        """
+        if mode != "relative" and (accumulate or use_tool_coordinate_system):
+            msg = (
+                "Action.tcp: accumulate and use_tool_coordinate_system apply to "
+                "mode='relative' only"
+            )
+            raise ValueError(msg)
         return _ActTcp(
             key=key,
             target=target,
             mode=mode,
             position_ops=list(position_ops or []),
             orientation_ops=list(orientation_ops or []),
+            delta=TcpDelta(
+                accumulate=accumulate, use_tool_coordinate_system=use_tool_coordinate_system
+            ),
         )
 
     @staticmethod
@@ -394,7 +423,7 @@ class Action:
 # ---------------------------------------------------------------------------
 
 
-class PolicySchema:
+class PolicySchema:  # ruff: ignore[too-many-public-methods]
     """Declares what a policy observes and controls."""
 
     def __init__(
@@ -646,6 +675,14 @@ class PolicySchema:
                 else:
                     result.add(a.target.id)
         return result
+
+    def relative_tcp_deltas(self) -> dict[str, TcpDelta]:
+        """Motion group ID -> how its relative TCP action steps compose."""
+        return {
+            a.target.id: a.delta
+            for a in self._actions
+            if isinstance(a, _ActTcp) and a.mode == "relative"
+        }
 
     def tcp_action_groups(self) -> dict[str, str]:
         """Motion group IDs that use TCP waypoint jogging → tcp name.

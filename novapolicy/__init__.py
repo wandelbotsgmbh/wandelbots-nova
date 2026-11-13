@@ -24,11 +24,18 @@ from novapolicy.chunking import (
     interpolate_action_chunk_ramps,
     smooth_action_chunk,
 )
-from novapolicy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
+from novapolicy.executor import (
+    ExecutionResult,
+    ExecutorStatus,
+    Phase,
+    PolicyExecutor,
+    resolve_actions,
+)
 from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
 from novapolicy.jogging import JointJogger, TcpJogger, jog_joints, jog_tcp
 from novapolicy.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
+from novapolicy.queued_client import QueuedPolicyClient
 from novapolicy.schema import (
     Action,
     BoolMapping,
@@ -50,6 +57,8 @@ from novapolicy.types import (
     SequentialExecution,
     StopCondition,
     StopContext,
+    TcpLimitError,
+    TcpLimits,
     WaypointConfig,
 )
 
@@ -111,6 +120,7 @@ __all__ = [
     "PolicyClient",
     "PolicyExecutor",
     "PolicySchema",
+    "QueuedPolicyClient",
     "RTCConfig",
     "Rad2Deg",
     "Scale",
@@ -118,6 +128,8 @@ __all__ = [
     "StopCondition",
     "StopContext",
     "TcpJogger",
+    "TcpLimitError",
+    "TcpLimits",
     "ValueOp",
     "WaypointConfig",
     "WebRTCCameras",
@@ -126,5 +138,6 @@ __all__ = [
     "interpolate_action_chunk_ramps",
     "jog_joints",
     "jog_tcp",
+    "resolve_actions",
     "smooth_action_chunk",
 ]

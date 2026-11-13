@@ -30,6 +30,7 @@ _OPERATIONAL_SAFETY_STATES = frozenset({
     api.models.SafetyStateType.SAFETY_STATE_NORMAL,
     api.models.SafetyStateType.SAFETY_STATE_REDUCED,
 })
+_RECONNECT_DELAY_S = 0.05
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +128,25 @@ class EstopMonitor:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _watch(self, controller_id: str, api_client: ApiGateway) -> None:
+        # A state the SDK model cannot parse (an enum value it does not know yet,
+        # e.g. mode MODE_UNDEFINED while a client takes control, or KIND_UNKNOWN on
+        # waypoint jogging feature branches) ends the stream's generator. Reopen
+        # it: one odd message must not leave the rest of the run unmonitored.
+        while True:
+            try:
+                await self._watch_stream(controller_id, api_client)
+            except ValidationError as e:
+                logger.warning(
+                    "E-stop monitor for %s skipped an unparseable controller state, "
+                    "reconnecting: %s",
+                    controller_id,
+                    str(e).splitlines()[0],
+                )
+                await asyncio.sleep(_RECONNECT_DELAY_S)
+                continue
+            return
+
+    async def _watch_stream(self, controller_id: str, api_client: ApiGateway) -> None:
         cell = get_cell(self._motion_groups[0])
         stream = None
         try:  # ruff: ignore[too-many-statements-in-try-clause]
@@ -148,15 +168,6 @@ class EstopMonitor:
             raise
         except (OSError, RuntimeError) as e:
             logger.warning("E-stop monitor for %s stopped: %s", controller_id, e)
-        except ValidationError as e:
-            # Unknown/unparseable state kinds (e.g. KIND_UNKNOWN on waypoint
-            # jogging feature branches). Non-fatal, but make it visible: the
-            # monitor stops watching this controller after this point.
-            logger.warning(
-                "E-stop monitor for %s stopped (unparseable controller state): %s",
-                controller_id,
-                e,
-            )
         finally:
             if stream is not None:
                 with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):

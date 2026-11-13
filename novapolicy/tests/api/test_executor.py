@@ -13,6 +13,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 import math
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -22,6 +23,7 @@ import pytest
 from novapolicy.executor import Phase, PolicyExecutor
 from novapolicy.ops import Rad2Deg
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
+from novapolicy.queued_client import QueuedPolicyClient
 from novapolicy.schema import Action, Observation, ObservationEntry, PolicySchema
 from novapolicy.types import (
     ActionChunk,
@@ -33,6 +35,8 @@ from novapolicy.types import (
     OnStale,
     SequentialExecution,
     StopContext,
+    TcpLimitError,
+    TcpLimits,
     WaypointConfig,
 )
 
@@ -843,6 +847,98 @@ async def test_send_routes_joint_and_tcp_targets_to_their_own_sessions():
     assert tcp_session.update_chunk.call_args.kwargs["steps"] == [
         [500.0, 200.0, 300.0, 0.0, 3.14, 0.0]
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_breaking_tcp_limits_ends_the_run_before_it_is_sent():
+    """TcpLimits are checked on the resolved targets; a breaking chunk never reaches jogging."""
+    eef = _mg("0@ur5e-right")
+    schema = PolicySchema(observations=[Observation.tcp("eef", source=eef, action=True)])
+
+    async def diving_policy(_obs: object) -> ActionChunk:
+        return ActionChunk(tcp={eef.id: [[500.0, 200.0, 10.0, 0.0, 3.14, 0.0]]}, dt_ms=33.0)
+
+    session = _fake_session()
+    session.motion_group_id = eef.id
+    session.current_state.pose = SimpleNamespace(
+        position=[500.0, 200.0, 300.0], orientation=[0.0, 3.14, 0.0]
+    )
+    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+    with (
+        patch("novapolicy.executor.WaypointJoggingSession", return_value=session),
+        patch("novapolicy.executor.EstopMonitor", return_value=estop),
+        pytest.raises(TcpLimitError, match="z 10 outside"),
+    ):
+        await PolicyExecutor(
+            schema,
+            _callback(diving_policy),
+            timeout_s=1.0,
+            tcp_limits=TcpLimits(z_mm=(25.0, 1000.0), max_chunk_travel_mm=1000.0),
+        ).run()
+    session.update_chunk.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_resolved_chunk_is_sent_without_resolving_it_again():
+    """A queued client's chunk is already absolute; relative mode must not apply twice."""
+    eef = _mg("0@ur5e-right")
+    schema = PolicySchema(
+        observations=[Observation.tcp("eef", source=eef)],
+        actions=[Action.tcp("eef", target=eef, mode="relative")],
+    )
+    target = [500.0, 200.0, 300.0, 0.0, 3.14, 0.0]
+
+    async def resolved_policy(_obs: object) -> ActionChunk:
+        return ActionChunk(tcp={eef.id: [target]}, dt_ms=33.0, resolved=True)
+
+    session = _fake_session()
+    session.motion_group_id = eef.id
+    session.current_state.pose = SimpleNamespace(
+        position=[400.0, 200.0, 300.0], orientation=[0.0, 3.14, 0.0]
+    )
+    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+    with (
+        patch("novapolicy.executor.WaypointJoggingSession", return_value=session),
+        patch("novapolicy.executor.EstopMonitor", return_value=estop),
+    ):
+        await PolicyExecutor(schema, _callback(resolved_policy), timeout_s=0.05).run()
+    assert session.update_chunk.call_args.kwargs["steps"][-1] == target
+
+
+@pytest.mark.asyncio
+async def test_a_queued_client_runs_continuously_on_the_timestep_timeline(robot: _Robot):
+    """QueuedPolicyClient through the executor: the chunk is resolved once, not twice.
+
+    The fake session's clock does not advance, so the run stays at its first chunk;
+    merging across replacements is covered by test_queued_client.py.
+    """
+    eef = _mg(MG_ID)
+    schema = PolicySchema(
+        observations=[Observation.tcp("eef", source=eef)],
+        actions=[Action.tcp("eef", target=eef, mode="relative", accumulate=True)],
+    )
+    robot.session.current_state.pose = SimpleNamespace(
+        position=[400.0, 200.0, 300.0], orientation=[0.0, 3.14, 0.0]
+    )
+
+    async def creep(_obs: object) -> ActionChunk:
+        await asyncio.sleep(0.01)
+        return ActionChunk(tcp={MG_ID: [[0.5, 0.0, 0.0, 0.0, 0.0, 0.0]] * 16}, dt_ms=33.0)
+
+    result = await PolicyExecutor(
+        schema,
+        QueuedPolicyClient(_callback(creep)),
+        timeout_s=0.3,
+        execution=ContinuousExecution(),
+        n_action_steps=0,
+        tcp_limits=TcpLimits(max_speed_mm_s=100.0),  # a second resolve would break it
+    ).run()
+
+    assert result.reason == "timeout"
+    calls = robot.session.update_chunk.call_args_list
+    assert calls
+    xs = [step[0] for step in calls[0].kwargs["steps"]]
+    assert all(399.0 < x < 410.0 for x in xs)  # absolute, resolved once from 400 mm
 
 
 # ---------------------------------------------------------------------------

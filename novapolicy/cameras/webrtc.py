@@ -17,7 +17,7 @@ import importlib
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import requests
@@ -29,6 +29,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
+
+ResizeMode = Literal["stretch", "crop"]
 
 # Optional imports — aiortc is heavy and not always needed
 _aiortc: ModuleType | None
@@ -218,10 +220,20 @@ class WebRTCConnection:
 # ---------------------------------------------------------------------------
 
 
-def _resize_frame(frame: NDArray[Any], width: int, height: int) -> NDArray[Any]:
-    """Resize a single (H, W, 3) frame using Pillow (no system lib dependencies)."""
+def _resize_frame(
+    frame: NDArray[Any], width: int, height: int, *, crop: bool = False
+) -> NDArray[Any]:
+    """Resize a single (H, W, 3) frame using Pillow (no system lib dependencies).
+
+    ``crop``: first centre-crop to the target aspect ratio, so nothing is stretched.
+    """
     from PIL import Image  # ruff: ignore[import-outside-top-level]
 
+    if crop:
+        h, w = frame.shape[:2]
+        crop_w, crop_h = min(w, round(h * width / height)), min(h, round(w * height / width))
+        x0, y0 = (w - crop_w) // 2, (h - crop_h) // 2
+        frame = frame[y0 : y0 + crop_h, x0 : x0 + crop_w]
     img = Image.fromarray(frame)
     img = img.resize((width, height), Image.Resampling.LANCZOS)
     return np.asarray(img)
@@ -239,10 +251,12 @@ class WebRTCDevice:
         *,
         frame_history: int = 1,
         resize: tuple[int, int] | None = None,
+        resize_mode: ResizeMode = "stretch",
     ) -> None:
         self._config = config
         self._frame_history = frame_history
         self._resize = resize  # (width, height) or None
+        self._crop = resize_mode == "crop"
         self._connection: WebRTCConnection | None = None
         self._buffer: list[NDArray[Any]] = []
 
@@ -293,7 +307,7 @@ class WebRTCDevice:
             raise RuntimeError(msg)
 
         if self._resize is not None:
-            frame = _resize_frame(frame, self._resize[0], self._resize[1])
+            frame = _resize_frame(frame, self._resize[0], self._resize[1], crop=self._crop)
         return frame
 
     async def disconnect(self) -> None:
@@ -315,8 +329,10 @@ class WebRTCCameras:
     The camera server controls resolution, fps, and stream lifecycle.
     This factory only creates WebRTC sessions to receive frames.
 
-    If ``resize`` is set, frames are resized on read using ``cv2.INTER_AREA``
-    (best quality for downscaling).  This adds ~0.3ms per frame.
+    If ``resize`` is set, frames are resized on read (Lanczos). ``resize_mode="crop"``
+    first centre-crops each frame to the target aspect ratio, so a 16:9 camera feeds a
+    policy trained on 4:3 images without stretching them; ``"stretch"`` (default)
+    resizes as is.
 
     Usage::
 
@@ -338,10 +354,12 @@ class WebRTCCameras:
         api_url: str,
         *,
         resize: tuple[int, int] | None = None,
+        resize_mode: ResizeMode = "stretch",
         frame_history: int = 1,
     ) -> None:
         self._api_url = api_url
         self._resize = resize
+        self._resize_mode: ResizeMode = resize_mode
         self._frame_history = frame_history
 
     def device(self, device_id: str, *, frame_history: int | None = None) -> WebRTCDevice:
@@ -359,4 +377,5 @@ class WebRTCCameras:
             cfg,
             frame_history=frame_history or self._frame_history,
             resize=self._resize,
+            resize_mode=self._resize_mode,
         )
