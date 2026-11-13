@@ -86,13 +86,17 @@ LANGUAGE_KEY = "annotation.human.task_description"
 TASK = "pick up the cube and place it on the yellow square"
 # Training env controls at 30 Hz (sim dt 1/120, decimation 4); one eef_delta per step.
 TRAINING_DT_MS = 1000.0 / 30.0
-# First supervised run: same path, played back 3x slower than training.
-DT_MS = 100.0
+# Playback speed relative to the training data. 1.0 plays one policy step per 33.3 ms,
+# as recorded: training episode 75 moved its TCP at a median 229 mm/s (p95 416, max
+# 605 mm/s, in sim time). Below 1.0 the same path runs slower (0.33 = the 100 ms steps
+# of the first supervised runs).
+SPEED_FACTOR = 1.0
+DT_MS = TRAINING_DT_MS / SPEED_FACTOR
 N_ACTION_STEPS = 8
-# Near the table, execute fewer steps per chunk so the policy re-observes (and corrects
-# its xy placement over the cube) twice as often during the final descent.
+# Sequential: near the table, run at most NEAR_TABLE_CHUNK_MS per chunk so the policy
+# re-observes (and corrects its placement over the cube) often during the descent.
 NEAR_TABLE_Z_MM = 120.0
-NEAR_TABLE_STEPS = 4
+NEAR_TABLE_CHUNK_MS = 400.0
 TIMEOUT_S = 300.0
 # Execution mode, set by the entry script. Sequential (default, run_sequential.py): run
 # N_ACTION_STEPS per chunk to standstill, observe, infer again. Continuous
@@ -102,10 +106,10 @@ TIMEOUT_S = 300.0
 CONTINUOUS = False
 SMOOTHING_PASSES = 2
 HOLD_STEPS = 5  # waypoints of a hold-in-place chunk while the gripper is busy
-# Continuous seams, as the LeRobot async queue does it: steps that execute while the
-# next inference runs (~400 ms, measured 130-390 ms) stay exactly as published; later
-# overlapping steps are blended old/new 0.3/0.7.
-QUEUE_FROZEN_STEPS = math.ceil(400.0 / DT_MS) + 1
+# Continuous seams, as the LeRobot async queue does it: the steps that executed while
+# this inference was in flight (its measured latency, 130-390 ms so far) plus a margin
+# stay exactly as published; later overlapping steps are blended old/new 0.3/0.7.
+QUEUE_MARGIN_STEPS = 2
 QUEUE_OLD_WEIGHT = 0.3
 MAX_CHUNKS = 120  # sim ~34 chunks of 8; real approach ~2x, plus 4-step chunks near the table
 
@@ -167,7 +171,10 @@ EEF_DELTA_POS_GAIN = 0.24
 EEF_DELTA_ROT_GAIN = 0.0
 
 # --- Safety guards on decoded chunks ------------------------------------------
-MAX_STEP_MM = 25.0  # largest allowed move between two consecutive targets (sim max 20)
+# Largest allowed TCP speed between two consecutive targets: above the training data's
+# 605 mm/s peak. As a distance per step at the current DT_MS.
+MAX_TCP_SPEED_MM_S = 650.0
+MAX_STEP_MM = MAX_TCP_SPEED_MM_S * DT_MS / 1000.0
 MAX_CHUNK_TRAVEL_MM = 250.0  # largest allowed distance from the start pose (16 steps)
 MAX_STEP_DEG = 5.0  # largest allowed rotation between two consecutive targets
 MAX_TILT_DEG = 15.0  # largest allowed angle between the tool axis and straight down
@@ -357,8 +364,11 @@ def continuous_rotvec(rv: np.ndarray, prev: list[float]) -> list[float]:
 
 
 def executed_steps(start: list[float]) -> int:
-    """Steps to run from a chunk that starts at ``start``: fewer near the table."""
-    return NEAR_TABLE_STEPS if start[2] < NEAR_TABLE_Z_MM else N_ACTION_STEPS
+    """Steps to run from a chunk that starts at ``start``: at most NEAR_TABLE_CHUNK_MS near
+    the table (4 steps at 100 ms, all 8 at training speed)."""
+    if start[2] >= NEAR_TABLE_Z_MM:
+        return N_ACTION_STEPS
+    return min(N_ACTION_STEPS, max(2, round(NEAR_TABLE_CHUNK_MS / DT_MS)))
 
 
 def tilt_deg(pose: list[float]) -> float:
@@ -411,13 +421,15 @@ class TcpPlanQueue:
     def __init__(self) -> None:
         self.replaceable = 0
         self.published: dict[int, list[float]] = {}
+        self.frozen_steps = QUEUE_MARGIN_STEPS
 
     def reset(self) -> None:
         self.replaceable = 0
         self.published = {}
+        self.frozen_steps = QUEUE_MARGIN_STEPS
 
     def _head(self) -> dict[int, list[float]]:
-        start, stop = self.replaceable - 1, self.replaceable + QUEUE_FROZEN_STEPS
+        start, stop = self.replaceable - 1, self.replaceable + self.frozen_steps
         return {ts: v for ts, v in self.published.items() if start <= ts < stop}
 
     def _publish(
@@ -435,8 +447,13 @@ class TcpPlanQueue:
         self.published = dict(zip(keys, smoothed, strict=True))
         return keys[0], smoothed
 
-    def merge(self, targets: list[list[float]]) -> tuple[int, list[list[float]]]:
-        """Merge targets for timesteps ``replaceable, replaceable + 1, ...``."""
+    def merge(self, targets: list[list[float]], latency_ms: float) -> tuple[int, list[list[float]]]:
+        """Merge targets for timesteps ``replaceable, replaceable + 1, ...``.
+
+        ``latency_ms`` is how long this inference took: the published steps that ran
+        meanwhile (plus a margin) are kept exactly.
+        """
+        self.frozen_steps = math.ceil(latency_ms / DT_MS) + QUEUE_MARGIN_STEPS
         plan = self._head()
         retained = len(plan)
         # A fresh pose reading near a half-turn can come back with the rotation vector's
@@ -554,7 +571,7 @@ class SingleArmGr00tClient(Gr00tPolicyClient):
             pose = states[mg_id].pose
             start = [*pose.position, *pose.orientation]
             if CONTINUOUS:
-                first, targets = self._queue.merge(deltas_to_absolute(start, deltas))
+                first, targets = self._queue.merge(deltas_to_absolute(start, deltas), latency_ms)
                 check_targets(start, targets)
                 # Steps that run before the next chunk replaces this one.
                 self._gripper.executed_steps = math.ceil(latency_ms / chunk.dt_ms) + 1

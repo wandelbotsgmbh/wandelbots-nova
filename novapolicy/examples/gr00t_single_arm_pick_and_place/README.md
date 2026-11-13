@@ -20,7 +20,7 @@ From the repository root, once:
 
 ```bash
 uv sync --extra novapolicy-gr00t --extra nova-rerun-bridge
-uv pip install <zimmer-gripper-controller>   # path or git URL; only needed with --execute
+uv pip install --python .venv <zimmer-gripper-controller>   # path or git URL; only for --execute
 export NOVA_API=http://<nova-host>
 ```
 
