@@ -1,6 +1,6 @@
 """Acceptance tests for ``Action.tcp`` modes against a real NOVA instance.
 
-Each test provisions a throwaway virtual UR5e (deleted on teardown), moves it to a
+Each test provisions a throwaway virtual UR10e (deleted on teardown), moves it to a
 tool-down start, lets a scripted policy send one TCP chunk through the executor in
 sequential mode, and measures where the TCP actually came to rest. That covers the
 whole path a policy's TCP action takes: unit operators, relative composition, the
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from novapolicy.schema import _ActTcp
 
-# Tool pointing straight down, well inside the UR5e's reach.
+# Tool pointing straight down, well inside the UR10e's reach.
 START_DEG = (0.0, -90.0, 90.0, -90.0, -90.0, 0.0)
 DT_MS = 50.0
 STEPS = 10
@@ -38,7 +38,7 @@ POSITION_TOL_MM = 1.0
 ROTATION_TOL_DEG = 0.5
 
 
-async def _virtual_ur5e(cell, stack: contextlib.AsyncExitStack):
+async def _virtual_ur10e(cell, stack: contextlib.AsyncExitStack):
     from nova import api
     from nova.cell import virtual_controller
 
@@ -47,7 +47,7 @@ async def _virtual_ur5e(cell, stack: contextlib.AsyncExitStack):
         virtual_controller(
             name=name,
             manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-            type="universalrobots-ur5e",
+            type="universalrobots-ur10e",
         )
     )
 
@@ -67,7 +67,7 @@ async def _run_one_chunk(
     action_for: Callable[[Any], _ActTcp],
     steps: list[list[float]] | Callable[[list[float]], list[list[float]]],
 ) -> tuple[list[float], list[float]]:
-    """Run one TCP chunk on a fresh virtual UR5e; return (start, end) TCP poses.
+    """Run one TCP chunk on a fresh virtual UR10e; return (start, end) TCP poses.
 
     ``action_for(mg)`` builds the ``Action.tcp`` entry; ``steps`` may depend on the start
     pose, so it may also be a callable taking it.
@@ -75,7 +75,7 @@ async def _run_one_chunk(
     from nova import Nova
 
     async with Nova() as nova_instance, contextlib.AsyncExitStack() as stack:
-        controller = await _virtual_ur5e(nova_instance.cell(), stack)
+        controller = await _virtual_ur10e(nova_instance.cell(), stack)
         mg = await stack.enter_async_context(controller[0])
         tcp = (await mg.tcp_names())[0]
         calls = 0
