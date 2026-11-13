@@ -125,13 +125,20 @@ Observation.tcp("left_eef_9d", source=mg, format=TcpFormat.ROT6D)  # → obs["st
 Observation.io("left_gripper", source=mg, io="digital_out[0]")  # → obs["state.left_gripper"]
 ```
 
+`validate_schema` (the executor calls it before the run) reads the server's modality config.
+From then on the client sends only the state keys the server expects, so an observation the model
+does not take (a TCP pose that only sets the TCP for relative actions) stays out of the request,
+and it sends the `Observation.constant("language", ...)` prompt under the server's language key.
+
 ### Computed observations and actions
 
-`Action.computed` fires for every policy (the executor runs it after each call).
+`Action.computed` fires for every policy (the executor runs it after each call). For an
+actuator outside NOVA, read its command from `client.last_raw_action[key]`, the server's last
+answer as a `(horizon, dim)` array per action key.
 `Observation.computed` also fires for GR00T, but its values are merged into GR00T's
 numeric state payload — so each computed value must be a scalar/sequence of floats keyed
-to a model state input. Non-numeric outputs (strings, images) are only supported on the
-callback (bring-your-own-function) path.
+to a model state input. Pass `keys=[...]` so `validate_schema` counts them. Non-numeric outputs
+(strings, images) are only supported on the callback (bring-your-own-function) path.
 
 ## Inspecting a Server
 

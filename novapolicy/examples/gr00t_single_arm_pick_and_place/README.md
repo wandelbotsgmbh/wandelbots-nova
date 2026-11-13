@@ -8,8 +8,8 @@ policy's training episodes on the same cell.
 |---|---|
 | `run_sequential.py` | Policy, stop-and-go (the default mode): runs one chunk to standstill, then observes and infers again |
 | `run_continuous.py` | Policy, streaming: re-infers as fast as the server answers, chunks merged on a timestep queue |
-| `policy.toml` | Everything declared about the policy, the cell and the guards; the scripts read it |
-| `gr00t_ur10e.py` | Shared implementation of the two `run_*` scripts: the Zimmer gripper and the run, on top of [`novapolicy.gr00t.declared`](../../gr00t/declared.py) |
+| `gr00t_ur10e.py` | Shared implementation of the two `run_*` scripts: the policy's facts, the cell and the limits as constants at the top, the schema, the Zimmer gripper and the run |
+| `fit_episode.py` | Measures from a training episode what the actions mean (frame, gains, gripper polarity) and the training envelope |
 
 Without `--execute` every script is a dry run: nothing moves. With `--execute` it asks
 for `yes` before the gripper or the arm moves. Keep a hand on the e-stop.
@@ -43,19 +43,18 @@ the gripper command in `action[6]`. `--stop-at-grip` replays up to the recorded 
 stops with the jaws open, so the cube can be placed between them; run again without it to
 replay the whole episode. `--speed 0.4` is ~90 mm/s (the recording: median 229 mm/s).
 
-## The policy config
+## Where the settings come from
 
-[`policy.toml`](policy.toml) declares everything the scripts use: the policy's facts
-(checkpoint-14000, IsaacLab `UR10ePlaceCubeEnvCfg`, dataset `ur10e_place_lerobot_unmodified`),
-the cell (controller, TCP `umi_corrected`, cameras, gripper) and the guards. Check it against
-the server, the checkpoint, the training data and the robot (nothing moves):
+The constants at the top of [`gr00t_ur10e.py`](gr00t_ur10e.py) come from the training setup
+(checkpoint-14000, IsaacLab `UR10ePlaceCubeEnvCfg`, dataset `ur10e_place_lerobot_unmodified`) and
+the cell. The ones the training config does not state, checked against a training episode
+(nothing moves):
 
 ```bash
-uv run python -m novapolicy.gr00t.inspect_policy \
-    --config novapolicy/examples/gr00t_single_arm_pick_and_place/policy.toml \
-    --data <folder with checkpoint-14000 and the ur10e_place_lerobot_unmodified dataset>
+uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/fit_episode.py \
+    --episode <episode_000075.parquet>
 ```
 
-The run scripts also check the server against it at every start. Execution settings that
-are not part of the policy (speed factor, chunk length, gripper force) stay at the top of
-`gr00t_ur10e.py`. See [the GR00T setup guide](../../gr00t/README.md) for the whole workflow.
+It prints the delta frame, the position and rotation gains, the gripper polarity and values, and
+the training envelope the limits should cover. See [the GR00T setup guide](../../gr00t/README.md)
+for the whole workflow.

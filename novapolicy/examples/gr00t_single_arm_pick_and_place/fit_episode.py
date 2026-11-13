@@ -1,14 +1,24 @@
-"""Fit a GR00T policy's action convention from one training episode.
+"""Fit what a GR00T policy's end-effector actions mean, from one training episode.
 
 The episode's recorded joints, run through the robot's forward kinematics (DH parameters
 and TCP from NOVA), give the TCP path the training robot actually moved. Comparing that
-path with the recorded actions tells what the actions mean: which frame, how much of a
-commanded step was realized (gain), and how the gripper is driven. Used by
-``novapolicy.gr00t.inspect_policy --episode``.
+path with the recorded actions shows which frame the deltas are in, how much of each
+commanded step the training controller realized (the gains), whether the actions are
+deltas or absolute targets, and how the gripper is driven. Use the result for the
+``Action.tcp(mode="relative", ...)`` options and ``Scale`` operators in
+``gr00t_ur10e.py``. Optional: when the training config states these, read them there.
+
+    NOVA_API=http://<nova> uv run python fit_episode.py --episode episode_000075.parquet \
+        [--controller ur10e-calibration --tcp umi_corrected]
+
+Columns default to this policy's dataset: ``observation.state`` = [6 joints (rad), gripper],
+``action`` = [6 eef deltas (m, rotation vector), gripper].
 """
 
 from __future__ import annotations
 
+import argparse
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -234,3 +244,56 @@ def merge_summaries(summaries: list[PathSummary]) -> PathSummary:
         speed_max=max(s.speed_max for s in summaries),
         episodes=sum(s.episodes for s in summaries),
     )
+
+
+def _load(path: str) -> tuple[np.ndarray, np.ndarray, float]:
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(path)
+    state = np.array(table.column("observation.state").to_pylist(), dtype=float)
+    action = np.array(table.column("action").to_pylist(), dtype=float)
+    stamps = np.array(table.column("timestamp").to_pylist(), dtype=float)
+    fps = 1.0 / float(np.median(np.diff(stamps))) if len(stamps) > 1 else 0.0
+    return state, action, fps
+
+
+async def _main(args: argparse.Namespace) -> None:
+    import nova
+
+    state, action, fps = _load(args.episode)
+    async with nova.Nova() as n:
+        mg = (await n.cell().controller(args.controller))[0]
+        kinematics = Kinematics.from_description(await mg.get_description(), args.tcp)
+    joints = state[:, :6]
+    poses = [kinematics.fk(q) for q in joints]
+    tcp = action[:, :6]
+    print(f"{args.episode}: {len(state)} frames at {fps:.1f} Hz")
+    print("Delta frames (best first): frame, lag, position gain / R2, rotation gain / R2")
+    for f in fit_delta_frames(poses, tcp)[:4]:
+        print(
+            f"  {f.frame:32s} lag {f.lag}  pos {f.pos_gain:+.3f} / {f.pos_r2:.2f}"
+            f"  rot {f.rot_gain:+.3f} / {f.rot_r2:.2f}"
+        )
+    print(f"As absolute targets instead: R2 {absolute_r2(poses, tcp):.2f} (delta if well below)")
+    grip = fit_gripper(state[:, 6], action[:, 6])
+    if grip is not None:
+        sign = "negative" if grip.close_when_negative else "positive"
+        print(
+            f"Gripper: a {sign} command closes; state open {grip.open_state:.4g}, "
+            f"holding {grip.holding_state:.4g} (close at frame {grip.close_frame})"
+        )
+    env = path_summary(poses, joints, fps)
+    print(
+        f"Envelope: x {env.lo[0]:.0f}..{env.hi[0]:.0f}, y {env.lo[1]:.0f}..{env.hi[1]:.0f}, "
+        f"z {env.lo[2]:.0f}..{env.hi[2]:.0f} mm; speed median {env.speed_median:.0f}, "
+        f"max {env.speed_max:.0f} mm/s"
+    )
+    print(f"Start joints (deg): {np.round(np.degrees(env.start_joints), 1).tolist()}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--episode", required=True)
+    parser.add_argument("--controller", default="ur10e-calibration")
+    parser.add_argument("--tcp", default="umi_corrected")
+    asyncio.run(_main(parser.parse_args()))

@@ -350,7 +350,7 @@ arm, keyboard, gamepad, spacemouse) in your own script. See
 | [docs/executor.md](docs/executor.md) | Advanced: explicit sequential/continuous execution modes, asynchronous inference, RTC, and the client/server timestamp protocol                                |
 | [docs/schema.md](docs/schema.md)     | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions                                                                             |
 | [docs/gr00t.md](docs/gr00t.md)       | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/rtc.md](docs/rtc.md) for real-time chunking) |
-| [gr00t/README.md](gr00t/README.md)   | Setting up a GR00T policy on a robot: inspecting a checkpoint (`python -m novapolicy.gr00t.inspect_policy`), checking the cell, schema, execution mode, guards |
+| [gr00t/README.md](gr00t/README.md)   | Setting up a GR00T policy on a robot: what the actions mean, checking the cell, schema, execution mode, limits |
 | [lerobot/README.md](lerobot/README.md) | LeRobot async inference, checkpoint-derived `chunk_size` / `n_action_steps`, and remote-checkpoint configuration                                                        |
 | [docs/rerun.md](docs/rerun.md)       | Optional real-time 3D visualization of execution                                                                                                                       |
 
