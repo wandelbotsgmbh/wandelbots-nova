@@ -8,6 +8,7 @@ directly with plain data.
 
 from __future__ import annotations
 
+import math
 from types import SimpleNamespace
 
 from hypothesis import given, settings, strategies as st
@@ -22,6 +23,7 @@ from novapolicy.chunking import (
     placement,
     smooth_action_chunk,
     trim_chunk,
+    unwrap_tcp_rotations,
 )
 from novapolicy.types import ActionChunk, ContinuousExecution, SequentialExecution
 
@@ -259,6 +261,66 @@ def test_bridge_supports_tcp_translation_without_mixing_rotation_units():
     ]
     for actual_step, expected_step in zip(bridge.tcp["0@ur5e"], expected, strict=True):
         assert actual_step == pytest.approx(expected_step)
+
+
+def _tool_down_flip() -> tuple[SimpleNamespace, ActionChunk]:
+    """Tool pointing down: measured just under pi about +y, policy just over it.
+
+    The policy steps are written the way a rotation library returns them, as
+    angles under pi about -y. They differ from the measured orientation by under
+    a degree, but component-wise they are about 2 pi apart.
+    """
+    pose = SimpleNamespace(position=[0.0, 0.0, 0.0], orientation=[0.0, math.pi - 0.002, 0.0])
+    chunk = ActionChunk(
+        tcp={
+            "0@ur10e": [
+                [1.0, 0.0, 0.0, 0.0, -(math.pi - 0.004), 0.0],
+                [2.0, 0.0, 0.0, 0.0, -(math.pi - 0.006), 0.0],
+                [3.0, 0.0, 0.0, 0.0, -(math.pi - 0.008), 0.0],
+            ]
+        },
+        dt_ms=100.0,
+    )
+    return SimpleNamespace(pose=pose), chunk
+
+
+def test_bridge_does_not_swing_the_wrist_across_a_rotation_vector_flip():
+    """Regression: a sign flip near pi once bridged through the identity in 573 steps."""
+    state, chunk = _tool_down_flip()
+
+    connected = connect_action_chunk(chunk, {"0@ur10e": state}, always_anchor=True)
+
+    assert connected is not None
+    steps = connected.motion.tcp["0@ur10e"]
+    assert len(steps) < 10  # a short bridge, not the 573 steps of the incident
+    for step in steps:
+        # Every waypoint stays a near-half-turn about y: no pass through the identity.
+        assert math.hypot(*step[3:6]) == pytest.approx(math.pi, abs=0.01)
+        assert step[4] > 0  # unwrapped onto the measured side
+    assert steps[-1][4] == pytest.approx(math.pi + 0.008)
+
+
+def test_unwrap_keeps_equivalent_rotations_and_leaves_continuous_ones_alone():
+    unwrapped = unwrap_tcp_rotations([[0.0, 0.0, 0.0, 0.0, -(math.pi - 0.1), 0.0]], [0.0, 3.1, 0.0])
+    assert unwrapped[0][3:6] == pytest.approx([0.0, math.pi + 0.1, 0.0])
+
+    steps = [[5.0, 6.0, 7.0, 0.1, 0.2, 0.3], [5.0, 6.0, 7.0, 0.11, 0.2, 0.3]]
+    for actual, expected in zip(unwrap_tcp_rotations(steps, [0.1, 0.2, 0.3]), steps, strict=True):
+        assert actual == pytest.approx(expected)
+
+
+def test_endpoint_ramps_do_not_interpolate_across_a_rotation_vector_flip():
+    _, chunk = _tool_down_flip()
+    flipped = chunk.model_copy(
+        update={
+            "tcp": {"0@ur10e": [[0.0, 0.0, 0.0, 0.0, math.pi - 0.002, 0.0], *chunk.tcp["0@ur10e"]]}
+        }
+    )
+
+    ramped = interpolate_action_chunk_ramps(flipped).motion.tcp["0@ur10e"]
+
+    for step in ramped:
+        assert math.hypot(*step[3:6]) == pytest.approx(math.pi, abs=0.01)
 
 
 def test_bridge_requires_at_least_two_policy_waypoints_for_spacing():

@@ -27,6 +27,7 @@ _MIN_SPACING_STEPS = 2
 _MIN_RAMP_STEPS = 2
 _MIN_SMOOTHING_STEPS = 2
 _SEGMENT_RATIO_EPSILON = 1e-12
+_ROTVEC_EPSILON = 1e-12
 
 
 def _max_steps(chunk: ActionChunk) -> int:
@@ -199,7 +200,7 @@ def interpolate_action_chunk_ramps(
 
     for group_id, steps in chunk.tcp.items():
         interpolated, indices = _interpolate_endpoint_intervals(
-            steps,
+            unwrap_tcp_rotations(steps, steps[0][3:6]) if steps else steps,
             accelerate=accelerate,
             brake=brake,
             interpolation_steps=interpolation_steps,
@@ -292,6 +293,7 @@ def connect_action_chunk(
     the exact waypoint where callers should fire the original chunk's IO and
     computed actions. Returns ``None`` when no motion group needs a bridge.
     """
+    chunk = _unwrap_chunk_rotations(chunk, states)
     bridge = create_bridge_chunk(chunk, states, always_anchor=always_anchor)
     if bridge is None:
         return None
@@ -380,7 +382,7 @@ def create_bridge_chunk(
         current = [*pose.position, *pose.orientation]
         bridge = _interpolated_bridge(
             current,
-            steps,
+            unwrap_tcp_rotations(steps, current[3:6]),
             tcp=True,
             always_anchor=always_anchor,
         )
@@ -390,6 +392,50 @@ def create_bridge_chunk(
     if not bridge_joints and not bridge_tcp:
         return None
     return ActionChunk(joints=bridge_joints, tcp=bridge_tcp, dt_ms=chunk.dt_ms)
+
+
+def unwrap_tcp_rotations(steps: list[list[float]], reference: list[float]) -> list[list[float]]:
+    """Rewrite each TCP step's rotation vector as the equivalent one nearest its predecessor.
+
+    A rotation vector ``angle * axis`` describes the same orientation as
+    ``(angle + 2 pi k) * axis`` for any integer ``k``. Near pi, e.g. a tool pointing
+    straight down, measurements jump between ``v`` and roughly ``-v`` from one read
+    to the next. Bridges and ramps interpolate rotation vectors component-wise,
+    and between ``v`` and ``-v`` that passes through the identity: a real
+    half-turn of the wrist instead of no motion. Unwrapping first keeps every
+    interpolation on the short path. ``reference`` anchors the first step.
+    """
+    out: list[list[float]] = []
+    previous = list(reference)
+    for step in steps:
+        rotvec = _equivalent_rotvec_near(step[3:6], previous)
+        out.append([*step[:3], *rotvec, *step[6:]])
+        previous = rotvec
+    return out
+
+
+def _equivalent_rotvec_near(rotvec: list[float], reference: list[float]) -> list[float]:
+    angle = math.sqrt(sum(value * value for value in rotvec))
+    if angle < _ROTVEC_EPSILON:
+        return list(rotvec)
+    axis = [value / angle for value in rotvec]
+    # Equivalent vectors lie on the axis line at angle + 2 pi k; pick the one
+    # nearest the reference's projection onto that line.
+    projection = sum(a * r for a, r in zip(axis, reference, strict=True))
+    turns = round((projection - angle) / (2.0 * math.pi))
+    return [a * (angle + 2.0 * math.pi * turns) for a in axis]
+
+
+def _unwrap_chunk_rotations(chunk: ActionChunk, states: dict[str, Any]) -> ActionChunk:
+    """Unwrap each TCP group's rotations against its measured pose."""
+    tcp: dict[str, list[list[float]]] = {}
+    for group_id, steps in chunk.tcp.items():
+        state = states.get(group_id)
+        pose = getattr(state, "pose", None) if state is not None else None
+        tcp[group_id] = (
+            unwrap_tcp_rotations(steps, list(pose.orientation)) if pose and steps else steps
+        )
+    return chunk.model_copy(update={"tcp": tcp}) if chunk.tcp else chunk
 
 
 def _interpolated_bridge(
