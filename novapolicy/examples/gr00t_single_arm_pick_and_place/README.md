@@ -8,7 +8,6 @@ policy's training episodes on the same cell.
 |---|---|
 | `run_sequential.py` | Policy, stop-and-go (the default mode): runs one chunk to standstill, then observes and infers again |
 | `run_continuous.py` | Policy, streaming: re-infers as fast as the server answers, chunks merged on a timestep queue |
-| `replay_pick_and_place.py` | Replays a training episode's recorded joint path with the Zimmer gripper gripping and releasing at the recorded frames (a wrapper around the generic [`../replay/replay_episode.py`](../replay/replay_episode.py)) |
 | `policy.toml` | Everything declared about the policy, the cell and the guards; the scripts read it |
 | `gr00t_ur10e.py` | Shared implementation of the two `run_*` scripts: the Zimmer gripper and the run, on top of [`novapolicy.gr00t.declared`](../../gr00t/declared.py) |
 
@@ -32,14 +31,17 @@ export NOVA_API=http://<nova-host>
 uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/run_sequential.py [--execute]
 uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/run_continuous.py [--execute]
 
-# Training-episode replay (an episode parquet of the GR00T training dataset)
-uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/replay_pick_and_place.py \
-    --episode <episode_000075.parquet> [--show-grasp | --execute] [--speed 0.4]
+# Training-episode replay, with the generic replay script
+uv run python novapolicy/examples/replay/replay_episode.py --episode <episode_000075.parquet> \
+    --controller ur10e-calibration --joints-from state --gripper-column 6 \
+    --gripper zimmer:172.31.13.49 --tcp umi_corrected --lift-to-mm 200 --speed 0.4 \
+    [--stop-at-grip] [--execute]
 ```
 
-`--show-grasp` replays up to the recorded grasp and stops with the jaws open, so the cube
-can be placed between them before `--execute` replays the whole episode. The replay runs
-at `--speed` times the recorded rate (0.4 by default, ~90 mm/s).
+The episode's joints are in `observation.state` (its actions are end-effector deltas) and
+the gripper command in `action[6]`. `--stop-at-grip` replays up to the recorded grasp and
+stops with the jaws open, so the cube can be placed between them; run again without it to
+replay the whole episode. `--speed 0.4` is ~90 mm/s (the recording: median 229 mm/s).
 
 ## The policy config
 

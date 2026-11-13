@@ -10,6 +10,12 @@ Without ``--controller`` it replays the bundled sample (``action`` + ``timestamp
 columns, two arms) on two virtual UR5e, as a quick look. With ``--controller`` it drives
 real robots: a dry run by default, ``--execute`` asks before anything moves.
 
+Grippers (``--gripper``): ``io:<name>`` writes a controller IO (True = closed);
+``zimmer:<host>`` drives a Zimmer gripper through an IO-Link master with the optional
+``zimmer-gripper-controller`` package (homed and opened before the replay, grips with
+force). ``--stop-at-grip`` stops before the first grip with the jaws open, to place the
+object between them.
+
 Prerequisites:
     NOVA_API=http://<instance-ip>
     uv sync --extra novapolicy   (plus pyarrow)
@@ -20,7 +26,9 @@ Usage:
 
     # A single real arm whose joints are recorded in observation.state, gripper in action[6]
     uv run python novapolicy/examples/replay/replay_episode.py --episode <episode.parquet> \\
-        --controller <controller> --joints-from state --gripper-column 6 --speed 0.5 [--execute]
+        --controller <controller> --joints-from state --gripper-column 6 \\
+        --gripper zimmer:<host> --tcp <tcp> --lift-to-mm 200 --speed 0.4 \\
+        [--stop-at-grip] [--execute]
 """
 
 from __future__ import annotations
@@ -28,6 +36,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from dataclasses import dataclass
+import importlib
 from itertools import pairwise
 from pathlib import Path
 import time
@@ -37,10 +46,10 @@ import numpy as np
 import pyarrow.parquet as pq
 
 import nova
-from nova.actions import joint_ptp
+from nova.actions import joint_ptp, linear
 from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
-from nova.types import MotionSettings
+from nova.types import MotionSettings, Pose
 from novapolicy import (
     ActionChunk,
     CallbackPolicyClient,
@@ -54,12 +63,15 @@ from novapolicy import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from nova.cell.controller import Controller
     from nova.cell.motion_group import MotionGroup
 
 SAMPLE = Path(__file__).parent / "episode_000000.parquet"
 JOINTS_PER_ARM = 6
 CHUNK_SIZE = 8
 START_MOVE = MotionSettings(tcp_velocity_limit=100.0)
+ZIMMER_FORCE_PERCENT = 50  # in Zimmer force mode the force also sets the closing speed
+ZIMMER_VELOCITY_PERCENT = 100
 
 
 @dataclass
@@ -204,6 +216,74 @@ def describe(episode: Episode, speed: float) -> None:
         print(f"  frames {start:3d}-{end:3d}, then {after}")
 
 
+class IoGripper:
+    """A gripper on a controller digital output: True closes."""
+
+    def __init__(self, controller: Controller, io: str) -> None:
+        self._controller, self._io = controller, io
+
+    async def start(self) -> None:
+        await self._controller.write(self._io, False)
+
+    async def __call__(self, close: bool) -> None:
+        await self._controller.write(self._io, close)
+
+    def close(self) -> None:
+        pass
+
+
+class ZimmerGripper:
+    """A Zimmer GEH/GED gripper on a Turck IO-Link master (``zimmer-gripper-controller``)."""
+
+    def __init__(self, host: str) -> None:
+        self._host = host
+        self._session: Any = None
+
+    async def start(self) -> None:
+        """Connect, home and open (moves the jaws)."""
+        zimmer = importlib.import_module("zimmer_gripper_controller")  # optional package
+        config = zimmer.SessionConfig(modbus=zimmer.ModbusConfig(host=self._host))
+        self._session = zimmer.GripperSession(config)
+        self._session.connect()
+        await asyncio.to_thread(self._session.wait_until_ready)
+        self._session.set_force_percent(ZIMMER_FORCE_PERCENT)
+        self._session.set_velocity_percent(ZIMMER_VELOCITY_PERCENT)
+
+    async def __call__(self, close: bool) -> None:
+        if close:
+            result = await asyncio.to_thread(self._session.grip)
+            print(f"Grip: holding={result.holding} gap={result.jaw_gap_m * 1000:.1f} mm")
+        else:
+            await asyncio.to_thread(self._session.open_and_wait)
+
+    def close(self) -> None:
+        if self._session is not None:
+            self._session.close()
+
+
+def make_gripper(spec: str, controller: Controller) -> IoGripper | ZimmerGripper:
+    """``io:<name>`` or ``zimmer:<host>``."""
+    kind, _, target = spec.partition(":")
+    if kind == "io" and target:
+        return IoGripper(controller, target)
+    if kind == "zimmer" and target:
+        return ZimmerGripper(target)
+    msg = f"--gripper must be io:<name> or zimmer:<host>, got {spec!r}"
+    raise ValueError(msg)
+
+
+async def lift_if_low(mg: MotionGroup, tcp: str, z_mm: float) -> None:
+    """Below ``z_mm``, move straight up to it, so the joint move to the start cannot sweep
+    the tool over the table or a workpiece."""
+    pose = (await mg.get_state(tcp)).pose
+    if pose.position.z >= z_mm:
+        return
+    print(f"Lifting straight up from z {pose.position.z:.0f} to {z_mm:.0f} mm...")
+    up = Pose((pose.position.x, pose.position.y, z_mm, *pose.orientation))
+    actions = [linear(up, settings=START_MOVE)]
+    await mg.execute(await mg.plan(actions, tcp), tcp, actions=actions)
+
+
 @nova.program(
     id="replay_episode",
     name="Replay Dataset Episode",
@@ -229,6 +309,23 @@ async def replay_sample(ctx: nova.ProgramContext) -> None:
     await replay(groups, episode)
 
 
+async def start_and_replay(
+    groups: list[MotionGroup],
+    episode: Episode,
+    gripper: IoGripper | ZimmerGripper | None,
+    args: argparse.Namespace,
+) -> None:
+    """Start the gripper (homes and opens it), lift if low, replay."""
+    if gripper is not None:
+        await gripper.start()
+    if args.lift_to_mm is not None:
+        for mg in groups:
+            await lift_if_low(mg, args.tcp, args.lift_to_mm)
+    await replay(
+        groups, episode, speed=args.speed, on_gripper=gripper, stop_at_grip=args.stop_at_grip
+    )
+
+
 async def replay_real(args: argparse.Namespace) -> None:
     episode = load_episode(
         args.episode,
@@ -238,17 +335,26 @@ async def replay_real(args: argparse.Namespace) -> None:
     )
     describe(episode, args.speed)
     async with nova.Nova() as client:
-        groups = [(await client.cell().controller(name))[0] for name in args.controller]
+        controllers = [await client.cell().controller(name) for name in args.controller]
+        groups = [c[0] for c in controllers]
+        gripper = make_gripper(args.gripper, controllers[0]) if args.gripper else None
         if not args.execute:
             print("Dry run: nothing moved. Pass --execute to replay.")
             return
+        what = "up to the first grip" if args.stop_at_grip else "the episode"
         answer = await asyncio.to_thread(
-            input, f"Replay on {', '.join(args.controller)} at {args.speed:g}x? Type 'yes': "
+            input,
+            f"{'Start the gripper, then r' if gripper else 'R'}eplay {what} on "
+            f"{', '.join(args.controller)} at {args.speed:g}x? Type 'yes': ",
         )
         if answer.strip().lower() != "yes":
             print("Aborted, nothing moved.")
             return
-        await replay(groups, episode, speed=args.speed, stop_at_grip=args.stop_at_grip)
+        try:
+            await start_and_replay(groups, episode, gripper, args)
+        finally:
+            if gripper is not None:
+                gripper.close()
 
 
 if __name__ == "__main__":
@@ -257,6 +363,9 @@ if __name__ == "__main__":
     parser.add_argument("--controller", action="append", help="real controller, one per arm")
     parser.add_argument("--joints-from", choices=["action", "state"], default="action")
     parser.add_argument("--gripper-column", type=int, help="action column of a binary gripper")
+    parser.add_argument("--gripper", help="io:<name> or zimmer:<host>: the gripper to drive")
+    parser.add_argument("--tcp", help="TCP for --lift-to-mm")
+    parser.add_argument("--lift-to-mm", type=float, help="lift straight up to this z first")
     parser.add_argument("--speed", type=float, default=1.0, help="x the recorded rate")
     parser.add_argument("--stop-at-grip", action="store_true", help="stop before the first grip")
     parser.add_argument("--execute", action="store_true", help="real robots: move (asks first)")
@@ -264,6 +373,10 @@ if __name__ == "__main__":
     if parsed.controller:
         if parsed.episode is None:
             parser.error("--episode is required with --controller")
+        if parsed.lift_to_mm is not None and not parsed.tcp:
+            parser.error("--lift-to-mm needs --tcp")
+        if parsed.gripper and parsed.gripper_column is None:
+            parser.error("--gripper needs --gripper-column")
         asyncio.run(replay_real(parsed))
     else:
         nova.run_program(replay_sample)

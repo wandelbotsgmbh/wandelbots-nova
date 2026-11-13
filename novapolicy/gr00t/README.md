@@ -72,8 +72,9 @@ checkpoint lets `--data` find everything in one folder.
 If the policy was trained in simulation, replay one training episode's recorded joint path on
 the real robot before running the policy:
 [`examples/replay/replay_episode.py`](../examples/replay/replay_episode.py) replays any
-episode (`--controller`, `--joints-from state|action`, `--gripper-column`, `--speed`), and
-the pick-and-place example wraps it with its gripper. A replay that picks and places proves
+episode (`--controller`, `--joints-from state|action`, `--gripper-column`,
+`--gripper io:<name>|zimmer:<host>`, `--stop-at-grip`, `--speed`); the pick-and-place
+example's README has the command for its cell. A replay that picks and places proves
 the robot frame, table and target positions match; whatever goes wrong afterwards is the
 policy. It does not check the TCP: joints replay the same path whatever the TCP is.
 
