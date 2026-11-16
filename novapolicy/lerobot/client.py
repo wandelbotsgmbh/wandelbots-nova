@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, cast
+import warnings
 
 from lerobot.async_inference.helpers import RemotePolicyConfig
 
@@ -67,8 +68,9 @@ class LeRobotPolicyClient(PolicyClient):
         task: Language instruction sent with every observation, such as
             ``"pick up the cube"``. Required by instruction-conditioned
             checkpoints and ignored by the others.
-        fps: Dataset/control frequency used for action timing.
-        playback_speed: Physical playback speed relative to the dataset rate.
+        fps: The training data's frame rate (``fps`` in the dataset's ``meta/info.json``),
+            the rate actions are played at. Required.
+        playback_speed: Deprecated.
         device: Torch device used by the inference server.
         timeout_s: Deadline for individual gRPC calls.
         use_async_queue: Use timestamp-aligned asynchronous inference.
@@ -99,8 +101,8 @@ class LeRobotPolicyClient(PolicyClient):
         n_action_steps: int | None = None,
         policy_type: str | None = None,
         task: str | None = None,
-        fps: float = 15.0,
-        playback_speed: float = 1.0,
+        fps: float | None = None,
+        playback_speed: float | None = None,
         device: str = "cpu",
         timeout_s: float = 15.0,
         use_async_queue: bool = False,
@@ -108,10 +110,23 @@ class LeRobotPolicyClient(PolicyClient):
         async_queue_refill_threshold: float = _DEFAULT_ASYNC_QUEUE_REFILL_THRESHOLD,
         async_queue_smoothing: bool = True,
     ) -> None:
+        if fps is None:
+            msg = (
+                "LeRobotPolicyClient needs fps=: the frame rate of the training data "
+                "(fps in the dataset's meta/info.json); it is not part of the checkpoint"
+            )
+            raise ValueError(msg)
         if fps <= 0:
             raise ValueError(f"fps must be positive, got {fps}")
-        if playback_speed <= 0:
-            raise ValueError(f"playback_speed must be positive, got {playback_speed}")
+        if playback_speed is not None:
+            warnings.warn(
+                "LeRobotPolicyClient(playback_speed=...) is deprecated; it plays the policy "
+                "at a rate it was not trained at",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if playback_speed <= 0:
+                raise ValueError(f"playback_speed must be positive, got {playback_speed}")
         if actions_per_chunk is not None and actions_per_chunk <= 0:
             raise ValueError(f"actions_per_chunk must be positive, got {actions_per_chunk}")
         if n_action_steps is not None and n_action_steps <= 0:
@@ -137,7 +152,7 @@ class LeRobotPolicyClient(PolicyClient):
         self._actions_per_chunk = actions_per_chunk or 0
         self._n_action_steps = n_action_steps
         self._device = device
-        self._dt_ms = 1000.0 / (fps * playback_speed)
+        self._dt_ms = 1000.0 / (fps * (playback_speed or 1.0))
         self._transport = LeRobotGrpcTransport(server_address, timeout_s=timeout_s)
         self._lerobot_schema = LeRobotSchema(dt_ms=self._dt_ms)
         self._async_queue = (
