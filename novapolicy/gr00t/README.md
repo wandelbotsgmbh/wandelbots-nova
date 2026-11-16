@@ -33,9 +33,11 @@ The training config usually states these. A policy trained with a differential-I
 (IsaacLab's relative pose command) outputs commands, and the simulated robot realized only part of
 each one; an extra `Scale` converts commanded to realized motion. The example's
 [`settings_from_episode.py`](../examples/gr00t_single_arm_pick_and_place/settings_from_episode.py)
-measures all of this except the TCP from one training episode (delta vs. absolute, coordinate
-system, gains, gripper polarity and values, rate, home) and writes it to a JSON file the run script
-loads, so none of it is typed by hand. It stops instead of writing when the episode cannot tell.
+measures all of this except the TCP from one training episode, for any number of robots: per robot
+whether the actions are joint or TCP targets, absolute or deltas, the coordinate system, the scale
+(units and training gain), the gripper polarity and values, and the home joints. It reads the column
+layout from the dataset's `meta/modality.json`, writes a JSON file the run script loads (so none of
+it is typed by hand) and stops instead of writing when the episode cannot tell.
 
 The TCP must be known: nothing in the data recovers it unless the training tool rotated a lot.
 Rotations pivot about it, so a TCP d mm off shifts the position by about d × angle while rotating.

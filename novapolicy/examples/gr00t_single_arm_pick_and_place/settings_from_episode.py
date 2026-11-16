@@ -1,25 +1,32 @@
-"""Write the settings a GR00T policy needs, measured from one of its training episodes.
+"""Write the settings a policy needs, measured from one of its training episodes.
 
-The episode's recorded joints, run through the robot's forward kinematics (DH parameters
-and TCP from NOVA), give the TCP path the training robot actually moved. Comparing that
-path with the recorded actions shows whether the actions are deltas or absolute targets,
-which coordinate system the deltas are in, how much of each commanded step the training
-controller realized (the gains, by least squares) and how the gripper is driven. The
-episode also gives the rate and the start (home) joints.
+Works for any number of robots. The dataset's ``meta/modality.json`` says which columns of
+``observation.state`` and ``action`` belong to which key; ``--robot`` says which keys belong
+to which motion group. For every robot, the episode's recorded joints, run through the
+robot's forward kinematics (DH parameters and TCP from NOVA), give the path the training
+robot actually moved. Comparing that path with the recorded actions tells what each action
+means: absolute joint targets, joint deltas, absolute TCP targets or TCP deltas (and for
+deltas, which coordinate system), the scale between action units and realized motion (for
+a differential-IK training controller, the share of each command it realized), and how a
+binary gripper is driven. The episode also gives the rate and each robot's start joints.
 
-``--write`` stores them as JSON (:class:`EpisodeSettings`), which ``gr00t_ur10e.py`` loads.
-Nothing is guessed: a fit below ``R2_GOOD`` or a convention ``Action.tcp`` cannot express
-stops the script instead of writing settings.
+``--write`` stores the result as JSON (:class:`EpisodeSettings`); a run script loads it and
+builds each robot's action with :meth:`RobotSettings.action`. Nothing is guessed: a fit
+below ``R2_GOOD``, an ambiguous answer or a convention ``Action`` cannot express stops the
+script instead of writing settings.
 
     NOVA_API=http://<nova> uv run python settings_from_episode.py \
-        --episode episode_000075.parquet --controller ur10e-calibration --tcp umi_corrected \
-        --gripper-closed -0.023 --write episode_settings.json
+        --episode <dataset>/data/chunk-000/episode_000075.parquet \
+        --modality <dataset>/meta/modality.json \
+        --robot arm mg=0@ur10e-calibration tcp=umi_corrected joints=arm_joints \
+                action=eef_delta gripper=gripper gripper_closed=-0.023 \
+        --write episode_settings.json
 
-``--tcp`` is the point on the tool the training poses refer to; it cannot be measured.
-``--gripper-closed`` is the gripper state when fully closed (the training config's close
-command); an episode never shows it because the fingers stop on the object.
-Columns default to this policy's dataset: ``observation.state`` = [6 joints (rad), gripper],
-``action`` = [6 eef deltas (m, rotation vector), gripper].
+Per robot: ``tcp`` is the point on the tool the training poses refer to (it cannot be
+measured); ``gripper_closed`` is the fully closed gripper state (the training config's close
+command; an episode never shows it because the fingers stop on the object). Use
+``gripper_action=`` when the gripper's action key differs from its state key. A dual-arm
+policy passes ``--robot`` twice.
 """
 
 from __future__ import annotations
@@ -31,7 +38,7 @@ import json
 import math
 from pathlib import Path
 import sys
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -257,6 +264,11 @@ def merge_summaries(summaries: list[PathSummary]) -> PathSummary:
     )
 
 
+_JOINT_KINDS = ("joint_absolute", "joint_delta")
+_TCP_KINDS = ("tcp_absolute", "tcp_delta")
+_MAX_ABSOLUTE_OFFSET_MM = 5.0  # absolute TCP targets further off are in another frame
+
+
 def _load(path: str) -> tuple[np.ndarray, np.ndarray, float]:
     import pyarrow.parquet as pq
 
@@ -268,104 +280,249 @@ def _load(path: str) -> tuple[np.ndarray, np.ndarray, float]:
     return state, action, fps
 
 
+def load_layout(path: str | Path) -> dict[str, dict[str, slice]]:
+    """``{"state": {key: columns}, "action": {key: columns}}`` from a dataset's modality.json."""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {
+        part: {key: slice(int(v["start"]), int(v["end"])) for key, v in raw[part].items()}
+        for part in ("state", "action")
+    }
+
+
+@dataclass(frozen=True)
+class RobotSpec:
+    """What ``--robot`` declares: the names a measurement cannot recover."""
+
+    name: str
+    motion_group: str  # e.g. "0@ur10e-calibration"
+    tcp: str
+    joints: str  # state key of the joint positions
+    action: str  # action key of the arm
+    gripper: str | None = None  # state key of the gripper
+    gripper_action: str | None = None  # action key, if it differs from the state key
+    gripper_closed: float | None = None
+
+    @classmethod
+    def parse(cls, words: list[str]) -> RobotSpec:
+        name, *pairs = words
+        fields: dict[str, Any] = dict(p.split("=", 1) for p in pairs)
+        if "mg" in fields:
+            fields["motion_group"] = fields.pop("mg")
+        if "gripper_closed" in fields:
+            fields["gripper_closed"] = float(fields["gripper_closed"])
+        return cls(name=name, **fields)
+
+
+@dataclass(frozen=True)
+class RobotSettings:
+    """What one robot's columns of the episode mean."""
+
+    motion_group: str
+    tcp: str
+    joints_key: str
+    action_key: str
+    action_kind: str  # joint_absolute | joint_delta | tcp_absolute | tcp_delta
+    fit_r2: float  # how well the chosen reading explains the motion (position for TCP)
+    # Realized motion per action unit: rad (joints) or mm (TCP position), rad (TCP rotation).
+    scale: float
+    rotation_scale: float | None  # TCP kinds only
+    use_tool_coordinate_system: bool  # tcp_delta only; False: world
+    home_deg: list[float]  # the episode's start joints
+    gripper_state_key: str | None
+    gripper_action_key: str | None
+    gripper_close_when_negative: bool | None
+    gripper_open: float | None
+    gripper_closed: float | None
+    gripper_holding: float | None
+
+    def action(self, motion_group: Any) -> Any:
+        """The ``Action`` entry for this robot's arm, with units and scale as measured."""
+        from novapolicy import Action, Scale
+
+        to_unit = [Scale(1.0 / self.scale)]  # NOVA unit -> policy unit
+        if self.action_kind in _JOINT_KINDS:
+            mode = "relative" if self.action_kind == "joint_delta" else "absolute"
+            return Action.joint_positions(
+                self.action_key, target=motion_group, mode=mode, ops=to_unit
+            )
+        assert self.rotation_scale is not None
+        common: dict[str, Any] = {
+            "position_ops": [Scale(0.001), Scale(1000.0 / self.scale)],  # mm -> m -> unit
+            "orientation_ops": [Scale(1.0 / self.rotation_scale)],
+        }
+        if self.action_kind == "tcp_absolute":
+            return Action.tcp(self.action_key, target=motion_group, **common)
+        return Action.tcp(
+            self.action_key,
+            target=motion_group,
+            mode="relative",
+            accumulate=True,
+            use_tool_coordinate_system=self.use_tool_coordinate_system,
+            **common,
+        )
+
+
 @dataclass(frozen=True)
 class EpisodeSettings:
-    """What a training episode says about a policy's actions, for its ``PolicySchema``."""
-
     episode: str
-    controller: str
-    tcp: str  # the TCP the fit used; the run must use the same one
     rate_hz: float
-    home_deg: list[float]  # the episode's start joints
-    use_tool_coordinate_system: bool  # the deltas' coordinate system (False: world)
-    gain_position: float  # realized / commanded TCP motion per step
-    gain_rotation: float
-    fit_r2_position: float
-    fit_r2_rotation: float
-    gripper_close_when_negative: bool
-    gripper_open: float
-    gripper_closed: float
-    gripper_holding: float
+    robots: dict[str, RobotSettings]
 
     @classmethod
     def load(cls, path: str | Path) -> EpisodeSettings:
-        return cls(**json.loads(Path(path).read_text(encoding="utf-8")))
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        robots = {name: RobotSettings(**r) for name, r in raw["robots"].items()}
+        return cls(episode=raw["episode"], rate_hz=raw["rate_hz"], robots=robots)
 
     def write(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(asdict(self), indent=2) + "\n", encoding="utf-8")
 
 
-def measure(
-    episode: str,
+def _joint_fits(joints: np.ndarray, action: np.ndarray) -> dict[str, tuple[float, float]]:
+    """``{kind: (scale, r2)}`` for joint readings of ``action`` (same width as ``joints``)."""
+    nxt = joints[1:]
+    return {
+        "joint_absolute": _gain_r2(action[:-1], nxt),  # target for the next step
+        "joint_delta": _gain_r2(action[:-1], nxt - joints[:-1]),
+    }
+
+
+def _tcp_absolute(poses: list[np.ndarray], action: np.ndarray) -> tuple[float, float, float, float]:
+    """(position scale mm/unit, R^2, offset mm, rotation scale) for absolute TCP targets."""
+    target = np.array([p[:3, 3] for p in poses])[1:].ravel()
+    design = np.column_stack([action[:-1, :3].ravel(), np.ones(target.size)])
+    (scale, offset), *_ = np.linalg.lstsq(design, target, rcond=None)
+    total = float(((target - target.mean()) ** 2).sum())
+    r2 = 1.0 - float(((target - design @ [scale, offset]) ** 2).sum()) / total if total else 0.0
+    rotvecs = Rotation.from_matrix(np.array([p[:3, :3] for p in poses[1:]])).as_rotvec()
+    rot_scale, _ = _gain_r2(action[:-1, 3:6], rotvecs)
+    return float(scale), r2, float(offset), rot_scale
+
+
+def measure_robot(
+    spec: RobotSpec,
+    state: np.ndarray,
+    action: np.ndarray,
+    layout: dict[str, dict[str, slice]],
     kinematics: Kinematics,
-    *,
-    controller: str,
-    tcp: str,
-    gripper_closed: float,
-) -> EpisodeSettings:
-    """Settings from one episode; raises ``ValueError`` where the episode cannot tell."""
-    state, action, fps = _load(episode)
-    joints = state[:, :6]
+) -> RobotSettings:
+    """One robot's settings; raises ``ValueError`` where the episode cannot tell."""
+    for part, key in (("state", spec.joints), ("action", spec.action)):
+        if key not in layout[part]:
+            msg = f"{spec.name}: {part} key {key!r} is not in modality.json {sorted(layout[part])}"
+            raise ValueError(msg)
+    joints = state[:, layout["state"][spec.joints]]
+    arm = action[:, layout["action"][spec.action]]
     poses = [kinematics.fk(q) for q in joints]
-    deltas = action[:, :6]
-    best = fit_delta_frames(poses, deltas)[0]
-    absolute = absolute_r2(poses, deltas)
-    problems = []
-    if best.pos_r2 < R2_GOOD:
-        problems.append(f"no delta frame fits (best {best.frame}: R2 {best.pos_r2:.2f})")
-    if absolute >= best.pos_r2:
-        problems.append(f"the actions fit as absolute targets better (R2 {absolute:.2f})")
-    if best.rot_z_deg not in {None, 0}:
-        problems.append(f"the deltas are in the {best.frame}, which Action.tcp cannot express")
-    if best.lag != 0:
-        problems.append("each action shows up one step late; check the dataset alignment")
-    grip = fit_gripper(state[:, 6], action[:, 6])
-    if grip is None:
-        problems.append("the gripper never switches in this episode")
-    if problems:
-        raise ValueError("; ".join(problems))
-    assert grip is not None
-    return EpisodeSettings(
-        episode=Path(episode).name,
-        controller=controller,
-        tcp=tcp,
-        rate_hz=round(float(fps), 3),
+    readings: dict[str, tuple[float, float]] = {}  # kind -> (scale, r2)
+    tool = False
+    rotation_scale: float | None = None
+    if arm.shape[1] == joints.shape[1]:
+        readings |= _joint_fits(joints, arm)
+    if arm.shape[1] == _POSE_DIM:
+        best = fit_delta_frames(poses, arm)[0]
+        if best.lag == 0 and best.rot_z_deg in {None, 0}:
+            readings["tcp_delta"] = (best.pos_gain * 1000.0, best.pos_r2)
+            tool, delta_rot = best.rot_z_deg is None, best.rot_gain
+        scale, r2, offset, abs_rot = _tcp_absolute(poses, arm)
+        if abs(offset) <= _MAX_ABSOLUTE_OFFSET_MM:
+            readings["tcp_absolute"] = (scale, r2)
+    if not readings:
+        msg = f"{spec.name}: a {arm.shape[1]}-wide action fits no reading Action can express"
+        raise ValueError(msg)
+    ranked = sorted(readings.items(), key=lambda kv: kv[1][1], reverse=True)
+    kind, (scale, r2) = ranked[0]
+    if r2 < R2_GOOD:
+        msg = f"{spec.name}: no reading fits (best {kind}: R2 {r2:.2f}); joints in radians?"
+        raise ValueError(msg)
+    if len(ranked) > 1 and ranked[1][1][1] > r2 - 0.1:
+        msg = (
+            f"{spec.name}: ambiguous, {kind} R2 {r2:.2f} vs {ranked[1][0]} R2 {ranked[1][1][1]:.2f}"
+        )
+        raise ValueError(msg)
+    if kind == "tcp_delta":
+        rotation_scale = delta_rot
+    elif kind == "tcp_absolute":
+        rotation_scale = abs_rot
+    grip = _measure_gripper(spec, state, action, layout)
+    return RobotSettings(
+        motion_group=spec.motion_group,
+        tcp=spec.tcp,
+        joints_key=spec.joints,
+        action_key=spec.action,
+        action_kind=kind,
+        fit_r2=round(float(r2), 3),
+        scale=round(float(scale), 6),
+        rotation_scale=None if rotation_scale is None else round(float(rotation_scale), 6),
+        use_tool_coordinate_system=kind == "tcp_delta" and tool,
         home_deg=[round(math.degrees(float(q)), 3) for q in joints[0]],
-        use_tool_coordinate_system=best.rot_z_deg is None,
-        gain_position=round(float(best.pos_gain), 4),
-        gain_rotation=round(float(best.rot_gain), 4),
-        fit_r2_position=round(float(best.pos_r2), 3),
-        fit_r2_rotation=round(float(best.rot_r2), 3),
-        gripper_close_when_negative=bool(grip.close_when_negative),
-        gripper_open=round(float(grip.open_state), 6),
-        gripper_closed=gripper_closed,
-        gripper_holding=round(float(grip.holding_state), 6),
+        **grip,
     )
+
+
+def _measure_gripper(
+    spec: RobotSpec, state: np.ndarray, action: np.ndarray, layout: dict[str, dict[str, slice]]
+) -> dict[str, Any]:
+    keys = {"gripper_state_key": spec.gripper, "gripper_action_key": None}
+    empty = dict.fromkeys((
+        "gripper_close_when_negative",
+        "gripper_open",
+        "gripper_closed",
+        "gripper_holding",
+    ))
+    if spec.gripper is None:
+        return keys | empty
+    action_key = spec.gripper_action or spec.gripper
+    for part, key in (("state", spec.gripper), ("action", action_key)):
+        if key not in layout[part]:
+            msg = f"{spec.name}: gripper {part} key {key!r} is not in modality.json"
+            raise ValueError(msg)
+    grip = fit_gripper(
+        state[:, layout["state"][spec.gripper]][:, 0], action[:, layout["action"][action_key]][:, 0]
+    )
+    if grip is None:
+        msg = f"{spec.name}: the gripper never switches in this episode"
+        raise ValueError(msg)
+    if spec.gripper_closed is None:
+        msg = f"{spec.name}: pass gripper_closed= (the fully closed state from the training config)"
+        raise ValueError(msg)
+    return {
+        "gripper_state_key": spec.gripper,
+        "gripper_action_key": action_key,
+        "gripper_close_when_negative": bool(grip.close_when_negative),
+        "gripper_open": round(float(grip.open_state), 6),
+        "gripper_closed": spec.gripper_closed,
+        "gripper_holding": round(float(grip.holding_state), 6),
+    }
 
 
 async def _main(args: argparse.Namespace) -> None:
     import nova
 
+    state, action, fps = _load(args.episode)
+    layout = load_layout(args.modality)
+    specs = [RobotSpec.parse(words) for words in args.robot]
+    robots: dict[str, RobotSettings] = {}
     async with nova.Nova() as n:
-        mg = (await n.cell().controller(args.controller))[0]
-        kinematics = Kinematics.from_description(await mg.get_description(), args.tcp)
-    try:
-        settings = measure(
-            args.episode,
-            kinematics,
-            controller=args.controller,
-            tcp=args.tcp,
-            gripper_closed=args.gripper_closed,
-        )
-    except ValueError as e:
-        sys.exit(f"Not writing settings: {e}")
-    print(json.dumps(asdict(settings), indent=2))
-    state, _action, fps = _load(args.episode)
-    env = path_summary([kinematics.fk(q) for q in state[:, :6]], state[:, :6], fps)
-    print(  # for choosing TcpLimits wider than the motion the policy learned
-        f"Training envelope: x {env.lo[0]:.0f}..{env.hi[0]:.0f}, y {env.lo[1]:.0f}..{env.hi[1]:.0f}, "
-        f"z {env.lo[2]:.0f}..{env.hi[2]:.0f} mm; speed max {env.speed_max:.0f} mm/s"
+        for spec in specs:
+            controller = spec.motion_group.split("@", 1)[1]
+            mg = (await n.cell().controller(controller)).motion_group(spec.motion_group)
+            kinematics = Kinematics.from_description(await mg.get_description(), spec.tcp)
+            try:
+                robots[spec.name] = measure_robot(spec, state, action, layout, kinematics)
+            except ValueError as e:
+                sys.exit(f"Not writing settings: {e}")
+            joints = state[:, layout["state"][spec.joints]]
+            env = path_summary([kinematics.fk(q) for q in joints], joints, fps)
+            print(  # for choosing TcpLimits wider than the motion the policy learned
+                f"{spec.name} training envelope: x {env.lo[0]:.0f}..{env.hi[0]:.0f}, "
+                f"y {env.lo[1]:.0f}..{env.hi[1]:.0f}, z {env.lo[2]:.0f}..{env.hi[2]:.0f} mm; "
+                f"speed max {env.speed_max:.0f} mm/s"
+            )
+    settings = EpisodeSettings(
+        episode=Path(args.episode).name, rate_hz=round(fps, 3), robots=robots
     )
+    print(json.dumps(asdict(settings), indent=2))
     if args.write:
         settings.write(args.write)
         print(f"Wrote {args.write}")
@@ -374,10 +531,15 @@ async def _main(args: argparse.Namespace) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--episode", required=True)
-    parser.add_argument("--controller", required=True)
-    parser.add_argument("--tcp", required=True, help="the point the training poses refer to")
+    parser.add_argument("--modality", required=True, help="the dataset's meta/modality.json")
     parser.add_argument(
-        "--gripper-closed", type=float, required=True, help="the gripper state when fully closed"
+        "--robot",
+        nargs="+",
+        action="append",
+        required=True,
+        metavar="NAME KEY=VALUE",
+        help="NAME mg=<motion group> tcp=<tcp> joints=<state key> action=<action key> "
+        "[gripper=<state key> gripper_action=<action key> gripper_closed=<value>]",
     )
     parser.add_argument("--write", help="write the settings to this JSON file")
     asyncio.run(_main(parser.parse_args()))

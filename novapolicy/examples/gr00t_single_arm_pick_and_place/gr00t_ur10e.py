@@ -47,7 +47,6 @@ from novapolicy import (
     PolicyExecutor,
     PolicySchema,
     QueuedPolicyClient,
-    Scale,
     SequentialExecution,
     TcpLimits,
     WebRTCCameras,
@@ -64,7 +63,11 @@ logger = logging.getLogger(__name__)
 # Rate, home, the deltas' coordinate system, the training controller's gains and the gripper
 # values; README.md shows how to regenerate the file for another policy or episode.
 SETTINGS = EpisodeSettings.load(Path(__file__).with_name("episode_settings.json"))
-CONTROLLER, TCP = SETTINGS.controller, SETTINGS.tcp  # the fit was made for this TCP
+ARM = SETTINGS.robots["arm"]
+if ARM.gripper_open is None or ARM.gripper_closed is None or ARM.gripper_holding is None:
+    sys.exit("episode_settings.json has no gripper for 'arm': regenerate it with gripper=...")
+CONTROLLER = ARM.motion_group.split("@", 1)[1]
+TCP = ARM.tcp  # the fit was made for this TCP
 
 # --- The policy server and what the episode cannot tell -------------------------------------
 GROOT_HOST, GROOT_PORT = "172.31.11.129", 30555
@@ -111,7 +114,7 @@ async def lift_if_low(mg: MotionGroup) -> None:
 
 async def move_home(mg: MotionGroup) -> None:
     await lift_if_low(mg)
-    home = tuple(math.radians(d) for d in SETTINGS.home_deg)
+    home = tuple(math.radians(d) for d in ARM.home_deg)
     actions = [joint_ptp(home, settings=HOME_SETTINGS)]
     await mg.execute(await mg.plan(actions, TCP), TCP, actions=actions)
 
@@ -128,11 +131,13 @@ def build(
         client,
         GRIPPER_HOST,
         states=GripperStates(
-            open=SETTINGS.gripper_open,
-            closed=SETTINGS.gripper_closed,
-            holding=SETTINGS.gripper_holding,
+            open=ARM.gripper_open,
+            closed=ARM.gripper_closed,
+            holding=ARM.gripper_holding,
         ),
-        close_when_negative=SETTINGS.gripper_close_when_negative,
+        close_when_negative=bool(ARM.gripper_close_when_negative),
+        state_key=ARM.gripper_state_key,
+        action_key=ARM.gripper_action_key,
         open_gap_mm=GRIPPER_OPEN_GAP_MM,
         lookahead_steps=1 if continuous else N_ACTION_STEPS,
         dt_ms=dt_ms,
@@ -142,24 +147,15 @@ def build(
     cameras = {key: webrtc.device(serial) for key, serial in CAMERAS.items()}
     schema = PolicySchema(
         observations=[
-            Observation.joint_positions("arm_joints", source=mg, action=False),
+            Observation.joint_positions(ARM.joints_key, source=mg, action=False),
             # Not a model input: pins the TCP the relative actions compose with.
             Observation.tcp("tcp_pose", source=mg, tcp=TCP),
-            Observation.computed(gripper.observe, keys=["gripper"]),
+            Observation.computed(gripper.observe, keys=[ARM.gripper_state_key]),
             *(Observation.image(key, source=cam) for key, cam in cameras.items()),
             Observation.constant("language", value=PROMPT),
         ],
         actions=[
-            Action.tcp(
-                "eef_delta",
-                target=mg,
-                mode="relative",
-                accumulate=True,  # each step applies to the pose the previous one reached
-                use_tool_coordinate_system=SETTINGS.use_tool_coordinate_system,
-                # The policy's positions are metres; the gains turn commanded into realized.
-                position_ops=[Scale(0.001), Scale(1.0 / SETTINGS.gain_position)],
-                orientation_ops=[Scale(1.0 / SETTINGS.gain_rotation)],
-            ),
+            ARM.action(mg),  # the measured reading: TCP deltas, units and gains
             Action.computed(gripper.act),
         ],
     )
@@ -171,7 +167,7 @@ def make_program(*, continuous: bool, execute: bool) -> Any:
 
     @program(id="gr00t_ur10e_calibration", name="GR00T UR10e Calibration", viewer=viewers.Rerun())
     async def gr00t_ur10e_calibration(ctx: ProgramContext) -> None:
-        mg = (await ctx.nova.cell().controller(CONTROLLER))[0]
+        mg = (await ctx.nova.cell().controller(CONTROLLER)).motion_group(ARM.motion_group)
         client, schema, gripper, cameras = build(mg, continuous=continuous)
         await client.connect([mg.id])
         try:
@@ -182,7 +178,7 @@ def make_program(*, continuous: bool, execute: bool) -> Any:
                 return
             answer = await asyncio.to_thread(
                 input,
-                f"This homes and opens the gripper, moves {CONTROLLER} to home {SETTINGS.home_deg}, "
+                f"This homes and opens the gripper, moves {CONTROLLER} to home {ARM.home_deg}, "
                 "and starts the policy. Type 'yes': ",
             )
             if answer.strip().lower() != "yes":
@@ -252,7 +248,7 @@ async def dry_run(
         t0 = time.monotonic()
         raw = await client.get_actions({mg.id: state}, schema, frames)
         print(f"Inference: {(time.monotonic() - t0) * 1000:.0f} ms, dt_ms={raw.dt_ms:.1f}")
-        targets = resolve_actions(schema, raw, {mg.id: state}).tcp[mg.id]
+        targets = resolve_actions(schema, raw, {mg.id: state}).tcp[mg.id]  # a TCP policy
         start = [*state.pose.position, *state.pose.orientation]
         print(f"start pose (mm, rotvec): {np.round(start, 3).tolist()}")
         for i, t in enumerate(targets):

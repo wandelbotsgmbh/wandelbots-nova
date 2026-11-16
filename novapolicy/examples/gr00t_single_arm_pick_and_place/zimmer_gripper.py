@@ -64,6 +64,7 @@ class ZimmerGripper:
         host: The IO-Link master's address.
         states: The policy's gripper state values.
         close_when_negative: A negative command closes (else a positive one).
+        state_key, action_key: The gripper's keys in the policy's state and action.
         open_gap_mm: The jaw gap after homing; the gap maps linearly onto
             ``states.closed`` .. ``states.open``.
         lookahead_steps: Steps of each answer a switch may come from.
@@ -77,6 +78,8 @@ class ZimmerGripper:
         *,
         states: GripperStates,
         close_when_negative: bool = True,
+        state_key: str | None = "gripper",
+        action_key: str | None = "gripper",
         open_gap_mm: float,
         lookahead_steps: int,
         dt_ms: float,
@@ -87,6 +90,8 @@ class ZimmerGripper:
         self._host = host
         self._states = states
         self._close_when_negative = close_when_negative
+        self._state_key = state_key or "gripper"
+        self._action_key = action_key or self._state_key
         self._open_gap_mm = open_gap_mm
         self._lookahead_steps = lookahead_steps
         self._dt_ms = dt_ms
@@ -121,15 +126,15 @@ class ZimmerGripper:
         """``Observation.computed``: the jaw gap mapped onto the policy's state values."""
         s = self._states
         if self._session is None:  # dry run: jaws assumed open
-            return {"gripper": s.open}
+            return {self._state_key: s.open}
         state = self._session.state()
         if state.has_error:
             msg = f"Gripper error: diag=0x{state.diagnosis:04X} {state.last_error_text}"
             raise RuntimeError(msg)
         if self._closed and self._holding:
-            return {"gripper": s.holding}
+            return {self._state_key: s.holding}
         opening = min(max(state.jaw_gap_m * 1000.0 / self._open_gap_mm, 0.0), 1.0)
-        return {"gripper": s.closed + opening * (s.open - s.closed)}
+        return {self._state_key: s.closed + opening * (s.open - s.closed)}
 
     @property
     def busy(self) -> bool:
@@ -138,7 +143,7 @@ class ZimmerGripper:
 
     def next_switch(self, *, closed: bool | None) -> tuple[int, bool] | None:
         """First step of the last answer whose decision differs from ``closed``."""
-        command = self._client.last_raw_action.get("gripper")
+        command = self._client.last_raw_action.get(self._action_key)
         values = [] if command is None else np.asarray(command).reshape(-1).tolist()
         for index, value in enumerate(values[: self._lookahead_steps]):
             close = value < 0.0 if self._close_when_negative else value > 0.0

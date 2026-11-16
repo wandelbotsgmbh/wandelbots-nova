@@ -53,13 +53,21 @@ for another policy or episode (nothing moves):
 
 ```bash
 uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/settings_from_episode.py \
-    --episode <episode_000075.parquet> --controller ur10e-calibration --tcp umi_corrected \
-    --gripper-closed -0.023 \
+    --episode <dataset>/data/chunk-000/episode_000075.parquet \
+    --modality <dataset>/meta/modality.json \
+    --robot arm mg=0@ur10e-calibration tcp=umi_corrected joints=arm_joints action=eef_delta \
+            gripper=gripper gripper_closed=-0.023 \
     --write novapolicy/examples/gr00t_single_arm_pick_and_place/episode_settings.json
 ```
 
-It stops instead of writing when a fit is poor or the episode cannot tell. Two inputs cannot be
-measured: `--tcp`, the point on the tool the training poses refer to (every TCP of this robot fits
+The script works for any number of robots: pass `--robot` once per arm (for a dual-arm policy,
+`--robot left ...` and `--robot right ...`). For each robot it measures whether the actions are
+absolute joint targets, joint deltas, absolute TCP targets or TCP deltas, and the scale between
+action units and motion, so metres vs. millimetres or radians vs. degrees need not be declared;
+`RobotSettings.action(mg)` builds the matching `Action`.
+
+It stops instead of writing when a fit is poor, two readings fit about equally well, or the episode
+cannot tell. Per robot, two inputs cannot be measured: `--tcp`, the point on the tool the training poses refer to (every TCP of this robot fits
 episode 75 about equally well, because the tool barely rotates), and `--gripper-closed`, the fully
 closed gripper state (the training config's close command; the fingers stop on the cube first).
 

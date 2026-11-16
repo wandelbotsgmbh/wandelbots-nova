@@ -1,23 +1,31 @@
 {
   "episode": "episode_000075.parquet",
-  "controller": "ur10e-calibration",
-  "tcp": "umi_corrected",
   "rate_hz": 30.0,
-  "home_deg": [
-    90.0,
-    -90.0,
-    90.0,
-    -90.0,
-    -90.0,
-    0.0
-  ],
-  "use_tool_coordinate_system": false,
-  "gain_position": 0.2423,
-  "gain_rotation": 0.3043,
-  "fit_r2_position": 0.842,
-  "fit_r2_rotation": 0.585,
-  "gripper_close_when_negative": true,
-  "gripper_open": 0.0,
-  "gripper_closed": -0.023,
-  "gripper_holding": -0.013486
+  "robots": {
+    "arm": {
+      "motion_group": "0@ur10e-calibration",
+      "tcp": "umi_corrected",
+      "joints_key": "arm_joints",
+      "action_key": "eef_delta",
+      "action_kind": "tcp_delta",
+      "fit_r2": 0.842,
+      "scale": 242.334329,
+      "rotation_scale": 0.304296,
+      "use_tool_coordinate_system": false,
+      "home_deg": [
+        90.0,
+        -90.0,
+        90.0,
+        -90.0,
+        -90.0,
+        0.0
+      ],
+      "gripper_state_key": "gripper",
+      "gripper_action_key": "gripper",
+      "gripper_close_when_negative": true,
+      "gripper_open": 0.0,
+      "gripper_closed": -0.023,
+      "gripper_holding": -0.013486
+    }
+  }
 }
