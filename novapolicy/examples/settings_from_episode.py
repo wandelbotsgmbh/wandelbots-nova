@@ -38,15 +38,12 @@ import json
 import math
 from pathlib import Path
 import sys
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
-
-    from nova import api
+from novapolicy.kinematics import Kinematics
 
 R2_GOOD = 0.6
 """A frame or representation fitting at least this well counts as found."""
@@ -55,64 +52,6 @@ _POSE_DIM = 6  # [x, y, z, rx, ry, rz]
 _MIN_STEPS = 3  # fewer steps cannot be fitted
 _BASE_ROTATIONS_DEG = (0, 90, 180, 270)
 _GRIPPER_SETTLE_STEPS = 15
-
-
-def pose_matrix(position: Iterable[float], rotvec: Iterable[float]) -> np.ndarray:
-    """4x4 transform from a position (mm) and a rotation vector (rad)."""
-    t = np.eye(4)
-    t[:3, :3] = Rotation.from_rotvec(np.asarray(list(rotvec), dtype=float)).as_matrix()
-    t[:3, 3] = np.asarray(list(position), dtype=float)
-    return t
-
-
-def _pose_or_identity(
-    position: Iterable[float] | None, rotvec: Iterable[float] | None
-) -> np.ndarray:
-    """``pose_matrix`` with missing parts of an API pose taken as zero."""
-    return pose_matrix(position or (0.0, 0.0, 0.0), rotvec or (0.0, 0.0, 0.0))
-
-
-@dataclass
-class Kinematics:
-    """Forward kinematics of a NOVA motion group with one of its TCPs (mm, rad)."""
-
-    dh: list[tuple[float, float, float, float, bool]]  # a, alpha, d, theta offset, reversed
-    tcp: np.ndarray  # flange -> TCP
-    mounting: np.ndarray  # world -> robot base
-
-    @classmethod
-    def from_description(
-        cls, description: api.models.MotionGroupDescription, tcp_name: str
-    ) -> Kinematics:
-        dh = [
-            (
-                p.a or 0.0,
-                p.alpha or 0.0,
-                p.d or 0.0,
-                p.theta or 0.0,
-                bool(p.reverse_rotation_direction),
-            )
-            for p in description.dh_parameters or []
-        ]
-        tcps = description.tcps or {}
-        tcp_pose = tcps[tcp_name].pose
-        mount = description.mounting
-        mounting = _pose_or_identity(mount.position, mount.orientation) if mount else np.eye(4)
-        return cls(dh, _pose_or_identity(tcp_pose.position, tcp_pose.orientation), mounting)
-
-    def fk(self, joints: Sequence[float]) -> np.ndarray:
-        """TCP pose (4x4, mm) for the given joint positions (rad)."""
-        t = self.mounting.copy()
-        for (a, alpha, d, theta, reverse), q in zip(self.dh, joints, strict=True):
-            th = theta + (-q if reverse else q)
-            ca, sa, ct, st = np.cos(alpha), np.sin(alpha), np.cos(th), np.sin(th)
-            t @= np.array([
-                [ct, -st * ca, st * sa, a * ct],
-                [st, ct * ca, -ct * sa, a * st],
-                [0, sa, ca, d],
-                [0, 0, 0, 1],
-            ])
-        return t @ self.tcp
 
 
 @dataclass

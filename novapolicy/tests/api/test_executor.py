@@ -941,6 +941,82 @@ async def test_a_queued_client_runs_continuously_on_the_timestep_timeline(robot:
     assert all(399.0 < x < 410.0 for x in xs)  # absolute, resolved once from 400 mm
 
 
+_UR10E_DH = [  # a, alpha, d of a UR10e, as NOVA describes it
+    (0.0, math.pi / 2, 180.7),
+    (-612.7, 0.0, 0.0),
+    (-571.55, 0.0, 0.0),
+    (0.0, math.pi / 2, 174.15),
+    (0.0, -math.pi / 2, 119.85),
+    (0.0, 0.0, 116.55),
+]
+HOME = [math.pi / 2, -math.pi / 2, math.pi / 2, -math.pi / 2, -math.pi / 2, 0.0]
+
+
+def _ur10e_arm(robot: _Robot, *, reported_offset_mm: float = 0.0):
+    """A UR10e at home whose description and reported pose feed the joint-limit check."""
+    from novapolicy.kinematics import Kinematics
+    from novapolicy.poses import matrix_pose
+
+    mg = _mg(MG_ID)
+    description = SimpleNamespace(
+        dh_parameters=[
+            SimpleNamespace(a=a, alpha=al, d=d, theta=0.0, reverse_rotation_direction=False)
+            for a, al, d in _UR10E_DH
+        ],
+        tcps={"umi_corrected": SimpleNamespace(
+            pose=SimpleNamespace(position=(-7.19, 0.0, 221.7), orientation=(0, 0, 0))
+        )},
+        mounting=None,
+    )  # fmt: skip
+    pose = matrix_pose(Kinematics.from_description(description, "umi_corrected").fk(HOME))
+    pose[0] += reported_offset_mm
+    mg.get_description = AsyncMock(return_value=description)
+    state = SimpleNamespace(
+        joints=HOME, pose=SimpleNamespace(position=pose[:3], orientation=pose[3:])
+    )
+    mg.get_state = AsyncMock(return_value=state)
+    robot.session.current_state.joints = tuple(HOME)
+    return mg, pose
+
+
+@pytest.mark.asyncio
+async def test_joint_actions_are_checked_along_their_tcp_path(robot: _Robot):
+    """A joint chunk whose TCP would leave the limits ends the run before it is sent."""
+    mg, pose = _ur10e_arm(robot)
+
+    async def stay(_obs: object) -> ActionChunk:
+        return ActionChunk(joints={MG_ID: [HOME]}, dt_ms=33.0)
+
+    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+    limits = TcpLimits(z_mm=(pose[2] + 10.0, 2000.0), tcp="umi_corrected")
+    with pytest.raises(TcpLimitError, match="outside"):
+        await PolicyExecutor(schema, _callback(stay), timeout_s=1.0, tcp_limits=limits).run()
+    robot.session.update_chunk.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_joint_limits_refuse_kinematics_that_disagree_with_nova(robot: _Robot):
+    mg, _pose = _ur10e_arm(robot, reported_offset_mm=5.0)
+    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+    with pytest.raises(ValueError, match="disagree with NOVA"):
+        await PolicyExecutor(
+            schema,
+            _callback(_hold_action),
+            timeout_s=1.0,
+            tcp_limits=TcpLimits(tcp="umi_corrected"),
+        ).run()
+
+
+@pytest.mark.asyncio
+async def test_joint_limits_need_a_tcp(robot: _Robot):
+    mg, _pose = _ur10e_arm(robot)
+    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+    with pytest.raises(ValueError, match="need the TCP"):
+        await PolicyExecutor(
+            schema, _callback(_hold_action), timeout_s=1.0, tcp_limits=TcpLimits(z_mm=(0.0, 1.0))
+        ).run()
+
+
 # ---------------------------------------------------------------------------
 # RTC requires overlapping placement
 # ---------------------------------------------------------------------------

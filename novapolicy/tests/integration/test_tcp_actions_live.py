@@ -11,6 +11,7 @@ NOVA_ACCESS_TOKEN and are skipped unless run with ``-m integration``.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import math
 from typing import TYPE_CHECKING
 import uuid
@@ -19,11 +20,18 @@ import pytest
 import pytest_asyncio
 from scipy.spatial.transform import Rotation
 
+from nova.actions import jnt
 from novapolicy.executor import PolicyExecutor
 from novapolicy.ops import Scale
 from novapolicy.policy_client import CallbackPolicyClient
 from novapolicy.schema import Action, Observation, PolicySchema
-from novapolicy.types import ActionChunk, SequentialExecution, StopContext
+from novapolicy.types import (
+    ActionChunk,
+    SequentialExecution,
+    StopContext,
+    TcpLimitError,
+    TcpLimits,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -219,3 +227,47 @@ async def test_quaternion_targets_are_converted_before_they_are_sent(ur10e):
     )
     turned = Rotation.from_rotvec([0.0, 0.0, math.radians(15.0)]) * Rotation.from_rotvec(start[3:])
     _assert_pose(end, start[:3], turned)
+
+
+async def _run_joint_chunk(mg, limits: TcpLimits, joint_offset: list[float]):
+    """Run one joint chunk from the start pose: STEPS steps reaching start + joint_offset."""
+    tcp = (await mg.tcp_names())[0]
+    calls = 0
+    start_joints = [math.radians(d) for d in START_DEG]
+
+    async def policy(_obs: object) -> ActionChunk:
+        nonlocal calls
+        calls += 1
+        steps = [
+            [q + d * (i + 1) / STEPS for q, d in zip(start_joints, joint_offset, strict=True)]
+            for i in range(STEPS)
+        ]
+        return ActionChunk(joints={mg.id: steps}, dt_ms=DT_MS)
+
+    def after_first_chunk(_ctx: StopContext) -> bool:
+        return calls >= 2
+
+    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+    return await PolicyExecutor(
+        schema,
+        CallbackPolicyClient(policy),
+        execution=SequentialExecution(),
+        stop_conditions=[after_first_chunk],
+        start_joint_position={mg: start_joints},
+        timeout_s=30.0,
+        tcp_limits=dataclasses.replace(limits, tcp=limits.tcp or tcp),
+    ).run()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="module")
+async def test_joint_actions_are_stopped_when_their_tcp_would_leave_the_limits(ur10e):
+    tcp = (await ur10e.tcp_names())[0]
+    start_joints = [math.radians(d) for d in START_DEG]
+    await ur10e.plan_and_execute([jnt(start_joints)], tcp=tcp)
+    start_z = (await ur10e.get_state(tcp)).pose.position.z
+    lower = [0.0, 0.0, math.radians(10.0), 0.0, 0.0, 0.0]  # the elbow brings the TCP down
+    result = await _run_joint_chunk(ur10e, TcpLimits(z_mm=(start_z - 500.0, 3000.0)), lower)
+    assert result.reason == "stop condition: after_first_chunk"  # inside the limits: runs
+    with pytest.raises(TcpLimitError, match=r"z .* outside"):
+        await _run_joint_chunk(ur10e, TcpLimits(z_mm=(start_z - 5.0, 3000.0)), lower)

@@ -331,7 +331,29 @@ How the run ended decides what happens to motion the controller already accepted
 
 > These are **software** guards running in the executor loop, not a safety system.
 
-### Stop conditions
+### TCP limits
+
+`tcp_limits` checks every chunk before it is sent, after units, rotation representation and relative
+targets are resolved, and ends the run with `TcpLimitError` when a target breaks a limit: speed,
+rotation speed, travel from the pose at inference time, and x/y/z bounds in the world.
+
+```python
+from novapolicy import PolicyExecutor, TcpLimits
+
+executor = PolicyExecutor(
+    schema,
+    policy,
+    tcp_limits=TcpLimits(
+        max_speed_mm_s=650, max_chunk_travel_mm=250, z_mm=(25, 1000), tcp="Flange"
+    ),
+)
+```
+
+TCP actions are checked directly. Joint actions are checked along the TCP path that forward
+kinematics (from the motion group's own description) gives for `tcp`, or for the TCP of the group's
+`Observation.tcp`; at start, the executor compares its forward kinematics with the pose NOVA reports
+and refuses to run on a mismatch. Pass a dict keyed by motion group id to set limits per robot.
+
 
 Policies run open-ended: they don't signal "finished". A stop condition is a fast,
 synchronous check that runs on every tick; returning `True` ends the run normally

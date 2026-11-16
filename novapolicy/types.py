@@ -311,9 +311,13 @@ class TcpLimits:
     max_chunk_travel_mm: float | None = None
     """Distance of any target from the TCP position at inference time."""
     x_mm: tuple[float, float] | None = None
-    """Allowed ``(min, max)`` of target x in the base frame; likewise ``y_mm`` and ``z_mm``."""
+    """Allowed ``(min, max)`` of target x in the world; likewise ``y_mm`` and ``z_mm``."""
     y_mm: tuple[float, float] | None = None
     z_mm: tuple[float, float] | None = None
+    tcp: str | None = None
+    """For joint actions: the TCP whose path is checked, computed with forward kinematics
+    from the motion group's description. Defaults to the TCP a ``Observation.tcp`` of that
+    motion group declares; required when there is none."""
 
     def __post_init__(self) -> None:
         for name in ("x_mm", "y_mm", "z_mm"):

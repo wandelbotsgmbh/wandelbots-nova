@@ -7,10 +7,14 @@ import contextlib
 from dataclasses import dataclass
 from enum import StrEnum
 import logging
+import math
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+
+from scipy.spatial.transform import Rotation
 
 from nova.actions import jnt
+from novapolicy import poses
 from novapolicy.cameras.manager import CameraManager
 from novapolicy.chunking import (
     ConnectedActionChunk,
@@ -38,6 +42,7 @@ from novapolicy.jogging.live_buffer import (
 )
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.joint_limits import fetch_joint_limits
+from novapolicy.kinematics import Kinematics
 from novapolicy.plant import VirtualPlant
 from novapolicy.policy_client import PolicyClient
 from novapolicy.types import (
@@ -66,6 +71,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_FK_TOLERANCE_MM = 1.0  # forward kinematics vs. NOVA's reported TCP pose
+_FK_TOLERANCE_DEG = 0.5
 _ASYNC_SEAM_STEPS = 4
 _ASYNC_REPLACEMENT_LEAD_STEPS = 1
 _DEFAULT_WAYPOINT_CONFIG = WaypointConfig()
@@ -160,6 +167,12 @@ def _check_buffered_mode(
         raise ValueError(msg)
 
 
+def _angle_deg(rotvec_a: list[float], rotvec_b: list[float]) -> float:
+    """Angle between two orientations given as rotation vectors."""
+    turn = cast("Rotation", Rotation.from_rotvec(rotvec_a) * Rotation.from_rotvec(rotvec_b).inv())
+    return math.degrees(turn.magnitude())
+
+
 def resolve_actions(
     schema: PolicySchema, chunk: ActionChunk, states: dict[str, RobotState]
 ) -> ActionChunk:
@@ -202,7 +215,7 @@ class PolicyExecutor:
         buffer_window_ms: float = 0.0,
         clamp_to_joint_limits: bool = True,
         plant: VirtualPlant | None = None,
-        tcp_limits: TcpLimits | None = None,
+        tcp_limits: TcpLimits | dict[str, TcpLimits] | None = None,
     ) -> None:
         """Create a policy executor.
 
@@ -249,8 +262,11 @@ class PolicyExecutor:
             start_joint_position: Optional mapping of motion group to joint pose
                 to PTP-move to before starting waypoint jogging.
             tcp_limits: Optional :class:`~novapolicy.types.TcpLimits` checked on the
-                TCP targets of every chunk before it is sent; a chunk that breaks one
-                ends the run with :class:`~novapolicy.types.TcpLimitError`.
+                TCP targets of every chunk before it is sent, for TCP actions directly
+                and for joint actions along their TCP path (forward kinematics); a
+                chunk that breaks one ends the run with
+                :class:`~novapolicy.types.TcpLimitError`. One ``TcpLimits`` applies to
+                every motion group; a dict keyed by motion group id sets them apart.
             plant: Optional :class:`~novapolicy.plant.VirtualPlant` for
                 setpoint policies. The policy then observes the plant, and the
                 robot follows the plant's path through the ring buffer, so
@@ -299,6 +315,7 @@ class PolicyExecutor:
         self._buffer_timeline_ms = 0.0
         self._clamp_to_joint_limits = clamp_to_joint_limits
         self._tcp_limits = tcp_limits
+        self._limit_kinematics: dict[str, Kinematics] = {}  # joint-action groups
         self._joint_limits: dict[str, JointLimits] = {}
         self._plant = plant
         self._rerun: PolicyRerunLogger | None = None
@@ -481,6 +498,7 @@ class PolicyExecutor:
             await self._io_streams.start()
             self._io_streams.wire_to_sessions(self._sessions)
             await self._schema.load_coordinate_systems()
+            await self._prepare_limit_kinematics()
             await self._policy.connect(self.mg_ids)
             await self._policy.validate_schema(self._schema)
             self._estop_monitor = EstopMonitor(self._motion_groups)
@@ -957,16 +975,64 @@ class PolicyExecutor:
             self._rerun.log_plant_tracking(trimmed, robot_states, self._observe(), step)
         return None
 
+    def _limits_for(self, group_id: str) -> TcpLimits | None:
+        if isinstance(self._tcp_limits, dict):
+            return self._tcp_limits.get(group_id)
+        return self._tcp_limits
+
+    async def _prepare_limit_kinematics(self) -> None:
+        """Forward kinematics for every joint-action group with limits, checked against
+        NOVA: the TCP pose it computes for the current joints must match the reported one."""
+        tcp_by_group = {o.source.id: o.tcp for o in self._schema.tcp_mappings if o.tcp}
+        for _key, motion_groups in self._schema.joint_action_keys:
+            for mg in motion_groups:
+                limits = self._limits_for(mg.id)
+                if limits is None or mg.id in self._limit_kinematics:
+                    continue
+                tcp = limits.tcp or tcp_by_group.get(mg.id)
+                if not tcp:
+                    msg = (
+                        f"TcpLimits on the joint actions of {mg.id!r} need the TCP to check: "
+                        "TcpLimits(tcp=...) or an Observation.tcp(..., tcp=...) of that group"
+                    )
+                    raise ValueError(msg)
+                kinematics = Kinematics.from_description(await mg.get_description(), tcp)
+                state = await mg.get_state(tcp)
+                computed = poses.matrix_pose(kinematics.fk(list(state.joints)))
+                reported = [*state.pose.position, *state.pose.orientation]
+                offset_mm = math.dist(computed[:3], reported[:3])
+                turn_deg = _angle_deg(computed[3:], reported[3:])
+                if offset_mm > _FK_TOLERANCE_MM or turn_deg > _FK_TOLERANCE_DEG:
+                    msg = (
+                        f"Forward kinematics of {mg.id!r} disagree with NOVA at the current "
+                        f"joints ({offset_mm:.1f} mm, {turn_deg:.2f} deg): "
+                        "cannot check TcpLimits on its joint actions"
+                    )
+                    raise ValueError(msg)
+                self._limit_kinematics[mg.id] = kinematics
+
     def _check_tcp_limits(self, chunk: ActionChunk, states: dict[str, RobotState]) -> None:
-        """Raise if a TCP target the chunk will run breaks ``tcp_limits``."""
+        """Raise if a target the chunk will run breaks ``tcp_limits``: TCP targets directly,
+        joint targets along the TCP path forward kinematics give."""
         if self._tcp_limits is None:
             return
         for group_id, targets in chunk.tcp.items():
+            limits = self._limits_for(group_id)
             state = states.get(group_id)
-            if state is None or getattr(state, "pose", None) is None:
+            if limits is None or state is None or getattr(state, "pose", None) is None:
                 continue
             start = [*state.pose.position, *state.pose.orientation]
-            if broken := tcp_limit_violations(start, targets, chunk.dt_ms, self._tcp_limits):
+            if broken := tcp_limit_violations(start, targets, chunk.dt_ms, limits):
+                raise TcpLimitError(group_id, broken)
+        for group_id, steps in chunk.joints.items():
+            kinematics = self._limit_kinematics.get(group_id)
+            limits = self._limits_for(group_id)
+            state = states.get(group_id)
+            if kinematics is None or limits is None or state is None:
+                continue
+            start = poses.matrix_pose(kinematics.fk(list(state.joints)))
+            path = [poses.matrix_pose(kinematics.fk(q)) for q in steps]
+            if broken := tcp_limit_violations(start, path, chunk.dt_ms, limits):
                 raise TcpLimitError(group_id, broken)
 
     async def _observe_and_infer(
