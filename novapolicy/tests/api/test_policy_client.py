@@ -61,3 +61,5 @@ async def test_a_callback_control_freq_fills_chunks_without_step_spacing() -> No
     schema = SimpleNamespace(build_observation=AsyncMock(return_value={}))
     chunk = await CallbackPolicyClient(policy, control_freq=20.0).get_actions({}, schema)  # type: ignore[arg-type]
     assert chunk.dt_ms == pytest.approx(50.0)
+    chunk = await CallbackPolicyClient(policy).get_actions({}, schema)  # type: ignore[arg-type]
+    assert chunk.dt_ms == pytest.approx(1000.0 / 30.0)

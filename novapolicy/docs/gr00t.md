@@ -322,8 +322,7 @@ Use this to:
 
 > **Note:** The server does not report `dt_ms` (step timing). This must be set
 > on the client to match the training data rate. For example, data recorded at
-> 15 Hz → `control_freq=15`. Without it, `validate_schema` refuses to run (reading server info needs
-> no rate):
+> 15 Hz → `control_freq=15`. The default is 30 Hz:
 >
 > ```python
 > client = Gr00tPolicyClient(host="gpu-server", control_freq=15)

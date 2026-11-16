@@ -130,8 +130,8 @@ async def main():
 asyncio.run(main())
 ```
 
-Every client takes the policy's step rate as `control_freq=` in Hz (for a dataset, its `fps`); there
-is no default. Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
+Every client takes the policy's step rate as `control_freq=` in Hz (for a dataset, its `fps`); the
+default is 30. Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
 
 ## PolicySchema
 

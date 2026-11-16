@@ -1130,12 +1130,9 @@ async def test_an_unknown_embodiment_is_named() -> None:
         await _first_call_with(_TRAINED, embodiment="other_robot")
 
 
-@pytest.mark.asyncio
-async def test_the_step_rate_must_be_given_and_dt_ms_is_deprecated() -> None:
-    """GR00T servers do not report their rate, so there is no silent default."""
-    client = Gr00tPolicyClient(host="127.0.0.1", port=1)  # enough to inspect a server
-    with pytest.raises(ValueError, match="needs control_freq="):
-        await client.validate_schema(PolicySchema(observations=[]))
+def test_the_step_rate_defaults_to_30_hz_and_dt_ms_is_deprecated() -> None:
+    """GR00T servers do not report their rate; without control_freq it is 30 Hz."""
+    assert Gr00tPolicyClient(host="127.0.0.1", port=1)._dt_ms == pytest.approx(1000.0 / 30.0)
     with pytest.warns(DeprecationWarning, match="pass control_freq="):
         client = Gr00tPolicyClient(host="127.0.0.1", port=1, dt_ms=50.0)
     assert client._dt_ms == pytest.approx(50.0)

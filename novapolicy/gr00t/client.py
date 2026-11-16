@@ -28,7 +28,7 @@ from novapolicy.gr00t.rtc import (  # ruff: ignore[typing-only-first-party-impor
     seam_backdate_steps,
 )
 from novapolicy.gr00t.transport import Gr00tZmqTransport, require_dict
-from novapolicy.policy_client import PolicyClient
+from novapolicy.policy_client import DEFAULT_CONTROL_FREQ, PolicyClient
 from novapolicy.types import ActionChunk
 
 logger = logging.getLogger(__name__)
@@ -77,9 +77,8 @@ class Gr00tPolicyClient(PolicyClient):
     control_freq:
         The policy's control frequency in Hz, the rate of its action steps (not the
         controller's servo rate): the training data's frame rate (``fps`` in the
-        dataset's ``meta/info.json``), or an RL policy's control frequency. Required to
-        run a policy: GR00T servers do not report it. A ``dt_ms`` in a server's action
-        info still wins.
+        dataset's ``meta/info.json``), or an RL policy's control frequency. Default 30 Hz;
+        GR00T servers do not report it. A ``dt_ms`` in a server's action info still wins.
     dt_ms:
         Deprecated: pass ``control_freq``.
     tcp_format:
@@ -155,7 +154,6 @@ class Gr00tPolicyClient(PolicyClient):
         required state, video, and language keys are present in the schema.
         Raises ``ValueError`` with a clear message listing any missing keys.
         """
-        self._step_ms()  # needs control_freq= to run, before the robot moves
         config = await self.get_modality_config()
         errors: list[str] = []
 
@@ -236,9 +234,7 @@ class Gr00tPolicyClient(PolicyClient):
         return ranges
 
     def _step_ms(self) -> float:
-        """The step spacing from ``control_freq``; raises when it was not given."""
-        if self._dt_ms is None:
-            raise ValueError(_NEEDS_FPS)
+        """The step spacing from ``control_freq``."""
         return self._dt_ms
 
     def reset_rtc(self) -> None:
@@ -582,7 +578,7 @@ def _action_array(
 # ---------------------------------------------------------------------------
 
 
-def _step_spacing_ms(control_freq: float | None, dt_ms: float | None) -> float | None:
+def _step_spacing_ms(control_freq: float | None, dt_ms: float | None) -> float:
     if dt_ms is not None:
         warnings.warn(
             "Gr00tPolicyClient(dt_ms=...) is deprecated; pass control_freq=",
@@ -591,15 +587,11 @@ def _step_spacing_ms(control_freq: float | None, dt_ms: float | None) -> float |
         )
         if control_freq is None:
             control_freq = 1000.0 / dt_ms
-    if control_freq is not None and control_freq <= 0:
+    if control_freq is None:
+        control_freq = DEFAULT_CONTROL_FREQ
+    if control_freq <= 0:
         raise ValueError(f"control_freq must be positive, got {control_freq}")
-    return None if control_freq is None else 1000.0 / control_freq
-
-
-_NEEDS_FPS = (
-    "Gr00tPolicyClient needs control_freq= to run a policy: GR00T servers do not report the rate their "
-    "policy was trained at (fps in the dataset's meta/info.json)"
-)
+    return 1000.0 / control_freq
 
 
 def _bounded_state(
