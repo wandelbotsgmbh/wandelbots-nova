@@ -171,6 +171,20 @@ schema = PolicySchema(
 )
 ```
 
+An actuator outside NOVA, such as a gripper on its own bus, consumes policy outputs that drive
+nothing in NOVA. Declare their keys on both sides; every policy client then fills them the same
+way, so the hooks do not depend on the policy:
+
+```python
+schema = PolicySchema(
+    observations=[
+        Observation.joint_positions("arm", source=mg),
+        Observation.computed(gripper.observe, keys=["gripper"]),  # returns {"gripper": ...}
+    ],
+    actions=[Action.computed(gripper.act, keys=["gripper"])],  # reads chunk.values["gripper"]
+)
+```
+
 ## Rerun visualization
 
 See [rerun.md](rerun.md) for real-time 3D visualization of execution.
