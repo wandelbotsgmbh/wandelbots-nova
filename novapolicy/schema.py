@@ -32,7 +32,6 @@ from novapolicy.ops import apply_ops, apply_ops_inverse, reject_forward_only
 _TCP_SUFFIXES = ("x", "y", "z", "rx", "ry", "rz")
 _QUATERNION_SUFFIXES = ("qx", "qy", "qz", "qw")
 _EULER_SUFFIXES = ("e1", "e2", "e3")
-_WORLD = "world"  # how virtual controllers reference the world coordinate system
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -572,7 +571,9 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
             mg = entry.source if isinstance(entry, _ObsTcp) else entry.target
             key = (get_controller_id(mg), entry.coordinate_system)
             if key not in self._frames:
-                self._frames[key] = await _coordinate_system_in_world(mg, entry.coordinate_system)
+                self._frames[key] = await poses.coordinate_system_in_world(
+                    mg, entry.coordinate_system
+                )
 
     def frame(self, entry: _ObsTcp | _ActTcp) -> np.ndarray | None:
         """The pose in world of ``entry``'s coordinate system; None for the world."""
@@ -933,22 +934,3 @@ def _check_orientation_ops(
     if ops and orientation_type == poses.QUATERNION:
         msg = f"{where}: orientation_ops cannot apply to quaternion components"
         raise ValueError(msg)
-
-
-async def _coordinate_system_in_world(mg: MotionGroup, coordinate_system: str) -> np.ndarray:
-    """The pose in world of a controller's coordinate system, following its references."""
-    api_client = mg._api_client
-    controller = get_controller_id(mg)
-    frame = poses.pose_matrix([0.0] * 6)
-    seen: set[str] = set()
-    current: str | None = coordinate_system
-    while current and current != _WORLD and current not in seen:  # '' is world too
-        seen.add(current)
-        cs = await api_client.controller_api.get_coordinate_system(
-            cell=mg._cell, controller=controller, coordinate_system=current
-        )
-        orientation_type = cs.orientation_type or poses.ROTATION_VECTOR
-        rotvec = poses.to_rotvec(list(cs.orientation or [0.0, 0.0, 0.0]), orientation_type)
-        frame = poses.pose_matrix([*(cs.position or [0.0, 0.0, 0.0]), *rotvec]) @ frame
-        current = cs.reference_coordinate_system
-    return frame

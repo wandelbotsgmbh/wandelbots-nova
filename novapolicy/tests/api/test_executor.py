@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 
 from novapolicy.executor import Phase, PolicyExecutor
+from novapolicy.limits import TcpLimits, TcpLimitsCondition
 from novapolicy.ops import Rad2Deg
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.queued_client import QueuedPolicyClient
@@ -35,8 +36,6 @@ from novapolicy.types import (
     OnStale,
     SequentialExecution,
     StopContext,
-    TcpLimitError,
-    TcpLimits,
     WaypointConfig,
 )
 
@@ -851,7 +850,8 @@ async def test_send_routes_joint_and_tcp_targets_to_their_own_sessions():
 
 @pytest.mark.asyncio
 async def test_a_chunk_breaking_tcp_limits_ends_the_run_before_it_is_sent():
-    """TcpLimits are checked on the resolved targets; a breaking chunk never reaches jogging."""
+    """TcpLimits as a stop condition see the resolved targets; a breaking chunk never
+    reaches jogging, and the run's reason names the limit."""
     eef = _mg("0@ur5e-right")
     schema = PolicySchema(observations=[Observation.tcp("eef", source=eef, action=True)])
 
@@ -867,14 +867,15 @@ async def test_a_chunk_breaking_tcp_limits_ends_the_run_before_it_is_sent():
     with (
         patch("novapolicy.executor.WaypointJoggingSession", return_value=session),
         patch("novapolicy.executor.EstopMonitor", return_value=estop),
-        pytest.raises(TcpLimitError, match="z 10 outside"),
     ):
-        await PolicyExecutor(
+        limits = TcpLimits(z_mm=(25.0, 1000.0), max_chunk_travel_mm=1000.0)
+        result = await PolicyExecutor(
             schema,
             _callback(diving_policy),
             timeout_s=1.0,
-            tcp_limits=TcpLimits(z_mm=(25.0, 1000.0), max_chunk_travel_mm=1000.0),
+            stop_conditions=[await limits.stop_condition(eef)],
         ).run()
+    assert result.reason == "stop condition: tcp_limits (step 0: z 10 outside (25.0, 1000.0) mm)"
     session.update_chunk.assert_not_called()
 
 
@@ -931,7 +932,8 @@ async def test_a_queued_client_runs_continuously_on_the_timestep_timeline(robot:
         timeout_s=0.3,
         execution=ContinuousExecution(),
         n_action_steps=0,
-        tcp_limits=TcpLimits(max_speed_mm_s=100.0),  # a second resolve would break it
+        # a second resolve would break it
+        stop_conditions=[TcpLimitsCondition(TcpLimits(max_speed_mm_s=100.0), MG_ID)],
     ).run()
 
     assert result.reason == "timeout"
@@ -988,33 +990,35 @@ async def test_joint_actions_are_checked_along_their_tcp_path(robot: _Robot):
         return ActionChunk(joints={MG_ID: [HOME]}, dt_ms=33.0)
 
     schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
-    limits = TcpLimits(z_mm=(pose[2] + 10.0, 2000.0), tcp="umi_corrected")
-    with pytest.raises(TcpLimitError, match="outside"):
-        await PolicyExecutor(schema, _callback(stay), timeout_s=1.0, tcp_limits=limits).run()
+    limits = TcpLimits(z_mm=(pose[2] + 10.0, 2000.0))
+    condition = await limits.stop_condition(mg, tcp="umi_corrected")
+    result = await PolicyExecutor(
+        schema, _callback(stay), timeout_s=1.0, stop_conditions=[condition]
+    ).run()
+    assert result.reason.startswith("stop condition: tcp_limits (step 0: z")
     robot.session.update_chunk.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_joint_limits_refuse_kinematics_that_disagree_with_nova(robot: _Robot):
     mg, _pose = _ur10e_arm(robot, reported_offset_mm=5.0)
-    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
     with pytest.raises(ValueError, match="disagree with NOVA"):
-        await PolicyExecutor(
-            schema,
-            _callback(_hold_action),
-            timeout_s=1.0,
-            tcp_limits=TcpLimits(tcp="umi_corrected"),
-        ).run()
+        await TcpLimits(z_mm=(0.0, 1.0)).stop_condition(mg, tcp="umi_corrected")
 
 
 @pytest.mark.asyncio
-async def test_joint_limits_need_a_tcp(robot: _Robot):
+async def test_without_a_tcp_joint_actions_are_not_checked(robot: _Robot):
     mg, _pose = _ur10e_arm(robot)
+
+    async def stay(_obs: object) -> ActionChunk:
+        return ActionChunk(joints={MG_ID: [HOME]}, dt_ms=33.0)
+
     schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
-    with pytest.raises(ValueError, match="need the TCP"):
-        await PolicyExecutor(
-            schema, _callback(_hold_action), timeout_s=1.0, tcp_limits=TcpLimits(z_mm=(0.0, 1.0))
-        ).run()
+    condition = await TcpLimits(z_mm=(0.0, 1.0)).stop_condition(mg)
+    result = await PolicyExecutor(
+        schema, _callback(stay), timeout_s=0.1, stop_conditions=[condition]
+    ).run()
+    assert result.reason == "timeout"
 
 
 # ---------------------------------------------------------------------------

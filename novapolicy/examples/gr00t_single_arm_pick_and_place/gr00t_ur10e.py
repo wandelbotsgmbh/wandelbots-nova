@@ -51,7 +51,7 @@ from novapolicy import (
     WebRTCCameras,
     resolve_actions,
 )
-from novapolicy.chunking import tcp_limit_violations
+from novapolicy.limits import tcp_limit_violations
 
 # settings_from_episode.py is shared by the examples: it lives in novapolicy/examples.
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -219,7 +219,7 @@ async def run_policy(
             timeout_s=TIMEOUT_S,
             execution=ContinuousExecution() if continuous else SequentialExecution(),
             n_action_steps=0 if continuous else N_ACTION_STEPS,
-            tcp_limits=LIMITS,
+            stop_conditions=[await LIMITS.stop_condition(mg)],
         )
         mode = "continuous" if continuous else "sequential"
         print(f"Running GR00T policy ({mode}) for up to {TIMEOUT_S}s...")

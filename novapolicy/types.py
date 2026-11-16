@@ -289,50 +289,16 @@ class StopContext:
     target_ios: dict[str, bool | int | float | str] | None = None
     """Intended IO writes (populated at inference time, before IOs fire)."""
 
+    target_tcp: list[list[float]] | None = None
+    """The chunk's TCP targets in the world (mm, rotation vector), for a TCP action; set
+    only before a chunk is sent, with the steps that will run."""
+
+    target_dt_ms: float | None = None
+    """The chunk's step spacing; set only before a chunk is sent (None on jogging ticks)."""
+
 
 StopCondition = Callable[[StopContext], bool]
 """A fast, synchronous check run on every tick. Return ``True`` to stop the policy."""
-
-
-@dataclass(frozen=True, slots=True)
-class TcpLimits:
-    """Software limits on the TCP targets of each chunk, checked before it is sent.
-
-    A chunk that breaks one ends the run with :class:`TcpLimitError`. Only the steps that
-    run are checked (after ``n_action_steps``). This is a check in the executor's own
-    path, not a safety system: safety belongs on the robot controller. ``None`` disables
-    a limit.
-    """
-
-    max_speed_mm_s: float | None = None
-    """TCP distance between consecutive targets, as a speed at the chunk's step spacing."""
-    max_rotation_speed_deg_s: float | None = None
-    """Tool rotation between consecutive targets, as a speed at the chunk's step spacing."""
-    max_chunk_travel_mm: float | None = None
-    """Distance of any target from the TCP position at inference time."""
-    x_mm: tuple[float, float] | None = None
-    """Allowed ``(min, max)`` of target x in the world; likewise ``y_mm`` and ``z_mm``."""
-    y_mm: tuple[float, float] | None = None
-    z_mm: tuple[float, float] | None = None
-    tcp: str | None = None
-    """For joint actions: the TCP whose path is checked, computed with forward kinematics
-    from the motion group's description. Defaults to the TCP a ``Observation.tcp`` of that
-    motion group declares; required when there is none."""
-
-    def __post_init__(self) -> None:
-        for name in ("x_mm", "y_mm", "z_mm"):
-            bounds = getattr(self, name)
-            if bounds is not None and not bounds[0] < bounds[1]:
-                raise ValueError(f"TcpLimits.{name} must be (min, max) with min < max")
-
-
-class TcpLimitError(Exception):
-    """Raised when a chunk's TCP targets break the executor's :class:`TcpLimits`."""
-
-    def __init__(self, motion_group_id: str, violations: list[str]) -> None:
-        self.motion_group_id = motion_group_id
-        self.violations = violations
-        super().__init__(f"TCP limits on '{motion_group_id}': {'; '.join(violations)}")
 
 
 class EmergencyStopError(Exception):

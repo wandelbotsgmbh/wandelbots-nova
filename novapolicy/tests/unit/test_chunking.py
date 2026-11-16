@@ -26,11 +26,11 @@ from novapolicy.chunking import (
     interpolate_action_chunk_ramps,
     placement,
     smooth_action_chunk,
-    tcp_limit_violations,
     trim_chunk,
     unwrap_tcp_rotations,
 )
-from novapolicy.types import ActionChunk, ContinuousExecution, SequentialExecution, TcpLimits
+from novapolicy.limits import TcpLimits, tcp_limit_violations
+from novapolicy.types import ActionChunk, ContinuousExecution, SequentialExecution
 
 # Strategies for generated chunks --------------------------------------------
 

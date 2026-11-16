@@ -16,9 +16,12 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from nova import api
+from novapolicy._sdk import get_controller_id
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from nova.cell.motion_group import MotionGroup
 
 OrientationType = api.models.OrientationType
 ROTATION_VECTOR = OrientationType.ROTATION_VECTOR
@@ -96,3 +99,23 @@ def frame_to_world(pose: Sequence[float], frame: np.ndarray | None) -> list[floa
     if frame is None:
         return [float(v) for v in pose]
     return matrix_pose(frame @ pose_matrix(pose))
+
+
+async def coordinate_system_in_world(mg: MotionGroup, coordinate_system: str) -> np.ndarray:
+    """The pose in world (4x4) of a controller's coordinate system, following its
+    references to the world (``""``, or ``"world"`` as virtual controllers name it)."""
+    api_client = mg._api_client
+    controller = get_controller_id(mg)
+    frame = pose_matrix([0.0] * 6)
+    seen: set[str] = set()
+    current: str | None = coordinate_system
+    while current and current != "world" and current not in seen:  # '' is world too
+        seen.add(current)
+        cs = await api_client.controller_api.get_coordinate_system(
+            cell=mg._cell, controller=controller, coordinate_system=current
+        )
+        orientation_type = cs.orientation_type or ROTATION_VECTOR
+        rotvec = to_rotvec(list(cs.orientation or [0.0, 0.0, 0.0]), orientation_type)
+        frame = pose_matrix([*(cs.position or [0.0, 0.0, 0.0]), *rotvec]) @ frame
+        current = cs.reference_coordinate_system
+    return frame

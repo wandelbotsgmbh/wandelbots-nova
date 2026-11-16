@@ -11,7 +11,6 @@ NOVA_ACCESS_TOKEN and are skipped unless run with ``-m integration``.
 from __future__ import annotations
 
 import contextlib
-import dataclasses
 import math
 from typing import TYPE_CHECKING
 import uuid
@@ -22,6 +21,7 @@ from scipy.spatial.transform import Rotation
 
 from nova.actions import jnt
 from novapolicy.executor import PolicyExecutor
+from novapolicy.limits import TcpLimits
 from novapolicy.ops import Scale
 from novapolicy.policy_client import CallbackPolicyClient
 from novapolicy.schema import Action, Observation, PolicySchema
@@ -29,8 +29,6 @@ from novapolicy.types import (
     ActionChunk,
     SequentialExecution,
     StopContext,
-    TcpLimitError,
-    TcpLimits,
 )
 
 if TYPE_CHECKING:
@@ -252,10 +250,9 @@ async def _run_joint_chunk(mg, limits: TcpLimits, joint_offset: list[float]):
         schema,
         CallbackPolicyClient(policy),
         execution=SequentialExecution(),
-        stop_conditions=[after_first_chunk],
         start_joint_position={mg: start_joints},
         timeout_s=30.0,
-        tcp_limits=dataclasses.replace(limits, tcp=limits.tcp or tcp),
+        stop_conditions=[after_first_chunk, await limits.stop_condition(mg, tcp=tcp)],
     ).run()
 
 
@@ -269,5 +266,6 @@ async def test_joint_actions_are_stopped_when_their_tcp_would_leave_the_limits(u
     lower = [0.0, 0.0, math.radians(10.0), 0.0, 0.0, 0.0]  # the elbow brings the TCP down
     result = await _run_joint_chunk(ur10e, TcpLimits(z_mm=(start_z - 500.0, 3000.0)), lower)
     assert result.reason == "stop condition: after_first_chunk"  # inside the limits: runs
-    with pytest.raises(TcpLimitError, match=r"z .* outside"):
-        await _run_joint_chunk(ur10e, TcpLimits(z_mm=(start_z - 5.0, 3000.0)), lower)
+    result = await _run_joint_chunk(ur10e, TcpLimits(z_mm=(start_z - 5.0, 3000.0)), lower)
+    assert result.reason.startswith("stop condition: tcp_limits")
+    assert "outside" in result.reason
