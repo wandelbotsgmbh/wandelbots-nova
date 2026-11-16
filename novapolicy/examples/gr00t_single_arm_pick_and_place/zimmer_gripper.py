@@ -20,7 +20,7 @@ import numpy as np
 from novapolicy import ActionChunk, PolicyClient
 
 if TYPE_CHECKING:
-    from novapolicy import Gr00tPolicyClient, PolicySchema
+    from novapolicy import PolicySchema
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +60,11 @@ class ZimmerGripper:
     next observation is taken after the jaws have settled.
 
     Args:
-        client: The GR00T client; its ``last_raw_action["gripper"]`` is the command.
         host: The IO-Link master's address.
         states: The policy's gripper state values.
         close_when_negative: A negative command closes (else a positive one).
-        state_key, action_key: The gripper's keys in the policy's state and action.
+        state_key, action_key: The gripper's keys in the policy's state and action;
+            pass ``action_key`` to ``Action.computed(gripper.act, keys=[...])`` as well.
         open_gap_mm: The jaw gap after homing; the gap maps linearly onto
             ``states.closed`` .. ``states.open``.
         lookahead_steps: Steps of each answer a switch may come from.
@@ -73,7 +73,6 @@ class ZimmerGripper:
 
     def __init__(
         self,
-        client: Gr00tPolicyClient,
         host: str,
         *,
         states: GripperStates,
@@ -86,7 +85,6 @@ class ZimmerGripper:
         force_percent: int = 50,
         velocity_percent: int = 100,
     ) -> None:
-        self._client = client
         self._host = host
         self._states = states
         self._close_when_negative = close_when_negative
@@ -141,21 +139,21 @@ class ZimmerGripper:
         """A grip()/open_and_wait() is scheduled or running."""
         return self._task is not None and not self._task.done()
 
-    def next_switch(self, *, closed: bool | None) -> tuple[int, bool] | None:
-        """First step of the last answer whose decision differs from ``closed``."""
-        command = self._client.last_raw_action.get(self._action_key)
-        values = [] if command is None else np.asarray(command).reshape(-1).tolist()
+    def next_switch(self, chunk: ActionChunk, *, closed: bool | None) -> tuple[int, bool] | None:
+        """First step of the chunk's gripper command whose decision differs from ``closed``."""
+        rows = chunk.values.get(self._action_key, [])
+        values = np.asarray(rows, dtype=float).reshape(-1).tolist()
         for index, value in enumerate(values[: self._lookahead_steps]):
             close = value < 0.0 if self._close_when_negative else value > 0.0
             if close != closed:
                 return index, close
         return None
 
-    async def act(self, _chunk: ActionChunk) -> None:
+    async def act(self, chunk: ActionChunk) -> None:
         """``Action.computed``, fired as the arm reaches the chunk's first step."""
         if self._session is None or self.busy:
             return
-        switch = self.next_switch(closed=self._closed)
+        switch = self.next_switch(chunk, closed=self._closed)
         if switch is None:
             return
         index, close = switch
@@ -190,7 +188,7 @@ class HoldWhileGripping(PolicyClient):
 
     def __init__(
         self,
-        policy: Gr00tPolicyClient,
+        policy: PolicyClient,
         gripper: ZimmerGripper,
         mg_id: str,
         *,
@@ -222,6 +220,5 @@ class HoldWhileGripping(PolicyClient):
         if not self._gripper.busy:
             return await self._policy.get_actions(states, schema, images, io_values)
         await asyncio.sleep(self._dt_ms / 1000.0)  # no inference; don't spin the executor loop
-        self._policy.last_raw_action = {}  # nothing new for the gripper hook to act on
         hold = [[0.0] * 6] * self._hold_steps
         return ActionChunk(tcp={self._mg_id: hold}, dt_ms=self._dt_ms)

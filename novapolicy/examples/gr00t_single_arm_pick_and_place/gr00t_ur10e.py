@@ -93,7 +93,6 @@ LIMITS = TcpLimits(
 )
 
 # --- Execution ---------------------------------------------------------------------------
-SPEED_FACTOR = 1.0  # below 1 plays the steps slower than the training rate
 N_ACTION_STEPS = 8  # sequential: steps of each chunk that run before the next inference
 TIMEOUT_S = 300.0
 SAFE_Z_MM = 200.0  # lift straight up to this before the joint move home
@@ -126,12 +125,11 @@ def build(
     mg: MotionGroup, *, continuous: bool
 ) -> tuple[Gr00tPolicyClient, PolicySchema, ZimmerGripper, dict[str, Any]]:
     """The GR00T client, the schema, the gripper and the cameras."""
-    dt_ms = 1000.0 / SETTINGS.rate_hz / SPEED_FACTOR
+    dt_ms = 1000.0 / SETTINGS.rate_hz
     client = Gr00tPolicyClient(host=GROOT_HOST, port=GROOT_PORT, dt_ms=dt_ms)
     # Sequential: a switch anywhere in the steps that run. Continuous: the policy is asked
     # again every few steps, so act on the current step's decision only.
     gripper = ZimmerGripper(
-        client,
         GRIPPER_HOST,
         states=GripperStates(
             open=ARM.gripper_open,
@@ -159,7 +157,7 @@ def build(
         ],
         actions=[
             ARM.action(mg),  # the measured reading: TCP deltas, units and gains
-            Action.computed(gripper.act),
+            Action.computed(gripper.act, keys=[str(ARM.gripper_action_key)]),
         ],
     )
     return client, schema, gripper, cameras
@@ -212,7 +210,7 @@ async def run_policy(
             client,
             gripper,
             mg.id,
-            dt_ms=1000.0 / SETTINGS.rate_hz / SPEED_FACTOR,
+            dt_ms=1000.0 / SETTINGS.rate_hz,
             hold_steps=HOLD_STEPS,
         )
         executor = PolicyExecutor(
@@ -258,7 +256,8 @@ async def dry_run(
             mark = "*" if i < N_ACTION_STEPS else " "
             dpos = np.subtract(t[:3], start[:3])
             print(f"{mark}{i:2d}  {np.round(t[:3], 1).tolist()}  dpos {np.round(dpos, 1).tolist()}")
-        command = np.asarray(client.last_raw_action.get("gripper", []), dtype=float).reshape(-1)
+        rows = raw.values.get(str(ARM.gripper_action_key), [])
+        command = np.asarray(rows, dtype=float).reshape(-1)
         print(f"Gripper action: {[round(v, 2) for v in command.tolist()]}")
         broken = tcp_limit_violations(start, targets[:N_ACTION_STEPS], raw.dt_ms, LIMITS)
         print(f"Limits: {'; '.join(broken) or 'OK'}")

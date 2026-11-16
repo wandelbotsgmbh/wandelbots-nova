@@ -53,6 +53,9 @@ is.
 
 ## 4. Write the run script
 
+Measure the settings once (step 2), then build the schema from them. Nothing below is specific
+to GR00T except the client; the same schema runs any policy client.
+
 ```python
 from novapolicy import (
     Action,
@@ -60,35 +63,29 @@ from novapolicy import (
     Observation,
     PolicyExecutor,
     PolicySchema,
-    Scale,
     SequentialExecution,
     TcpLimits,
     WebRTCCameras,
 )
+from settings_from_episode import EpisodeSettings  # novapolicy/examples
 
-client = Gr00tPolicyClient(host, port=port, dt_ms=1000 / 30)  # the training rate
+settings = EpisodeSettings.load("episode_settings.json")
+arm = settings.robots["arm"]
+mg = (await nova.cell().controller(controller)).motion_group(arm.motion_group)
+
+client = Gr00tPolicyClient(host, port=port, dt_ms=1000 / settings.rate_hz)
 webrtc = WebRTCCameras(api_url=camera_server, resize=(320, 240), resize_mode="crop")
 schema = PolicySchema(
     observations=[
-        Observation.joint_positions("arm_joints", source=mg, action=False),
-        Observation.tcp("tcp_pose", source=mg, tcp="umi_corrected"),  # the TCP deltas use
-        Observation.computed(gripper.observe, keys=["gripper"]),
+        Observation.joint_positions(arm.joints_key, source=mg, action=False),
+        Observation.tcp("tcp_pose", source=mg, tcp=arm.tcp),  # the TCP relative actions use
+        Observation.computed(gripper.observe, keys=[arm.gripper_state_key]),
         *(Observation.image(key, source=webrtc.device(serial)) for key, serial in cameras.items()),
-        Observation.constant(
-            "language", value="pick up the cube and place it on the yellow square"
-        ),
+        Observation.constant("language", value=prompt),
     ],
     actions=[
-        Action.tcp(
-            "eef_delta",
-            target=mg,
-            mode="relative",
-            accumulate=True,
-            use_tool_coordinate_system=False,
-            position_ops=[Scale(0.001), Scale(1 / 0.24)],  # metres; 24 % realized in training
-            orientation_ops=[Scale(1 / 0.30)],
-        ),
-        Action.computed(gripper.act),  # reads client.last_raw_action["gripper"]
+        arm.action(mg),  # the measured reading, units and gains
+        Action.computed(gripper.act, keys=[arm.gripper_action_key]),
     ],
 )
 executor = PolicyExecutor(
@@ -103,10 +100,10 @@ result = await executor.run()
 ```
 
 A gripper on its own bus enters through `Observation.computed` (its state, with `keys=` so the
-schema check counts it) and `Action.computed` (its command, read from
-`client.last_raw_action`). The example's `ZimmerGripper` is a complete one: it maps the jaw gap
-onto the training state values, switches at the step of the chunk that asks for it, and makes
-`observe` wait while the jaws move, so the policy is not asked again until they settle.
+schema check counts it) and `Action.computed` (its command: with `keys=[...]`, every policy client
+puts those action outputs into `chunk.values[key]`). The example's `ZimmerGripper` is a complete
+one: it maps the jaw gap onto the training state values and switches at the step of the chunk
+that asks for it; its `HoldWhileGripping` keeps the arm still while the jaws move.
 
 ## 5. Choose the execution mode
 
