@@ -67,8 +67,8 @@ action units and motion, so metres vs. millimetres or radians vs. degrees need n
 `RobotSettings.action(mg)` builds the matching `Action`.
 
 It stops instead of writing when a fit is poor, two readings fit about equally well, or the episode
-cannot tell. Per robot, two inputs cannot be measured: `--tcp`, the point on the tool the training poses refer to (every TCP of this robot fits
-episode 75 about equally well, because the tool barely rotates), and `--gripper-closed`, the fully
+cannot tell. Per robot, two inputs cannot be measured: `tcp=`, the point on the tool the training poses refer to (every TCP of this robot fits
+episode 75 about equally well, because the tool barely rotates), and `gripper_closed=`, the fully
 closed gripper state (the training config's close command; the fingers stop on the cube first).
 
 What is left as constants at the top of [`gr00t_ur10e.py`](gr00t_ur10e.py) is what no episode
