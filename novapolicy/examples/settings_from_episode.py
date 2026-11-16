@@ -15,7 +15,7 @@ builds each robot's action with :meth:`RobotSettings.action`. Nothing is guessed
 below ``R2_GOOD``, an ambiguous answer or a convention ``Action`` cannot express stops the
 script instead of writing settings.
 
-    NOVA_API=http://<nova> uv run python settings_from_episode.py \
+    NOVA_API=http://<nova> uv run python novapolicy/examples/settings_from_episode.py \
         --episode <dataset>/data/chunk-000/episode_000075.parquet \
         --modality <dataset>/meta/modality.json \
         --robot arm mg=0@ur10e-calibration tcp=umi_corrected joints=arm_joints \

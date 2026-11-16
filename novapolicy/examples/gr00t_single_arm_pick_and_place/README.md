@@ -10,8 +10,7 @@ policy's training episodes on the same cell.
 | `run_continuous.py` | Policy, streaming: re-infers as fast as the server answers, chunks merged on a timestep queue |
 | `gr00t_ur10e.py` | Shared implementation of the two `run_*` scripts: the policy's facts, the cell and the limits as constants at the top, the schema and the run |
 | `zimmer_gripper.py` | The Zimmer gripper as `Observation.computed` / `Action.computed` hooks, and the hold that keeps the arm still while the jaws move |
-| `settings_from_episode.py` | Measures from a training episode what the policy's actions mean and writes `episode_settings.json` |
-| `episode_settings.json` | Written by `settings_from_episode.py` for episode 75: rate, home, the deltas' coordinate system, the gains and the gripper values; `gr00t_ur10e.py` loads it |
+| `episode_settings.json` | Written by [`../settings_from_episode.py`](../settings_from_episode.py) for episode 75: rate, home, the deltas' coordinate system, the gains and the gripper values; `gr00t_ur10e.py` loads it |
 
 Without `--execute` every script is a dry run: nothing moves. With `--execute` it asks
 for `yes` before the gripper or the arm moves. Keep a hand on the e-stop.
@@ -52,7 +51,7 @@ deltas' coordinate system, the training controller's gains and the gripper value
 for another policy or episode (nothing moves):
 
 ```bash
-uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/settings_from_episode.py \
+uv run python novapolicy/examples/settings_from_episode.py \
     --episode <dataset>/data/chunk-000/episode_000075.parquet \
     --modality <dataset>/meta/modality.json \
     --robot arm mg=0@ur10e-calibration tcp=umi_corrected joints=arm_joints action=eef_delta \

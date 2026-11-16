@@ -31,8 +31,8 @@ The server tells the keys, not their meaning. From the training setup, find out:
 
 The training config usually states these. A policy trained with a differential-IK controller
 (IsaacLab's relative pose command) outputs commands, and the simulated robot realized only part of
-each one; an extra `Scale` converts commanded to realized motion. The example's
-[`settings_from_episode.py`](../examples/gr00t_single_arm_pick_and_place/settings_from_episode.py)
+each one; an extra `Scale` converts commanded to realized motion. The
+[`examples/settings_from_episode.py`](../examples/settings_from_episode.py)
 measures all of this except the TCP from one training episode, for any number of robots: per robot
 whether the actions are joint or TCP targets, absolute or deltas, the coordinate system, the scale
 (units and training gain), the gripper polarity and values, and the home joints. It reads the column

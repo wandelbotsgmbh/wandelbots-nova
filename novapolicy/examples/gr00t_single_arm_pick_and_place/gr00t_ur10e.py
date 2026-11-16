@@ -33,7 +33,6 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from settings_from_episode import EpisodeSettings
 from zimmer_gripper import GripperStates, HoldWhileGripping, ZimmerGripper
 
 from nova import ProgramContext, api, program, run_program, viewers
@@ -53,6 +52,10 @@ from novapolicy import (
     resolve_actions,
 )
 from novapolicy.chunking import tcp_limit_violations
+
+# settings_from_episode.py is shared by the examples: it lives in novapolicy/examples.
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from settings_from_episode import EpisodeSettings
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
