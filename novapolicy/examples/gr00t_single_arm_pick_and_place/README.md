@@ -8,7 +8,8 @@ policy's training episodes on the same cell.
 |---|---|
 | `run_sequential.py` | Policy, stop-and-go (the default mode): runs one chunk to standstill, then observes and infers again |
 | `run_continuous.py` | Policy, streaming: re-infers as fast as the server answers, chunks merged on a timestep queue |
-| `gr00t_ur10e.py` | Shared implementation of the two `run_*` scripts: the policy's facts, the cell and the limits as constants at the top, the schema, the Zimmer gripper and the run |
+| `gr00t_ur10e.py` | Shared implementation of the two `run_*` scripts: the policy's facts, the cell and the limits as constants at the top, the schema and the run |
+| `zimmer_gripper.py` | The Zimmer gripper as `Observation.computed` / `Action.computed` hooks, and the hold that keeps the arm still while the jaws move |
 | `settings_from_episode.py` | Reads the schema settings from a training episode: action frame and gains, delta vs. absolute, gripper polarity and values, and the envelope the limits should cover |
 
 Without `--execute` every script is a dry run: nothing moves. With `--execute` it asks

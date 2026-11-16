@@ -12,8 +12,8 @@ plain ``PolicySchema``:
   accumulate=True)``,
 - action ``gripper``: a binary command for the Zimmer gripper, read by ``Action.computed``.
 
-The gripper is a Zimmer GEH6060IL on a Turck IO-Link master, driven by the optional
-``zimmer-gripper-controller`` package over Modbus TCP.
+The gripper (``zimmer_gripper.py``) is a Zimmer GEH6060IL on a Turck IO-Link master, driven
+by the optional ``zimmer-gripper-controller`` package over Modbus TCP.
 
 Without ``--execute`` a script does a DRY RUN: one real observation, one inference, the
 targets and limit check printed. Nothing is commanded, and the gripper is not connected
@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import importlib
 import logging
 import math
 import sys
@@ -33,17 +32,16 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from zimmer_gripper import GripperStates, HoldWhileGripping, ZimmerGripper
 
 from nova import ProgramContext, api, program, run_program, viewers
 from nova.actions import joint_ptp, linear
 from nova.types import MotionSettings, Pose
 from novapolicy import (
     Action,
-    ActionChunk,
     ContinuousExecution,
     Gr00tPolicyClient,
     Observation,
-    PolicyClient,
     PolicyExecutor,
     PolicySchema,
     QueuedPolicyClient,
@@ -65,13 +63,19 @@ GROOT_HOST, GROOT_PORT = "172.31.11.129", 30555
 PROMPT = "pick up the cube and place it on the yellow square"
 RATE_HZ = 30.0  # sim dt 1/120 s, decimation 4
 IMAGE_SIZE = (320, 240)  # the sim cameras' resolution (4:3)
-# The sim's DifferentialIK tracked each relative pose command for 4 substeps and realized
-# only part of it; measured from a training episode (settings_from_episode.py): realized /
-# commanded.
+# How much of each commanded eef_delta the simulated robot actually moved. The policy was
+# trained on the commands of an IsaacLab DifferentialIK controller (relative pose, applied
+# to the measured pose); in the 4 physics substeps of one policy step the arm covered only
+# part of each command. Not stated in the training config: settings_from_episode.py
+# measures it from a training episode, as the least-squares ratio of the TCP motion
+# (forward kinematics of the recorded joints) to the commanded deltas: 0.242 for
+# position (R^2 0.84) and 0.304 for rotation (R^2 0.59) on episode 75.
 GAIN_POSITION, GAIN_ROTATION = 0.24, 0.30
-# Gripper: BinaryJointPositionAction, a negative command closes. State: the UMI finger
-# joint, 0.0 open, -0.023 closed, -0.0136 when the fingers hold the cube.
-GRIPPER_OPEN, GRIPPER_CLOSED, GRIPPER_HOLDING = 0.0, -0.023, -0.0136
+# The gripper state is the UMI finger joint ("PrismaticJoint", metres). Open and closed are
+# the training config's BinaryJointPositionActionCfg open/close_command_expr (the joint
+# limits 0.0 and -0.023); holding is where the fingers stopped on the cube in the training
+# data (settings_from_episode.py: -0.0135 after the close; checkpoint range -0.0151..0.0).
+GRIPPER = GripperStates(open=0.0, closed=-0.023, holding=-0.0136)
 
 # --- The cell ----------------------------------------------------------------------------
 CONTROLLER = "ur10e-calibration"
@@ -101,19 +105,6 @@ HOME_SETTINGS = MotionSettings(tcp_velocity_limit=100.0)
 # In force mode the grip force also sets the closing speed (open -> 50 mm gap: 20% 3.7 s,
 # 50% 1.8 s, 100% 1.5 s). 50% for the PLA cube.
 GRIPPER_FORCE_PERCENT = 50
-GRIPPER_VELOCITY_PERCENT = 100  # positioning moves (open_and_wait) only
-
-
-def open_gripper_session(host: str = GRIPPER_HOST) -> Any:
-    """Connect to the Zimmer gripper, home it and open it (moves the jaws). Blocking."""
-    # Imported here so dry runs work without the (optional) gripper package installed.
-    zimmer = importlib.import_module("zimmer_gripper_controller")
-    session = zimmer.GripperSession(zimmer.SessionConfig(modbus=zimmer.ModbusConfig(host=host)))
-    session.connect()
-    session.wait_until_ready()
-    session.set_force_percent(GRIPPER_FORCE_PERCENT)
-    session.set_velocity_percent(GRIPPER_VELOCITY_PERCENT)
-    return session
 
 
 async def lift_if_low(mg: MotionGroup) -> None:
@@ -133,133 +124,6 @@ async def move_home(mg: MotionGroup) -> None:
     await mg.execute(await mg.plan(actions, TCP), TCP, actions=actions)
 
 
-class ZimmerGripper:
-    """Feeds the jaw gap to the policy and executes its ``gripper`` action.
-
-    ``GripperSession`` is blocking and thread based, so commands run in a worker thread.
-    A command is only sent when the open/closed decision changes, at the step of the
-    chunk that asks for it. While a command runs, :class:`HoldWhileGripping` keeps the
-    arm still and the policy is not asked, so its next observation is taken after the
-    jaws have settled.
-    """
-
-    def __init__(self, client: Gr00tPolicyClient, *, lookahead_steps: int, dt_ms: float) -> None:
-        self._client = client
-        self._lookahead_steps = lookahead_steps
-        self._dt_ms = dt_ms
-        self._session: Any = None  # created in connect(); dry runs never connect
-        self._task: asyncio.Task[None] | None = None
-        self._task_started = False  # the scheduled grip()/open() has left its delay
-        self._closed: bool | None = None
-        self._holding = False
-
-    async def connect(self) -> None:
-        """Start the controller, home, and open (moves the jaws)."""
-        self._session = await asyncio.to_thread(open_gripper_session)
-        self._closed = False
-
-    async def close(self) -> None:
-        """Let a running grip()/open() finish; drop one still waiting for its step."""
-        if self._task is not None and not self._task.done():
-            if not self._task_started:
-                self._task.cancel()  # the run ended before the command's step came
-            await asyncio.gather(self._task, return_exceptions=True)
-        if self._session is not None:
-            self._session.close()
-
-    async def observe(self, _obs: dict[str, Any]) -> dict[str, float]:
-        """``Observation.computed``: the jaw gap mapped onto the sim's finger joint."""
-        if self._session is None:  # dry run: jaws assumed open
-            return {"gripper": GRIPPER_OPEN}
-        state = self._session.state()
-        if state.has_error:
-            msg = f"Gripper error: diag=0x{state.diagnosis:04X} {state.last_error_text}"
-            raise RuntimeError(msg)
-        if self._closed and self._holding:
-            return {"gripper": GRIPPER_HOLDING}
-        opening = min(max(state.jaw_gap_m * 1000.0 / GRIPPER_OPEN_GAP_MM, 0.0), 1.0)
-        return {"gripper": GRIPPER_CLOSED + opening * (GRIPPER_OPEN - GRIPPER_CLOSED)}
-
-    @property
-    def busy(self) -> bool:
-        """A grip()/open_and_wait() is scheduled or running."""
-        return self._task is not None and not self._task.done()
-
-    def next_switch(self, *, closed: bool | None) -> tuple[int, bool] | None:
-        """First step of the last answer whose decision differs from ``closed``."""
-        command = self._client.last_raw_action.get("gripper")
-        values = [] if command is None else np.asarray(command).reshape(-1).tolist()
-        for index, value in enumerate(values[: self._lookahead_steps]):
-            if (value < 0.0) != closed:
-                return index, value < 0.0
-        return None
-
-    async def act(self, _chunk: ActionChunk) -> None:
-        """``Action.computed``, fired as the arm reaches the chunk's first step."""
-        if self._session is None or self.busy:
-            return
-        switch = self.next_switch(closed=self._closed)
-        if switch is None:
-            return
-        index, close = switch
-        self._closed = close
-        self._task_started = False
-        delay_s = index * self._dt_ms / 1000.0
-        self._task = asyncio.create_task(self._command(close=close, delay_s=delay_s))
-
-    async def _command(self, *, close: bool, delay_s: float) -> None:
-        await asyncio.sleep(delay_s)
-        self._task_started = True
-        try:  # ruff: ignore[too-many-statements-in-try-clause]
-            if close:
-                result = await asyncio.to_thread(self._session.grip)
-                self._holding = result.holding
-                print(f"Gripper grip: holding={result.holding} gap={result.jaw_gap_m:.4f} m")
-            else:
-                await asyncio.to_thread(self._session.open_and_wait)
-                self._holding = False
-        except Exception:
-            self._closed = None  # unknown; the next chunk re-sends its decision
-            logger.exception("Gripper command failed")
-
-
-class HoldWhileGripping(PolicyClient):
-    """Stand still instead of asking the policy while the gripper moves.
-
-    A zero relative TCP delta holds the pose the arm is at. The policy's next observation
-    is then taken after the jaws have settled, with images and joints that show it.
-    """
-
-    def __init__(self, policy: Gr00tPolicyClient, gripper: ZimmerGripper, mg_id: str) -> None:
-        self._policy = policy
-        self._gripper = gripper
-        self._mg_id = mg_id
-
-    async def connect(self, motion_group_ids: list[str]) -> None:
-        await self._policy.connect(motion_group_ids)
-
-    async def validate_schema(self, schema: PolicySchema) -> None:
-        await self._policy.validate_schema(schema)
-
-    async def close(self) -> None:
-        await self._policy.close()
-
-    async def get_actions(
-        self,
-        states: dict[str, Any],
-        schema: PolicySchema,
-        images: dict[str, Any] | None = None,
-        io_values: dict[str, object] | None = None,
-    ) -> ActionChunk:
-        if not self._gripper.busy:
-            return await self._policy.get_actions(states, schema, images, io_values)
-        dt_ms = 1000.0 / RATE_HZ / SPEED_FACTOR
-        await asyncio.sleep(dt_ms / 1000.0)  # no inference; don't spin the executor loop
-        self._policy.last_raw_action = {}  # nothing new for the gripper hook to act on
-        hold = [[0.0] * 6] * HOLD_STEPS
-        return ActionChunk(tcp={self._mg_id: hold}, dt_ms=dt_ms)
-
-
 def build(
     mg: MotionGroup, *, continuous: bool
 ) -> tuple[Gr00tPolicyClient, PolicySchema, ZimmerGripper, dict[str, Any]]:
@@ -269,7 +133,13 @@ def build(
     # Sequential: a switch anywhere in the steps that run. Continuous: the policy is asked
     # again every few steps, so act on the current step's decision only.
     gripper = ZimmerGripper(
-        client, lookahead_steps=1 if continuous else N_ACTION_STEPS, dt_ms=dt_ms
+        client,
+        GRIPPER_HOST,
+        states=GRIPPER,
+        open_gap_mm=GRIPPER_OPEN_GAP_MM,
+        lookahead_steps=1 if continuous else N_ACTION_STEPS,
+        dt_ms=dt_ms,
+        force_percent=GRIPPER_FORCE_PERCENT,
     )
     webrtc = WebRTCCameras(api_url=CAMERA_SERVER, resize=IMAGE_SIZE, resize_mode="crop")
     cameras = {key: webrtc.device(serial) for key, serial in CAMERAS.items()}
@@ -341,7 +211,9 @@ async def run_policy(
         await gripper.connect()
         print("Moving to home...")
         await move_home(mg)
-        held = HoldWhileGripping(client, gripper, mg.id)
+        held = HoldWhileGripping(
+            client, gripper, mg.id, dt_ms=1000.0 / RATE_HZ / SPEED_FACTOR, hold_steps=HOLD_STEPS
+        )
         executor = PolicyExecutor(
             schema,
             QueuedPolicyClient(held) if continuous else held,
