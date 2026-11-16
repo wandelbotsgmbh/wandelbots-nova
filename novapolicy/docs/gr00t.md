@@ -133,8 +133,8 @@ and it sends the `Observation.constant("language", ...)` prompt under the server
 ### Computed observations and actions
 
 `Action.computed` fires for every policy (the executor runs it after each call). For an
-actuator outside NOVA, read its command from `client.last_raw_action[key]`, the server's last
-answer as a `(horizon, dim)` array per action key.
+actuator outside NOVA, declare the action keys it consumes, `Action.computed(fn, keys=["gripper"])`;
+the client puts their values into `chunk.values["gripper"]`, one row per step.
 `Observation.computed` also fires for GR00T, but its values are merged into GR00T's
 numeric state payload — so each computed value must be a scalar/sequence of floats keyed
 to a model state input. Pass `keys=[...]` so `validate_schema` counts them. Non-numeric outputs

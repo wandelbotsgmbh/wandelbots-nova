@@ -332,6 +332,7 @@ class _ActComputed:
     """Async side-effect called with the policy's chunk: ``async (chunk) -> None``."""
 
     fn: ComputedActFn
+    keys: tuple[str, ...] = ()
 
 
 ActionEntry = _ActJoints | _ActTcp | _ActIO | _ActComputed
@@ -402,8 +403,12 @@ class Action:
         return _ActIO(key=key, target=target, io=io, mapping=mapping or Mapping())
 
     @staticmethod
-    def computed(fn: ComputedActFn) -> _ActComputed:
+    def computed(fn: ComputedActFn, *, keys: Sequence[str] = ()) -> _ActComputed:
         """Async side effect run after each policy call, with the returned chunk.
+
+        ``keys`` names policy action outputs the hook consumes that drive nothing in NOVA
+        (a gripper on its own bus, say); every policy client puts them in
+        ``chunk.values[key]``, one row per step.
 
         Example::
 
@@ -415,7 +420,7 @@ class Action:
                 actions=[Action.computed(journal)],
             )
         """
-        return _ActComputed(fn=fn)
+        return _ActComputed(fn=fn, keys=tuple(keys))
 
 
 # ---------------------------------------------------------------------------
@@ -597,6 +602,11 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
     @property
     def obs_io_mappings(self) -> list[_ObsIO]:
         return [o for o in self._observations if isinstance(o, _ObsIO)]
+
+    @property
+    def computed_action_keys(self) -> list[str]:
+        """Action keys ``Action.computed`` hooks consume (``chunk.values``)."""
+        return [k for a in self._actions if isinstance(a, _ActComputed) for k in a.keys]
 
     @property
     def computed_observations(self) -> list[_ObsComputed]:

@@ -113,7 +113,12 @@ class QueuedPolicyClient(PolicyClient):
         if predecessor is not None:
             plan.insert(0, (first - 1, predecessor))
             retained = 1 + min(frozen, len(plan) - 1)
-        merged = self._unflatten([v for _ts, v in plan], chunk, plan[0][0])
+        values = chunk.values
+        if predecessor is not None:  # the plan starts one step before this chunk
+            values = {key: rows[:1] + rows for key, rows in values.items()}
+        merged = self._unflatten([v for _ts, v in plan], chunk, plan[0][0]).model_copy(
+            update={"values": values}
+        )
         if self._smoothing_passes > 0:
             merged = smooth_action_chunk(
                 merged, passes=self._smoothing_passes, retained_prefix_steps=retained

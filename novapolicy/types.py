@@ -64,6 +64,11 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     :meth:`PolicySchema.apply_inverse_ops` before they reach the robot.
     """
 
+    values: dict[str, list[list[float]]] = pydantic.Field(default_factory=dict)
+    """Policy outputs for the keys ``Action.computed(..., keys=[...])`` hooks consume, one row
+    per step: actuators outside NOVA, such as a gripper on its own bus. Every policy client
+    fills it the same way, so a hook reads ``chunk.values[key]`` whatever the policy."""
+
     dt_ms: float = 0.0
     """Time spacing between steps in milliseconds. 0 = single-step."""
 

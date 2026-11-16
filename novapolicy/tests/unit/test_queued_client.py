@@ -99,3 +99,22 @@ async def test_with_smoothing_the_frozen_head_stays_exactly_as_published():
     head = second.tcp[mg][:3]  # the predecessor (timestep 2) and the frozen timesteps 3, 4
     for offset, step in enumerate(head):
         assert step == pytest.approx(published[second.action_timestep + offset], abs=1e-3)
+
+
+@pytest.mark.asyncio
+async def test_computed_action_values_stay_aligned_with_the_plan():
+    """The plan starts one step before a replacement; its hook values start there too."""
+    step = [[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]] * 4
+    client, schema, states, _mg_id = _setup([step, step])
+    inner = client.policy
+    assert isinstance(inner, _Chunks)
+    inner.chunks = [
+        c.model_copy(update={"values": {"gripper": [[float(i)] for i in range(4)]}})
+        for c in inner.chunks
+    ]
+    first = await client.get_actions(states, schema)
+    assert first.values["gripper"] == [[0.0], [1.0], [2.0], [3.0]]
+    client.synchronize_action_timestep(2)
+    second = await client.get_actions(states, schema)
+    assert second.action_timestep == 1
+    assert second.values["gripper"][0] == second.values["gripper"][1] == [0.0]

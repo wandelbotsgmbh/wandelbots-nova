@@ -1018,7 +1018,7 @@ def _modality(keys: list[str]) -> dict:
 @pytest.mark.asyncio
 async def test_the_client_takes_its_keys_from_the_server() -> None:
     """After validate_schema, the prompt goes under the server's language key, only the
-    server's state keys are sent, a computed state counts, and the raw action is kept."""
+    server's state keys are sent, a computed state counts, and hook actions land in values."""
     port = _find_free_port()
     server = _RecordingGr00tServer(port)
     server._modality_config = {
@@ -1033,6 +1033,9 @@ async def test_the_client_takes_its_keys_from_the_server() -> None:
         async def gripper(_obs: object) -> dict[str, float]:
             return {"gripper": 0.0}
 
+        async def gripper_command(_chunk: ActionChunk) -> None:
+            pass
+
         schema = PolicySchema(
             observations=[
                 Observation.joint_positions("arm_joints", source=mg, action=False),
@@ -1040,7 +1043,10 @@ async def test_the_client_takes_its_keys_from_the_server() -> None:
                 Observation.computed(gripper, keys=["gripper"]),
                 Observation.constant("language", value="pick up the cube"),
             ],
-            actions=[Action.tcp("eef_delta", target=mg, mode="relative")],
+            actions=[
+                Action.tcp("eef_delta", target=mg, mode="relative"),
+                Action.computed(gripper_command, keys=["gripper"]),
+            ],
         )
         client = Gr00tPolicyClient(host="127.0.0.1", port=port)
         await client.connect([mg.id])
@@ -1053,11 +1059,12 @@ async def test_the_client_takes_its_keys_from_the_server() -> None:
             },
             {},
         )
-        await client.get_actions({mg.id: state}, schema)
+        chunk = await client.get_actions({mg.id: state}, schema)
         obs = server.last_observation
         assert obs["language"] == {"annotation.human.task_description": [["pick up the cube"]]}
         assert sorted(obs["state"]) == ["arm_joints", "gripper"]
-        assert client.last_raw_action["gripper"].shape == (16, 1)
+        assert len(chunk.values["gripper"]) == 16  # for the Action.computed hook
+        assert chunk.values["gripper"][0] == [-1.0]
         await client.close()
     finally:
         server.close()

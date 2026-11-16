@@ -100,9 +100,6 @@ class Gr00tPolicyClient(PolicyClient):
         # the run): the state keys it expects and the key its language instruction goes in.
         self._server_state_keys: set[str] | None = None
         self._language_key = _DEFAULT_LANGUAGE_KEY
-        self.last_raw_action: dict[str, np.ndarray] = {}
-        """The server's last answer, every action key as a ``(horizon, dim)`` array; an
-        ``Action.computed`` hook reads actions that drive hardware outside NOVA from it."""
 
         # RTC (Real-Time Chunking) — client-side state
         self._rtc_config: RTCConfig | None = rtc
@@ -423,11 +420,6 @@ class Gr00tPolicyClient(PolicyClient):
         info: dict[str, object],
     ) -> ActionChunk:
         """Convert GR00T action arrays → ActionChunk."""
-        self.last_raw_action = {
-            key: np.asarray(arr)[0] if np.asarray(arr).ndim == _ACTION_NDIM else np.asarray(arr)
-            for key, arr in action.items()
-            if isinstance(arr, np.ndarray)
-        }
         joints: dict[str, list[list[float]]] = {}
         ios: dict[str, dict[str, bool | int | float | str]] = {}
 
@@ -455,10 +447,19 @@ class Gr00tPolicyClient(PolicyClient):
             if typed_arr is not None:
                 tcp_targets[mg.id] = typed_arr[0].astype(np.float32).tolist()
 
-        _require_some_action(schema, action, decoded=bool(joints or tcp_targets or ios))
+        # Outputs for Action.computed hooks (hardware outside NOVA)
+        values: dict[str, list[list[float]]] = {}
+        for key in schema.computed_action_keys:
+            typed_arr = _action_array(action, key)
+            if typed_arr is not None:
+                values[key] = typed_arr[0].astype(np.float32).tolist()
+
+        _require_some_action(schema, action, decoded=bool(joints or tcp_targets or ios or values))
 
         dt_ms = float(cast("float", info.get("dt_ms", self._dt_ms)))
-        return ActionChunk(joints=joints, tcp=tcp_targets, ios=ios or None, dt_ms=dt_ms)
+        return ActionChunk(
+            joints=joints, tcp=tcp_targets, ios=ios or None, values=values, dt_ms=dt_ms
+        )
 
 
 def _require_some_action(schema: PolicySchema, action: dict[str, object], *, decoded: bool) -> None:

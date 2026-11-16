@@ -557,3 +557,14 @@ def test_tcp_limits_name_each_broken_limit():
 def test_tcp_limits_reject_inverted_bounds():
     with pytest.raises(ValueError, match="min < max"):
         TcpLimits(x_mm=(10.0, -10.0))
+
+
+def test_computed_action_values_survive_trimming_smoothing_and_relative_targets():
+    """Values for Action.computed hooks travel with the chunk through every rebuild."""
+    rows = [[float(i)] for i in range(6)]
+    chunk = ActionChunk(tcp={"mg": [[0.0] * 6] * 6}, values={"gripper": rows}, dt_ms=33.0)
+    assert trim_chunk(chunk, 4).values == {"gripper": rows[:4]}
+    assert smooth_action_chunk(chunk).values == {"gripper": rows}
+    pose = SimpleNamespace(position=[1.0, 2.0, 3.0], orientation=[0.0, 0.0, 0.0])
+    resolved = apply_relative_mode(chunk, {"mg": SimpleNamespace(joints=[], pose=pose)}, ["mg"])
+    assert resolved.values == {"gripper": rows}
