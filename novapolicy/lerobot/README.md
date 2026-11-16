@@ -268,9 +268,7 @@ diffusion) ignore it.
 The rate returned actions are played at, in steps per second (not how often the policy is asked:
 that is `ContinuousExecution(rate_hz=...)`). LeRobot calls this `fps`: it is the
 dataset's frame rate (`fps` in its `meta/info.json`) and the `fps` of LeRobot's own robot client.
-Pass that value as `control_freq`; novapolicy uses the same name in every client, the control
-frequency as robosuite and ManiSkill call it, because a reinforcement-learning policy has a control
-frequency rather than a frame rate:
+Pass that value as `control_freq`, the name every novapolicy client uses:
 
 ```python
 control_freq = 15  # the dataset's fps; ActionChunk.dt_ms = 1000 / 15
