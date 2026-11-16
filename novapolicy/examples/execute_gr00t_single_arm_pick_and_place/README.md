@@ -29,8 +29,8 @@ export NOVA_API=http://<nova-host>
 
 ```bash
 # Policy
-uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/run_sequential.py [--execute]
-uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/run_continuous.py [--execute]
+uv run python novapolicy/examples/execute_gr00t_single_arm_pick_and_place/run_sequential.py [--execute]
+uv run python novapolicy/examples/execute_gr00t_single_arm_pick_and_place/run_continuous.py [--execute]
 
 # Training-episode replay, with the generic replay script
 uv run python novapolicy/examples/replay/replay_episode.py --episode <episode_000075.parquet> \
@@ -56,7 +56,7 @@ uv run python novapolicy/examples/settings_from_episode.py \
     --modality <dataset>/meta/modality.json \
     --robot arm mg=0@ur10e-calibration tcp=umi_corrected joints=arm_joints action=eef_delta \
             gripper=gripper gripper_closed=-0.023 \
-    --write novapolicy/examples/gr00t_single_arm_pick_and_place/episode_settings.json
+    --write novapolicy/examples/execute_gr00t_single_arm_pick_and_place/episode_settings.json
 ```
 
 The script works for any number of robots: pass `--robot` once per arm (for a dual-arm policy,
@@ -73,4 +73,4 @@ closed gripper state (the training config's close command; the fingers stop on t
 What is left as constants at the top of [`gr00t_ur10e.py`](gr00t_ur10e.py) is what no episode
 contains: the policy server, the prompt, the image size, the cameras, the gripper's address and
 the `TcpLimits`, which are the deployer's safety choice. See [the GR00T setup
-guide](../../gr00t/README.md) for the whole workflow.
+guide](../../docs/gr00t.md#setting-up-a-policy-on-a-real-robot) for the whole workflow.
