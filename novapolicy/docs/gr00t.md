@@ -31,7 +31,7 @@ schema = PolicySchema(
     ]
 )
 
-client = Gr00tPolicyClient(host="gpu-server", port=5555, dt_ms=66.7, rtc=RTCConfig())
+client = Gr00tPolicyClient(host="gpu-server", port=5555, fps=15, rtc=RTCConfig())
 
 executor = PolicyExecutor(
     schema,
@@ -77,7 +77,7 @@ from novapolicy import ContinuousExecution, Gr00tPolicyClient, PolicyExecutor, R
 client = Gr00tPolicyClient(
     host="gpu-server",
     port=30555,
-    dt_ms=66.7,
+    fps=15,
     rtc=RTCConfig(),  # pass RTCConfig to enable, None (default) to disable
 )
 
@@ -180,10 +180,11 @@ Use this to:
 
 > **Note:** The server does not report `dt_ms` (step timing). This must be set
 > on the client to match the training data rate. For example, data recorded at
-> 15 Hz → `dt_ms=66.7`:
+> 15 Hz → `fps=15`. Without it, `validate_schema` refuses to run (reading server info needs
+> no rate):
 >
 > ```python
-> client = Gr00tPolicyClient(host="gpu-server", dt_ms=66.7)
+> client = Gr00tPolicyClient(host="gpu-server", fps=15)
 > ```
 
 ## Debugging Chunk Alignment

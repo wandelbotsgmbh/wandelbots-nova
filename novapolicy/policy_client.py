@@ -77,8 +77,10 @@ class PolicyClient(ABC):
 class CallbackPolicyClient(PolicyClient):
     """Explicit adapter for a local asynchronous policy callback."""
 
-    def __init__(self, fn: Callable[..., Any]) -> None:
+    def __init__(self, fn: Callable[..., Any], *, fps: float | None = None) -> None:
+        """``fps``: the rate of the callback's steps, for chunks that carry no ``dt_ms``."""
         self._fn = fn
+        self._dt_ms = 1000.0 / fps if fps else 0.0
 
     async def get_actions(
         self,
@@ -90,4 +92,7 @@ class CallbackPolicyClient(PolicyClient):
         observation: dict[str, Any] = await schema.build_observation(states, io_values)
         if images:
             observation.update(images)
-        return await self._fn(observation)
+        chunk = await self._fn(observation)
+        if self._dt_ms and chunk.dt_ms <= 0:
+            chunk = chunk.model_copy(update={"dt_ms": self._dt_ms})
+        return chunk

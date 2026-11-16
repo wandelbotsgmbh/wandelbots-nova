@@ -14,6 +14,7 @@ import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
+import warnings
 
 import numpy as np
 
@@ -73,8 +74,12 @@ class Gr00tPolicyClient(PolicyClient):
         ZMQ send/recv timeout in milliseconds.
     api_token:
         Optional API token for authenticated servers.
+    fps:
+        Rate of the policy's steps: the training data's frame rate (``fps`` in the
+        dataset's ``meta/info.json``). Required: GR00T servers do not report it. A
+        ``dt_ms`` in a server's action info still wins.
     dt_ms:
-        Default step spacing if not in action info.
+        Deprecated: pass ``fps``.
     tcp_format:
         TCP pose representation format sent to the server, unless the
         ``Observation.tcp`` declares an ``orientation_type``.
@@ -95,7 +100,8 @@ class Gr00tPolicyClient(PolicyClient):
         port: int = 5555,
         timeout_ms: int = 15000,
         api_token: str | None = None,
-        dt_ms: float = 33.0,
+        fps: float | None = None,
+        dt_ms: float | None = None,
         tcp_format: TcpFormat = TcpFormat.ROT6D,
         rtc: RTCConfig | None = None,
         statistics: str | Path | None = None,
@@ -107,7 +113,7 @@ class Gr00tPolicyClient(PolicyClient):
             timeout_ms=timeout_ms,
             api_token=api_token,
         )
-        self._dt_ms = dt_ms
+        self._dt_ms = _step_spacing_ms(fps, dt_ms)
         self._tcp_format = tcp_format
         # The checkpoint's statistics.json, to hold the first observation against
         self._statistics: dict[str, Any] = (
@@ -147,6 +153,7 @@ class Gr00tPolicyClient(PolicyClient):
         required state, video, and language keys are present in the schema.
         Raises ``ValueError`` with a clear message listing any missing keys.
         """
+        self._step_ms()  # needs fps= to run, before the robot moves
         config = await self.get_modality_config()
         errors: list[str] = []
 
@@ -226,6 +233,12 @@ class Gr00tPolicyClient(PolicyClient):
             ranges[key] = [(float(lo), float(hi)) for lo, hi in zip(lows, highs, strict=False)]
         return ranges
 
+    def _step_ms(self) -> float:
+        """The step spacing from ``fps``; raises when it was not given."""
+        if self._dt_ms is None:
+            raise ValueError(_NEEDS_FPS)
+        return self._dt_ms
+
     def reset_rtc(self) -> None:
         """Clear RTC state (call on episode/task boundaries)."""
         self._rtc_state.reset()
@@ -255,7 +268,7 @@ class Gr00tPolicyClient(PolicyClient):
                 else 0.0
             )
             options = compute_rtc_options(
-                self._rtc_config, self._rtc_state, latency_estimate, self._dt_ms
+                self._rtc_config, self._rtc_state, latency_estimate, self._step_ms()
             )
 
         t0 = _time.monotonic()
@@ -515,7 +528,8 @@ class Gr00tPolicyClient(PolicyClient):
 
         _require_some_action(schema, action, decoded=bool(joints or tcp_targets or ios or values))
 
-        dt_ms = float(cast("float", info.get("dt_ms", self._dt_ms)))
+        reported = info.get("dt_ms")
+        dt_ms = float(cast("float", reported)) if reported is not None else self._step_ms()
         return ActionChunk(
             joints=joints, tcp=tcp_targets, ios=ios or None, values=values, dt_ms=dt_ms
         )
@@ -564,6 +578,26 @@ def _action_array(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _step_spacing_ms(fps: float | None, dt_ms: float | None) -> float | None:
+    if dt_ms is not None:
+        warnings.warn(
+            "Gr00tPolicyClient(dt_ms=...) is deprecated; pass fps=",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        if fps is None:
+            fps = 1000.0 / dt_ms
+    if fps is not None and fps <= 0:
+        raise ValueError(f"fps must be positive, got {fps}")
+    return None if fps is None else 1000.0 / fps
+
+
+_NEEDS_FPS = (
+    "Gr00tPolicyClient needs fps= to run a policy: GR00T servers do not report the rate their "
+    "policy was trained at (fps in the dataset's meta/info.json)"
+)
 
 
 def _bounded_state(

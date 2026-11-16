@@ -73,7 +73,7 @@ settings = EpisodeSettings.load("episode_settings.json")
 arm = settings.robots["arm"]
 mg = (await nova.cell().controller(controller)).motion_group(arm.motion_group)
 
-client = Gr00tPolicyClient(host, port=port, dt_ms=1000 / settings.rate_hz)
+client = Gr00tPolicyClient(host, port=port, fps=settings.rate_hz)  # the training rate
 webrtc = WebRTCCameras(api_url=camera_server, resize=(320, 240), resize_mode="crop")
 schema = PolicySchema(
     observations=[
