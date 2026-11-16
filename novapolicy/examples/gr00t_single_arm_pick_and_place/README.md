@@ -10,7 +10,8 @@ policy's training episodes on the same cell.
 | `run_continuous.py` | Policy, streaming: re-infers as fast as the server answers, chunks merged on a timestep queue |
 | `gr00t_ur10e.py` | Shared implementation of the two `run_*` scripts: the policy's facts, the cell and the limits as constants at the top, the schema and the run |
 | `zimmer_gripper.py` | The Zimmer gripper as `Observation.computed` / `Action.computed` hooks, and the hold that keeps the arm still while the jaws move |
-| `settings_from_episode.py` | Reads the schema settings from a training episode: action frame and gains, delta vs. absolute, gripper polarity and values, and the envelope the limits should cover |
+| `settings_from_episode.py` | Measures from a training episode what the policy's actions mean and writes `episode_settings.json` |
+| `episode_settings.json` | Written by `settings_from_episode.py` for episode 75: rate, home, the deltas' coordinate system, the gains and the gripper values; `gr00t_ur10e.py` loads it |
 
 Without `--execute` every script is a dry run: nothing moves. With `--execute` it asks
 for `yes` before the gripper or the arm moves. Keep a hand on the e-stop.
@@ -46,16 +47,23 @@ replay the whole episode. `--speed 0.4` is ~90 mm/s (the recording: median 229 m
 
 ## Where the settings come from
 
-The constants at the top of [`gr00t_ur10e.py`](gr00t_ur10e.py) come from the training setup
-(checkpoint-14000, IsaacLab `UR10ePlaceCubeEnvCfg`, dataset `ur10e_place_lerobot_unmodified`) and
-the cell. The ones the training config does not state, checked against a training episode
-(nothing moves):
+[`episode_settings.json`](episode_settings.json) is measured, not typed: rate, home joints, the
+deltas' coordinate system, the training controller's gains and the gripper values. Regenerate it
+for another policy or episode (nothing moves):
 
 ```bash
 uv run python novapolicy/examples/gr00t_single_arm_pick_and_place/settings_from_episode.py \
-    --episode <episode_000075.parquet>
+    --episode <episode_000075.parquet> --controller ur10e-calibration --tcp umi_corrected \
+    --gripper-closed -0.023 \
+    --write novapolicy/examples/gr00t_single_arm_pick_and_place/episode_settings.json
 ```
 
-It prints the delta frame, the position and rotation gains, the gripper polarity and values, and
-the training envelope the limits should cover. See [the GR00T setup guide](../../gr00t/README.md)
-for the whole workflow.
+It stops instead of writing when a fit is poor or the episode cannot tell. Two inputs cannot be
+measured: `--tcp`, the point on the tool the training poses refer to (every TCP of this robot fits
+episode 75 about equally well, because the tool barely rotates), and `--gripper-closed`, the fully
+closed gripper state (the training config's close command; the fingers stop on the cube first).
+
+What is left as constants at the top of [`gr00t_ur10e.py`](gr00t_ur10e.py) is what no episode
+contains: the policy server, the prompt, the image size, the cameras, the gripper's address and
+the `TcpLimits`, which are the deployer's safety choice. See [the GR00T setup
+guide](../../gr00t/README.md) for the whole workflow.

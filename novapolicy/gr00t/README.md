@@ -32,8 +32,10 @@ The server tells the keys, not their meaning. From the training setup, find out:
 The training config usually states these. A policy trained with a differential-IK controller
 (IsaacLab's relative pose command) outputs commands, and the simulated robot realized only part of
 each one; an extra `Scale` converts commanded to realized motion. The example's
-[`settings_from_episode.py`](../examples/gr00t_single_arm_pick_and_place/settings_from_episode.py) measures frame, gain
-and gripper polarity from one training episode when the config does not say.
+[`settings_from_episode.py`](../examples/gr00t_single_arm_pick_and_place/settings_from_episode.py)
+measures all of this except the TCP from one training episode (delta vs. absolute, coordinate
+system, gains, gripper polarity and values, rate, home) and writes it to a JSON file the run script
+loads, so none of it is typed by hand. It stops instead of writing when the episode cannot tell.
 
 The TCP must be known: nothing in the data recovers it unless the training tool rotated a lot.
 Rotations pivot about it, so a TCP d mm off shifts the position by about d × angle while rotating.

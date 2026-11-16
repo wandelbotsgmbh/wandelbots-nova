@@ -1,17 +1,23 @@
-"""Read the schema settings a GR00T policy needs from one of its training episodes.
+"""Write the settings a GR00T policy needs, measured from one of its training episodes.
 
 The episode's recorded joints, run through the robot's forward kinematics (DH parameters
 and TCP from NOVA), give the TCP path the training robot actually moved. Comparing that
-path with the recorded actions shows which frame the deltas are in, how much of each
-commanded step the training controller realized (the gains, by least squares), whether
-the actions are deltas or absolute targets, and how the gripper is driven. The output maps
-onto the ``Action.tcp(mode="relative", ...)`` options, the ``Scale`` operators, the gripper
-values and the ``TcpLimits`` in ``gr00t_ur10e.py``. Optional: when the training config
-states these, read them there.
+path with the recorded actions shows whether the actions are deltas or absolute targets,
+which coordinate system the deltas are in, how much of each commanded step the training
+controller realized (the gains, by least squares) and how the gripper is driven. The
+episode also gives the rate and the start (home) joints.
 
-    NOVA_API=http://<nova> uv run python settings_from_episode.py --episode episode_000075.parquet \
-        [--controller ur10e-calibration --tcp umi_corrected]
+``--write`` stores them as JSON (:class:`EpisodeSettings`), which ``gr00t_ur10e.py`` loads.
+Nothing is guessed: a fit below ``R2_GOOD`` or a convention ``Action.tcp`` cannot express
+stops the script instead of writing settings.
 
+    NOVA_API=http://<nova> uv run python settings_from_episode.py \
+        --episode episode_000075.parquet --controller ur10e-calibration --tcp umi_corrected \
+        --gripper-closed -0.023 --write episode_settings.json
+
+``--tcp`` is the point on the tool the training poses refer to; it cannot be measured.
+``--gripper-closed`` is the gripper state when fully closed (the training config's close
+command); an episode never shows it because the fingers stop on the object.
 Columns default to this policy's dataset: ``observation.state`` = [6 joints (rad), gripper],
 ``action`` = [6 eef deltas (m, rotation vector), gripper].
 """
@@ -20,7 +26,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+import json
+import math
+from pathlib import Path
+import sys
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -258,43 +268,116 @@ def _load(path: str) -> tuple[np.ndarray, np.ndarray, float]:
     return state, action, fps
 
 
+@dataclass(frozen=True)
+class EpisodeSettings:
+    """What a training episode says about a policy's actions, for its ``PolicySchema``."""
+
+    episode: str
+    controller: str
+    tcp: str  # the TCP the fit used; the run must use the same one
+    rate_hz: float
+    home_deg: list[float]  # the episode's start joints
+    use_tool_coordinate_system: bool  # the deltas' coordinate system (False: world)
+    gain_position: float  # realized / commanded TCP motion per step
+    gain_rotation: float
+    fit_r2_position: float
+    fit_r2_rotation: float
+    gripper_close_when_negative: bool
+    gripper_open: float
+    gripper_closed: float
+    gripper_holding: float
+
+    @classmethod
+    def load(cls, path: str | Path) -> EpisodeSettings:
+        return cls(**json.loads(Path(path).read_text(encoding="utf-8")))
+
+    def write(self, path: str | Path) -> None:
+        Path(path).write_text(json.dumps(asdict(self), indent=2) + "\n", encoding="utf-8")
+
+
+def measure(
+    episode: str,
+    kinematics: Kinematics,
+    *,
+    controller: str,
+    tcp: str,
+    gripper_closed: float,
+) -> EpisodeSettings:
+    """Settings from one episode; raises ``ValueError`` where the episode cannot tell."""
+    state, action, fps = _load(episode)
+    joints = state[:, :6]
+    poses = [kinematics.fk(q) for q in joints]
+    deltas = action[:, :6]
+    best = fit_delta_frames(poses, deltas)[0]
+    absolute = absolute_r2(poses, deltas)
+    problems = []
+    if best.pos_r2 < R2_GOOD:
+        problems.append(f"no delta frame fits (best {best.frame}: R2 {best.pos_r2:.2f})")
+    if absolute >= best.pos_r2:
+        problems.append(f"the actions fit as absolute targets better (R2 {absolute:.2f})")
+    if best.rot_z_deg not in {None, 0}:
+        problems.append(f"the deltas are in the {best.frame}, which Action.tcp cannot express")
+    if best.lag != 0:
+        problems.append("each action shows up one step late; check the dataset alignment")
+    grip = fit_gripper(state[:, 6], action[:, 6])
+    if grip is None:
+        problems.append("the gripper never switches in this episode")
+    if problems:
+        raise ValueError("; ".join(problems))
+    assert grip is not None
+    return EpisodeSettings(
+        episode=Path(episode).name,
+        controller=controller,
+        tcp=tcp,
+        rate_hz=round(float(fps), 3),
+        home_deg=[round(math.degrees(float(q)), 3) for q in joints[0]],
+        use_tool_coordinate_system=best.rot_z_deg is None,
+        gain_position=round(float(best.pos_gain), 4),
+        gain_rotation=round(float(best.rot_gain), 4),
+        fit_r2_position=round(float(best.pos_r2), 3),
+        fit_r2_rotation=round(float(best.rot_r2), 3),
+        gripper_close_when_negative=bool(grip.close_when_negative),
+        gripper_open=round(float(grip.open_state), 6),
+        gripper_closed=gripper_closed,
+        gripper_holding=round(float(grip.holding_state), 6),
+    )
+
+
 async def _main(args: argparse.Namespace) -> None:
     import nova
 
-    state, action, fps = _load(args.episode)
     async with nova.Nova() as n:
         mg = (await n.cell().controller(args.controller))[0]
         kinematics = Kinematics.from_description(await mg.get_description(), args.tcp)
-    joints = state[:, :6]
-    poses = [kinematics.fk(q) for q in joints]
-    tcp = action[:, :6]
-    print(f"{args.episode}: {len(state)} frames at {fps:.1f} Hz")
-    print("Delta frames (best first): frame, lag, position gain / R2, rotation gain / R2")
-    for f in fit_delta_frames(poses, tcp)[:4]:
-        print(
-            f"  {f.frame:32s} lag {f.lag}  pos {f.pos_gain:+.3f} / {f.pos_r2:.2f}"
-            f"  rot {f.rot_gain:+.3f} / {f.rot_r2:.2f}"
+    try:
+        settings = measure(
+            args.episode,
+            kinematics,
+            controller=args.controller,
+            tcp=args.tcp,
+            gripper_closed=args.gripper_closed,
         )
-    print(f"As absolute targets instead: R2 {absolute_r2(poses, tcp):.2f} (delta if well below)")
-    grip = fit_gripper(state[:, 6], action[:, 6])
-    if grip is not None:
-        sign = "negative" if grip.close_when_negative else "positive"
-        print(
-            f"Gripper: a {sign} command closes; state open {grip.open_state:.4g}, "
-            f"holding {grip.holding_state:.4g} (close at frame {grip.close_frame})"
-        )
-    env = path_summary(poses, joints, fps)
-    print(
-        f"Envelope: x {env.lo[0]:.0f}..{env.hi[0]:.0f}, y {env.lo[1]:.0f}..{env.hi[1]:.0f}, "
-        f"z {env.lo[2]:.0f}..{env.hi[2]:.0f} mm; speed median {env.speed_median:.0f}, "
-        f"max {env.speed_max:.0f} mm/s"
+    except ValueError as e:
+        sys.exit(f"Not writing settings: {e}")
+    print(json.dumps(asdict(settings), indent=2))
+    state, _action, fps = _load(args.episode)
+    env = path_summary([kinematics.fk(q) for q in state[:, :6]], state[:, :6], fps)
+    print(  # for choosing TcpLimits wider than the motion the policy learned
+        f"Training envelope: x {env.lo[0]:.0f}..{env.hi[0]:.0f}, y {env.lo[1]:.0f}..{env.hi[1]:.0f}, "
+        f"z {env.lo[2]:.0f}..{env.hi[2]:.0f} mm; speed max {env.speed_max:.0f} mm/s"
     )
-    print(f"Start joints (deg): {np.round(np.degrees(env.start_joints), 1).tolist()}")
+    if args.write:
+        settings.write(args.write)
+        print(f"Wrote {args.write}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--episode", required=True)
-    parser.add_argument("--controller", default="ur10e-calibration")
-    parser.add_argument("--tcp", default="umi_corrected")
+    parser.add_argument("--controller", required=True)
+    parser.add_argument("--tcp", required=True, help="the point the training poses refer to")
+    parser.add_argument(
+        "--gripper-closed", type=float, required=True, help="the gripper state when fully closed"
+    )
+    parser.add_argument("--write", help="write the settings to this JSON file")
     asyncio.run(_main(parser.parse_args()))

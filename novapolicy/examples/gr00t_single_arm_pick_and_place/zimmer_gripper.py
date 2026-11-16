@@ -55,7 +55,7 @@ class ZimmerGripper:
 
     ``GripperSession`` is blocking and thread based, so commands run in a worker thread.
     A command is only sent when the open/closed decision changes, at the step of the
-    chunk that asks for it (a negative command closes). While a command runs,
+    chunk that asks for it. While a command runs,
     :class:`HoldWhileGripping` keeps the arm still and the policy is not asked, so its
     next observation is taken after the jaws have settled.
 
@@ -63,6 +63,7 @@ class ZimmerGripper:
         client: The GR00T client; its ``last_raw_action["gripper"]`` is the command.
         host: The IO-Link master's address.
         states: The policy's gripper state values.
+        close_when_negative: A negative command closes (else a positive one).
         open_gap_mm: The jaw gap after homing; the gap maps linearly onto
             ``states.closed`` .. ``states.open``.
         lookahead_steps: Steps of each answer a switch may come from.
@@ -75,6 +76,7 @@ class ZimmerGripper:
         host: str,
         *,
         states: GripperStates,
+        close_when_negative: bool = True,
         open_gap_mm: float,
         lookahead_steps: int,
         dt_ms: float,
@@ -84,6 +86,7 @@ class ZimmerGripper:
         self._client = client
         self._host = host
         self._states = states
+        self._close_when_negative = close_when_negative
         self._open_gap_mm = open_gap_mm
         self._lookahead_steps = lookahead_steps
         self._dt_ms = dt_ms
@@ -138,8 +141,9 @@ class ZimmerGripper:
         command = self._client.last_raw_action.get("gripper")
         values = [] if command is None else np.asarray(command).reshape(-1).tolist()
         for index, value in enumerate(values[: self._lookahead_steps]):
-            if (value < 0.0) != closed:
-                return index, value < 0.0
+            close = value < 0.0 if self._close_when_negative else value > 0.0
+            if close != closed:
+                return index, close
         return None
 
     async def act(self, _chunk: ActionChunk) -> None:

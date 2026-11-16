@@ -27,11 +27,13 @@ import argparse
 import asyncio
 import logging
 import math
+from pathlib import Path
 import sys
 import time
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from settings_from_episode import EpisodeSettings
 from zimmer_gripper import GripperStates, HoldWhileGripping, ZimmerGripper
 
 from nova import ProgramContext, api, program, run_program, viewers
@@ -58,29 +60,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# --- The policy (from the training setup) -------------------------------------------------
+# --- Measured from a training episode (settings_from_episode.py --write) -------------------
+# Rate, home, the deltas' coordinate system, the training controller's gains and the gripper
+# values; README.md shows how to regenerate the file for another policy or episode.
+SETTINGS = EpisodeSettings.load(Path(__file__).with_name("episode_settings.json"))
+CONTROLLER, TCP = SETTINGS.controller, SETTINGS.tcp  # the fit was made for this TCP
+
+# --- The policy server and what the episode cannot tell -------------------------------------
 GROOT_HOST, GROOT_PORT = "172.31.11.129", 30555
 PROMPT = "pick up the cube and place it on the yellow square"
-RATE_HZ = 30.0  # sim dt 1/120 s, decimation 4
-IMAGE_SIZE = (320, 240)  # the sim cameras' resolution (4:3)
-# How much of each commanded eef_delta the simulated robot actually moved. The policy was
-# trained on the commands of an IsaacLab DifferentialIK controller (relative pose, applied
-# to the measured pose); in the 4 physics substeps of one policy step the arm covered only
-# part of each command. Not stated in the training config: settings_from_episode.py
-# measures it from a training episode, as the least-squares ratio of the TCP motion
-# (forward kinematics of the recorded joints) to the commanded deltas: 0.242 for
-# position (R^2 0.84) and 0.304 for rotation (R^2 0.59) on episode 75.
-GAIN_POSITION, GAIN_ROTATION = 0.24, 0.30
-# The gripper state is the UMI finger joint ("PrismaticJoint", metres). Open and closed are
-# the training config's BinaryJointPositionActionCfg open/close_command_expr (the joint
-# limits 0.0 and -0.023); holding is where the fingers stopped on the cube in the training
-# data (settings_from_episode.py: -0.0135 after the close; checkpoint range -0.0151..0.0).
-GRIPPER = GripperStates(open=0.0, closed=-0.023, holding=-0.0136)
+IMAGE_SIZE = (320, 240)  # the sim cameras' resolution (dataset meta/info.json)
 
 # --- The cell ----------------------------------------------------------------------------
-CONTROLLER = "ur10e-calibration"
-TCP = "umi_corrected"  # finger-pad midpoint, the sim's IK point
-HOME_DEG = (90.0, -90.0, 90.0, -90.0, -90.0, 0.0)  # the training episodes' start
 CAMERA_SERVER = "http://172.31.11.253/cell/realsense"
 CAMERAS = {"wrist": "427622271414", "side": "319522063360", "top": "314522065367"}
 GRIPPER_HOST = "172.31.13.49"  # Turck TBEN-S2-4IOL for the Zimmer GEH6060IL
@@ -120,7 +111,8 @@ async def lift_if_low(mg: MotionGroup) -> None:
 
 async def move_home(mg: MotionGroup) -> None:
     await lift_if_low(mg)
-    actions = [joint_ptp(tuple(math.radians(d) for d in HOME_DEG), settings=HOME_SETTINGS)]
+    home = tuple(math.radians(d) for d in SETTINGS.home_deg)
+    actions = [joint_ptp(home, settings=HOME_SETTINGS)]
     await mg.execute(await mg.plan(actions, TCP), TCP, actions=actions)
 
 
@@ -128,14 +120,19 @@ def build(
     mg: MotionGroup, *, continuous: bool
 ) -> tuple[Gr00tPolicyClient, PolicySchema, ZimmerGripper, dict[str, Any]]:
     """The GR00T client, the schema, the gripper and the cameras."""
-    dt_ms = 1000.0 / RATE_HZ / SPEED_FACTOR
+    dt_ms = 1000.0 / SETTINGS.rate_hz / SPEED_FACTOR
     client = Gr00tPolicyClient(host=GROOT_HOST, port=GROOT_PORT, dt_ms=dt_ms)
     # Sequential: a switch anywhere in the steps that run. Continuous: the policy is asked
     # again every few steps, so act on the current step's decision only.
     gripper = ZimmerGripper(
         client,
         GRIPPER_HOST,
-        states=GRIPPER,
+        states=GripperStates(
+            open=SETTINGS.gripper_open,
+            closed=SETTINGS.gripper_closed,
+            holding=SETTINGS.gripper_holding,
+        ),
+        close_when_negative=SETTINGS.gripper_close_when_negative,
         open_gap_mm=GRIPPER_OPEN_GAP_MM,
         lookahead_steps=1 if continuous else N_ACTION_STEPS,
         dt_ms=dt_ms,
@@ -158,9 +155,10 @@ def build(
                 target=mg,
                 mode="relative",
                 accumulate=True,  # each step applies to the pose the previous one reached
-                use_tool_coordinate_system=False,  # deltas in the robot base (= world here)
-                position_ops=[Scale(0.001), Scale(1.0 / GAIN_POSITION)],  # metres, realized
-                orientation_ops=[Scale(1.0 / GAIN_ROTATION)],
+                use_tool_coordinate_system=SETTINGS.use_tool_coordinate_system,
+                # The policy's positions are metres; the gains turn commanded into realized.
+                position_ops=[Scale(0.001), Scale(1.0 / SETTINGS.gain_position)],
+                orientation_ops=[Scale(1.0 / SETTINGS.gain_rotation)],
             ),
             Action.computed(gripper.act),
         ],
@@ -184,7 +182,7 @@ def make_program(*, continuous: bool, execute: bool) -> Any:
                 return
             answer = await asyncio.to_thread(
                 input,
-                f"This homes and opens the gripper, moves {CONTROLLER} to home {HOME_DEG}, "
+                f"This homes and opens the gripper, moves {CONTROLLER} to home {SETTINGS.home_deg}, "
                 "and starts the policy. Type 'yes': ",
             )
             if answer.strip().lower() != "yes":
@@ -212,7 +210,11 @@ async def run_policy(
         print("Moving to home...")
         await move_home(mg)
         held = HoldWhileGripping(
-            client, gripper, mg.id, dt_ms=1000.0 / RATE_HZ / SPEED_FACTOR, hold_steps=HOLD_STEPS
+            client,
+            gripper,
+            mg.id,
+            dt_ms=1000.0 / SETTINGS.rate_hz / SPEED_FACTOR,
+            hold_steps=HOLD_STEPS,
         )
         executor = PolicyExecutor(
             schema,
