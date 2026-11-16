@@ -12,6 +12,7 @@ from lerobot.utils.constants import ACTION, OBS_IMAGES, OBS_STATE
 from lerobot.utils.feature_utils import dataset_to_policy_features
 import numpy as np
 
+from novapolicy.schema import tcp_value_names
 from novapolicy.types import ActionChunk
 
 if TYPE_CHECKING:
@@ -36,8 +37,6 @@ _WARN_MARGIN = 1.0
 # that barely moved during training (0.022 rad) got a +/-0.09 rad window, and
 # the arm's own park pose was reported as a unit mismatch.
 _FAIL_SCALE = 5.0
-_TCP_SUFFIXES = ("x", "y", "z", "rx", "ry", "rz")
-_TCP_ACTION_DIM = len(_TCP_SUFFIXES)
 
 JointActionSlice = tuple[str, slice]
 TcpActionSlice = tuple[str, slice]
@@ -99,7 +98,7 @@ class LeRobotSchema:
         for mapping in schema.tcp_mappings:
             state = states.get(mapping.source.id)
             if state is not None and state.pose is not None:
-                names.extend(f"{mapping.key}_{suffix}" for suffix in _TCP_SUFFIXES)
+                names.extend(tcp_value_names(mapping))
         names.extend(mapping.key for mapping in schema.obs_io_mappings)
         return names
 
@@ -121,8 +120,9 @@ class LeRobotSchema:
 
         tcp_slices: list[TcpActionSlice] = []
         for _key, motion_group in schema.tcp_action_keys:
-            tcp_slices.append((motion_group.id, slice(offset, offset + _TCP_ACTION_DIM)))
-            offset += _TCP_ACTION_DIM
+            width = schema.tcp_action_width(motion_group.id)
+            tcp_slices.append((motion_group.id, slice(offset, offset + width)))
+            offset += width
 
         io_slices: list[IOActionSlice] = []
         for _key, motion_group, io, mapping in schema.io_action_keys:
@@ -305,10 +305,11 @@ class LeRobotSchema:
                 joints[motion_group_id].append([float(value) for value in action[action_slice]])
             for motion_group_id, action_slice in layout.tcp:
                 values = action[action_slice]
-                if values.size != _TCP_ACTION_DIM:
+                width = action_slice.stop - action_slice.start
+                if values.size != width:
                     msg = (
                         f"LeRobot TCP action for {motion_group_id!r} expected "
-                        f"{_TCP_ACTION_DIM} values, got {values.size}"
+                        f"{width} values, got {values.size}"
                     )
                     raise ValueError(msg)
                 tcp[motion_group_id].append([float(value) for value in values])
