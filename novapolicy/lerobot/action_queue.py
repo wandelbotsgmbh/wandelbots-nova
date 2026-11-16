@@ -137,7 +137,7 @@ class LeRobotAsyncActionQueue:
 
         return self._schema.decode_arrays(
             [current_action],
-            FlatActionLayout(joints=[], tcp=[], ios=layout.ios),
+            FlatActionLayout(joints=[], tcp=[], ios=layout.ios, values=layout.values),
             action_timestep=timestep,
         )
 

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from novapolicy.schema import Observation, PolicySchema
+from novapolicy.schema import Action, Observation, PolicySchema
 
 schema_module = pytest.importorskip("novapolicy.lerobot.schema")
 FlatActionLayout = schema_module.FlatActionLayout
@@ -62,6 +62,27 @@ def test_flat_action_layout_orders_joints_then_tcp_then_ios() -> None:
     assert [
         (group_id, io, action_slice) for group_id, io, _mapping, action_slice in layout.ios
     ] == [(joint_mg.id, "digital_out[0]", slice(12, 13))]
+
+
+def test_computed_action_keys_get_a_column_after_the_ios_and_land_in_values() -> None:
+    """An actuator outside NOVA reads its column from chunk.values, one row per step."""
+    mg = _mg()
+
+    async def gripper(_chunk: object) -> None:
+        pass
+
+    schema = PolicySchema(
+        observations=[Observation.joint_positions("arm", source=mg)],
+        actions=[Action.computed(gripper, keys=["gripper"])],
+    )
+    lerobot = LeRobotSchema(dt_ms=50.0)
+    layout = lerobot.action_layout({mg.id: _state((0.0,) * 6)}, schema)
+    assert layout.values == [("gripper", slice(6, 7))]
+    assert layout.width == 7
+    steps = [np.arange(7, dtype=np.float32), np.arange(7, dtype=np.float32) + 10]
+    chunk = lerobot.decode_arrays(steps, layout)
+    assert chunk.values == {"gripper": [[6.0], [16.0]]}
+    assert chunk.joints[mg.id][1] == [10.0, 11.0, 12.0, 13.0, 14.0, 15.0]
 
 
 def test_decode_tcp_action_requires_six_values() -> None:

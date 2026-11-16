@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
@@ -45,6 +45,8 @@ class FlatActionLayout:
     joints: list[JointActionSlice]
     tcp: list[TcpActionSlice]
     ios: list[IOActionSlice]
+    values: list[tuple[str, slice]] = field(default_factory=list)
+    """One column per ``Action.computed(..., keys=[...])`` key, after the IOs."""
 
     @property
     def width(self) -> int:
@@ -52,6 +54,7 @@ class FlatActionLayout:
         stops = [action_slice.stop for _group, action_slice in self.joints]
         stops.extend(action_slice.stop for _group, action_slice in self.tcp)
         stops.extend(action_slice.stop for _group, _io, _mapping, action_slice in self.ios)
+        stops.extend(action_slice.stop for _key, action_slice in self.values)
         return max(stops, default=0)
 
 
@@ -118,7 +121,14 @@ class LeRobotSchema:
         for _key, motion_group, io, mapping in schema.io_action_keys:
             io_slices.append((motion_group.id, io, mapping, slice(offset, offset + 1)))
             offset += 1
-        return FlatActionLayout(joints=joint_slices, tcp=tcp_slices, ios=io_slices)
+        # Actuators outside NOVA (a gripper on its own bus): one column per declared key.
+        value_slices = [
+            (key, slice(offset + i, offset + i + 1))
+            for i, key in enumerate(schema.computed_action_keys)
+        ]
+        return FlatActionLayout(
+            joints=joint_slices, tcp=tcp_slices, ios=io_slices, values=value_slices
+        )
 
     @staticmethod
     def validate_schema(schema: PolicySchema) -> None:
@@ -322,10 +332,15 @@ class LeRobotSchema:
                     raise ValueError(msg)
                 ios.setdefault(motion_group_id, {})[io] = mapping.to_hardware(float(values[0]))
 
+        values = {
+            key: [[float(v) for v in action[action_slice]] for action in action_arrays]
+            for key, action_slice in layout.values
+        }
         return ActionChunk(
             joints=joints,
             tcp=tcp,
             ios=ios or None,
+            values=values,
             dt_ms=self._dt_ms,
             action_timestep=action_timestep,
         )
