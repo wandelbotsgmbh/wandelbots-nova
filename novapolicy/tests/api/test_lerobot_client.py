@@ -160,7 +160,7 @@ def test_playback_speed_still_scales_timing_but_is_deprecated() -> None:
             "127.0.0.1:8080",
             "model",
             policy_type="act",
-            fps=15,
+            hz=15,
             playback_speed=0.75,
             actions_per_chunk=11,
         )
@@ -168,8 +168,16 @@ def test_playback_speed_still_scales_timing_but_is_deprecated() -> None:
     assert client.dt_ms == pytest.approx(1000.0 / 15.0 / 0.75)
 
 
-def test_fps_has_no_silent_default() -> None:
-    with pytest.raises(ValueError, match="needs fps="):
+def test_fps_still_works_but_is_deprecated_in_favour_of_hz() -> None:
+    with pytest.warns(DeprecationWarning, match="hz="):
+        client = LeRobotPolicyClient(
+            "127.0.0.1:8080", "model", policy_type="act", fps=15, actions_per_chunk=11
+        )
+    assert client.dt_ms == pytest.approx(1000.0 / 15.0)
+
+
+def test_hz_has_no_silent_default() -> None:
+    with pytest.raises(ValueError, match="needs hz="):
         LeRobotPolicyClient("127.0.0.1:8080", "model", policy_type="act", actions_per_chunk=11)
 
 
@@ -180,7 +188,7 @@ def test_playback_speed_must_be_positive() -> None:
             "127.0.0.1:8080",
             "model",
             policy_type="act",
-            fps=15,
+            hz=15,
             playback_speed=0.0,
             actions_per_chunk=11,
         )
@@ -195,7 +203,7 @@ def test_async_queue_refill_threshold_must_be_a_fraction(threshold: float) -> No
             policy_type="act",
             actions_per_chunk=11,
             async_queue_refill_threshold=threshold,
-            fps=15.0,
+            hz=15.0,
         )
 
 
@@ -210,7 +218,7 @@ async def test_get_actions_sends_lerobot_async_protocol_and_decodes_chunk(
         fake_lerobot.address,
         "/server-only/checkpoint",
         policy_type="act",
-        fps=15,
+        hz=15,
         actions_per_chunk=8,
         device="cuda",
     )
@@ -282,7 +290,7 @@ async def test_get_actions_decodes_tcp_targets_and_tcp_state_features(
         fake_lerobot.address,
         "model",
         policy_type="act",
-        fps=20,
+        hz=20,
         actions_per_chunk=2,
     )
     state = _tcp_state((100.0, 200.0, 300.0, 0.1, 0.2, 0.3))
@@ -339,7 +347,7 @@ async def test_async_queue_refills_and_blends_overlapping_timesteps(
         fake_lerobot.address,
         "model",
         policy_type="act",
-        fps=15,
+        hz=15,
         actions_per_chunk=8,
         use_async_queue=True,
         async_queue_refill_threshold=1.0,
@@ -402,7 +410,7 @@ async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
         actions_per_chunk=3,
         use_async_queue=True,
         async_queue_smoothing=True,
-        fps=15.0,
+        hz=15.0,
     )
     await client.connect([mg.id])
     fake_lerobot.stub.action_values = [
@@ -438,7 +446,7 @@ async def test_async_queue_keeps_sending_observations_while_refill_is_pending(
         fake_lerobot.address,
         "model",
         policy_type="act",
-        fps=15,
+        hz=15,
         actions_per_chunk=5,
         use_async_queue=True,
     )
@@ -483,7 +491,7 @@ async def test_prepare_sends_policy_instructions_before_first_inference(
     schema = _schema(mg)
     image = np.zeros((120, 160, 3), dtype=np.uint8)
     client = LeRobotPolicyClient(
-        fake_lerobot.address, "model", policy_type="act", fps=15, actions_per_chunk=8
+        fake_lerobot.address, "model", policy_type="act", hz=15, actions_per_chunk=8
     )
 
     await client.prepare(
@@ -514,7 +522,7 @@ async def test_get_actions_requires_actual_image_frame_for_feature_metadata(
 ) -> None:
     mg = _mg()
     client = LeRobotPolicyClient(
-        fake_lerobot.address, "model", policy_type="act", fps=15, actions_per_chunk=8
+        fake_lerobot.address, "model", policy_type="act", hz=15, actions_per_chunk=8
     )
 
     with pytest.raises(ValueError, match="needs the first camera frame"):
@@ -530,7 +538,7 @@ async def test_get_actions_requires_actual_image_frame_for_feature_metadata(
 
 @pytest.mark.asyncio
 async def test_validate_schema_rejects_schema_without_joint_action() -> None:
-    client = LeRobotPolicyClient("127.0.0.1:8080", "model", fps=15, actions_per_chunk=8)
+    client = LeRobotPolicyClient("127.0.0.1:8080", "model", hz=15, actions_per_chunk=8)
     schema = PolicySchema(observations=[Observation.image("cam_scene_1", source=MagicMock())])
 
     with pytest.raises(ValueError, match="requires at least one joint or TCP action"):
@@ -540,7 +548,7 @@ async def test_validate_schema_rejects_schema_without_joint_action() -> None:
 @pytest.mark.asyncio
 async def test_validate_schema_rejects_joint_and_tcp_control_for_the_same_group() -> None:
     mg = _mg()
-    client = LeRobotPolicyClient("127.0.0.1:8080", "model", fps=15, actions_per_chunk=8)
+    client = LeRobotPolicyClient("127.0.0.1:8080", "model", hz=15, actions_per_chunk=8)
     schema = PolicySchema(
         observations=[
             Observation.joint_positions("arm", source=mg),
@@ -555,7 +563,7 @@ async def test_validate_schema_rejects_joint_and_tcp_control_for_the_same_group(
 @pytest.mark.asyncio
 async def test_close_allows_protocol_reconnection(fake_lerobot: _FakeLeRobot) -> None:
     client = LeRobotPolicyClient(
-        fake_lerobot.address, "model", policy_type="act", fps=15, actions_per_chunk=8
+        fake_lerobot.address, "model", policy_type="act", hz=15, actions_per_chunk=8
     )
 
     await client.connect([])
@@ -622,7 +630,7 @@ class _FakeCamera:
 
 @pytest.mark.asyncio
 async def test_settings_are_derived_from_the_checkpoint(fake_lerobot, tmp_path) -> None:
-    client = LeRobotPolicyClient(fake_lerobot.address, str(_write_checkpoint(tmp_path)), fps=15.0)
+    client = LeRobotPolicyClient(fake_lerobot.address, str(_write_checkpoint(tmp_path)), hz=15.0)
 
     await client.connect([])
 
@@ -641,7 +649,7 @@ async def test_config_path_derives_while_the_server_loads_its_own_checkpoint(
         "/server-only/checkpoint",
         policy_type="act",
         config_path=str(_write_checkpoint(tmp_path)),
-        fps=15.0,
+        hz=15.0,
     )
 
     await client.connect([])
@@ -661,7 +669,7 @@ async def test_an_override_that_agrees_with_the_checkpoint_is_accepted(
         policy_type="act",
         actions_per_chunk=16,
         n_action_steps=8,
-        fps=15.0,
+        hz=15.0,
     )
 
     await client.connect([])
@@ -676,7 +684,7 @@ async def test_contradicting_policy_type_is_rejected(fake_lerobot, tmp_path) -> 
         fake_lerobot.address,
         str(_write_checkpoint(tmp_path)),
         policy_type="diffusion",
-        fps=15.0,
+        hz=15.0,
     )
 
     with pytest.raises(ValueError, match="contradicts the checkpoint"):
@@ -690,7 +698,7 @@ async def test_actions_per_chunk_above_chunk_size_is_rejected(fake_lerobot, tmp_
         str(_write_checkpoint(tmp_path)),
         policy_type="act",
         actions_per_chunk=32,
-        fps=15.0,
+        hz=15.0,
     )
 
     with pytest.raises(ValueError, match="exceeds the checkpoint's action chunk"):
@@ -706,7 +714,7 @@ async def test_a_shortened_horizon_is_allowed_with_a_warning(
         str(_write_checkpoint(tmp_path)),
         policy_type="act",
         n_action_steps=4,
-        fps=15.0,
+        hz=15.0,
     )
 
     with caplog.at_level("WARNING"):
@@ -724,7 +732,7 @@ async def test_n_action_steps_above_chunk_size_is_rejected(fake_lerobot, tmp_pat
         str(_write_checkpoint(tmp_path)),
         policy_type="act",
         n_action_steps=32,
-        fps=15.0,
+        hz=15.0,
     )
 
     with pytest.raises(ValueError, match="exceeds the checkpoint's action chunk"):
@@ -738,7 +746,7 @@ async def test_server_only_checkpoint_falls_back_to_explicit_settings(fake_lerob
         "/server-only/checkpoint",
         policy_type="act",
         actions_per_chunk=11,
-        fps=15.0,
+        hz=15.0,
     )
 
     with caplog.at_level("WARNING"):
@@ -753,7 +761,7 @@ async def test_server_only_checkpoint_falls_back_to_explicit_settings(fake_lerob
 async def test_server_only_checkpoint_without_explicit_chunk_says_what_to_do(
     fake_lerobot,
 ) -> None:
-    client = LeRobotPolicyClient(fake_lerobot.address, "/server-only/checkpoint", fps=15.0)
+    client = LeRobotPolicyClient(fake_lerobot.address, "/server-only/checkpoint", hz=15.0)
 
     with pytest.raises(ValueError, match="actions_per_chunk cannot be derived"):
         await client.connect([])
@@ -766,7 +774,7 @@ async def test_a_camera_frame_size_mismatch_warns_and_keeps_running(
     """Frame size is fixed at the camera stream, so a mismatch must not block a run."""
     mg = _mg()
     schema = _schema(mg)
-    client = LeRobotPolicyClient(fake_lerobot.address, str(_write_checkpoint(tmp_path)), fps=15.0)
+    client = LeRobotPolicyClient(fake_lerobot.address, str(_write_checkpoint(tmp_path)), hz=15.0)
 
     await client.connect([])
     with caplog.at_level("WARNING"):
@@ -789,7 +797,7 @@ async def test_schema_mismatch_fails_before_the_setup_message_is_sent(
     """A 6-DOF schema against a 7-wide checkpoint must not reach the server."""
     mg = _mg()
     schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
-    client = LeRobotPolicyClient(fake_lerobot.address, str(_write_checkpoint(tmp_path)), fps=15.0)
+    client = LeRobotPolicyClient(fake_lerobot.address, str(_write_checkpoint(tmp_path)), hz=15.0)
 
     await client.connect([])
     with pytest.raises(ValueError, match="does not match the LeRobot checkpoint"):
@@ -814,7 +822,7 @@ async def test_the_checkpoint_is_read_once_across_reconnects(
         return real(path)
 
     monkeypatch.setattr(client_module, "try_load_execution_settings", counting_load)
-    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint), fps=15.0)
+    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint), hz=15.0)
 
     await client.connect([])
     await client.connect([])
@@ -830,7 +838,7 @@ async def test_a_contradicting_override_keeps_raising_on_reconnect(fake_lerobot,
         fake_lerobot.address,
         str(_write_checkpoint(tmp_path)),
         policy_type="diffusion",
-        fps=15.0,
+        hz=15.0,
     )
 
     with pytest.raises(ValueError, match="contradicts the checkpoint"):
@@ -857,7 +865,7 @@ async def test_a_degrees_dataset_observes_in_degrees_and_commands_in_radians(
         input_features={"observation.state": {"type": "STATE", "shape": [6]}},
         output_features={"action": {"type": "ACTION", "shape": [6]}},
     )
-    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint), fps=15.0)
+    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint), hz=15.0)
     fake_lerobot.stub.action_values = [[180.0] * 6, [-90.0] * 6]
 
     await client.connect([])
@@ -924,7 +932,7 @@ async def test_a_units_mismatch_is_caught_against_the_checkpoints_statistics(
         checkpoint / "normalizer_processor.safetensors",
     )
 
-    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint), fps=15.0)
+    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint), hz=15.0)
     await client.connect([])
 
     with pytest.raises(ValueError, match="implausibly far outside"):
@@ -947,7 +955,7 @@ async def test_an_instruction_conditioned_checkpoint_refuses_to_start_without_a_
     """
     checkpoint = _write_checkpoint(tmp_path)
     _write_instruction_preprocessor(checkpoint)
-    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint), fps=15.0)
+    client = LeRobotPolicyClient(fake_lerobot.address, str(checkpoint), hz=15.0)
 
     with pytest.raises(ValueError, match="language instruction"):
         await client.connect([])
@@ -960,7 +968,7 @@ async def test_the_task_travels_with_every_observation(fake_lerobot, tmp_path) -
     mg = _mg()
     schema = _schema(mg, image_source=_FakeCamera())
     client = LeRobotPolicyClient(
-        fake_lerobot.address, str(checkpoint), task="pick up the cube", fps=15
+        fake_lerobot.address, str(checkpoint), task="pick up the cube", hz=15
     )
 
     await client.connect([mg.id])
@@ -984,7 +992,7 @@ async def test_a_checkpoint_without_an_instruction_sends_no_task(fake_lerobot) -
         "/server-only/checkpoint",
         policy_type="act",
         actions_per_chunk=8,
-        fps=15.0,
+        hz=15.0,
     )
 
     await client.connect([mg.id])
@@ -1001,4 +1009,4 @@ async def test_a_checkpoint_without_an_instruction_sends_no_task(fake_lerobot) -
 
 def test_a_blank_task_is_rejected() -> None:
     with pytest.raises(ValueError, match="non-empty"):
-        LeRobotPolicyClient("127.0.0.1:8080", "model", task="  ", fps=15.0)
+        LeRobotPolicyClient("127.0.0.1:8080", "model", task="  ", hz=15.0)
