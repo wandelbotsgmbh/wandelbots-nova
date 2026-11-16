@@ -130,10 +130,11 @@ async def main():
 asyncio.run(main())
 ```
 
-Every client takes the policy's step rate the same way: `fps=`, the policy's steps per second in Hz.
-For an imitation-learning policy that is the dataset's frame rate (`fps` in its `meta/info.json`);
-for a reinforcement-learning policy, its control frequency: a 20 Hz policy is `fps=20` (one step
-every 50 ms). A rate the server reports, as a NATS policy service does, wins. There is no default. Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
+Every client takes the policy's step rate the same way: `hz=`, the policy's steps per second.
+For a reinforcement-learning policy that is its control frequency: a 20 Hz policy is `hz=20` (one
+step every 50 ms). For an imitation-learning policy it is the dataset's frame rate (`fps` in its
+`meta/info.json`); see [lerobot/README.md](lerobot/README.md#hz) for LeRobot's `fps`. A rate the
+server reports, as a NATS policy service does, wins. There is no default. Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
 
 ## PolicySchema
 

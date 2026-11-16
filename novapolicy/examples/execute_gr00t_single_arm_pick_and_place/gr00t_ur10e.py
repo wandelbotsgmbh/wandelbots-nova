@@ -126,7 +126,7 @@ def build(
 ) -> tuple[Gr00tPolicyClient, PolicySchema, ZimmerGripper, dict[str, Any]]:
     """The GR00T client, the schema, the gripper and the cameras."""
     dt_ms = 1000.0 / SETTINGS.rate_hz
-    client = Gr00tPolicyClient(host=GROOT_HOST, port=GROOT_PORT, fps=SETTINGS.rate_hz)
+    client = Gr00tPolicyClient(host=GROOT_HOST, port=GROOT_PORT, hz=SETTINGS.rate_hz)
     # Sequential: a switch anywhere in the steps that run. Continuous: the policy is asked
     # again every few steps, so act on the current step's decision only.
     gripper = ZimmerGripper(

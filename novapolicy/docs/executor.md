@@ -194,7 +194,7 @@ from novapolicy import ContinuousExecution, PolicyExecutor, QueuedPolicyClient
 
 executor = PolicyExecutor(
     schema,
-    QueuedPolicyClient(Gr00tPolicyClient(host, port=port, fps=30)),
+    QueuedPolicyClient(Gr00tPolicyClient(host, port=port, hz=30)),
     execution=ContinuousExecution(),
     n_action_steps=0,  # keep the whole horizon as lookahead
 )
