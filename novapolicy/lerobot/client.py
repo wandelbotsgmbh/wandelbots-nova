@@ -40,7 +40,7 @@ class LeRobotPolicyClient(PolicyClient):
     Settings the checkpoint already declares are read from it rather than asked
     for: ``policy_type``, ``actions_per_chunk`` and ``n_action_steps``. Pass one
     explicitly only to override it — an override that contradicts the checkpoint
-    is reported rather than silently accepted. ``hz`` cannot be derived: the frame
+    is reported rather than silently accepted. ``action_hz`` cannot be derived: the frame
     rate is a property of the dataset (its ``fps``), not the policy. Camera frame size is not
     derived either; a mismatch is reported and left to the camera stream.
 
@@ -68,9 +68,9 @@ class LeRobotPolicyClient(PolicyClient):
         task: Language instruction sent with every observation, such as
             ``"pick up the cube"``. Required by instruction-conditioned
             checkpoints and ignored by the others.
-        hz: The policy's step rate in Hz, the rate actions are played at: the dataset's
+        action_hz: The policy's step rate in Hz, the rate actions are played at: the dataset's
             frame rate (``fps`` in its ``meta/info.json``). Required.
-        fps: Deprecated name of ``hz``.
+        fps: Deprecated name of ``action_hz``.
         playback_speed: Deprecated.
         device: Torch device used by the inference server.
         timeout_s: Deadline for individual gRPC calls.
@@ -102,7 +102,7 @@ class LeRobotPolicyClient(PolicyClient):
         n_action_steps: int | None = None,
         policy_type: str | None = None,
         task: str | None = None,
-        hz: float | None = None,
+        action_hz: float | None = None,
         fps: float | None = None,
         playback_speed: float | None = None,
         device: str = "cpu",
@@ -114,19 +114,19 @@ class LeRobotPolicyClient(PolicyClient):
     ) -> None:
         if fps is not None:
             warnings.warn(
-                "LeRobotPolicyClient(fps=...) is deprecated; pass the same value as hz=",
+                "LeRobotPolicyClient(fps=...) is deprecated; pass the same value as action_hz=",
                 DeprecationWarning,
                 stacklevel=2,
             )
-            hz = fps if hz is None else hz
-        if hz is None:
+            action_hz = fps if action_hz is None else action_hz
+        if action_hz is None:
             msg = (
-                "LeRobotPolicyClient needs hz=: the frame rate of the training data "
+                "LeRobotPolicyClient needs action_hz=: the frame rate of the training data "
                 "(fps in the dataset's meta/info.json); it is not part of the checkpoint"
             )
             raise ValueError(msg)
-        if hz <= 0:
-            raise ValueError(f"hz must be positive, got {hz}")
+        if action_hz <= 0:
+            raise ValueError(f"action_hz must be positive, got {action_hz}")
         if playback_speed is not None:
             warnings.warn(
                 "LeRobotPolicyClient(playback_speed=...) is deprecated; it plays the policy "
@@ -161,7 +161,7 @@ class LeRobotPolicyClient(PolicyClient):
         self._actions_per_chunk = actions_per_chunk or 0
         self._n_action_steps = n_action_steps
         self._device = device
-        self._dt_ms = 1000.0 / (hz * (playback_speed or 1.0))
+        self._dt_ms = 1000.0 / (action_hz * (playback_speed or 1.0))
         self._transport = LeRobotGrpcTransport(server_address, timeout_s=timeout_s)
         self._lerobot_schema = LeRobotSchema(dt_ms=self._dt_ms)
         self._async_queue = (
