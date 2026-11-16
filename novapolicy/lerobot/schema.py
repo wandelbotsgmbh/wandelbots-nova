@@ -12,6 +12,7 @@ from lerobot.utils.constants import ACTION, OBS_IMAGES, OBS_STATE
 from lerobot.utils.feature_utils import dataset_to_policy_features
 import numpy as np
 
+from novapolicy import training_range
 from novapolicy.schema import tcp_value_names
 from novapolicy.types import ActionChunk
 
@@ -26,17 +27,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _IMAGE_NDIM = 3
-# A value this many training spans outside the range is worth mentioning: it is
-# a pose the demonstrations never visited, which is normal before homing.
-_WARN_MARGIN = 1.0
-
-# ...whereas a value this many times larger than anything in training is not a
-# pose at all. A units error is an error of *scale* — radians read as degrees is
-# ~57x — so it is caught by magnitude, not by span. Scaling the failure
-# threshold by span instead was measured wrong against a live UR10e: a joint
-# that barely moved during training (0.022 rad) got a +/-0.09 rad window, and
-# the arm's own park pose was reported as a unit mismatch.
-_FAIL_SCALE = 5.0
 
 JointActionSlice = tuple[str, slice]
 TcpActionSlice = tuple[str, slice]
@@ -508,25 +498,7 @@ def check_observation_range(
         )
         return
 
-    problems, warnings = _classify_observations(stats, observation, state_names)
-
-    for note in warnings:
-        logger.warning(
-            "Observation outside the training distribution: %s. Normal at a start pose the "
-            "demonstrations never visited; suspicious otherwise.",
-            note,
-        )
-
-    if problems:
-        detail = "\n  - ".join(problems)
-        msg = (
-            "Observations are implausibly far outside what this checkpoint was trained on:"
-            f"\n  - {detail}\n"
-            "This is what a unit mismatch looks like — check whether the dataset was "
-            "recorded in different units than NOVA reports, and declare the conversion "
-            "with ops= on the observation."
-        )
-        raise ValueError(msg)
+    training_range.check(_bounded_values(stats, observation, state_names))
 
 
 def _stats_width(stats: FeatureStats) -> int | None:
@@ -536,29 +508,18 @@ def _stats_width(stats: FeatureStats) -> int | None:
     return None
 
 
-def _classify_observations(
+def _bounded_values(
     stats: FeatureStats,
     observation: dict[str, Any],
     state_names: list[str],
-) -> tuple[list[str], list[str]]:
-    """Split state values into implausible ones and merely unusual ones."""
-    problems: list[str] = []
-    warnings: list[str] = []
+) -> list[tuple[str, float, float, float]]:
+    """``(name, value, low, high)`` for every state value the statistics bound."""
+    values: list[tuple[str, float, float, float]] = []
     for index, name in enumerate(state_names):
         value = observation.get(name)
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             continue
         bounds = stats.bounds(index)
-        if bounds is None:
-            continue
-        low, high = bounds
-        span = high - low
-        magnitude = max(abs(low), abs(high))
-        if span <= 0 and magnitude <= 0:
-            continue
-        note = f"{name!r} is {float(value):.4g}, training range [{low:.4g}, {high:.4g}]"
-        if magnitude > 0 and abs(value) > _FAIL_SCALE * magnitude:
-            problems.append(note)
-        elif span > 0 and not (low - _WARN_MARGIN * span <= value <= high + _WARN_MARGIN * span):
-            warnings.append(note)
-    return problems, warnings
+        if bounds is not None:
+            values.append((name, float(value), *bounds))
+    return values
