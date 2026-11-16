@@ -14,7 +14,7 @@ from novapolicy.lerobot.action_queue import LeRobotAsyncActionQueue
 from novapolicy.lerobot.config import try_load_execution_settings
 from novapolicy.lerobot.schema import LeRobotSchema, check_observation_range
 from novapolicy.lerobot.transport import LeRobotGrpcTransport
-from novapolicy.policy_client import PolicyClient
+from novapolicy.policy_client import DEFAULT_CONTROL_FREQ, PolicyClient
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -40,9 +40,9 @@ class LeRobotPolicyClient(PolicyClient):
     Settings the checkpoint already declares are read from it rather than asked
     for: ``policy_type``, ``actions_per_chunk`` and ``n_action_steps``. Pass one
     explicitly only to override it — an override that contradicts the checkpoint
-    is reported rather than silently accepted. ``control_freq`` cannot be derived: the frame
-    rate is a property of the dataset (its ``fps``), not the policy. Camera frame size is not
-    derived either; a mismatch is reported and left to the camera stream.
+    is reported rather than silently accepted. ``control_freq`` (default 30 Hz) cannot
+    be derived: the frame rate is a property of the dataset (its ``fps``), not the
+    policy. Camera frame size is not derived either; a mismatch is reported and left to the camera stream.
 
     A checkpoint that conditions on a language instruction - its preprocessor
     pipeline tokenizes one, as SmolVLA, pi0, pi0.5 and X-VLA do - needs ``task``.
@@ -69,7 +69,7 @@ class LeRobotPolicyClient(PolicyClient):
             ``"pick up the cube"``. Required by instruction-conditioned
             checkpoints and ignored by the others.
         control_freq: The policy's step rate in Hz, the rate actions are played at: the dataset's
-            frame rate (``fps`` in its ``meta/info.json``). Required.
+            frame rate (``fps`` in its ``meta/info.json``). Default 30 Hz.
         fps: Deprecated name of ``control_freq``.
         playback_speed: Deprecated.
         device: Torch device used by the inference server.
@@ -120,11 +120,7 @@ class LeRobotPolicyClient(PolicyClient):
             )
             control_freq = fps if control_freq is None else control_freq
         if control_freq is None:
-            msg = (
-                "LeRobotPolicyClient needs control_freq=: the frame rate of the training data "
-                "(fps in the dataset's meta/info.json); it is not part of the checkpoint"
-            )
-            raise ValueError(msg)
+            control_freq = DEFAULT_CONTROL_FREQ
         if control_freq <= 0:
             raise ValueError(f"control_freq must be positive, got {control_freq}")
         if playback_speed is not None:

@@ -274,7 +274,7 @@ Pass that value as `control_freq`, the name every novapolicy client uses:
 control_freq = 15  # the dataset's fps; ActionChunk.dt_ms = 1000 / 15
 ```
 
-`fps=` still works but warns; it is the deprecated name of `control_freq`. Required: there is no default.
+`fps=` still works but warns; it is the deprecated name of `control_freq`. The default is 30.
 
 This is separate from the LeRobot server's optional `--fps` CLI flag. The server flag is used by
 LeRobot when it creates `TimedAction` timestamps; `LeRobotPolicyClient` does not use those
@@ -308,7 +308,7 @@ A policy that declares no action chunk at all (`action_delta_indices is None`) n
 `actions_per_chunk` explicitly.
 
 `control_freq` cannot be derived — the frame rate is a property of the dataset (`fps` in its `meta/info.json`),
-not the policy — so it is required; there is no default.
+not the policy — so pass it unless the dataset was recorded at the default 30.
 
 Pass any of the derived arguments only to override it. An override that contradicts the checkpoint
 is reported rather than silently accepted: a different `policy_type`, or a chunk length above the

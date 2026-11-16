@@ -176,9 +176,9 @@ def test_fps_still_works_but_is_deprecated_in_favour_of_control_freq() -> None:
     assert client.dt_ms == pytest.approx(1000.0 / 15.0)
 
 
-def test_control_freq_has_no_silent_default() -> None:
-    with pytest.raises(ValueError, match="needs control_freq="):
-        LeRobotPolicyClient("127.0.0.1:8080", "model", policy_type="act", actions_per_chunk=11)
+def test_control_freq_defaults_to_30_hz() -> None:
+    client = LeRobotPolicyClient("127.0.0.1:8080", "model", policy_type="act", actions_per_chunk=11)
+    assert client.dt_ms == pytest.approx(1000.0 / 30.0)
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
