@@ -232,8 +232,34 @@ send back.
 The inversion happens in the executor, **before** relative targets resolve: a delta in degrees
 added to a state in radians is exactly the error this exists to prevent.
 
-> Rotation-representation conversion — rotation vector to quaternion or Euler — is out of scope.
-> These operators are element-wise scalars.
+These operators are element-wise scalars. Rotation representation and coordinate system are
+declared separately, below.
+
+### Rotation representation and coordinate systems
+
+NOVA reports TCP poses as `[x, y, z, rx, ry, rz]` (mm, rotation vector) in the controller's world.
+A policy trained on another rotation representation or another frame declares it on the TCP entry,
+with NOVA's own terms; the conversion is then the same for every policy client, on the observation
+and on the action:
+
+```python
+from novapolicy import Action, Observation, OrientationType
+
+Observation.tcp(
+    "eef",
+    source=mg,
+    orientation_type=OrientationType.QUATERNION,  # eef_qx, eef_qy, eef_qz, eef_qw
+    coordinate_system="table",  # a coordinate system of the controller
+)
+Action.tcp("eef", target=mg, orientation_type=OrientationType.QUATERNION, coordinate_system="table")
+```
+
+`orientation_type` takes any of NOVA's `OrientationType` values: rotation vector, quaternion
+`[x, y, z, w]` or one of the intrinsic/extrinsic Euler conventions (named `_e1.._e3`). Element-wise
+operators on quaternion components are rejected. `coordinate_system` expresses poses, and relative
+offsets, in that coordinate system (references are followed to the world); the executor fetches them
+at start, and `await schema.load_coordinate_systems()` does it for a dry run. TCP limits stay in the
+world.
 
 ### Checking units against the checkpoint
 

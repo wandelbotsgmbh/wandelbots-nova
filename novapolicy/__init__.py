@@ -35,6 +35,7 @@ from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
 from novapolicy.jogging import JointJogger, TcpJogger, jog_joints, jog_tcp
 from novapolicy.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
+from novapolicy.poses import OrientationType
 from novapolicy.queued_client import QueuedPolicyClient
 from novapolicy.schema import (
     Action,
@@ -116,6 +117,7 @@ __all__ = [
     "Observation",
     "OnStale",
     "OpDirection",
+    "OrientationType",
     "Phase",
     "PolicyClient",
     "PolicyExecutor",

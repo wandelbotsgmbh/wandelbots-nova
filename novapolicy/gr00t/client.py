@@ -381,7 +381,12 @@ class Gr00tPolicyClient(PolicyClient):
         for tm in schema.tcp_mappings:
             s = states.get(tm.source.id)
             if s is not None and hasattr(s, "pose") and s.pose is not None:
-                state_dict[tm.key] = _to_state_array(pose_to_eef(s.pose, self._tcp_format))
+                if tm.orientation_type is None and not tm.coordinate_system:
+                    # GR00T's own default: metres and tcp_format (rot6d unless set).
+                    values = pose_to_eef(s.pose, self._tcp_format)
+                else:  # declared on the schema: the same conversion as every client
+                    values = schema.tcp_observation_values(tm, s)
+                state_dict[tm.key] = _to_state_array(values)
 
         if io_values:
             for iom in schema.obs_io_mappings:

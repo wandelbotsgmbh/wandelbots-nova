@@ -163,12 +163,18 @@ def _check_buffered_mode(
 def resolve_actions(
     schema: PolicySchema, chunk: ActionChunk, states: dict[str, RobotState]
 ) -> ActionChunk:
-    """A policy's raw chunk as the executor sends it: units converted back (the schema's
-    operators), then relative targets composed with ``states``. Use it for dry runs."""
-    chunk = schema.apply_inverse_ops(chunk)
-    return apply_relative_mode(
-        chunk, states, schema.relative_motion_groups(), schema.relative_tcp_deltas()
+    """A policy's raw chunk as the executor sends it: units and rotation representation
+    converted back (the schema's operators and ``orientation_type``), relative targets
+    composed with ``states`` in each action's coordinate system, and TCP targets expressed
+    in the world. Use it for dry runs (after ``await schema.load_coordinate_systems()``)."""
+    chunk = schema.apply_inverse_ops(chunk)  # NOVA units, rotation vectors, policy frames
+    chunk = apply_relative_mode(
+        chunk,
+        schema.policy_frame_states(states),
+        schema.relative_motion_groups(),
+        schema.relative_tcp_deltas(),
     )
+    return schema.tcp_targets_to_world(chunk)
 
 
 class PolicyExecutor:
@@ -474,6 +480,7 @@ class PolicyExecutor:
         try:
             await self._io_streams.start()
             self._io_streams.wire_to_sessions(self._sessions)
+            await self._schema.load_coordinate_systems()
             await self._policy.connect(self.mg_ids)
             await self._policy.validate_schema(self._schema)
             self._estop_monitor = EstopMonitor(self._motion_groups)

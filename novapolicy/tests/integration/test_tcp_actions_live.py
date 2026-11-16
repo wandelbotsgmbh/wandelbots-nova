@@ -199,3 +199,23 @@ async def test_unit_operators_apply_before_the_offsets(ur10e):
         [[0.0, 0.0, -0.003, 0.0, 0.0, 0.0]] * STEPS,
     )
     _assert_pose(end, [*start[:2], start[2] - 30.0], Rotation.from_rotvec(start[3:]))
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="module")
+async def test_quaternion_targets_are_converted_before_they_are_sent(ur10e):
+    from novapolicy.poses import QUATERNION
+
+    def turn_15deg(start: list[float]) -> list[list[float]]:
+        out = []
+        for i in range(STEPS):
+            r = Rotation.from_rotvec([0.0, 0.0, math.radians(15.0) * (i + 1) / STEPS])
+            q = (r * Rotation.from_rotvec(start[3:])).as_quat().tolist()  # [x, y, z, w]
+            out.append([*start[:3], *q])
+        return out
+
+    start, end = await _run_one_chunk(
+        ur10e, lambda mg: Action.tcp("eef", target=mg, orientation_type=QUATERNION), turn_15deg
+    )
+    turned = Rotation.from_rotvec([0.0, 0.0, math.radians(15.0)]) * Rotation.from_rotvec(start[3:])
+    _assert_pose(end, start[:3], turned)
