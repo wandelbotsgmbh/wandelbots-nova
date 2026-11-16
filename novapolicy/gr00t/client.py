@@ -10,11 +10,14 @@ ZMQ transport and msgpack serialization live in ``transport.py``.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from novapolicy import training_range
 from novapolicy.gr00t.eef import TcpFormat, pose_to_eef
 from novapolicy.gr00t.rtc import (  # ruff: ignore[typing-only-first-party-import]
     RTCConfig,
@@ -73,7 +76,16 @@ class Gr00tPolicyClient(PolicyClient):
     dt_ms:
         Default step spacing if not in action info.
     tcp_format:
-        TCP pose representation format sent to the server.
+        TCP pose representation format sent to the server, unless the
+        ``Observation.tcp`` declares an ``orientation_type``.
+    statistics:
+        Path to the checkpoint's ``statistics.json``. The first observation is held
+        against its state ranges: a value five times larger than anything in training
+        (a unit mismatch, such as degrees for radians) raises before the robot moves;
+        one merely outside the range warns. The server does not serve the file.
+    embodiment:
+        The embodiment tag in ``statistics.json``; by default the one whose state keys
+        are exactly the server's.
     """
 
     def __init__(
@@ -86,6 +98,8 @@ class Gr00tPolicyClient(PolicyClient):
         dt_ms: float = 33.0,
         tcp_format: TcpFormat = TcpFormat.ROT6D,
         rtc: RTCConfig | None = None,
+        statistics: str | Path | None = None,
+        embodiment: str | None = None,
     ) -> None:
         self._transport = Gr00tZmqTransport(
             host=host,
@@ -95,6 +109,13 @@ class Gr00tPolicyClient(PolicyClient):
         )
         self._dt_ms = dt_ms
         self._tcp_format = tcp_format
+        # The checkpoint's statistics.json, to hold the first observation against
+        self._statistics: dict[str, Any] = (
+            json.loads(Path(statistics).read_text(encoding="utf-8")) if statistics else {}
+        )
+        self._embodiment = embodiment
+        self._state_ranges: dict[str, list[tuple[float, float]]] = {}
+        self._range_checked = False
         self._actual_dof: dict[str, int] = {}
         # What the server takes, learned in validate_schema (the executor calls it before
         # the run): the state keys it expects and the key its language instruction goes in.
@@ -116,6 +137,7 @@ class Gr00tPolicyClient(PolicyClient):
         actions from a previous episode never bleed into the next one.
         """
         self.reset_rtc()
+        self._range_checked = False
         await asyncio.to_thread(self._transport.connect)
 
     async def validate_schema(self, schema: PolicySchema) -> None:
@@ -135,6 +157,8 @@ class Gr00tPolicyClient(PolicyClient):
         schema_state_keys |= {m.key for m in schema.obs_io_mappings}
         schema_state_keys |= {k for o in schema.computed_observations for k in o.keys}
         self._server_state_keys = server_state_keys or None
+        if self._statistics:
+            self._state_ranges = self._ranges_for(server_state_keys)
         missing_state = server_state_keys - schema_state_keys
         if missing_state:
             errors.append(f"Missing state observations: {sorted(missing_state)}")
@@ -175,6 +199,33 @@ class Gr00tPolicyClient(PolicyClient):
         if value is None:
             self._rtc_state.reset()
 
+    def _ranges_for(self, server_state_keys: set[str]) -> dict[str, list[tuple[float, float]]]:
+        """Per state key, the trained ``(min, max)`` of each dimension, from the embodiment
+        named in ``embodiment`` or the one whose state keys are exactly the server's."""
+        if self._embodiment is not None:
+            if self._embodiment not in self._statistics:
+                msg = f"statistics.json has no embodiment {self._embodiment!r} ({sorted(self._statistics)})"
+                raise ValueError(msg)
+            name = self._embodiment
+        else:
+            matches = [
+                tag
+                for tag, entry in self._statistics.items()
+                if isinstance(entry, dict) and set(entry.get("state", {})) == server_state_keys
+            ]
+            if len(matches) != 1:
+                msg = (
+                    f"statistics.json: {len(matches)} embodiments have exactly the server's "
+                    f"state keys {sorted(server_state_keys)}; pass embodiment= ({sorted(self._statistics)})"
+                )
+                raise ValueError(msg)
+            name = matches[0]
+        ranges: dict[str, list[tuple[float, float]]] = {}
+        for key, stats in self._statistics[name].get("state", {}).items():
+            lows, highs = stats.get("min") or [], stats.get("max") or []
+            ranges[key] = [(float(lo), float(hi)) for lo, hi in zip(lows, highs, strict=False)]
+        return ranges
+
     def reset_rtc(self) -> None:
         """Clear RTC state (call on episode/task boundaries)."""
         self._rtc_state.reset()
@@ -190,6 +241,9 @@ class Gr00tPolicyClient(PolicyClient):
         import time as _time  # ruff: ignore[import-outside-top-level]
 
         groot_obs = await self._build_groot_obs(states, schema, images, io_values)
+        if self._state_ranges and not self._range_checked:
+            self._range_checked = True
+            training_range.check(_bounded_state(groot_obs["state"], self._state_ranges))
 
         # RTC: compute options (overlap/frozen steps) based on latency
         # Server stores the previous action internally — we just send timing params
@@ -510,6 +564,23 @@ def _action_array(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _bounded_state(
+    state: dict[str, np.ndarray], ranges: dict[str, list[tuple[float, float]]]
+) -> list[tuple[str, float, float, float]]:
+    """``(name, value, low, high)`` per state dimension the statistics bound."""
+    values: list[tuple[str, float, float, float]] = []
+    for key, array in state.items():
+        bounds = ranges.get(key, [])
+        flat = np.asarray(array, dtype=float).reshape(-1)
+        if len(bounds) != flat.size:
+            continue  # width disagrees: the schema check owns that failure
+        values += [
+            (f"{key}[{i}]", float(v), lo, hi)
+            for i, (v, (lo, hi)) in enumerate(zip(flat, bounds, strict=True))
+        ]
+    return values
 
 
 def _to_state_array(values: list[float] | tuple[float, ...]) -> np.ndarray:

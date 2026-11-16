@@ -271,7 +271,10 @@ checkpoint's normalization statistics (`policy_preprocessor.json` and its safete
   what a unit mismatch looks like; a pose does not land there.
 - **Somewhat outside** warns. Starting from a pose the demonstrations never visited is normal.
 
-A checkpoint shipped as `config.json` alone simply skips the check. One asymmetry worth knowing:
+A checkpoint shipped as `config.json` alone simply skips the check. GR00T servers do not serve their
+statistics, so pass the checkpoint's `statistics.json` to the client for the same check:
+`Gr00tPolicyClient(..., statistics="checkpoint/statistics.json")` (the embodiment whose state keys
+match the server's is used, or name it with `embodiment=`). One asymmetry worth knowing:
 bounds catch values that are too *large* for the training range — degrees where radians were
 expected. The reverse sits comfortably inside a degree range and cannot be caught this way.
 

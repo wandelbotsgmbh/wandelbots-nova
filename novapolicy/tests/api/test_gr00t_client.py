@@ -11,6 +11,8 @@ Tests verify:
 
 from __future__ import annotations
 
+import math
+from pathlib import Path
 import threading
 import time
 from typing import ClassVar
@@ -1068,3 +1070,58 @@ async def test_the_client_takes_its_keys_from_the_server() -> None:
         await client.close()
     finally:
         server.close()
+
+
+_STATISTICS = Path(__file__).parents[1] / "unit" / "data" / "gr00t_statistics.json"
+
+
+async def _first_call_with(joints: tuple[float, ...], **client_kwargs: object) -> None:
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server._modality_config = {
+        "state": _modality(["arm_joints", "gripper"]),
+        "action": _modality(["eef_delta", "gripper"]),
+    }
+    server.start()
+    client = Gr00tPolicyClient(host="127.0.0.1", port=port, statistics=_STATISTICS, **client_kwargs)
+    try:
+        mg = _mg()
+
+        async def gripper(_obs: object) -> dict[str, float]:
+            return {"gripper": 0.0}
+
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm_joints", source=mg, action=False),
+                Observation.computed(gripper, keys=["gripper"]),
+            ],
+            actions=[Action.joint_positions("arm_joints", target=mg)],
+        )
+        await client.connect([mg.id])
+        await client.validate_schema(schema)
+        server.action_response = ({"arm_joints": np.zeros((1, 4, 6), np.float32)}, {})
+        await client.get_actions({mg.id: _state(joints)}, schema)
+    finally:
+        await client.close()
+        server.close()
+
+
+_TRAINED = (1.0, -1.8, 2.0, -1.9, -1.4, -0.5)  # radians, inside the checkpoint's range
+
+
+@pytest.mark.asyncio
+async def test_a_pose_in_the_trained_units_passes_the_statistics_check() -> None:
+    await _first_call_with(_TRAINED)
+
+
+@pytest.mark.asyncio
+async def test_degrees_against_a_radian_checkpoint_are_refused_before_moving() -> None:
+    degrees = tuple(math.degrees(q) for q in _TRAINED)
+    with pytest.raises(ValueError, match="implausibly far outside"):
+        await _first_call_with(degrees)
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_embodiment_is_named() -> None:
+    with pytest.raises(ValueError, match="no embodiment"):
+        await _first_call_with(_TRAINED, embodiment="other_robot")
