@@ -96,15 +96,21 @@ class _Block:
         self.motion_group_id: str = ""
 
 
-def _derive_blocks(info: PolicyInfo) -> list[_Block]:
-    """Map the advertised spaces into bindable blocks; reject ambiguous layouts."""
+def _derive_blocks(info: PolicyInfo) -> tuple[list[_Block], list[str]]:
+    """Map the advertised spaces into bindable motion blocks and extra action heads.
+
+    An ``action.<key>`` head without a matching observation drives nothing in NOVA; it is
+    kept for an ``Action.computed(..., keys=[<key>])`` hook, which ``validate_schema``
+    requires. Ambiguous layouts are rejected.
+    """
     if not info.actions:
         raise PolicyProtocolError("Policy declares no action space.")
 
     if len(info.actions) == 1 and info.actions[0].name == ACTION_KEY:
-        return [_Block(PROPRIO_KEY, ACTION_KEY, info.actions[0])]
+        return [_Block(PROPRIO_KEY, ACTION_KEY, info.actions[0])], []
 
     blocks: list[_Block] = []
+    extra: list[str] = []
     for spec in info.actions:
         prefix = f"{ACTION_KEY}."
         if not spec.name.startswith(prefix):
@@ -114,10 +120,11 @@ def _derive_blocks(info: PolicyInfo) -> list[_Block]:
             )
         obs_field = f"{PROPRIO_KEY}.{spec.name[len(prefix) :]}"
         if info.observation(obs_field) is None:
-            raise PolicyProtocolError(
-                f"Action '{spec.name}' has no matching observation '{obs_field}'."
-            )
+            extra.append(spec.name)
+            continue
         blocks.append(_Block(obs_field, spec.name, spec))
+    if not blocks:
+        raise PolicyProtocolError("Policy declares no action block with a matching observation.")
 
     dt_values = {spec.dt_ms for spec in info.actions}
     if len(dt_values) > 1:
@@ -125,7 +132,7 @@ def _derive_blocks(info: PolicyInfo) -> list[_Block]:
             f"Action heads disagree on dt_ms ({sorted(dt_values)}); one control "
             "period per policy is required."
         )
-    return blocks
+    return blocks, extra
 
 
 class NatsPolicyClient(PolicyClient):
@@ -173,6 +180,7 @@ class NatsPolicyClient(PolicyClient):
         self._info: PolicyInfo | None = None
         self._session_id: str = ""
         self._blocks: list[_Block] = []
+        self._extra_actions: list[str] = []  # action heads for Action.computed hooks
         self._motion_group_ids: list[str] = []
 
         # --- episode state, per motion group (reset in _begin_episode) ---
@@ -250,6 +258,14 @@ class NatsPolicyClient(PolicyClient):
         :meth:`_build_proprio` — a schema can be right while the bound robot
         still has the wrong number of axes.
         """
+        consumed = {f"{ACTION_KEY}.{key}" for key in schema.computed_action_keys}
+        unclaimed = [name for name in self._extra_actions if name not in consumed]
+        if unclaimed:
+            obs = [f"{PROPRIO_KEY}.{name[len(ACTION_KEY) + 1 :]}" for name in unclaimed]
+            raise ValueError(
+                f"Actions {unclaimed} have no matching observation {obs} and no "
+                "Action.computed(..., keys=[...]) hook consumes them."
+            )
         targets = schema.joint_action_keys
         if len(targets) != len(self._blocks):
             raise ValueError(
@@ -353,7 +369,13 @@ class NatsPolicyClient(PolicyClient):
 
     def _bind_blocks(self, motion_group_ids: list[str]) -> None:
         assert self._info is not None
-        blocks = _derive_blocks(self._info)
+        blocks, self._extra_actions = _derive_blocks(self._info)
+        if len(motion_group_ids) > len(blocks) and self._extra_actions:
+            raise PolicyProtocolError(
+                f"Actions {self._extra_actions} have no matching observation, so they bind "
+                f"no motion group; {len(motion_group_ids)} motion groups need "
+                f"{len(motion_group_ids)} blocks."
+            )
         if len(motion_group_ids) != len(blocks):
             raise ValueError(
                 f"Policy '{self._policy_id}' declares {len(blocks)} motion-group "
@@ -487,7 +509,15 @@ class NatsPolicyClient(PolicyClient):
             self._last_action[block.motion_group_id] = targets[-1].astype(np.float32)
             joints[block.motion_group_id] = targets.tolist()
 
-        return ActionChunk(joints=joints, dt_ms=dt_ms)
+        values = {
+            name[len(ACTION_KEY) + 1 :]: np
+            .asarray(response.actions[name])
+            .reshape(len(response.actions[name]), -1)
+            .tolist()
+            for name in self._extra_actions
+            if name in response.actions
+        }
+        return ActionChunk(joints=joints, values=values, dt_ms=dt_ms)
 
     async def _request(self, subject: str, payload: bytes, *, expect: str) -> dict[str, Any]:
         """One request/reply round trip, with broker failures mapped to
