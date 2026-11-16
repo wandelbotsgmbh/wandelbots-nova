@@ -31,7 +31,7 @@ schema = PolicySchema(
     ]
 )
 
-client = Gr00tPolicyClient(host="gpu-server", port=5555, hz=15, rtc=RTCConfig())
+client = Gr00tPolicyClient(host="gpu-server", port=5555, action_hz=15, rtc=RTCConfig())
 
 executor = PolicyExecutor(
     schema,
@@ -72,7 +72,7 @@ The server tells the keys, not their meaning. From the training setup, find out:
 | Poses in another coordinate system, rotations as quaternions or Euler angles? | `coordinate_system=`, `orientation_type=OrientationType...` |
 | Units (metres, degrees)? | `position_ops=[Scale(0.001)]`, `ops=[Rad2Deg()]` |
 | Which point on the tool (TCP) do the poses refer to? | `Observation.tcp(..., tcp=...)` |
-| Rate, camera resolution, prompt | `Gr00tPolicyClient(hz=...)`, `WebRTCCameras(resize=..., resize_mode="crop")`, `Observation.constant("language", ...)` |
+| Rate, camera resolution, prompt | `Gr00tPolicyClient(action_hz=...)`, `WebRTCCameras(resize=..., resize_mode="crop")`, `Observation.constant("language", ...)` |
 | How is the gripper driven, and what is its state? | `Action.io`, or `Action.computed` / `Observation.computed` with `keys=` for one on its own bus |
 
 The training config usually states these. A policy trained with a differential-IK controller
@@ -119,7 +119,7 @@ arm = settings.robots["arm"]
 mg = (await nova.cell().controller(controller)).motion_group(arm.motion_group)
 
 client = Gr00tPolicyClient(
-    host, port=port, hz=settings.rate_hz, statistics="checkpoint/statistics.json"
+    host, port=port, action_hz=settings.rate_hz, statistics="checkpoint/statistics.json"
 )
 webrtc = WebRTCCameras(api_url=camera_server, resize=(320, 240), resize_mode="crop")
 schema = PolicySchema(
@@ -219,7 +219,7 @@ from novapolicy import ContinuousExecution, Gr00tPolicyClient, PolicyExecutor, R
 client = Gr00tPolicyClient(
     host="gpu-server",
     port=30555,
-    hz=15,
+    action_hz=15,
     rtc=RTCConfig(),  # pass RTCConfig to enable, None (default) to disable
 )
 
@@ -322,11 +322,11 @@ Use this to:
 
 > **Note:** The server does not report `dt_ms` (step timing). This must be set
 > on the client to match the training data rate. For example, data recorded at
-> 15 Hz → `hz=15`. Without it, `validate_schema` refuses to run (reading server info needs
+> 15 Hz → `action_hz=15`. Without it, `validate_schema` refuses to run (reading server info needs
 > no rate):
 >
 > ```python
-> client = Gr00tPolicyClient(host="gpu-server", hz=15)
+> client = Gr00tPolicyClient(host="gpu-server", action_hz=15)
 > ```
 
 ## Debugging Chunk Alignment

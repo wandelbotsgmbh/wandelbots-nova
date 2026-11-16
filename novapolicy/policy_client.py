@@ -77,10 +77,10 @@ class PolicyClient(ABC):
 class CallbackPolicyClient(PolicyClient):
     """Explicit adapter for a local asynchronous policy callback."""
 
-    def __init__(self, fn: Callable[..., Any], *, hz: float | None = None) -> None:
-        """``hz``: the callback's step rate, for chunks that carry no ``dt_ms``."""
+    def __init__(self, fn: Callable[..., Any], *, action_hz: float | None = None) -> None:
+        """``action_hz``: the callback's step rate, for chunks that carry no ``dt_ms``."""
         self._fn = fn
-        self._dt_ms = 1000.0 / hz if hz else 0.0
+        self._dt_ms = 1000.0 / action_hz if action_hz else 0.0
 
     async def get_actions(
         self,

@@ -52,12 +52,12 @@ async def test_callback_client_uses_explicit_no_op_capabilities() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_callback_hz_fills_chunks_without_step_spacing() -> None:
+async def test_a_callback_action_hz_fills_chunks_without_step_spacing() -> None:
     from types import SimpleNamespace
 
     async def policy(_obs: object) -> ActionChunk:
         return ActionChunk(joints={"mg": [[0.0]]})
 
     schema = SimpleNamespace(build_observation=AsyncMock(return_value={}))
-    chunk = await CallbackPolicyClient(policy, hz=20.0).get_actions({}, schema)  # type: ignore[arg-type]
+    chunk = await CallbackPolicyClient(policy, action_hz=20.0).get_actions({}, schema)  # type: ignore[arg-type]
     assert chunk.dt_ms == pytest.approx(50.0)
