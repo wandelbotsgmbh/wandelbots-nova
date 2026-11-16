@@ -130,13 +130,13 @@ async def main():
 asyncio.run(main())
 ```
 
-Every client takes the policy's step rate the same way: `action_hz=`, the rate of the action steps
-in a chunk, in steps per second (`ContinuousExecution(rate_hz=...)` is something else: how often the
-executor asks for a new chunk).
-For a reinforcement-learning policy that is its control frequency: a 20 Hz policy is `action_hz=20` (one
-step every 50 ms). For an imitation-learning policy it is the dataset's frame rate (`fps` in its
-`meta/info.json`); see [lerobot/README.md](lerobot/README.md#action_hz) for LeRobot's `fps`. A rate the
-server reports, as a NATS policy service does, wins. There is no default. Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
+Every client takes the policy's step rate the same way: `control_freq=`, in Hz: how many action
+steps per second the policy was trained to output, the control frequency as robosuite and ManiSkill
+call it. A 20 Hz policy is `control_freq=20` (one step every 50 ms). It is not the robot
+controller's servo rate, and not how often the executor asks for a new chunk
+(`ContinuousExecution(rate_hz=...)`). For an imitation-learning policy it is the dataset's frame rate
+(`fps` in its `meta/info.json`); see [lerobot/README.md](lerobot/README.md#control_freq) for
+LeRobot's `fps`. A rate the server reports, as a NATS policy service does, wins. There is no default. Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
 
 ## PolicySchema
 

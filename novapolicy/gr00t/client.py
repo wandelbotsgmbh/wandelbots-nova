@@ -74,13 +74,14 @@ class Gr00tPolicyClient(PolicyClient):
         ZMQ send/recv timeout in milliseconds.
     api_token:
         Optional API token for authenticated servers.
-    action_hz:
-        The policy's step rate in Hz: the training data's frame rate (``fps`` in the
+    control_freq:
+        The policy's control frequency in Hz, the rate of its action steps (not the
+        controller's servo rate): the training data's frame rate (``fps`` in the
         dataset's ``meta/info.json``), or an RL policy's control frequency. Required to
         run a policy: GR00T servers do not report it. A ``dt_ms`` in a server's action
         info still wins.
     dt_ms:
-        Deprecated: pass ``action_hz``.
+        Deprecated: pass ``control_freq``.
     tcp_format:
         TCP pose representation format sent to the server, unless the
         ``Observation.tcp`` declares an ``orientation_type``.
@@ -101,7 +102,7 @@ class Gr00tPolicyClient(PolicyClient):
         port: int = 5555,
         timeout_ms: int = 15000,
         api_token: str | None = None,
-        action_hz: float | None = None,
+        control_freq: float | None = None,
         dt_ms: float | None = None,
         tcp_format: TcpFormat = TcpFormat.ROT6D,
         rtc: RTCConfig | None = None,
@@ -114,7 +115,7 @@ class Gr00tPolicyClient(PolicyClient):
             timeout_ms=timeout_ms,
             api_token=api_token,
         )
-        self._dt_ms = _step_spacing_ms(action_hz, dt_ms)
+        self._dt_ms = _step_spacing_ms(control_freq, dt_ms)
         self._tcp_format = tcp_format
         # The checkpoint's statistics.json, to hold the first observation against
         self._statistics: dict[str, Any] = (
@@ -154,7 +155,7 @@ class Gr00tPolicyClient(PolicyClient):
         required state, video, and language keys are present in the schema.
         Raises ``ValueError`` with a clear message listing any missing keys.
         """
-        self._step_ms()  # needs action_hz= to run, before the robot moves
+        self._step_ms()  # needs control_freq= to run, before the robot moves
         config = await self.get_modality_config()
         errors: list[str] = []
 
@@ -235,7 +236,7 @@ class Gr00tPolicyClient(PolicyClient):
         return ranges
 
     def _step_ms(self) -> float:
-        """The step spacing from ``action_hz``; raises when it was not given."""
+        """The step spacing from ``control_freq``; raises when it was not given."""
         if self._dt_ms is None:
             raise ValueError(_NEEDS_FPS)
         return self._dt_ms
@@ -581,22 +582,22 @@ def _action_array(
 # ---------------------------------------------------------------------------
 
 
-def _step_spacing_ms(action_hz: float | None, dt_ms: float | None) -> float | None:
+def _step_spacing_ms(control_freq: float | None, dt_ms: float | None) -> float | None:
     if dt_ms is not None:
         warnings.warn(
-            "Gr00tPolicyClient(dt_ms=...) is deprecated; pass action_hz=",
+            "Gr00tPolicyClient(dt_ms=...) is deprecated; pass control_freq=",
             DeprecationWarning,
             stacklevel=3,
         )
-        if action_hz is None:
-            action_hz = 1000.0 / dt_ms
-    if action_hz is not None and action_hz <= 0:
-        raise ValueError(f"action_hz must be positive, got {action_hz}")
-    return None if action_hz is None else 1000.0 / action_hz
+        if control_freq is None:
+            control_freq = 1000.0 / dt_ms
+    if control_freq is not None and control_freq <= 0:
+        raise ValueError(f"control_freq must be positive, got {control_freq}")
+    return None if control_freq is None else 1000.0 / control_freq
 
 
 _NEEDS_FPS = (
-    "Gr00tPolicyClient needs action_hz= to run a policy: GR00T servers do not report the rate their "
+    "Gr00tPolicyClient needs control_freq= to run a policy: GR00T servers do not report the rate their "
     "policy was trained at (fps in the dataset's meta/info.json)"
 )
 
