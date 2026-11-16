@@ -259,8 +259,7 @@ Action.tcp("eef", target=mg, orientation_type=OrientationType.QUATERNION, coordi
 `[x, y, z, w]` or one of the intrinsic/extrinsic Euler conventions (named `_e1.._e3`). Element-wise
 operators on quaternion components are rejected. `coordinate_system` expresses poses, and relative
 offsets, in that coordinate system (references are followed to the world); the executor fetches them
-at start, and `await schema.load_coordinate_systems()` does it for a dry run. `TcpLimits` take a
-`coordinate_system` of their own (see [TCP limits](#tcp-limits)).
+at start, and `await schema.load_coordinate_systems()` does it for a dry run.
 
 ### Checking units against the checkpoint
 
@@ -363,31 +362,9 @@ result = await executor.run()
 
 Stop conditions must be fast (no network calls). Use `Observation.computed()` for async data.
 
-### TCP limits
-
-Before a chunk is sent, its targets reach the stop conditions too (`ctx.target_joints`,
-`ctx.target_tcp` in the world, `ctx.target_dt_ms`), for the steps that will run. `TcpLimits` is
-such a condition: speed, rotation speed, travel from the pose at inference time and x/y/z bounds,
-in the world or in a coordinate system of the controller. A breaking chunk is not sent and the run
-ends normally, naming the step and the limit:
-
-```python
-from novapolicy import TcpLimits
-
-limits = TcpLimits(max_speed_mm_s=650, max_chunk_travel_mm=250, z_mm=(25, 1000))
-executor = PolicyExecutor(
-    schema,
-    policy,
-    stop_conditions=[await limits.stop_condition(mg, tcp="Flange")],
-)
-# result.reason == "stop condition: tcp_limits (step 3: z 20 outside (25, 1000) mm)"
-```
-
-TCP actions are checked directly. Joint actions are checked along the path forward kinematics
-(from the motion group's own description) gives for `tcp`; building the condition compares them
-with the pose NOVA reports and refuses on a mismatch. Without `tcp`, joint actions are not checked.
-
-> These are **software** stop conditions running in the executor loop, not a safety system. The robot can still move fast and a stop condition has no notion of its braking distance. For production, rely on the safety zones and protective stops configured on the robot controller.
+Limits for moves NOVA plans, such as the move to the start pose, are `MotionSettings`, as everywhere
+in NOVA. Streamed policy steps run within the controller's own limits; for production, rely on the
+safety zones and protective stops configured on the robot controller.
 
 ## Teleoperation
 

@@ -47,11 +47,9 @@ from novapolicy import (
     PolicySchema,
     QueuedPolicyClient,
     SequentialExecution,
-    TcpLimits,
     WebRTCCameras,
     resolve_actions,
 )
-from novapolicy.limits import tcp_limit_violations
 
 # settings_from_episode.py is shared by the examples: it lives in novapolicy/examples.
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -82,15 +80,6 @@ CAMERA_SERVER = "http://172.31.11.253/cell/realsense"
 CAMERAS = {"wrist": "427622271414", "side": "319522063360", "top": "314522065367"}
 GRIPPER_HOST = "172.31.13.49"  # Turck TBEN-S2-4IOL for the Zimmer GEH6060IL
 GRIPPER_OPEN_GAP_MM = 80.0  # jaw gap after homing
-# Software limits on every chunk (the table is z = 0), not a safety system.
-LIMITS = TcpLimits(
-    max_speed_mm_s=650.0,
-    max_rotation_speed_deg_s=150.0,
-    max_chunk_travel_mm=250.0,
-    x_mm=(-460.0, 275.0),
-    y_mm=(-800.0, -240.0),
-    z_mm=(25.0, 1000.0),
-)
 
 # --- Execution ---------------------------------------------------------------------------
 N_ACTION_STEPS = 8  # sequential: steps of each chunk that run before the next inference
@@ -219,7 +208,6 @@ async def run_policy(
             timeout_s=TIMEOUT_S,
             execution=ContinuousExecution() if continuous else SequentialExecution(),
             n_action_steps=0 if continuous else N_ACTION_STEPS,
-            stop_conditions=[await LIMITS.stop_condition(mg)],
         )
         mode = "continuous" if continuous else "sequential"
         print(f"Running GR00T policy ({mode}) for up to {TIMEOUT_S}s...")
@@ -259,8 +247,6 @@ async def dry_run(
         rows = raw.values.get(str(ARM.gripper_action_key), [])
         command = np.asarray(rows, dtype=float).reshape(-1)
         print(f"Gripper action: {[round(v, 2) for v in command.tolist()]}")
-        broken = tcp_limit_violations(start, targets[:N_ACTION_STEPS], raw.dt_ms, LIMITS)
-        print(f"Limits: {'; '.join(broken) or 'OK'}")
         print("(* = executed per sequential chunk; dry run, nothing commanded)")
     finally:
         for cam in cameras.values():

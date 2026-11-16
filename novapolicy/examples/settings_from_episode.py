@@ -38,12 +38,17 @@ import json
 import math
 from pathlib import Path
 import sys
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from novapolicy.kinematics import Kinematics
+from novapolicy.poses import pose_matrix
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
+    from nova import api
 
 R2_GOOD = 0.6
 """A frame or representation fitting at least this well counts as found."""
@@ -52,6 +57,60 @@ _POSE_DIM = 6  # [x, y, z, rx, ry, rz]
 _MIN_STEPS = 3  # fewer steps cannot be fitted
 _BASE_ROTATIONS_DEG = (0, 90, 180, 270)
 _GRIPPER_SETTLE_STEPS = 15
+
+
+def _pose_or_identity(
+    position: Iterable[float] | None, rotvec: Iterable[float] | None
+) -> np.ndarray:
+    """``pose_matrix`` with missing parts of an API pose taken as zero."""
+    return pose_matrix([*(position or (0.0, 0.0, 0.0)), *(rotvec or (0.0, 0.0, 0.0))])
+
+
+@dataclass
+class Kinematics:
+    """Forward kinematics of a motion group with one of its TCPs (mm, rad)."""
+
+    dh: list[tuple[float, float, float, float, bool]]  # a, alpha, d, theta offset, reversed
+    tcp: np.ndarray  # flange -> TCP
+    mounting: np.ndarray  # world -> robot base
+
+    @classmethod
+    def from_description(
+        cls, description: api.models.MotionGroupDescription, tcp_name: str
+    ) -> Kinematics:
+        """From ``MotionGroup.get_description()`` and the name of one of its TCPs."""
+        dh = [
+            (
+                p.a or 0.0,
+                p.alpha or 0.0,
+                p.d or 0.0,
+                p.theta or 0.0,
+                bool(p.reverse_rotation_direction),
+            )
+            for p in description.dh_parameters or []
+        ]
+        tcps = description.tcps or {}
+        if tcp_name not in tcps:
+            msg = f"TCP {tcp_name!r} is not defined on this motion group ({sorted(tcps)})"
+            raise ValueError(msg)
+        tcp_pose = tcps[tcp_name].pose
+        mount = description.mounting
+        mounting = _pose_or_identity(mount.position, mount.orientation) if mount else np.eye(4)
+        return cls(dh, _pose_or_identity(tcp_pose.position, tcp_pose.orientation), mounting)
+
+    def fk(self, joints: Sequence[float]) -> np.ndarray:
+        """TCP pose (4x4, mm) in the world for the given joint positions (rad)."""
+        t = self.mounting.copy()
+        for (a, alpha, d, theta, reverse), q in zip(self.dh, joints, strict=True):
+            th = theta + (-q if reverse else q)
+            ca, sa, ct, st = np.cos(alpha), np.sin(alpha), np.cos(th), np.sin(th)
+            t @= np.array([
+                [ct, -st * ca, st * sa, a * ct],
+                [st, ct * ca, -ct * sa, a * st],
+                [0, sa, ca, d],
+                [0, 0, 0, 1],
+            ])
+        return t @ self.tcp
 
 
 @dataclass
@@ -162,44 +221,6 @@ def fit_gripper(state: np.ndarray, action: np.ndarray) -> GripperFit | None:
         holding_state=holding,
         close_frame=first,
         open_frame=switches[1] if len(switches) > 1 else None,
-    )
-
-
-@dataclass
-class PathSummary:
-    """Envelope of one or more episodes' TCP paths."""
-
-    start_joints: list[float]  # of the first episode
-    lo: np.ndarray  # xyz min (mm)
-    hi: np.ndarray  # xyz max (mm)
-    speed_median: float  # mm/s
-    speed_max: float
-    episodes: int = 1
-
-
-def path_summary(poses: list[np.ndarray], joints: np.ndarray, fps: float) -> PathSummary:
-    """Start pose, TCP bounds and speeds of an episode."""
-    positions = np.array([p[:3, 3] for p in poses])
-    speeds = np.linalg.norm(np.diff(positions, axis=0), axis=1) * fps
-    return PathSummary(
-        start_joints=[float(q) for q in joints[0]],
-        lo=positions.min(axis=0),
-        hi=positions.max(axis=0),
-        speed_median=float(np.median(speeds)),
-        speed_max=float(speeds.max()),
-    )
-
-
-def merge_summaries(summaries: list[PathSummary]) -> PathSummary:
-    """One envelope over several episodes."""
-    first = summaries[0]
-    return PathSummary(
-        start_joints=first.start_joints,
-        lo=np.min([s.lo for s in summaries], axis=0),
-        hi=np.max([s.hi for s in summaries], axis=0),
-        speed_median=float(np.median([s.speed_median for s in summaries])),
-        speed_max=max(s.speed_max for s in summaries),
-        episodes=sum(s.episodes for s in summaries),
     )
 
 
@@ -451,13 +472,6 @@ async def _main(args: argparse.Namespace) -> None:
                 robots[spec.name] = measure_robot(spec, state, action, layout, kinematics)
             except ValueError as e:
                 sys.exit(f"Not writing settings: {e}")
-            joints = state[:, layout["state"][spec.joints]]
-            env = path_summary([kinematics.fk(q) for q in joints], joints, fps)
-            print(  # for choosing TcpLimits wider than the motion the policy learned
-                f"{spec.name} training envelope: x {env.lo[0]:.0f}..{env.hi[0]:.0f}, "
-                f"y {env.lo[1]:.0f}..{env.hi[1]:.0f}, z {env.lo[2]:.0f}..{env.hi[2]:.0f} mm; "
-                f"speed max {env.speed_max:.0f} mm/s"
-            )
     settings = EpisodeSettings(
         episode=Path(args.episode).name, rate_hz=round(fps, 3), robots=robots
     )

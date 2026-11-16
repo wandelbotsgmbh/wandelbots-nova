@@ -71,6 +71,5 @@ episode 75 about equally well, because the tool barely rotates), and `gripper_cl
 closed gripper state (the training config's close command; the fingers stop on the cube first).
 
 What is left as constants at the top of [`gr00t_ur10e.py`](gr00t_ur10e.py) is what no episode
-contains: the policy server, the prompt, the image size, the cameras, the gripper's address and
-the `TcpLimits`, which are the deployer's safety choice. See [the GR00T setup
+contains: the policy server, the prompt, the image size, the cameras and the gripper's address. See [the GR00T setup
 guide](../../docs/gr00t.md#setting-up-a-policy-on-a-real-robot) for the whole workflow.

@@ -289,13 +289,6 @@ class StopContext:
     target_ios: dict[str, bool | int | float | str] | None = None
     """Intended IO writes (populated at inference time, before IOs fire)."""
 
-    target_tcp: list[list[float]] | None = None
-    """The chunk's TCP targets in the world (mm, rotation vector), for a TCP action; set
-    only before a chunk is sent, with the steps that will run."""
-
-    target_dt_ms: float | None = None
-    """The chunk's step spacing; set only before a chunk is sent (None on jogging ticks)."""
-
 
 StopCondition = Callable[[StopContext], bool]
 """A fast, synchronous check run on every tick. Return ``True`` to stop the policy."""

@@ -109,7 +109,6 @@ from novapolicy import (
     PolicyExecutor,
     PolicySchema,
     SequentialExecution,
-    TcpLimits,
     WebRTCCameras,
 )
 from settings_from_episode import EpisodeSettings  # novapolicy/examples
@@ -135,14 +134,12 @@ schema = PolicySchema(
         Action.computed(gripper.act, keys=[arm.gripper_action_key]),
     ],
 )
-limits = TcpLimits(max_speed_mm_s=650, max_chunk_travel_mm=250, z_mm=(25, 1000))
 executor = PolicyExecutor(
     schema,
     client,
     execution=SequentialExecution(),
     n_action_steps=8,
     timeout_s=300,
-    stop_conditions=[await limits.stop_condition(mg)],
 )
 result = await executor.run()
 ```
@@ -162,14 +159,11 @@ asks for it; its `HoldWhileGripping` keeps the arm still while the jaws move.
   steps that executed during inference frozen, blends the overlap and smooths it on the executor's
   timeline. Without it, every replacement makes the arm jump.
 
-### 6. Limit and run
+### 6. Run
 
-- `TcpLimits` (speed, rotation speed, chunk travel, x/y/z bounds, in the world or a coordinate
-  system) are a stop condition: a chunk that breaks one is not sent and the run ends, naming the
-  limit. They are the deployer's choice, not facts of the policy: keep them wider than the motion
-  the policy learned (`settings_from_episode.py` prints the training envelope). For joint actions,
-  pass `tcp=` to check the TCP path.
-- Dry run first: one real observation and one inference, the targets printed and checked, nothing
+- Limits for moves NOVA plans (the move home) are `MotionSettings`; streamed policy steps run
+  within the controller's limits and safety zones.
+- Dry run first: one real observation and one inference, the targets printed, nothing
   commanded. `resolve_actions(schema, chunk, states)` gives the targets the executor would send.
 - Then a supervised run with a hand on the e-stop. Before moving home, move straight up when the
   tool is low, so the joint move cannot sweep it over the table.

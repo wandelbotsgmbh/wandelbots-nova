@@ -1266,8 +1266,6 @@ class PolicyExecutor:
                 io_values=self._all_io_values,
                 target_joints=target_joints,
                 target_ios=target_ios,
-                target_tcp=chunk.tcp.get(group_id),
-                target_dt_ms=chunk.dt_ms,
             )
             for condition in self._stop_conditions:
                 if condition(ctx):

@@ -200,12 +200,10 @@ executor = PolicyExecutor(
 )
 ```
 
-### TCP limits
+### Dry runs
 
-`TcpLimits` is a stop condition (see the README): `stop_conditions=[await limits.stop_condition(mg,
-tcp=...)]`. Pre-send stop conditions see the trimmed chunk, the steps that will run, with
-`ctx.target_tcp` (TCP targets in the world) and `ctx.target_dt_ms`. `resolve_actions(schema, chunk,
-states)` returns the targets the executor would send for a raw policy chunk, for dry runs.
+`resolve_actions(schema, chunk, states)` returns the targets the executor would send for a raw
+policy chunk.
 
 ## Stale inputs and how a run ends
 

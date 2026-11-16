@@ -21,7 +21,6 @@ import numpy as np
 import pytest
 
 from novapolicy.executor import Phase, PolicyExecutor
-from novapolicy.limits import TcpLimits, TcpLimitsCondition
 from novapolicy.ops import Rad2Deg
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.queued_client import QueuedPolicyClient
@@ -849,37 +848,6 @@ async def test_send_routes_joint_and_tcp_targets_to_their_own_sessions():
 
 
 @pytest.mark.asyncio
-async def test_a_chunk_breaking_tcp_limits_ends_the_run_before_it_is_sent():
-    """TcpLimits as a stop condition see the resolved targets; a breaking chunk never
-    reaches jogging, and the run's reason names the limit."""
-    eef = _mg("0@ur5e-right")
-    schema = PolicySchema(observations=[Observation.tcp("eef", source=eef, action=True)])
-
-    async def diving_policy(_obs: object) -> ActionChunk:
-        return ActionChunk(tcp={eef.id: [[500.0, 200.0, 10.0, 0.0, 3.14, 0.0]]}, dt_ms=33.0)
-
-    session = _fake_session()
-    session.motion_group_id = eef.id
-    session.current_state.pose = SimpleNamespace(
-        position=[500.0, 200.0, 300.0], orientation=[0.0, 3.14, 0.0]
-    )
-    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
-    with (
-        patch("novapolicy.executor.WaypointJoggingSession", return_value=session),
-        patch("novapolicy.executor.EstopMonitor", return_value=estop),
-    ):
-        limits = TcpLimits(z_mm=(25.0, 1000.0), max_chunk_travel_mm=1000.0)
-        result = await PolicyExecutor(
-            schema,
-            _callback(diving_policy),
-            timeout_s=1.0,
-            stop_conditions=[await limits.stop_condition(eef)],
-        ).run()
-    assert result.reason == "stop condition: tcp_limits (step 0: z 10 outside (25.0, 1000.0) mm)"
-    session.update_chunk.assert_not_called()
-
-
-@pytest.mark.asyncio
 async def test_a_resolved_chunk_is_sent_without_resolving_it_again():
     """A queued client's chunk is already absolute; relative mode must not apply twice."""
     eef = _mg("0@ur5e-right")
@@ -932,8 +900,6 @@ async def test_a_queued_client_runs_continuously_on_the_timestep_timeline(robot:
         timeout_s=0.3,
         execution=ContinuousExecution(),
         n_action_steps=0,
-        # a second resolve would break it
-        stop_conditions=[TcpLimitsCondition(TcpLimits(max_speed_mm_s=100.0), MG_ID)],
     ).run()
 
     assert result.reason == "timeout"
@@ -941,84 +907,6 @@ async def test_a_queued_client_runs_continuously_on_the_timestep_timeline(robot:
     assert calls
     xs = [step[0] for step in calls[0].kwargs["steps"]]
     assert all(399.0 < x < 410.0 for x in xs)  # absolute, resolved once from 400 mm
-
-
-_UR10E_DH = [  # a, alpha, d of a UR10e, as NOVA describes it
-    (0.0, math.pi / 2, 180.7),
-    (-612.7, 0.0, 0.0),
-    (-571.55, 0.0, 0.0),
-    (0.0, math.pi / 2, 174.15),
-    (0.0, -math.pi / 2, 119.85),
-    (0.0, 0.0, 116.55),
-]
-HOME = [math.pi / 2, -math.pi / 2, math.pi / 2, -math.pi / 2, -math.pi / 2, 0.0]
-
-
-def _ur10e_arm(robot: _Robot, *, reported_offset_mm: float = 0.0):
-    """A UR10e at home whose description and reported pose feed the joint-limit check."""
-    from novapolicy.kinematics import Kinematics
-    from novapolicy.poses import matrix_pose
-
-    mg = _mg(MG_ID)
-    description = SimpleNamespace(
-        dh_parameters=[
-            SimpleNamespace(a=a, alpha=al, d=d, theta=0.0, reverse_rotation_direction=False)
-            for a, al, d in _UR10E_DH
-        ],
-        tcps={"umi_corrected": SimpleNamespace(
-            pose=SimpleNamespace(position=(-7.19, 0.0, 221.7), orientation=(0, 0, 0))
-        )},
-        mounting=None,
-    )  # fmt: skip
-    pose = matrix_pose(Kinematics.from_description(description, "umi_corrected").fk(HOME))
-    pose[0] += reported_offset_mm
-    mg.get_description = AsyncMock(return_value=description)
-    state = SimpleNamespace(
-        joints=HOME, pose=SimpleNamespace(position=pose[:3], orientation=pose[3:])
-    )
-    mg.get_state = AsyncMock(return_value=state)
-    robot.session.current_state.joints = tuple(HOME)
-    return mg, pose
-
-
-@pytest.mark.asyncio
-async def test_joint_actions_are_checked_along_their_tcp_path(robot: _Robot):
-    """A joint chunk whose TCP would leave the limits ends the run before it is sent."""
-    mg, pose = _ur10e_arm(robot)
-
-    async def stay(_obs: object) -> ActionChunk:
-        return ActionChunk(joints={MG_ID: [HOME]}, dt_ms=33.0)
-
-    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
-    limits = TcpLimits(z_mm=(pose[2] + 10.0, 2000.0))
-    condition = await limits.stop_condition(mg, tcp="umi_corrected")
-    result = await PolicyExecutor(
-        schema, _callback(stay), timeout_s=1.0, stop_conditions=[condition]
-    ).run()
-    assert result.reason.startswith("stop condition: tcp_limits (step 0: z")
-    robot.session.update_chunk.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_joint_limits_refuse_kinematics_that_disagree_with_nova(robot: _Robot):
-    mg, _pose = _ur10e_arm(robot, reported_offset_mm=5.0)
-    with pytest.raises(ValueError, match="disagree with NOVA"):
-        await TcpLimits(z_mm=(0.0, 1.0)).stop_condition(mg, tcp="umi_corrected")
-
-
-@pytest.mark.asyncio
-async def test_without_a_tcp_joint_actions_are_not_checked(robot: _Robot):
-    mg, _pose = _ur10e_arm(robot)
-
-    async def stay(_obs: object) -> ActionChunk:
-        return ActionChunk(joints={MG_ID: [HOME]}, dt_ms=33.0)
-
-    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
-    condition = await TcpLimits(z_mm=(0.0, 1.0)).stop_condition(mg)
-    result = await PolicyExecutor(
-        schema, _callback(stay), timeout_s=0.1, stop_conditions=[condition]
-    ).run()
-    assert result.reason == "timeout"
 
 
 # ---------------------------------------------------------------------------

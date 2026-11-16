@@ -172,27 +172,3 @@ def test_world_is_an_exact_no_op():
         ),
         DOWN,
     )
-
-
-def test_tcp_limits_bounds_apply_in_their_coordinate_system():
-    from novapolicy.limits import TcpLimits, TcpLimitsCondition
-    from novapolicy.types import StopContext
-
-    table = poses.pose_matrix([100.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # 100 mm along world x
-    start = [150.0, 0.0, 300.0, math.pi, 0.0, 0.0]  # table x = 50
-    ctx = StopContext(
-        state=_state(start), prev_state=None, dt=0.0, motion_group_id="mg",
-        target_tcp=[start], target_dt_ms=33.0,
-    )  # fmt: skip
-    inside = TcpLimitsCondition(
-        TcpLimits(x_mm=(0.0, 60.0), coordinate_system="table"), "mg", frame=table
-    )
-    outside = TcpLimitsCondition(
-        TcpLimits(x_mm=(0.0, 40.0), coordinate_system="table"), "mg", frame=table
-    )
-    assert not inside(ctx)
-    assert outside(ctx)
-    assert outside.__name__ == "tcp_limits (step 0: x 50 outside (0.0, 40.0) mm)"
-    assert not outside(
-        StopContext(state=_state(start), prev_state=None, dt=0.01, motion_group_id="mg")
-    )
