@@ -1,7 +1,7 @@
 """Acceptance tests for ``Action.tcp`` modes against a real NOVA instance.
 
-Each test provisions a throwaway virtual UR10e (deleted on teardown), moves it to a
-tool-down start, lets a scripted policy send one TCP chunk through the executor in
+The module provisions one throwaway virtual UR10e (deleted on teardown); each test moves
+it to the same tool-down start, lets a scripted policy send one TCP chunk through the executor in
 sequential mode, and measures where the TCP actually came to rest. That covers the
 whole path a policy's TCP action takes: unit operators, relative composition, the
 executor's waypoint jogging and NOVA's inverse kinematics. They require NOVA_API /
@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 import uuid
 
 import pytest
+import pytest_asyncio
 from scipy.spatial.transform import Rotation
 
 from novapolicy.executor import PolicyExecutor
@@ -38,25 +39,29 @@ POSITION_TOL_MM = 1.0
 ROTATION_TOL_DEG = 0.5
 
 
-async def _virtual_ur10e(cell, stack: contextlib.AsyncExitStack):
-    from nova import api
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def ur10e():
+    """One virtual UR10e for the module: provisioning costs more than the tests."""
+    from nova import Nova, api
     from nova.cell import virtual_controller
 
     name = f"tcp-itest-{uuid.uuid4().hex[:8]}"
-    controller = await cell.ensure_controller(
-        virtual_controller(
-            name=name,
-            manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
-            type="universalrobots-ur10e",
+    async with Nova() as nova_instance, contextlib.AsyncExitStack() as stack:
+        cell = nova_instance.cell()
+        controller = await cell.ensure_controller(
+            virtual_controller(
+                name=name,
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type="universalrobots-ur10e",
+            )
         )
-    )
 
-    async def _cleanup() -> None:
-        with contextlib.suppress(Exception):
-            await cell.delete_robot_controller(name, timeout=25)
+        async def _cleanup() -> None:
+            with contextlib.suppress(Exception):
+                await cell.delete_robot_controller(name, timeout=25)
 
-    stack.push_async_callback(_cleanup)
-    return controller
+        stack.push_async_callback(_cleanup)
+        yield await stack.enter_async_context(controller[0])
 
 
 def _pose(state) -> list[float]:
@@ -64,48 +69,44 @@ def _pose(state) -> list[float]:
 
 
 async def _run_one_chunk(
+    mg: Any,
     action_for: Callable[[Any], _ActTcp],
     steps: list[list[float]] | Callable[[list[float]], list[list[float]]],
 ) -> tuple[list[float], list[float]]:
-    """Run one TCP chunk on a fresh virtual UR10e; return (start, end) TCP poses.
+    """Run one TCP chunk on ``mg`` from the tool-down start; return (start, end) TCP poses.
 
     ``action_for(mg)`` builds the ``Action.tcp`` entry; ``steps`` may depend on the start
     pose, so it may also be a callable taking it.
     """
-    from nova import Nova
+    tcp = (await mg.tcp_names())[0]
+    calls = 0
+    start: list[float] = []
 
-    async with Nova() as nova_instance, contextlib.AsyncExitStack() as stack:
-        controller = await _virtual_ur10e(nova_instance.cell(), stack)
-        mg = await stack.enter_async_context(controller[0])
-        tcp = (await mg.tcp_names())[0]
-        calls = 0
-        start: list[float] = []
+    async def policy(_obs: object) -> ActionChunk:
+        nonlocal calls, start
+        calls += 1
+        if not start:
+            start = _pose(await mg.get_state(tcp))
+        chunk = steps if isinstance(steps, list) else steps(start)
+        return ActionChunk(tcp={mg.id: chunk}, dt_ms=DT_MS)
 
-        async def policy(_obs: object) -> ActionChunk:
-            nonlocal calls, start
-            calls += 1
-            if not start:
-                start = _pose(await mg.get_state(tcp))
-            chunk = steps if isinstance(steps, list) else steps(start)
-            return ActionChunk(tcp={mg.id: chunk}, dt_ms=DT_MS)
+    def after_first_chunk(_ctx: StopContext) -> bool:
+        return calls >= 2  # the first chunk ran to standstill
 
-        def after_first_chunk(_ctx: StopContext) -> bool:
-            return calls >= 2  # the first chunk ran to standstill
-
-        action: _ActTcp = action_for(mg)
-        schema = PolicySchema(
-            observations=[Observation.tcp(action.key, source=mg, tcp=tcp)], actions=[action]
-        )
-        result = await PolicyExecutor(
-            schema,
-            CallbackPolicyClient(policy),
-            execution=SequentialExecution(),
-            stop_conditions=[after_first_chunk],
-            start_joint_position={mg: [math.radians(d) for d in START_DEG]},
-            timeout_s=30.0,
-        ).run()
-        assert result.reason == "stop condition: after_first_chunk", result.reason
-        end = _pose(await mg.get_state(tcp))
+    action: _ActTcp = action_for(mg)
+    schema = PolicySchema(
+        observations=[Observation.tcp(action.key, source=mg, tcp=tcp)], actions=[action]
+    )
+    result = await PolicyExecutor(
+        schema,
+        CallbackPolicyClient(policy),
+        execution=SequentialExecution(),
+        stop_conditions=[after_first_chunk],
+        start_joint_position={mg: [math.radians(d) for d in START_DEG]},
+        timeout_s=30.0,
+    ).run()
+    assert result.reason == "stop condition: after_first_chunk", result.reason
+    end = _pose(await mg.get_state(tcp))
     return start, end
 
 
@@ -121,19 +122,20 @@ def _ramp(total: list[float]) -> list[list[float]]:
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
-async def test_absolute_tcp_targets_are_reached():
+@pytest.mark.asyncio(loop_scope="module")
+async def test_absolute_tcp_targets_are_reached(ur10e):
     def down_30(start: list[float]) -> list[list[float]]:
         return [[*start[:2], start[2] - 3.0 * (i + 1), *start[3:]] for i in range(STEPS)]
 
-    start, end = await _run_one_chunk(lambda mg: Action.tcp("eef", target=mg), down_30)
+    start, end = await _run_one_chunk(ur10e, lambda mg: Action.tcp("eef", target=mg), down_30)
     _assert_pose(end, [*start[:2], start[2] - 30.0], Rotation.from_rotvec(start[3:]))
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
-async def test_relative_offsets_are_taken_from_the_pose_at_inference():
+@pytest.mark.asyncio(loop_scope="module")
+async def test_relative_offsets_are_taken_from_the_pose_at_inference(ur10e):
     start, end = await _run_one_chunk(
+        ur10e,
         lambda mg: Action.tcp("eef", target=mg, mode="relative"),
         _ramp([20.0, -10.0, -30.0, 0.0, 0.0, 0.0]),
     )
@@ -143,9 +145,10 @@ async def test_relative_offsets_are_taken_from_the_pose_at_inference():
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
-async def test_accumulated_offsets_chain_from_step_to_step():
+@pytest.mark.asyncio(loop_scope="module")
+async def test_accumulated_offsets_chain_from_step_to_step(ur10e):
     start, end = await _run_one_chunk(
+        ur10e,
         lambda mg: Action.tcp("eef", target=mg, mode="relative", accumulate=True),
         [[2.0, -1.0, -3.0, 0.0, 0.0, 0.0]] * STEPS,
     )
@@ -155,9 +158,10 @@ async def test_accumulated_offsets_chain_from_step_to_step():
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
-async def test_tool_coordinate_system_offsets_follow_the_tool_axes():
+@pytest.mark.asyncio(loop_scope="module")
+async def test_tool_coordinate_system_offsets_follow_the_tool_axes(ur10e):
     start, end = await _run_one_chunk(
+        ur10e,
         lambda mg: Action.tcp("eef", target=mg, mode="relative", use_tool_coordinate_system=True),
         _ramp([0.0, 0.0, 30.0, 0.0, 0.0, 0.0]),  # 30 mm along the tool's z axis
     )
@@ -168,10 +172,11 @@ async def test_tool_coordinate_system_offsets_follow_the_tool_axes():
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
-async def test_rotation_offsets_turn_the_tool_about_the_tcp():
+@pytest.mark.asyncio(loop_scope="module")
+async def test_rotation_offsets_turn_the_tool_about_the_tcp(ur10e):
     yaw = math.radians(15.0)
     start, end = await _run_one_chunk(
+        ur10e,
         lambda mg: Action.tcp("eef", target=mg, mode="relative"),
         _ramp([0.0, 0.0, 0.0, 0.0, 0.0, yaw]),
     )
@@ -180,9 +185,10 @@ async def test_rotation_offsets_turn_the_tool_about_the_tcp():
 
 
 @pytest.mark.integration
-@pytest.mark.asyncio
-async def test_unit_operators_apply_before_the_offsets():
+@pytest.mark.asyncio(loop_scope="module")
+async def test_unit_operators_apply_before_the_offsets(ur10e):
     start, end = await _run_one_chunk(
+        ur10e,
         lambda mg: Action.tcp(
             "eef",
             target=mg,
