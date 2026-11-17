@@ -102,7 +102,8 @@ actions = [Action.joint_positions("arm", target=mg)]
 
 The client takes the output of kind `joint/position`, or with a
 `write:<robot>:set_joint_position_target...` connection. If the export has several, name the joint
-action like the output it should command. Other outputs, such as exported gains, are not sent.
+action like the output it should command. An output named like a key of `Action.computed(...,
+keys=[...])` reaches that hook in `chunk.values`; other outputs, such as exported gains, are not used.
 
 ## 5. Run
 
