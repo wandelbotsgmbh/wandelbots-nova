@@ -24,6 +24,11 @@ It works like Isaac Lab's reach task: it observes the joint positions, the joint
 target pose (19 values), and outputs absolute joint targets at 30 Hz, one per step. Feed the joint
 positions as NOVA reports them; the export subtracts the start pose itself.
 
+NOVA moves the arm to every joint target within its step, so each target has to be one the arm can
+follow: this export's action processing puts every target at most 2° per joint from the measured
+joints (60°/s at 30 Hz), whatever the network outputs. A policy whose targets jump to the goal
+makes the arm move as fast as the controller allows.
+
 ## Run it
 
 The trained export is in `exported/reach/`.
@@ -42,8 +47,9 @@ NOVA_API=http://<nova-host> uv run python run_reach.py --virtual --execute \
   --isaac-sim http://isaac-host:8011/omniservice/api/v2 --prim /World/Part --relative-to /World/UR10e/base --duration 12
 ```
 
-On a virtual UR10e (NOVA 26.8.1), with the part detected at A, B, A, the policy ran at 29.3 Hz and
-ended 4.2 mm from its target over A and 3.0 mm from its target over B, tool axis 0.8° off. A part detected 80 mm from A ended the
+On a virtual UR10e (NOVA 26.8.1), with the part detected at A, B, A, the policy ran at 27 Hz, no
+joint faster than 40°/s, and ended 3.0 to 5.2 mm from its target over A and 4.2 mm over B, tool axis
+at most 0.3° off. A part detected 80 mm from A ended the
 run with `stop condition: part_outside_trained_positions` after 0 policy steps. With
 `--controller NAME` instead of `--virtual` it uses an existing controller and asks before it moves
 it.

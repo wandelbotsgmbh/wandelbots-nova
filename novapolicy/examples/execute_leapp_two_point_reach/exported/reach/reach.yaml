@@ -27,8 +27,8 @@ models:
       isaaclab_connection: write:robot:set_joint_position_target
     parameters:
       model_path: reach_policy.onnx
-      md5sum: cf62949d42386055c4a87fee41dd1fc1
-      sha256sum: 882c216dd4109075e9992f8c271a02182b2cf6a85bb10e8b844e737c3c9592b9
+      md5sum: 690041e16eda2be5717b4ead3918a948
+      sha256sum: 1420d94117cd72c427a332d648555aab0eb6e0bd4d556dc3c1eb6ea1261eeef5
       backend: onnx
       warp_segments: 0
       opset_version: 20
