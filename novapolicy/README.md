@@ -131,7 +131,7 @@ asyncio.run(main())
 ```
 
 Every client takes the policy's step rate as `control_freq=` in Hz (for a dataset, its `fps`); the
-default is 30. Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
+GR00T and LeRobot clients default to 30. Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
 
 ## PolicySchema
 
@@ -383,6 +383,7 @@ arm, keyboard, gamepad, spacemouse) in your own script. See
 | [docs/gr00t.md](docs/gr00t.md)       | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ, and setting up a GR00T policy on a real robot (what the actions mean, checking the cell, run script, execution mode, limits); [docs/rtc.md](docs/rtc.md) for real-time chunking |
 | [lerobot/README.md](lerobot/README.md) | LeRobot async inference, checkpoint-derived `chunk_size` / `n_action_steps`, and remote-checkpoint configuration                                                        |
 | [docs/rerun.md](docs/rerun.md)       | Optional real-time 3D visualization of execution                                                                                                                       |
+| [docs/migration.md](docs/migration.md) | Changes that need an edit when upgrading                                                                                                                             |
 
 ### Examples
 
