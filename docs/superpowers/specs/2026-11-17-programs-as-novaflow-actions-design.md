@@ -11,6 +11,23 @@ it **once**. It then:
 - shows up in NovaFlow (Canopy palette / trees) as a **typed node** whose inputs can be wired
   and whose outputs can be referenced by later nodes.
 
+### End picture
+
+**One NOVAx app = one NovaFlow service. One program = one node of that service.**
+
+```text
+NOVAx app "pick-cell"  (one container, one `nova app install`)
+└── NovaFlow service "PickCell"
+    ├── node "Pick"      ← @nova.program pick
+    ├── node "Place"     ← @nova.program place
+    └── node "Calibrate" ← @nova.program calibrate
+```
+
+- **Every** program becomes a node; none is skipped (§6.2).
+- The service appears when the app starts and disappears when it stops. A redeploy or hot reload
+  re-registers the service with the current set of programs.
+- New apps get this by default: the scaffold ships with the plugin (§7).
+
 ### Constraints (from the user)
 
 - Seamless for the author; simplify deployment.
@@ -164,13 +181,22 @@ SDK (`ActionService`, `Router`, `ActionContext`, `HaltToken`, `ActionFailure` fr
 - Registered under the `novax.extensions` entry point. `on_startup` spawns **a child process**
   running an `ActionService`, because `ActionService.run()` owns its event loop and worker pool.
   `on_shutdown` terminates it and deregisters.
-- Service name = PascalCase(`APP_NAME`). One action per program: `Pick` ← `pick`.
+- **One service per app:** service name = PascalCase(`APP_NAME`), e.g. `pick-cell` → `PickCell`
+  (NovaFlow requires `^[A-Z][A-Za-z0-9]*$`).
+- **One node per program, always:** action name = PascalCase(program id), e.g. `pick` → `Pick`.
+  A leading digit gets a `P` prefix. Two programs that map to the same name fail app startup with
+  a clear error.
   - `input_model` = `program.input_model`; the output model follows the `output_json_schema` rules
     (§4.1). `nova.types.Pose` fields are swapped for the api-client `Pose`, and values are
     converted with `to_api_model()` (§8, Q3).
-  - Programs whose models violate NovaFlow's flat/supported-type rules are **skipped with a
-    warning**; they remain reachable via `RunProgram`.
+  - A field whose type NovaFlow can't identify (e.g. `dict[str, float]`, a heterogeneous tuple)
+    is published as `Any` with a startup warning, instead of skipping the program. NovaFlow
+    accepts `Any` fields (verified against `NodeSchema._extract_fields` on novaflow `881645f`).
+    Such a field can still be passed as a value, but is not type-checked when wired.
   - `moves_robot`/`robot_field` come from preconditions; `holds_before_motion=False` initially.
+- **Lifecycle:** the service registers when the app starts and is removed from NovaFlow's
+  registry when it stops (NovaFlow's SDK already deletes the registry keys on shutdown). A
+  redeploy or hot reload re-registers it with the current set of programs.
 - Handler (runs in a worker subprocess): re-import `programs_dir`, look up the program by id,
   open `Nova()`, build a `ProgramContext`, and call the program. `HaltToken` → cancel the
   program task, and the robot cell stops, as on the NOVA stop path. `ctx.checkpoint()` →
@@ -180,7 +206,8 @@ SDK (`ActionService`, `Router`, `ActionContext`, `HaltToken`, `ActionFailure` fr
   config (e.g. `[tool.novax.novaflow] routers = ["app.actions:router"]`). One app can then host
   programs *and* hand-written `@router.action`s.
 - **Duplicates accepted:** a program served by the plugin also stays listed in the `RunProgram`
-  picker. Hiding it would need a Canopy change; not worth it now.
+  picker. Hiding it would need a Canopy change. Once every app ships the plugin, `RunProgram` is
+  only needed for older apps; BA can deprecate it then.
 - **Compatibility:** CI tests the plugin against the pinned NovaFlow SDK release; the SDK hook is
   versioned by `NOVAX_EXTENSION_API`. Optionally, BA adds the plugin to the SDK matrix of
   NovaFlow's `test_external_action_contract.py`.
@@ -197,8 +224,11 @@ SDK (`ActionService`, `Router`, `ActionContext`, `HaltToken`, `ActionFailure` fr
    shrinks to `programs/`, `pyproject.toml`, `uv.lock`, `.nova`, and a ~6-line Dockerfile ending
    in `CMD ["novax", "serve"]`. `app/__main__.py` and `register_programs.py` go away. Update
    `examples/your-nova-app/` and the nova-cli `python_app` generator (separate repo).
-3. **Opt-in NovaFlow** is one line: `uv add wandelbots-nova-novaflow`. No code change; the entry
-   point activates it.
+3. **NovaFlow by default:** the scaffold (`examples/your-nova-app/` and the nova-cli
+   `python_app` generator) lists `wandelbots-nova-novaflow` as a dependency, so every new app is
+   a NovaFlow service with one node per program. The entry point activates it; no code is
+   needed. Existing apps add it with `uv add wandelbots-nova-novaflow`; removing it turns the
+   service off. `wandelbots-nova` itself still has no NovaFlow dependency.
 4. **Later spike (out of scope):** image-less deploy, where a shared runtime app loads program
    files from the NATS object store (`nova program push`). Open issues: dependency management
    and security.

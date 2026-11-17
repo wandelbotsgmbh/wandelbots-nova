@@ -162,17 +162,25 @@ Owned by us; lives in `nova_novaflow/` with its own `pyproject.toml`, like `nova
   release>`, `wandelbots-novaflow==<NovaFlow release>`), entry point
   `novax.extensions = novaflow = nova_novaflow:extension`, CI job (ruff, ty, pytest), release
   config.
-- [ ] **M3.2** Program → action adapter:
-  - Service name = PascalCase(app); action name = PascalCase(program id).
-  - Validate input/output models against NovaFlow's flat/supported-type rules; skip and warn
-    otherwise. Replace `nova.types.Pose` fields with the api-client `Pose` in the generated
-    models and convert values with `to_api_model()` (spec §8, Q3).
+- [ ] **M3.2** Program → action adapter (end picture: one app = one service, one program = one
+  node):
+  - Service name = PascalCase(app); action name = PascalCase(program id); leading digit → `P`
+    prefix; colliding names fail startup.
+  - Map input/output models to NovaFlow's type rules. Replace `nova.types.Pose` fields with the
+    api-client `Pose` and convert values with `to_api_model()` (spec §8, Q3). Fields NovaFlow
+    can't identify (`dict[...]`, heterogeneous tuples) become `Any` with a warning. A program is
+    never skipped.
   - `moves_robot` + `robot_field` from preconditions.
   - Handler: re-import `programs_dir` in the worker, build `Nova` + `ProgramContext`, inject the
     host (`checkpoint` → `run_rest.wait(False)`, `report_progress` → `ActionContext`), and run
     with `HaltToken` → cancel. Errors → `ActionFailure`.
+  - Tests: an app with N programs registers exactly one service with N actions, including a
+    program with a `dict` field (→ `Any`) and one returning `nova.types.Pose`; name mapping and
+    collision error.
 - [ ] **M3.3** Run the `ActionService` in a child process started from `on_startup`;
-  `on_shutdown` terminates it (graceful halt, then kill).
+  `on_shutdown` terminates it (graceful halt, then kill). Test: after app shutdown the service is
+  gone from NovaFlow's registry; after a restart with one program added, the service has N+1
+  actions.
 - [ ] **M3.4** Extra routers from `[tool.novax.novaflow] routers = [...]`.
 - [ ] **M3.5** Tests: component test against a NATS testcontainer (register → dispatch → output →
   halt → pause point); unit tests for the model adapter (Pose swap, skipped programs).
@@ -192,12 +200,16 @@ Owned by us; lives in `nova_novaflow/` with its own `pyproject.toml`, like `nova
   `api/v2/components/schemas/Program.yaml`, bump its `wandelbots-nova` pin, and release with
   NOVA.
 
-## Milestone 6 — Docs and rollout
+## Milestone 6 — Docs, default scaffold and rollout
 
-- [ ] `docs/programs.md`: "Use your programs in NovaFlow". Without the plugin, `RunProgram`
-  runs them and returns untyped output; with `uv add wandelbots-nova-novaflow`, they become
-  typed native nodes. Include a decision table.
-- [ ] Short note for the BA team / NovaFlow docs pointing to the plugin as the "write once" path.
+- [ ] **M6.1** Default scaffold: `examples/your-nova-app/pyproject.toml` lists
+  `wandelbots-nova-novaflow`, so every new app is a NovaFlow service with one node per program.
+  Follow-up issue in `nova-cli`: the `python_app` generator does the same.
+- [ ] **M6.2** `docs/programs.md`: "Your app in NovaFlow". One app = one service, one program =
+  one node: name mapping, `Any` fallback, pause/progress hooks, how to remove the plugin. Older
+  apps without the plugin still run programs through `RunProgram` with untyped output.
+- [ ] **M6.3** Short note for the BA team / NovaFlow docs: apps appear as services; `RunProgram`
+  is only needed for older apps.
 
 ## Order and parallelism
 
