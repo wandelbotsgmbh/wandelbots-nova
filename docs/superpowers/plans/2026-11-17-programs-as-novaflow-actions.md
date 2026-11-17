@@ -67,7 +67,20 @@ Conventions: every SDK task is test-first (write failing test → implement → 
 - If S1 = dropped/rejected: keep the store payload unchanged and expose `output_schema` only via
   NOVAx `GET /programs/{id}`. NovaFlow reads it from the app (M3.2 adapts).
 
-### M1.5 Docs and example
+### M1.5 Parallel runs of different programs
+- Files: `novax/program_manager.py`, `novax/novax.py`, `novax/api/programs.py`,
+  `tests/novax/test_program_manager.py`.
+- Tests:
+  - Two different programs start and run at the same time; each reaches COMPLETED with its own
+    run id and output.
+  - Starting a program that is already running → clear "program already running" error.
+  - Stopping one program leaves the other running.
+  - App shutdown stops all running programs.
+- Impl: replace the single `_runner` with `dict[program_id, ProgramRunner]`; drop finished
+  runners. `running_program` becomes `running_programs`; keep the old property as a deprecated
+  alias that returns the first running program.
+
+### M1.6 Docs and example
 - `docs/programs.md`: a "Program outputs" section (return a model or a scalar, the `result`
   wrapping, the size limit), and a short "Use in NovaFlow" section (filled in further in M2/M5).
 - `examples/your-nova-app/app/programs/start_here.py` or a new example returning a typed result.
@@ -184,7 +197,7 @@ Independent of M1; can run in parallel.
 
 ```text
 S1, S2 ──┐
-M1.1 → M1.2 → M1.3 ─┬→ M1.4(S1) → M1.5 → [SDK release] → M3.1 → M3.3 → M3.2(S2) → M3.4
+M1.1 → M1.2 → M1.3 ─┬→ M1.4(S1) → M1.5 → M1.6 → [SDK release] → M3.1 → M3.3 → M3.2(S2) → M3.4
 M2.1 → M2.2 ────────┤                                   → M4.1 → M4.2 → M4.3 → M4.4 → M4.5
 M2.3 → M2.4 ────────┘                                                                 → M5
 ```

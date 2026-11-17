@@ -99,8 +99,11 @@ All in `wandelbots-nova`. Additive; no behavior change for programs without a re
    "controllers this program moves" from `preconditions.controllers`. It's already in the store,
    so no new field is needed unless we add an explicit `@nova.program(moves=...)` (decide later;
    YAGNI).
-6. **Concurrency:** keep one-run-per-app as the default. Return a clear "app busy" error that
-   NovaFlow surfaces as a node failure. (C bypasses `ProgramManager`, see §6.)
+6. **Concurrency (decided: allow parallel):** `ProgramManager` tracks runners per program instead
+   of one global runner, so different programs of one app can run at the same time (NovaFlow
+   `parallel` nodes). A second run of the *same* program is still rejected with a clear "program
+   already running" error, because NOVA's stop endpoint addresses a program, not a run (§8, Q5).
+   The NOVAx app's shutdown stops all running programs.
 7. **Docs/tests:** update `docs/programs.md` (required by `AGENTS.md`): typed outputs, the
    NovaFlow section. Unit tests: output capture, validation failure, scalar wrapping,
    `None`-output, size cap, and the `ProgramStatus` serialization golden.
@@ -203,8 +206,9 @@ Mostly NovaFlow; no new process, no new deployment.
    The structural `type_id`s must match for wiring. Check what JSON schema `nova.types.Pose`
    emits; programs may need to return `api.models.Pose`, or the SDK maps it when publishing.
 4. **Duplicate visibility (A vs C):** store flag name and Canopy behavior.
-5. **Concurrency:** is one-run-per-app acceptable for A (parallel `RunProgram` nodes of the same
-   app fail fast)?
+5. **Concurrency of the same program:** different programs of one app run in parallel (decided).
+   Should two runs of the *same* program be allowed? That needs a per-run stop in NOVA's Program
+   API, so for now they are rejected.
 6. **Worker re-import cost / spawn method** in NovaFlow's worker pool with heavy program modules.
 
 ## 9. Work breakdown
@@ -215,6 +219,7 @@ Mostly NovaFlow; no new process, no new deployment.
 | 0.2 | SDK | Capture + validate return value into new `ProgramRun.output` | S | 0.1 |
 | 0.3 | SDK | `ProgramStatus.output` on COMPLETED (+ size cap, golden) | S | 0.2 |
 | 0.4 | SDK | `output_schema` in store entry + NOVAx GET | S | 0.1, Q1 |
+| 0.6 | SDK | Parallel runs of different programs per app | S | — |
 | 0.7 | SDK | Docs `docs/programs.md`, example with typed output | S | 0.1–0.4 |
 | A.1 | NovaFlow | `RunProgram` returns `output` | S | 0.3 |
 | A.2 | NovaFlow | Program-parameterized input/output types (validator + Canopy) | M–L | 0.4, A.1 |
