@@ -76,16 +76,17 @@ nova app install .   # unchanged
 
 All in `wandelbots-nova`. Additive; no behavior change for programs without a return annotation.
 
-1. **Normalize the output model** (`nova/program/function.py`).
-   - Return annotation is a `BaseModel` → used as is.
-   - No annotation or `-> None` → **no output** (`output_model = None`, no schema).
-     Today this yields `RootModel[None]`; check internal users of `output_model` before changing.
-   - Any other type `T` → the *published* schema is an object `{"result": T}` (NovaFlow requires
-     object outputs with required fields). Keep the internal `RootModel` if needed, but expose one
-     `Program.output_json_schema` that is always an object schema or `None`.
-2. **Capture the return value** (`nova/program/runner.py`): store the result of `_run`, validate it
-   against `output_model`, and write `model_dump(mode="json")` into `ProgramRun.output_data`.
-   If validation fails, the run is `FAILED` with a clear error.
+1. **Add a published output schema** (`nova/program/function.py`). `output_model` and the existing
+   `Program.output_schema` stay unchanged (a test asserts `{"type": "number"}` for `-> float`).
+   Add `Program.output_json_schema`, which is always an object schema or `None`:
+   - Return annotation is a `BaseModel` → its schema.
+   - No annotation or `-> None` → `None` (no output).
+   - Any other type `T` → `{"result": T}`. NovaFlow requires object outputs with required fields.
+2. **Capture the return value** (`nova/program/runner.py`): keep the result of `_run`, validate it
+   against `output_model`, and normalize it with the same rules into a **new**
+   `ProgramRun.output: dict | None`. Do not reuse `output_data`: the wandelscript runner already
+   stores its variable store there (`wandelscript/runner.py:68`). If validation fails, the run is
+   `FAILED` with a clear error.
 3. **Publish the output on the terminal event**: add an optional `output: dict | None` to
    `ProgramStatus`, set only on `COMPLETED`. Cap the size (e.g. 128 KiB, same as the store's
    message size); if it's larger, fail with "return an object-store reference instead".
@@ -152,7 +153,8 @@ Mostly NovaFlow; no new process, no new deployment.
   running an `ActionService`, because `ActionService.run()` owns its event loop and worker pool.
   `on_shutdown` terminates it and deregisters.
 - Service name = PascalCase(`APP_NAME`). One action per program: `Pick` ← `pick`.
-  - `input_model` = `program.input_model`; `output_model` = the normalized output model.
+  - `input_model` = `program.input_model`; the output model follows the `output_json_schema` rules
+    (§4.1).
   - Programs whose models violate NovaFlow's flat/supported-type rules are **skipped with a
     warning**; they remain reachable via Phase A.
   - `moves_robot`/`robot_field` come from preconditions; `holds_before_motion=False` initially.
@@ -209,8 +211,8 @@ Mostly NovaFlow; no new process, no new deployment.
 
 | # | Repo | Item | Size | Depends on |
 |---|---|---|---|---|
-| 0.1 | SDK | Normalize `output_model` / `output_json_schema` | S | — |
-| 0.2 | SDK | Capture + validate return value into `output_data` | S | 0.1 |
+| 0.1 | SDK | Add `Program.output_json_schema` (object or None) | S | — |
+| 0.2 | SDK | Capture + validate return value into new `ProgramRun.output` | S | 0.1 |
 | 0.3 | SDK | `ProgramStatus.output` on COMPLETED (+ size cap, golden) | S | 0.2 |
 | 0.4 | SDK | `output_schema` in store entry + NOVAx GET | S | 0.1, Q1 |
 | 0.7 | SDK | Docs `docs/programs.md`, example with typed output | S | 0.1–0.4 |
