@@ -35,6 +35,7 @@ from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
 from novapolicy.jogging import JointJogger, TcpJogger, jog_joints, jog_tcp
 from novapolicy.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
+from novapolicy.pose_sources import OmniverseScene, PoseSource
 from novapolicy.poses import OrientationType
 from novapolicy.queued_client import QueuedPolicyClient
 from novapolicy.schema import (
@@ -62,6 +63,7 @@ from novapolicy.types import (
 )
 
 if TYPE_CHECKING:
+    from novapolicy.leapp import LeappPolicyClient
     from novapolicy.lerobot import LeRobotPolicyClient
     from novapolicy.nats import NatsPolicyClient
 
@@ -75,6 +77,15 @@ def __getattr__(name: str) -> object:
             msg = (
                 "LeRobotPolicyClient requires the LeRobot policy extra. "
                 "Install with `python -m pip install 'wandelbots-nova[novapolicy-lerobot]'`."
+            )
+            raise ModuleNotFoundError(msg) from exc
+    if name == "LeappPolicyClient":
+        try:
+            return importlib.import_module("novapolicy.leapp").LeappPolicyClient
+        except ModuleNotFoundError as exc:
+            msg = (
+                "LeappPolicyClient requires the LEAPP policy extra. "
+                "Install with `python -m pip install 'wandelbots-nova[novapolicy-leapp]'`."
             )
             raise ModuleNotFoundError(msg) from exc
     if name == "NatsPolicyClient":
@@ -109,10 +120,12 @@ __all__ = [
     "JoggingNotSupportedError",
     "JointJogger",
     "LeRobotPolicyClient",
+    "LeappPolicyClient",
     "Mapping",
     "MotionError",
     "NatsPolicyClient",
     "Observation",
+    "OmniverseScene",
     "OnStale",
     "OpDirection",
     "OrientationType",
@@ -120,6 +133,7 @@ __all__ = [
     "PolicyClient",
     "PolicyExecutor",
     "PolicySchema",
+    "PoseSource",
     "QueuedPolicyClient",
     "RTCConfig",
     "Rad2Deg",

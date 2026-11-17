@@ -73,6 +73,16 @@ novapolicy-lerobot = [
     "Pillow>=10.0.0",
     "requests>=2.33.1",
 ]
+novapolicy-leapp = [
+    # LEAPP exports (Isaac Lab RL policies) run with onnxruntime: LEAPP's own runtime
+    # imports torch, which the YAML + ONNX contract does not need.
+    "aiortc>=1.14.0",
+    "onnxruntime>=1.20.0",
+    "Pillow>=10.0.0",
+    "PyYAML>=6.0",
+    "requests>=2.33.1",
+    "safetensors>=0.5.0",
+]
 novapolicy-nats = [
     "aiortc>=1.14.0",
     # aiohttp is nats-py's WebSocket transport: required for ws:// brokers
