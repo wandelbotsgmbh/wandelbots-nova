@@ -12,10 +12,10 @@ Conventions: every SDK task is test-first (write failing test → implement → 
 
 - [x] **S1 (Q1) NOVA store tolerance.** Safe: NOVA's Program API (`service-manager`
   `program-discovery`) reads the KV via the SDK `ProgramStore` and ignores unknown fields, but
-  drops `output_schema` from its responses → M1.4 stores it, and M6.1 adds it to the NOVA API.
+  drops `output_schema` from its responses → M1.4 stores it, and M5.1 adds it to the NOVA API.
 - [x] **S2 (Q3) Pose type identity.** Mismatch: `nova.types.Pose` is a different class with an
   extra `kinematic_configuration`. NovaFlow rejects it as a `Pose` shadow and its schema hashes
-  differently → M1.7 maps it to the api `Pose` schema; M4.2 swaps the type.
+  differently → M1.7 maps it to the api `Pose` schema; M3.2 swaps the type.
 
 ## Milestone 1 — SDK program output contract (`feat(program): typed program outputs`)
 
@@ -154,28 +154,15 @@ Independent of M1; can run in parallel.
 - Follow-up in the `nova-cli` repo: the `python_app` generator mirrors the slim scaffold (issue,
   not in this plan's PRs).
 
-## Milestone 3 — NovaFlow Phase A (repo `novaflow`, after M1 release)
+## Milestone 3 — Plugin package `wandelbots-nova-novaflow` (this repo, after M1 + M2 release)
 
-- [ ] **M3.1** `ProgramService.RunProgram`: add an output field `output` (type `Any` / JSON
-  object) filled from the terminal event's `output`. Older SDKs send no `output` → `{}`. Tests in
-  `actions/builtin/program/tests/test_program_actions.py`.
-- [ ] **M3.2** Program-parameterized types. Control plane: `routes/programs.py` returns
-  `output_schema`, read from the NOVAx app's `GET /programs/{id}` until M6.1 ships, then from
-  NOVA's Program API. The validator resolves the `RunProgram` node's `arguments` fields and
-  `output` sub-fields from the selected program's schemas (structural `type_id`s). Canopy:
-  argument fields become wireable, output fields are referenceable. Keep accepting the legacy
-  string `arguments`.
-- [ ] **M3.3** Default `controller` from the program's single precondition controller (Canopy +
-  validation warning text).
-- [ ] **M3.4** Component tests and an e2e test with a real NOVAx app in the k3d cell (output
-  round-trip, FAILED, halt → STOPPED).
+Owned by us; lives in `nova_novaflow/` with its own `pyproject.toml`, like `novapolicy/`.
 
-## Milestone 4 — NovaFlow Phase C plugin (repo `novaflow`, after M2 release)
-
-- [ ] **M4.1** `novaflow.integrations.novax` in `wandelbots-novaflow`, extra `[novax]` →
-  `wandelbots-nova>=<M2 release>`. Entry point `novax.extensions = novaflow =
-  novaflow.integrations.novax:extension`.
-- [ ] **M4.2** Program → action adapter:
+- [ ] **M3.1** Package skeleton: `nova_novaflow/pyproject.toml` (deps `wandelbots-nova>=<M2
+  release>`, `wandelbots-novaflow==<NovaFlow release>`), entry point
+  `novax.extensions = novaflow = nova_novaflow:extension`, CI job (ruff, ty, pytest), release
+  config.
+- [ ] **M3.2** Program → action adapter:
   - Service name = PascalCase(app); action name = PascalCase(program id).
   - Validate input/output models against NovaFlow's flat/supported-type rules; skip and warn
     otherwise. Replace `nova.types.Pose` fields with the api-client `Pose` in the generated
@@ -184,31 +171,38 @@ Independent of M1; can run in parallel.
   - Handler: re-import `programs_dir` in the worker, build `Nova` + `ProgramContext`, inject the
     host (`checkpoint` → `run_rest.wait(False)`, `report_progress` → `ActionContext`), and run
     with `HaltToken` → cancel. Errors → `ActionFailure`.
-- [ ] **M4.3** Run the `ActionService` in a child process started from `on_startup`;
+- [ ] **M3.3** Run the `ActionService` in a child process started from `on_startup`;
   `on_shutdown` terminates it (graceful halt, then kill).
-- [ ] **M4.4** Extra routers from `[tool.novax.novaflow] routers = [...]`; store flag so Canopy
-  hides the duplicate `RunProgram` entries for plugin-served programs.
-- [ ] **M4.5** Tests: component (register → dispatch → output → halt → pause point) and an
-  `_SDKS` matrix entry in `test_external_action_contract.py`.
+- [ ] **M3.4** Extra routers from `[tool.novax.novaflow] routers = [...]`.
+- [ ] **M3.5** Tests: component test against a NATS testcontainer (register → dispatch → output →
+  halt → pause point); unit tests for the model adapter (Pose swap, skipped programs).
 
-## Milestone 5 — Docs and rollout
+## Milestone 4 — NovaFlow `RunProgram` output (repo `novaflow`; PR by us, BA team reviews)
+
+- [ ] **M4.1** `ProgramService.RunProgram`: add an untyped output field `output` (JSON object)
+  filled from the terminal event's `output`. Older SDKs send no `output` → `{}`. Tests in
+  `actions/builtin/program/tests/test_program_actions.py`.
+- [ ] **M4.2 (optional)** Default `controller` from the program's single precondition controller
+  (Canopy + validation warning text).
+- Dropped: per-program types on `RunProgram` and hiding duplicates in Canopy (spec §5, §8 Q4).
+
+## Milestone 5 — NOVA Program API (repo `service-manager`, after M1 release)
+
+- [ ] **M5.1** `program-discovery`: add `output_schema` to the `Program` model and
+  `api/v2/components/schemas/Program.yaml`, bump its `wandelbots-nova` pin, and release with
+  NOVA.
+
+## Milestone 6 — Docs and rollout
 
 - [ ] `docs/programs.md`: "Use your programs in NovaFlow". Without the plugin, `RunProgram`
-  works automatically; with the plugin, `uv add "wandelbots-novaflow[novax]"` gives native
-  nodes. Include a decision table.
-- [ ] NovaFlow docs: `novaflow/README.md` section pointing to programs as the
-  "write once" path.
-
-## Milestone 6 — NOVA Program API (repo `service-manager`, after M1 release)
-
-- [ ] **M6.1** `program-discovery`: add `output_schema` to the `Program` model and
-  `api/v2/components/schemas/Program.yaml`, bump its `wandelbots-nova` pin, and release with
-  NOVA. `ProgramRun.output` is not needed there: NovaFlow reads the output from the NATS event.
+  runs them and returns untyped output; with `uv add wandelbots-nova-novaflow`, they become
+  typed native nodes. Include a decision table.
+- [ ] Short note for the BA team / NovaFlow docs pointing to the plugin as the "write once" path.
 
 ## Order and parallelism
 
 ```text
-M1.1 → M1.7 → M1.2 → M1.3 → M1.4 ─┬→ M1.5 → M1.6 → [SDK release] → M3.1 → M3.3 → M3.2 → M3.4
-M2.1 → M2.2 ──────────────────────┤                              → M6.1
-M2.3 → M2.4 ──────────────────────┘                              → M4.1 → M4.2 → M4.3 → M4.4 → M4.5 → M5
+M1.1 → M1.7 → M1.2 → M1.3 → M1.4 → M1.5 → M1.6 ─┐
+M2.1 → M2.2 ─────────────────────────────────────┼→ [SDK release] → M3.1 → M3.2 → M3.3 → M3.4 → M3.5 → M6
+M2.3 → M2.4 ─────────────────────────────────────┘                 ∥ M4.1 (+M4.2), M5.1
 ```

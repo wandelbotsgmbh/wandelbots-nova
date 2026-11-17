@@ -66,12 +66,19 @@ async def pick(ctx: nova.ProgramContext, slot: int, speed: float = 200.0) -> Pic
 nova app install .   # unchanged
 ```
 
-- **Without** NovaFlow in the app (Phase A): `pick` is a NOVA program; in NovaFlow the
-  `RunProgram` node pointed at `my-app.pick` gets typed `slot`/`speed` inputs and typed
-  `picked`/`grasp_pose` outputs.
-- **With** `wandelbots-novaflow` added to the app's dependencies (Phase C): additionally, `pick`
-  becomes a native NovaFlow action `MyApp.Pick` with halt, pause points and progress — in the
-  same container, no second project.
+- **Without** the plugin (Phase A): `pick` is a NOVA program; in NovaFlow the `RunProgram` node
+  pointed at `my-app.pick` runs it and returns its output as JSON (`output.picked`,
+  `output.grasp_pose`), untyped.
+- **With** `wandelbots-nova-novaflow` added to the app's dependencies (Phase C): additionally,
+  `pick` becomes a native NovaFlow action `MyApp.Pick` with typed, wireable `slot`/`speed` inputs
+  and `picked`/`grasp_pose` outputs, halt, pause points and progress — in the same container, no
+  second project.
+
+### Ownership
+
+NovaFlow is owned by the BA team. To keep their work small, the typed path is the plugin, which
+we own as a separate package in this repo. NovaFlow itself only needs one small `RunProgram`
+change (A.1, plus the optional A.3), which we open as PRs for BA to review.
 
 ## 4. Phase 0 — SDK program output contract (shared by A and C)
 
@@ -110,27 +117,23 @@ All in `wandelbots-nova`. Additive; no behavior change for programs without a re
 
 ## 5. Phase A — NovaFlow consumes what NOVA/SDK publishes
 
-Mostly NovaFlow; no new process, no new deployment.
+Small NovaFlow change (BA team reviews, we open the PRs); no new process, no new deployment.
 
 1. **`RunProgram` returns the program output.** Read `output` from the terminal event it already
-   receives, and return it as an output field `output`.
-2. **Program-parameterized node types.** The node's input and output types derive from the
-   selected program's `input_schema` / `output_schema`, the same way Canopy already derives the
-   argument form:
-   - `arguments` becomes an object whose fields can be wired (`{ref: "output", ...}`), instead
-     of a JSON string. Keep reading the string form for stored trees.
-   - The control-plane validator resolves `RunProgram` output types per node from the program
-     schema, so `$outputs.<node>.output.grasp_pose` type-checks with structural `type_id`s
-     (ADR-029).
-   - Schema source: the NOVAx app's `GET /programs/{id}` until the NOVA Program API
-     (`program-discovery`) carries `output_schema` (§8, S.1).
-3. **Default `controller`** from the program's preconditions when it names exactly one
+   receives, and return it as an untyped JSON output field `output`. Older SDKs send no `output`
+   → `{}`.
+2. **Default `controller` (optional)** from the program's preconditions when it names exactly one
    controller. This closes the "RunProgram: name the robot it moves" warning (`continue-run.md`
    §4.7).
-4. **Semantics, documented:** halt = stop program (exists). Pause: the program is one step that
+3. **Semantics, documented:** halt = stop program (exists). Pause: the program is one step that
    "can't pause, finishes first". No hold-before-motion inside a program.
-5. **Tests:** a component test with a fake program-run publisher (output round-trip, oversized
-   output, FAILED), plus an e2e test against a real NOVAx app in the k3d cell.
+4. **Tests:** a component test with a fake program-run publisher (output round-trip, FAILED).
+
+**Dropped: per-program types on `RunProgram`.** Typing `arguments` and `output` from the selected
+program's schemas would need per-node types in the control-plane validator and Canopy, which
+NovaFlow does not have today (M–L work for the BA team). The plugin (Phase C) gives the same
+typed, wireable nodes, so this is deferred until someone needs typed programs *without* the
+plugin.
 
 ## 6. Phase C — NovaFlow plugin for NOVAx (in-process, native actions)
 
@@ -150,16 +153,23 @@ Mostly NovaFlow; no new process, no new deployment.
   lines) under NOVA. A host such as the NovaFlow plugin injects real implementations through a
   private setter. The SDK still imports nothing from NovaFlow.
 
-### 6.2 NovaFlow: `novaflow.integrations.novax` (in `wandelbots-novaflow[novax]`, which depends on `wandelbots-nova`)
+### 6.2 Plugin package `wandelbots-nova-novaflow` (this repo, `nova_novaflow/`, owned by us)
+
+A separate package next to `novapolicy/`, with its own `pyproject.toml`. It depends on
+`wandelbots-nova` and `wandelbots-novaflow` (pinned to a NovaFlow release, ADR-034). The
+`wandelbots-nova` package itself still has no NovaFlow dependency. It uses only NovaFlow's public
+SDK (`ActionService`, `Router`, `ActionContext`, `HaltToken`, `ActionFailure` from
+`novaflow.core`), like any action service built from the action template.
 
 - Registered under the `novax.extensions` entry point. `on_startup` spawns **a child process**
   running an `ActionService`, because `ActionService.run()` owns its event loop and worker pool.
   `on_shutdown` terminates it and deregisters.
 - Service name = PascalCase(`APP_NAME`). One action per program: `Pick` ← `pick`.
   - `input_model` = `program.input_model`; the output model follows the `output_json_schema` rules
-    (§4.1).
+    (§4.1). `nova.types.Pose` fields are swapped for the api-client `Pose`, and values are
+    converted with `to_api_model()` (§8, Q3).
   - Programs whose models violate NovaFlow's flat/supported-type rules are **skipped with a
-    warning**; they remain reachable via Phase A.
+    warning**; they remain reachable via `RunProgram`.
   - `moves_robot`/`robot_field` come from preconditions; `holds_before_motion=False` initially.
 - Handler (runs in a worker subprocess): re-import `programs_dir`, look up the program by id,
   open `Nova()`, build a `ProgramContext`, and call the program. `HaltToken` → cancel the
@@ -169,14 +179,13 @@ Mostly NovaFlow; no new process, no new deployment.
 - **Custom actions in the same app:** the plugin also includes plain NovaFlow routers named in
   config (e.g. `[tool.novax.novaflow] routers = ["app.actions:router"]`). One app can then host
   programs *and* hand-written `@router.action`s.
-- **No duplicates:** when the plugin is active, mark the store entry so Canopy hides those
-  programs from the `RunProgram` picker and offers the native nodes instead. Store flag name
-  TBD in §8, Q4.
-- **Compatibility:** the plugin ships with the NovaFlow release (ADR-034 pins apply); the SDK
-  hook is versioned by `NOVAX_EXTENSION_API`.
-- **Tests:** a NovaFlow component test running a NOVAx app with a fake program through the
-  plugin (register → dispatch → output → halt → pause point), and an entry in
-  `test_external_action_contract.py`'s SDK matrix.
+- **Duplicates accepted:** a program served by the plugin also stays listed in the `RunProgram`
+  picker. Hiding it would need a Canopy change; not worth it now.
+- **Compatibility:** CI tests the plugin against the pinned NovaFlow SDK release; the SDK hook is
+  versioned by `NOVAX_EXTENSION_API`. Optionally, BA adds the plugin to the SDK matrix of
+  NovaFlow's `test_external_action_contract.py`.
+- **Tests:** a component test running a NOVAx app with a fake program through the plugin
+  (register → dispatch → output → halt → pause point) against a NATS testcontainer.
 
 ## 7. Deployment simplification
 
@@ -188,8 +197,8 @@ Mostly NovaFlow; no new process, no new deployment.
    shrinks to `programs/`, `pyproject.toml`, `uv.lock`, `.nova`, and a ~6-line Dockerfile ending
    in `CMD ["novax", "serve"]`. `app/__main__.py` and `register_programs.py` go away. Update
    `examples/your-nova-app/` and the nova-cli `python_app` generator (separate repo).
-3. **Opt-in NovaFlow** is one line: `uv add "wandelbots-novaflow[novax]"`. No code change; the
-   entry point activates it.
+3. **Opt-in NovaFlow** is one line: `uv add wandelbots-nova-novaflow`. No code change; the entry
+   point activates it.
 4. **Later spike (out of scope):** image-less deploy, where a shared runtime app loads program
    files from the NATS object store (`nova program push`). Open issues: dependency management
    and security.
@@ -204,27 +213,27 @@ Answered on 2026-11-17 from code (`service-manager` @ `c229a19e1`, novaflow `mai
    fields, and `program-discovery` re-maps entries to its own `Program` model, which has no
    `output_schema`. So an extra `output_schema` never hides a program, but NOVA's API does not
    return it. → Add `output_schema` to `program-discovery`'s `Program` model and
-   `api/v2/components/schemas/Program.yaml`, and bump its SDK pin (task S.1). Until that ships,
-   NovaFlow reads the schema from the NOVAx app (`GET /programs/{id}`).
+   `api/v2/components/schemas/Program.yaml`, and bump its SDK pin (task S.1).
 2. **NOVA API ask — answered: we can do it ourselves.** The Program API lives in
-   `service-manager`, so S.1 is the NOVA API change; it needs a NOVA release before NovaFlow can
-   rely on it. `ProgramRun.output` is not needed there: NovaFlow reads the output from the NATS
-   event.
+   `service-manager`, so S.1 is the NOVA API change. `ProgramRun.output` is not needed there:
+   NovaFlow reads the output from the NATS event.
 3. **Output type identity — answered: mismatch, the SDK must map it.** `nova.types.Pose` is a
    different class from the api-client `Pose` and adds an optional `kinematic_configuration`.
    NovaFlow rejects a field class named `Pose` that is not the registered class (ADR-029
    "no-shadows" rule in `NodeSchema._extract_fields`), and its JSON schema would get a different
    structural id. Its serialized value (`{position, orientation}`) does validate as the api
    `Pose`. → The SDK publishes the api `Pose` schema for `nova.types.Pose` fields in
-   `output_json_schema`; the NovaFlow plugin swaps the type and converts values with
-   `to_api_model()` (task 0.5).
-4. **Duplicate visibility (A vs C):** store flag name and Canopy behavior. Decide in C.2b.
+   `output_json_schema` (task 0.5); the plugin swaps the type and converts values with
+   `to_api_model()`.
+4. **Duplicate visibility — answered: accept.** Plugin-served programs also stay in the
+   `RunProgram` picker; hiding them needs a Canopy change.
 5. **Concurrency of the same program — answered: reject.** The released API has only
    `stop_program(cell, program)`; there is no run id to stop one of two runs. Different
    programs run in parallel (0.6).
 6. **Worker re-import cost / spawn method** in NovaFlow's worker pool with heavy program modules.
    Measure in C.2.
-7. **Owner of the NovaFlow side (A, C):** open.
+7. **Owner of the NovaFlow side — answered: BA team.** Their scope is reduced to A.1 (+ optional
+   A.3), which we open as PRs; the plugin is ours (§3 Ownership).
 
 ## 9. Work breakdown
 
@@ -235,20 +244,19 @@ Answered on 2026-11-17 from code (`service-manager` @ `c229a19e1`, novaflow `mai
 | 0.3 | SDK | `ProgramStatus.output` on COMPLETED (+ size cap, golden) | S | 0.2 |
 | 0.4 | SDK | `output_schema` in store entry + NOVAx GET | S | 0.1 |
 | 0.5 | SDK | Publish api `Pose` schema for `nova.types.Pose` fields | S | 0.1 |
-| S.1 | service-manager | `output_schema` in `program-discovery` Program API, bump SDK pin | S | 0.4 |
 | 0.6 | SDK | Parallel runs of different programs per app | S | — |
 | 0.7 | SDK | Docs `docs/programs.md`, example with typed output | S | 0.1–0.4 |
-| A.1 | NovaFlow | `RunProgram` returns `output` | S | 0.3 |
-| A.2 | NovaFlow | Program-parameterized input/output types (validator + Canopy) | M–L | 0.4, A.1 |
-| A.3 | NovaFlow | Default `controller` from preconditions | S | — |
-| A.5 | NovaFlow | Component + e2e tests | M | A.1–A.3 |
 | C.1 | SDK | `novax.extensions` hook + `NovaxExtensionContext` | S | — |
 | C.1b | SDK | `ctx.checkpoint()` / `ctx.report_progress()` host hooks | S | C.1 |
-| C.2 | NovaFlow | `novaflow.integrations.novax` plugin (child-process ActionService, program→action adapter) | M–L | C.1, 0.1 |
-| C.2b | NovaFlow | Extra routers from config, duplicate hiding | S–M | C.2 |
-| C.3 | NovaFlow | Compat/e2e tests incl. halt + pause | M | C.2 |
 | D.2 | SDK | `novax serve` console script | S | C.1 |
 | D.2b | SDK + nova-cli | Slim scaffold (`examples/your-nova-app`, generator) | S–M | D.2 |
+| C.2 | plugin (this repo) | `wandelbots-nova-novaflow`: child-process ActionService, program→action adapter, Pose swap | M–L | C.1, 0.1, 0.5 |
+| C.2b | plugin (this repo) | Extra routers from config | S | C.2 |
+| C.3 | plugin (this repo) | Component tests incl. halt + pause, CI against pinned NovaFlow SDK | M | C.2 |
+| S.1 | service-manager (us) | `output_schema` in `program-discovery` Program API, bump SDK pin | S | 0.4 |
+| A.1 | NovaFlow (PR by us, BA reviews) | `RunProgram` returns untyped `output` + component test | S | 0.3 |
+| A.3 | NovaFlow (PR by us, BA reviews, optional) | Default `controller` from preconditions | S | — |
+| ~~A.2~~ | NovaFlow | ~~Per-program types on `RunProgram`~~ — dropped, plugin covers it | — | — |
 
-**Suggested order:** 0.1→0.6 (SDK release) ∥ C.1, D.2 (SDK) → A.1, A.3 (quick win) and S.1 →
-C.2 → A.2 → D.2b.
+**Suggested order:** 0.1→0.7 ∥ C.1, C.1b, D.2 (one SDK release) → C.2 → C.3 (plugin release)
+∥ A.1, A.3, S.1 → D.2b.
