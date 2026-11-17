@@ -226,9 +226,15 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._current_state_server_ms
 
     async def wait_ready(self, timeout_s: float = 10.0) -> None:
-        """Wait until the jogging session is initialized or fail if startup dies."""
+        """Wait until the jogging session is initialized or fail if startup dies.
+
+        Returns early when a stop condition ended the session during startup: that is a
+        normal end, which the caller reports through :attr:`stop_condition_triggered`.
+        """
         deadline = time.monotonic() + timeout_s
         while not self._ready.is_set() or not self._clock.state_clock_calibrated:
+            if self._stop_condition is not None:
+                return
             if self._failed:
                 if self._failure_exception is not None:
                     raise RuntimeError(

@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 import logging
+import time
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -527,6 +528,23 @@ async def test_a_motion_error_response_surfaces_as_a_failure():
     finally:
         server.stop()
         await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_stop_condition_during_startup_ends_waiting_instead_of_timing_out():
+    """A stop condition can end the session before it is ready (e.g. a part detected where
+    the policy cannot go); waiting must end normally so the run reports the condition."""
+    session, server = _build_session()
+    try:
+        session._stop_condition = "part_outside_trained_positions"
+        started = time.monotonic()
+        await session.wait_ready(timeout_s=2.0)
+        assert time.monotonic() - started < 0.5
+        assert session.stop_condition_triggered == "part_outside_trained_positions"
+    finally:
+        server.stop()
         for p in session._test_patches:  # type: ignore[attr-defined]
             p.stop()
 
