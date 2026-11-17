@@ -225,7 +225,6 @@ def fit_gripper(state: np.ndarray, action: np.ndarray) -> GripperFit | None:
 
 
 _JOINT_KINDS = ("joint_absolute", "joint_delta")
-_TCP_KINDS = ("tcp_absolute", "tcp_delta")
 _MAX_ABSOLUTE_OFFSET_MM = 5.0  # absolute TCP targets further off are in another frame
 
 
@@ -457,13 +456,13 @@ def _measure_gripper(
 
 
 async def _main(args: argparse.Namespace) -> None:
-    import nova
+    from nova import Nova
 
     state, action, fps = _load(args.episode)
     layout = load_layout(args.modality)
     specs = [RobotSpec.parse(words) for words in args.robot]
     robots: dict[str, RobotSettings] = {}
-    async with nova.Nova() as n:
+    async with Nova() as n:
         for spec in specs:
             controller = spec.motion_group.split("@", 1)[1]
             mg = (await n.cell().controller(controller)).motion_group(spec.motion_group)
