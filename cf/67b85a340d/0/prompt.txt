@@ -1,0 +1,29 @@
+check ../nova-flow (checkout latest main). how can we get the custom action concept and our nova.program together.
+
+---
+
+check ../nova-flow (checkout latest main). how can we get the custom action concept and our nova.program together.
+
+---
+
+create a pr for this branch
+
+---
+
+create a pr for this branch
+
+---
+
+also create a story for the plan with clear accepance criteria. ask me open questions. i first want to share the plan with the team. i need a super consice summary of the steps
+
+---
+
+also create a story for the plan with clear accepance criteria. ask me open questions. i first want to share the plan with the team. i need a super consice summary of the steps
+
+---
+
+give me a slack message draft for this
+
+---
+
+give me a slack message draft for this
