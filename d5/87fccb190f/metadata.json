@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "d587fccb190f",
+  "strategy": "manual-commit",
+  "branch": "lab/pause-auto-resume-main",
+  "checkpoints_count": 5,
+  "files_touched": [
+    ".vscode/settings.json",
+    "examples/interlock_two_robots.py",
+    "uv.lock"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d5/87fccb190f/0/metadata.json",
+      "transcript": "/d5/87fccb190f/0/full.jsonl",
+      "compact_transcript": "/d5/87fccb190f/0/transcript.jsonl",
+      "content_hash": "/d5/87fccb190f/0/content_hash.txt",
+      "prompt": "/d5/87fccb190f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1396,
+    "cache_creation_tokens": 570101,
+    "cache_read_tokens": 5782734,
+    "output_tokens": 55910,
+    "api_call_count": 53
+  }
+}

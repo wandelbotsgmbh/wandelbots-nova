@@ -1,0 +1,17 @@
+pls reassess the comparison with the current code state of both branches
+
+---
+
+did you also take the service implementation in @~/0code/nova-developer-tools/apps/routines/ into account?
+
+---
+
+What are the necessary steps ta reach feature parity with the go service? Also assess the non functional test cases (performance etc.) of the go service for the camparison
+
+---
+
+I want to make a plan and implementation in a new session using the newer fable model now, how would i approach this?
+
+---
+
+write the handoff now
