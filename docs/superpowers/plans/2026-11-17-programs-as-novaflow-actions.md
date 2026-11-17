@@ -183,7 +183,7 @@ Owned by us; lives in `nova_novaflow/` with its own `pyproject.toml`, like `nova
   actions.
 - [ ] **M3.4** Extra routers from `[tool.novax.novaflow] routers = [...]`.
 - [ ] **M3.5** Tests: component test against a NATS testcontainer (register → dispatch → output →
-  halt → pause point); unit tests for the model adapter (Pose swap, skipped programs).
+  halt → pause point); unit tests for the model adapter (Pose swap, `Any` fallback).
 
 ## Milestone 4 — NovaFlow `RunProgram` output (repo `novaflow`; PR by us, BA team reviews)
 
