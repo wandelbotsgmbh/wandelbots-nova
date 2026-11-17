@@ -1,9 +1,89 @@
 # Schema Reference
 
-Advanced `PolicySchema` features. For the basics (joint positions, cameras, stop
-conditions) see the [README](../README.md). The schema decouples the policy from
+What a `PolicySchema` can observe and command. For a first schema (joint positions, cameras,
+stop conditions) see the [README](../README.md). The schema decouples the policy from
 hardware topology: the policy sees a flat dict of named features and never knows
 about motion groups, controllers, or hardware IO keys.
+
+## Observations
+
+Each observation adds named features to the dict the policy sees.
+
+| Observation | Observes | The policy sees | Details |
+| --- | --- | --- | --- |
+| `Observation.joint_positions(key, source=mg)` | joint positions of one or more motion groups | `key_1 .. key_n`, rad | [README](../README.md#policyschema), [Units](#units) |
+| `Observation.joint_velocities(key, source=mg)` | joint velocities | `key_1 .. key_n`, rad/s | [below](#joint-velocities) |
+| `Observation.tcp(key, source=mg, tcp=...)` | a motion group's TCP pose | `key_x .. key_rz` (mm, rotation vector), or the `orientation_type` given | [TCP actions](#tcp-actions), [Units](#units) |
+| `Observation.pose(key, source=...)` | the pose of an object or target, from a source | like `Observation.tcp` | [below](#object-poses) |
+| `Observation.io(key, source=mg, io=...)` | an IO value | `key`, through its `Mapping` | [IO mappings](#io-mappings) |
+| `Observation.image(key, source=camera)` | a camera frame | `key`, an H×W×3 uint8 array | [README](../README.md#cameras) |
+| `Observation.constant(key, value)` | a fixed value, e.g. a language instruction | `key` | |
+| `Observation.computed(fn, keys=[...])` | values from an async function | the keys it returns | [Computed observations](#computed-observations-and-actions) |
+
+### Joint velocities
+
+```python
+Observation.joint_velocities("joint_vel", source=mg)  # joint_vel_1 .. joint_vel_n, rad/s
+```
+
+The controller's measured velocities are used where it sends them (read from the raw state
+stream); otherwise they are finite-differenced from consecutive joint positions, which is noisier
+and logged once. UR controllers do not send them today; NOVA's state stream is expected to, and
+the observation then uses them without changes. The executor starts the measurement with the run;
+outside it, wrap `build_observation` in `await schema.start_sources()` / `stop_sources()`.
+
+### Object poses
+
+`Observation.pose` observes the pose of anything that is not a motion group: an object, a target,
+a fixture. Its source gives a NOVA `Pose` (mm, rotation vector), and the policy sees it as
+`Observation.tcp` shows a TCP, converted by `orientation_type` and the operators:
+
+```python
+Observation.pose(
+    "cube",
+    source=detector.cube_pose,  # a Pose, an async callable returning one, or a PoseSource
+    orientation_type=OrientationType.QUATERNION,  # cube_x, cube_y, cube_z, cube_qx .. cube_qw
+    position_ops=[Scale(0.001)],  # mm -> m
+)
+```
+
+| Source | For |
+| --- | --- |
+| `Pose(...)` | a fixed target |
+| async callable returning a `Pose` | an estimator fast enough to ask on every step: a CNN, FoundationPose |
+| `PoseSource`: `async start()`, `async stop()`, `read() -> Pose` | a detector running at its own rate: started with the run, its latest pose read on every step |
+| `OmniverseScene(api_url).prim(path, relative_to=None)` | a prim of an Isaac Sim scene, through the Wandelbots NOVA extension API |
+
+`OmniverseScene` takes the extension's full base URL, so Isaac Sim can run on another machine:
+`OmniverseScene("http://isaac-host:8011/omniservice/api/v2")`. A prim is polled in the background
+(`poll_hz`, default 60); with `relative_to`, it is expressed in that prim's frame, e.g. the robot's
+base prim. `read()` returns the latest polled pose.
+
+A `PoseSource` is any object with these three methods; it does not subclass anything:
+
+```python
+class Detector:
+    async def start(self) -> None: ...  # called when the run starts: open the camera, etc.
+    async def stop(self) -> None: ...  # called when the run ends
+    def read(self) -> Pose: ...  # the latest pose, without waiting; called on every step
+```
+
+A pose written down in metres and a quaternion `(x, y, z, w)` becomes a NOVA `Pose` like this:
+
+```python
+from nova.types import Pose
+from scipy.spatial.transform import Rotation
+
+
+def pose_from(position_m, quaternion_xyzw) -> Pose:
+    rotation_vector = Rotation.from_quat(quaternion_xyzw).as_rotvec()
+    return Pose((*(1000.0 * v for v in position_m), *rotation_vector))
+```
+
+With `orientation_type=OrientationType.QUATERNION` the schema turns it back into a quaternion with
+`w ≥ 0`. A quaternion and its negative are the same rotation but different numbers to a policy; at
+a half turn (`w = 0`) the sign follows the rotation vector, so check the policy's observation
+against its training data.
 
 ## IO mappings
 

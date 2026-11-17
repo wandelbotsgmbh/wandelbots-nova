@@ -24,10 +24,13 @@ import logging
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
+from nova.types import Pose
 from novapolicy import poses
 from novapolicy._sdk import get_controller_id
 from novapolicy.chunking import TcpDelta
+from novapolicy.joint_velocities import JointVelocities
 from novapolicy.ops import apply_ops, apply_ops_inverse, reject_forward_only
+from novapolicy.pose_sources import PoseSource
 
 _TCP_SUFFIXES = ("x", "y", "z", "rx", "ry", "rz")
 _QUATERNION_SUFFIXES = ("qx", "qy", "qz", "qw")
@@ -125,6 +128,23 @@ class _ObsJoints:
 
 
 @dataclass(slots=True)
+class _ObsJointVelocities:
+    """Joint velocities (rad/s) of one or more motion groups. Observation only."""
+
+    key: str
+    source: MotionGroup | list[MotionGroup]
+    ops: list[ValueOp] = field(default_factory=list)
+
+    @property
+    def sources(self) -> list[MotionGroup]:
+        return (
+            cast("list[MotionGroup]", self.source)
+            if isinstance(self.source, list)
+            else [self.source]
+        )
+
+
+@dataclass(slots=True)
 class _ObsTcp:
     """TCP pose from a motion group. Position in mm, orientation as rotation vector (rad)."""
 
@@ -137,6 +157,17 @@ class _ObsTcp:
     orientation_ops: list[ValueOp] = field(default_factory=list)
     orientation_type: poses.OrientationType | None = None  # None: the client's default
     coordinate_system: str = ""  # "": the controller's world
+
+
+@dataclass(slots=True)
+class _ObsPose:
+    """The pose of an object, a target or a fixture: a NOVA ``Pose`` from a source."""
+
+    key: str
+    source: Pose | Callable[[], Awaitable[Pose]] | PoseSource
+    position_ops: list[ValueOp] = field(default_factory=list)
+    orientation_ops: list[ValueOp] = field(default_factory=list)
+    orientation_type: poses.OrientationType | None = None  # None: rotation vector
 
 
 @dataclass(slots=True)
@@ -178,7 +209,16 @@ class _ObsComputed:
     keys: tuple[str, ...] = ()
 
 
-ObservationEntry = _ObsJoints | _ObsTcp | _ObsIO | _ObsImage | _ObsConstant | _ObsComputed
+ObservationEntry = (
+    _ObsJoints
+    | _ObsJointVelocities
+    | _ObsTcp
+    | _ObsPose
+    | _ObsIO
+    | _ObsImage
+    | _ObsConstant
+    | _ObsComputed
+)
 
 
 class Observation:
@@ -206,6 +246,27 @@ class Observation:
                 ``ops=[Rad2Deg()]``.
         """
         return _ObsJoints(key=key, source=source, action=action, mode=mode, ops=list(ops or []))
+
+    @staticmethod
+    def joint_velocities(
+        key: str,
+        source: MotionGroup | list[MotionGroup],
+        *,
+        ops: list[ValueOp] | None = None,
+    ) -> _ObsJointVelocities:
+        """Observe joint velocities in rad/s, as ``key_1 .. key_n``.
+
+        The controller's measured velocities are used where it sends them; otherwise they are
+        finite-differenced from consecutive joint positions (see
+        :mod:`novapolicy.joint_velocities`). The executor starts the measurement with the run;
+        outside it, ``await schema.start_sources()`` first.
+
+        Args:
+            key: Observation name the policy sees.
+            source: One motion group, or several whose joints concatenate.
+            ops: Unit conversions applied to every value, e.g. ``ops=[Rad2Deg()]``.
+        """
+        return _ObsJointVelocities(key=key, source=source, ops=list(ops or []))
 
     @staticmethod
     def tcp(
@@ -244,6 +305,41 @@ class Observation:
             orientation_ops=list(orientation_ops or []),
             orientation_type=orientation_type,
             coordinate_system=coordinate_system,
+        )
+
+    @staticmethod
+    def pose(
+        key: str,
+        source: Pose | Callable[[], Awaitable[Pose]] | PoseSource,
+        *,
+        position_ops: list[ValueOp] | None = None,
+        orientation_ops: list[ValueOp] | None = None,
+        orientation_type: poses.OrientationType | None = None,
+    ) -> _ObsPose:
+        """Observe the pose of something that is not a motion group: an object, a target.
+
+        ``source`` gives a NOVA ``Pose`` (mm, rotation vector): a fixed ``Pose``, an async
+        callable returning one (a CNN, FoundationPose), or a :class:`PoseSource` read in the
+        background, such as ``OmniverseScene(api_url).prim(path)``. The policy sees it as
+        ``Observation.tcp`` shows a TCP: ``orientation_type`` gives the rotation as the policy
+        was trained on it, ``position_ops=[Scale(0.001)]`` turns mm into metres.
+
+        Example::
+
+            Observation.pose(
+                "ee_pose",
+                source=Pose((850.0, -225.0, 200.0, math.pi, 0.0, 0.0)),
+                orientation_type=OrientationType.QUATERNION,
+                position_ops=[Scale(0.001)],
+            )
+        """
+        _check_orientation_ops(orientation_type, orientation_ops, f"Observation.pose({key!r})")
+        return _ObsPose(
+            key=key,
+            source=source,
+            position_ops=list(position_ops or []),
+            orientation_ops=list(orientation_ops or []),
+            orientation_type=orientation_type,
         )
 
     @staticmethod
@@ -470,6 +566,15 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         self._actions = list(actions or [])
         # (controller id, coordinate system) -> its pose in world; load_coordinate_systems()
         self._frames: dict[tuple[str, str], np.ndarray] = {}
+        velocity_groups = {
+            mg.id: mg
+            for o in self._observations
+            if isinstance(o, _ObsJointVelocities)
+            for mg in o.sources
+        }
+        self._joint_velocities = (
+            JointVelocities(list(velocity_groups.values())) if velocity_groups else None
+        )
         self._validate()
 
     def _validate(self) -> None:
@@ -575,6 +680,38 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
                     mg, entry.coordinate_system
                 )
 
+    async def start_sources(self) -> None:
+        """Start the observation sources that read in the background (measured joint
+        velocities). The executor calls it before a run and ``stop_sources`` after; call
+        them yourself around ``build_observation`` outside the executor."""
+        if self._joint_velocities is not None:
+            await self._joint_velocities.start()
+        for source in self._background_pose_sources:
+            await source.start()
+
+    def observe_state(
+        self, motion_group_id: str, joints: Sequence[float], sample_time_s: float
+    ) -> None:
+        """One streamed state packet, stamped with its measurement time. The executor calls it
+        for every packet, so joint velocities are differenced on the stream's own clock."""
+        if self._joint_velocities is not None:
+            self._joint_velocities.feed(motion_group_id, joints, sample_time_s)
+
+    async def stop_sources(self) -> None:
+        """Stop what ``start_sources`` started. Safe to call when nothing was started."""
+        if self._joint_velocities is not None:
+            await self._joint_velocities.stop()
+        for source in self._background_pose_sources:
+            await source.stop()
+
+    @property
+    def _background_pose_sources(self) -> list[PoseSource]:
+        sources: dict[int, PoseSource] = {}
+        for o in self._observations:
+            if isinstance(o, _ObsPose) and isinstance(o.source, PoseSource):
+                sources.setdefault(id(o.source), o.source)
+        return list(sources.values())
+
     def frame(self, entry: _ObsTcp | _ActTcp) -> np.ndarray | None:
         """The pose in world of ``entry``'s coordinate system; None for the world."""
         if not entry.coordinate_system:
@@ -596,11 +733,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         pose = poses.world_to_frame(
             [*state.pose.position, *state.pose.orientation], self.frame(entry)
         )
-        orientation_type = entry.orientation_type or poses.ROTATION_VECTOR
-        orientation = poses.from_rotvec(pose[3:], orientation_type)
-        return apply_ops(pose[:3], entry.position_ops) + apply_ops(
-            orientation, entry.orientation_ops
-        )
+        return _policy_pose_values(pose, entry)
 
     def policy_frame_states(self, states: dict[str, RobotState]) -> dict[str, Any]:
         """``states`` with each TCP action group's pose in its action's coordinate system,
@@ -671,7 +804,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
 
     def _iter_all_mgs(self) -> Iterator[MotionGroup]:
         for o in self._observations:
-            if isinstance(o, _ObsJoints):
+            if isinstance(o, (_ObsJoints, _ObsJointVelocities)):
                 yield from o.sources
             elif isinstance(o, (_ObsTcp, _ObsIO)):
                 yield o.source
@@ -831,6 +964,49 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
                 keys.setdefault(get_controller_id(a.target), set()).add(a.io)
         return {k: sorted(v) for k, v in keys.items()}
 
+    def observation_entry(self, key: str) -> ObservationEntry | None:
+        """The observation entry named ``key``, if any."""
+        for o in self._observations:
+            if getattr(o, "key", None) == key:
+                return o
+        return None
+
+    def observation_kind(self, key: str) -> str | None:
+        """What observation ``key`` is: ``"joint_positions"``, ``"joint_velocities"``,
+        ``"tcp"``, ``"pose"``, ``"io"``, ``"image"``, ``"constant"`` or ``"computed"`` (a key
+        an ``Observation.computed(..., keys=...)`` returns); ``None`` when there is none."""
+        kinds: dict[type, str] = {
+            _ObsJoints: "joint_positions",
+            _ObsJointVelocities: "joint_velocities",
+            _ObsTcp: "tcp",
+            _ObsPose: "pose",
+            _ObsIO: "io",
+            _ObsImage: "image",
+            _ObsConstant: "constant",
+        }
+        entry = self.observation_entry(key)
+        if entry is not None:
+            return kinds.get(type(entry))
+        if any(key in o.keys for o in self.computed_observations):
+            return "computed"
+        return None
+
+    def observation_vector(self, observation: dict[str, Any], key: str) -> list[float]:
+        """The values of observation ``key`` from a built observation, as one vector:
+        ``key_1 .. key_n`` for joints, the pose values for a TCP or pose, else ``key``."""
+        entry = self.observation_entry(key)
+        if isinstance(entry, (_ObsJoints, _ObsJointVelocities)):
+            values: list[float] = []
+            while f"{key}_{len(values) + 1}" in observation:
+                values.append(float(observation[f"{key}_{len(values) + 1}"]))
+            return values
+        if isinstance(entry, (_ObsTcp, _ObsPose)):
+            return [float(observation[name]) for name in tcp_value_names(entry)]
+        value = observation[key]
+        if isinstance(value, (int, float)):
+            return [float(value)]
+        return [float(v) for v in value]
+
     # -- Build observation --
 
     async def build_observation(
@@ -841,7 +1017,9 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         """Build a flat feature dict from robot states + IO values."""
         obs: dict[str, Any] = {}
         self._fill_joints(obs, states)
+        self._fill_joint_velocities(obs, states)
         self._fill_tcp(obs, states)
+        await self._fill_poses(obs)
         self._fill_ios(obs, io_values)
         self._fill_constants(obs)
         await self._fill_computed(obs)
@@ -859,6 +1037,20 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
             for i, v in enumerate(apply_ops(joints, o.ops), 1):
                 obs[f"{o.key}_{i}"] = v
 
+    def _fill_joint_velocities(self, obs: dict[str, Any], states: dict[str, RobotState]) -> None:
+        if self._joint_velocities is None:
+            return
+        for o in self._observations:
+            if not isinstance(o, _ObsJointVelocities):
+                continue
+            velocities: list[float] = []
+            for mg in o.sources:
+                s = states.get(mg.id)
+                if s is not None:
+                    velocities.extend(self._joint_velocities.read(mg.id, s.joints))
+            for i, v in enumerate(apply_ops(velocities, o.ops), 1):
+                obs[f"{o.key}_{i}"] = v
+
     def _fill_tcp(self, obs: dict[str, Any], states: dict[str, RobotState]) -> None:
         for o in self._observations:
             if not isinstance(o, _ObsTcp):
@@ -867,6 +1059,20 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
             if s is not None and hasattr(s, "pose") and s.pose is not None:
                 values = self.tcp_observation_values(o, s)
                 obs.update(zip(tcp_value_names(o), values, strict=True))
+
+    async def _fill_poses(self, obs: dict[str, Any]) -> None:
+        for o in self._observations:
+            if not isinstance(o, _ObsPose):
+                continue
+            source = o.source
+            if isinstance(source, Pose):
+                pose = source
+            elif isinstance(source, PoseSource):
+                pose = source.read()
+            else:
+                pose = await source()
+            values = _policy_pose_values([*pose.position, *pose.orientation], o)
+            obs.update(zip(tcp_value_names(o), values, strict=True))
 
     def _fill_ios(self, obs: dict[str, Any], io_values: dict[str, object] | None) -> None:
         if io_values is None:
@@ -909,7 +1115,17 @@ def _inverse_tcp_step(step: list[float], entry: _ObsTcp | _ActTcp) -> list[float
     )
 
 
-def tcp_value_names(entry: _ObsTcp | _ActTcp) -> list[str]:
+def _policy_pose_values(pose: Sequence[float], entry: _ObsTcp | _ObsPose) -> list[float]:
+    """A NOVA pose ``[x, y, z, rx, ry, rz]`` as the policy sees it: orientation as the entry's
+    ``orientation_type`` (rotation vector by default), then its operators."""
+    orientation_type = entry.orientation_type or poses.ROTATION_VECTOR
+    orientation = poses.from_rotvec(pose[3:6], orientation_type)
+    return apply_ops(list(pose[:3]), entry.position_ops) + apply_ops(
+        orientation, entry.orientation_ops
+    )
+
+
+def tcp_value_names(entry: _ObsTcp | _ActTcp | _ObsPose) -> list[str]:
     """Feature names of a TCP entry's values: ``key_x .. key_rz`` for a rotation vector,
     ``key_qx .. key_qw`` for a quaternion, ``key_e1 .. key_e3`` for Euler angles."""
     orientation_type = entry.orientation_type or poses.ROTATION_VECTOR
@@ -922,7 +1138,7 @@ def tcp_value_names(entry: _ObsTcp | _ActTcp) -> list[str]:
     return [f"{entry.key}_{suffix}" for suffix in suffixes]
 
 
-def tcp_width(entry: _ObsTcp | _ActTcp) -> int:
+def tcp_width(entry: _ObsTcp | _ActTcp | _ObsPose) -> int:
     """Number of values of a TCP entry: 3 position + 3 or 4 orientation."""
     return 3 + poses.orientation_width(entry.orientation_type or poses.ROTATION_VECTOR)
 

@@ -457,6 +457,11 @@ class PolicyExecutor:
         # Create and start sessions
         for mg in self._motion_groups:
             self._sessions[mg.id] = self._create_session(mg)
+            self._sessions[mg.id].set_state_observer(
+                lambda state, ts_ms, _generated, group_id=mg.id: self._schema.observe_state(
+                    group_id, state.joints, ts_ms / 1000.0
+                )
+            )
 
         if self._start_joint_position:
             await self._move_to_start_joint_position()
@@ -474,6 +479,7 @@ class PolicyExecutor:
             await self._io_streams.start()
             self._io_streams.wire_to_sessions(self._sessions)
             await self._schema.load_coordinate_systems()
+            await self._schema.start_sources()
             await self._policy.connect(self.mg_ids)
             await self._policy.validate_schema(self._schema)
             self._estop_monitor = EstopMonitor(self._motion_groups)
@@ -498,6 +504,7 @@ class PolicyExecutor:
                 self._estop_monitor = None
             if self._cameras.active:
                 await self._cameras.disconnect()
+            await self._schema.stop_sources()
             await self._io_streams.stop()
 
     # -------------------------------------------------------------------------
