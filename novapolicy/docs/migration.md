@@ -6,7 +6,7 @@ lists the changes that need an edit, or that change what an unchanged program do
 ## Step rate: `control_freq`
 
 Every client takes the policy's step rate as `control_freq=` in Hz: the training data's frame rate
-(`fps` in a LeRobot dataset's `meta/info.json`) or an RL policy's control frequency. It is not
+(`fps` in a LeRobot dataset's `meta/info.json`) or a reinforcement-learning policy's control frequency. It is not
 `ContinuousExecution(rate_hz=...)`, which sets how often the policy is asked.
 
 | Before                                       | Now                                                |

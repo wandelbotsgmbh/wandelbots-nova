@@ -77,7 +77,7 @@ class Gr00tPolicyClient(PolicyClient):
     control_freq:
         The policy's control frequency in Hz, the rate of its action steps (not the
         controller's servo rate): the training data's frame rate (``fps`` in the
-        dataset's ``meta/info.json``), or an RL policy's control frequency. Default 30 Hz;
+        dataset's ``meta/info.json``), or a reinforcement-learning policy's control frequency. Default 30 Hz;
         GR00T servers do not report it. A ``dt_ms`` in a server's action info still wins.
     dt_ms:
         Deprecated: pass ``control_freq``.
