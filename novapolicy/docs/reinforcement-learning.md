@@ -138,8 +138,7 @@ further export input, as mapped in step 3. The
 NOVA_API=http://<nova-host> uv run python run_policy.py
 """
 
-import nova
-from nova import api, run_program
+from nova import ProgramContext, ProgramPreconditions, api, program, run_program
 from nova.cell import virtual_controller
 from novapolicy import (
     Action,
@@ -159,14 +158,14 @@ CONTROLLER = "policy-test-robot"  # with VIRTUAL, the virtual controller NOVA cr
 MANUFACTURER = api.models.Manufacturer.UNIVERSALROBOTS  # the virtual robot's model
 ROBOT_TYPE = "universalrobots-ur10e"
 
-VIRTUAL_ROBOT = nova.ProgramPreconditions(
+VIRTUAL_ROBOT = ProgramPreconditions(
     controllers=[virtual_controller(name=CONTROLLER, manufacturer=MANUFACTURER, type=ROBOT_TYPE)],
     cleanup_controllers=True,
 )
 
 
-@nova.program(preconditions=VIRTUAL_ROBOT if VIRTUAL else None)
-async def run_policy(ctx: nova.ProgramContext) -> None:
+@program(preconditions=VIRTUAL_ROBOT if VIRTUAL else None)
+async def run_policy(ctx: ProgramContext) -> None:
     controller = await ctx.cell.controller(CONTROLLER)
     async with controller[0] as mg:  # the robot's first motion group
         schema = PolicySchema(

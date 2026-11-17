@@ -93,8 +93,7 @@ The example is a NOVA program that runs on a virtual UR10e, which NOVA creates b
 and deletes after it, so it moves no real robot; set `NOVA_API` to your NOVA instance.
 
 ```python
-import nova
-from nova import api, run_program
+from nova import ProgramContext, ProgramPreconditions, api, program, run_program
 from nova.cell import virtual_controller
 from novapolicy import (
     ActionChunk,
@@ -106,8 +105,8 @@ from novapolicy import (
 )
 
 
-@nova.program(
-    preconditions=nova.ProgramPreconditions(
+@program(
+    preconditions=ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name="quickstart-ur10e",
@@ -118,7 +117,7 @@ from novapolicy import (
         cleanup_controllers=True,  # delete the virtual robot when the program ends
     )
 )
-async def quickstart(ctx: nova.ProgramContext):
+async def quickstart(ctx: ProgramContext):
     mg = (await ctx.cell.controller("quickstart-ur10e"))[0]
 
     async def my_policy(obs) -> ActionChunk:

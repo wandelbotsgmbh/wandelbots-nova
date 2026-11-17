@@ -25,8 +25,7 @@ from typing import TYPE_CHECKING
 
 from scipy.spatial.transform import Rotation
 
-import nova
-from nova import api, run_program
+from nova import ProgramContext, ProgramPreconditions, api, program, run_program, viewers
 from nova.actions import jnt
 from nova.cell import virtual_controller
 from nova.types import Pose
@@ -112,9 +111,9 @@ async def dry_run(mg: MotionGroup, client: LeappPolicyClient, schema: PolicySche
         await schema.stop_sources()
 
 
-def virtual_robot() -> nova.ProgramPreconditions:
+def virtual_robot() -> ProgramPreconditions:
     """A virtual UR10e that NOVA creates before the program and deletes after it."""
-    return nova.ProgramPreconditions(
+    return ProgramPreconditions(
         controllers=[
             virtual_controller(
                 name=VIRTUAL_CONTROLLER,
@@ -129,13 +128,13 @@ def virtual_robot() -> nova.ProgramPreconditions:
 def make_program(args: argparse.Namespace):
     """The NOVA program for these arguments: on a virtual UR10e with ``--virtual``."""
 
-    @nova.program(
+    @program(
         id="isaaclab_reach_ur10e",
-        viewer=nova.viewers.Rerun(),  # 3D view of the robot (needs the nova-rerun-bridge extra)
+        viewer=viewers.Rerun(),  # 3D view of the robot (needs the nova-rerun-bridge extra)
         name="Isaac Lab reach on a UR10e",
         preconditions=virtual_robot() if args.virtual else None,
     )
-    async def isaaclab_reach_ur10e(ctx: nova.ProgramContext) -> None:
+    async def isaaclab_reach_ur10e(ctx: ProgramContext) -> None:
         controller = await ctx.cell.controller(
             VIRTUAL_CONTROLLER if args.virtual else args.controller
         )

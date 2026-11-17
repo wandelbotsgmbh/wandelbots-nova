@@ -12,7 +12,6 @@ are accepted by ``Observation.pose``:
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import time
 from typing import Protocol, runtime_checkable
@@ -143,8 +142,7 @@ class OmniversePrimPose:
         if task is None:
             return
         task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        await asyncio.gather(task, return_exceptions=True)  # wait for the poller to end
         self._latest = None
         await self.scene._release()
 
