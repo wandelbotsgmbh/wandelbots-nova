@@ -22,7 +22,8 @@ it **once**. It then:
 
 - Replacing NovaFlow's `@router.action` / `ActionService` or the action template.
 - Image-less "push a .py into the cell" deployment (noted as a later spike, §7.4).
-- Changing the released NOVA API (we only list what we'd *ask* the NOVA team for, §8).
+- Changing the released NOVA API beyond one additive field (`Program.output_schema` in
+  `service-manager`'s `program-discovery`, §8).
 
 ## 2. Current state (verified 2026-11-17, novaflow `main` @ `881645f`)
 
@@ -92,8 +93,7 @@ All in `wandelbots-nova`. Additive; no behavior change for programs without a re
    message size); if it's larger, fail with "return an object-store reference instead".
 4. **Publish the output schema in the store**: NOVAx writes an SDK-side subclass of
    `api.models.Program` with an extra `output_schema` to `nova_cells_{cell}_programs`. NOVAx
-   `GET /programs/{id}` returns it too.
-   **Risk:** the NOVA service reading this KV may reject or drop unknown fields → verify first
+   `GET /programs/{id}` returns it too. Verified safe: NOVA's Program API ignores the extra field
    (§8, Q1).
 5. **Robot hint** (helps NovaFlow's `moves_robot` / `robot_field` contract, ADR-034): derive
    "controllers this program moves" from `preconditions.controllers`. It's already in the store,
@@ -122,8 +122,8 @@ Mostly NovaFlow; no new process, no new deployment.
    - The control-plane validator resolves `RunProgram` output types per node from the program
      schema, so `$outputs.<node>.output.grasp_pose` type-checks with structural `type_id`s
      (ADR-029).
-   - Schema source: NOVAx `GET /programs/{id}` or a direct KV read, until NOVA's Program API
-     carries `output_schema` (§8).
+   - Schema source: the NOVAx app's `GET /programs/{id}` until the NOVA Program API
+     (`program-discovery`) carries `output_schema` (§8, S.1).
 3. **Default `controller`** from the program's preconditions when it names exactly one
    controller. This closes the "RunProgram: name the robot it moves" warning (`continue-run.md`
    §4.7).
@@ -196,20 +196,35 @@ Mostly NovaFlow; no new process, no new deployment.
 
 ## 8. Open questions / risks
 
-1. **NOVA store tolerance:** does the NOVA service backing `ProgramApi` accept extra fields
-   (`output_schema`) in `nova_cells_{cell}_programs` entries? Verify on a live 26.6 cell before
-   §4.4. If it doesn't, NovaFlow reads schema from NOVAx HTTP only.
-2. **NOVA API ask:** request `Program.output_schema` and `ProgramRun.output` in the released v2
-   API. Until then, the SDK-published fields are the contract, guarded by a golden test in both
-   repos.
-3. **Output type identity:** `nova.types.Pose` vs NovaFlow's `Pose` (api-client `Pose`, ADR-028).
-   The structural `type_id`s must match for wiring. Check what JSON schema `nova.types.Pose`
-   emits; programs may need to return `api.models.Pose`, or the SDK maps it when publishing.
-4. **Duplicate visibility (A vs C):** store flag name and Canopy behavior.
-5. **Concurrency of the same program:** different programs of one app run in parallel (decided).
-   Should two runs of the *same* program be allowed? That needs a per-run stop in NOVA's Program
-   API, so for now they are rejected.
+Answered on 2026-11-17 from code (`service-manager` @ `c229a19e1`, novaflow `main` @ `881645f`):
+
+1. **NOVA store tolerance — answered: safe, but dropped.** NOVA's Program API is
+   `service-manager/services/program-discovery`. It reads the KV through the SDK's own
+   `ProgramStore` (pinned `wandelbots-nova==2.20.4`); `api.models.Program` ignores unknown
+   fields, and `program-discovery` re-maps entries to its own `Program` model, which has no
+   `output_schema`. So an extra `output_schema` never hides a program, but NOVA's API does not
+   return it. → Add `output_schema` to `program-discovery`'s `Program` model and
+   `api/v2/components/schemas/Program.yaml`, and bump its SDK pin (task S.1). Until that ships,
+   NovaFlow reads the schema from the NOVAx app (`GET /programs/{id}`).
+2. **NOVA API ask — answered: we can do it ourselves.** The Program API lives in
+   `service-manager`, so S.1 is the NOVA API change; it needs a NOVA release before NovaFlow can
+   rely on it. `ProgramRun.output` is not needed there: NovaFlow reads the output from the NATS
+   event.
+3. **Output type identity — answered: mismatch, the SDK must map it.** `nova.types.Pose` is a
+   different class from the api-client `Pose` and adds an optional `kinematic_configuration`.
+   NovaFlow rejects a field class named `Pose` that is not the registered class (ADR-029
+   "no-shadows" rule in `NodeSchema._extract_fields`), and its JSON schema would get a different
+   structural id. Its serialized value (`{position, orientation}`) does validate as the api
+   `Pose`. → The SDK publishes the api `Pose` schema for `nova.types.Pose` fields in
+   `output_json_schema`; the NovaFlow plugin swaps the type and converts values with
+   `to_api_model()` (task 0.5).
+4. **Duplicate visibility (A vs C):** store flag name and Canopy behavior. Decide in C.2b.
+5. **Concurrency of the same program — answered: reject.** The released API has only
+   `stop_program(cell, program)`; there is no run id to stop one of two runs. Different
+   programs run in parallel (0.6).
 6. **Worker re-import cost / spawn method** in NovaFlow's worker pool with heavy program modules.
+   Measure in C.2.
+7. **Owner of the NovaFlow side (A, C):** open.
 
 ## 9. Work breakdown
 
@@ -218,7 +233,9 @@ Mostly NovaFlow; no new process, no new deployment.
 | 0.1 | SDK | Add `Program.output_json_schema` (object or None) | S | — |
 | 0.2 | SDK | Capture + validate return value into new `ProgramRun.output` | S | 0.1 |
 | 0.3 | SDK | `ProgramStatus.output` on COMPLETED (+ size cap, golden) | S | 0.2 |
-| 0.4 | SDK | `output_schema` in store entry + NOVAx GET | S | 0.1, Q1 |
+| 0.4 | SDK | `output_schema` in store entry + NOVAx GET | S | 0.1 |
+| 0.5 | SDK | Publish api `Pose` schema for `nova.types.Pose` fields | S | 0.1 |
+| S.1 | service-manager | `output_schema` in `program-discovery` Program API, bump SDK pin | S | 0.4 |
 | 0.6 | SDK | Parallel runs of different programs per app | S | — |
 | 0.7 | SDK | Docs `docs/programs.md`, example with typed output | S | 0.1–0.4 |
 | A.1 | NovaFlow | `RunProgram` returns `output` | S | 0.3 |
@@ -233,6 +250,5 @@ Mostly NovaFlow; no new process, no new deployment.
 | D.2 | SDK | `novax serve` console script | S | C.1 |
 | D.2b | SDK + nova-cli | Slim scaffold (`examples/your-nova-app`, generator) | S–M | D.2 |
 
-**Suggested order:** 0.1→0.4 (SDK release) ∥ C.1, D.2 (SDK) → A.1, A.3 (quick win) → C.2 →
-A.2 → D.2b.
-Resolve Q1 and Q3 before 0.4 and A.2.
+**Suggested order:** 0.1→0.6 (SDK release) ∥ C.1, D.2 (SDK) → A.1, A.3 (quick win) and S.1 →
+C.2 → A.2 → D.2b.

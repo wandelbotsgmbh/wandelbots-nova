@@ -8,16 +8,14 @@ Conventions: every SDK task is test-first (write failing test → implement → 
 (`feat(program): …`). NovaFlow tasks are listed at task level and are planned in detail in the
 `novaflow` repo.
 
-## Milestone 0 — Spikes (resolve before M1.4 and M3.2)
+## Milestone 0 — Spikes (done 2026-11-17, see spec §8)
 
-- [ ] **S1 (Q1) NOVA store tolerance.** On a live 26.6 cell, put a `Program` entry with an extra
-  `output_schema` key into `nova_cells_{cell}_programs`. Check `GET /cells/{cell}/programs` and
-  `/programs/{id}` (via the api-client) and the NOVA frontend program list. Outcome: "extra key is
-  tolerated / dropped / rejected" → decides the M1.4 storage path.
-- [ ] **S2 (Q3) Pose type identity.** Compare the JSON schema of `nova.types.Pose` (as a program
-  return field) with the structural `type_id` NovaFlow assigns to its `Pose`
-  (`novaflow.types`, ADR-029). Outcome: "matches" or "SDK must publish the api `Pose` schema for
-  `nova.types.Pose` fields" → becomes an extra M1 task if needed.
+- [x] **S1 (Q1) NOVA store tolerance.** Safe: NOVA's Program API (`service-manager`
+  `program-discovery`) reads the KV via the SDK `ProgramStore` and ignores unknown fields, but
+  drops `output_schema` from its responses → M1.4 stores it, and M6.1 adds it to the NOVA API.
+- [x] **S2 (Q3) Pose type identity.** Mismatch: `nova.types.Pose` is a different class with an
+  extra `kinematic_configuration`. NovaFlow rejects it as a `Pose` shadow and its schema hashes
+  differently → M1.7 maps it to the api `Pose` schema; M4.2 swaps the type.
 
 ## Milestone 1 — SDK program output contract (`feat(program): typed program outputs`)
 
@@ -58,14 +56,13 @@ Conventions: every SDK task is test-first (write failing test → implement → 
   when state is COMPLETED. Check the size before the COMPLETED transition.
 
 ### M1.4 `output_schema` in the program store and NOVAx API
-- Depends on S1. Files: `novax/program_manager.py`, `novax/novax.py`, `novax/api/programs.py`,
+- Files: `novax/program_manager.py`, `novax/novax.py`, `novax/api/programs.py`,
   `nova/program/store.py`, `tests/novax/api/test_program_registry.py`.
-- If S1 = tolerated: an SDK model `ProgramDescriptor(api.models.Program)` with
-  `output_schema: dict | None`. Use it in `ProgramManager`, `ProgramStore`, and the NOVAx
-  `response_model`s. Tests: registry round-trip includes `output_schema`; GET `/programs/{id}`
-  returns it.
-- If S1 = dropped/rejected: keep the store payload unchanged and expose `output_schema` only via
-  NOVAx `GET /programs/{id}`. NovaFlow reads it from the app (M3.2 adapts).
+- An SDK model `ProgramDescriptor(api.models.Program)` with `output_schema: dict | None`. Use it
+  in `ProgramManager`, `ProgramStore`, and the NOVAx `response_model`s.
+- Tests: registry round-trip includes `output_schema`; GET `/programs/{id}` returns it; a store
+  entry with `output_schema` still parses as plain `api.models.Program` (what NOVA's
+  `program-discovery` does).
 
 ### M1.5 Parallel runs of different programs
 - Files: `novax/program_manager.py`, `novax/novax.py`, `novax/api/programs.py`,
@@ -79,6 +76,15 @@ Conventions: every SDK task is test-first (write failing test → implement → 
 - Impl: replace the single `_runner` with `dict[program_id, ProgramRunner]`; drop finished
   runners. `running_program` becomes `running_programs`; keep the old property as a deprecated
   alias that returns the first running program.
+
+### M1.7 Publish the api `Pose` schema for `nova.types.Pose` fields
+- Files: `nova/program/function.py`, `tests/program/test_function.py`.
+- Tests: a program returning a model with a `nova.types.Pose` field (scalar and `list[Pose]`)
+  publishes the api-client `Pose` schema (`position`, `orientation` only) for it in
+  `output_json_schema`; the serialized output validates against the api `Pose`.
+- Impl: a schema-generation hook (pydantic `GenerateJsonSchema` subclass or field-level
+  override) that emits `api.models.Pose`'s schema for `nova.types.Pose`. Keep `input_json_schema`
+  unchanged, since the NOVA UI uses it today.
 
 ### M1.6 Docs and example
 - `docs/programs.md`: a "Program outputs" section (return a model or a scalar, the `result`
@@ -154,10 +160,11 @@ Independent of M1; can run in parallel.
   object) filled from the terminal event's `output`. Older SDKs send no `output` → `{}`. Tests in
   `actions/builtin/program/tests/test_program_actions.py`.
 - [ ] **M3.2** Program-parameterized types. Control plane: `routes/programs.py` returns
-  `output_schema` (source per S1). The validator resolves the `RunProgram` node's `arguments`
-  fields and `output` sub-fields from the selected program's schemas (structural `type_id`s).
-  Canopy: argument fields become wireable, output fields are referenceable. Keep accepting the
-  legacy string `arguments`.
+  `output_schema`, read from the NOVAx app's `GET /programs/{id}` until M6.1 ships, then from
+  NOVA's Program API. The validator resolves the `RunProgram` node's `arguments` fields and
+  `output` sub-fields from the selected program's schemas (structural `type_id`s). Canopy:
+  argument fields become wireable, output fields are referenceable. Keep accepting the legacy
+  string `arguments`.
 - [ ] **M3.3** Default `controller` from the program's single precondition controller (Canopy +
   validation warning text).
 - [ ] **M3.4** Component tests and an e2e test with a real NOVAx app in the k3d cell (output
@@ -171,7 +178,8 @@ Independent of M1; can run in parallel.
 - [ ] **M4.2** Program → action adapter:
   - Service name = PascalCase(app); action name = PascalCase(program id).
   - Validate input/output models against NovaFlow's flat/supported-type rules; skip and warn
-    otherwise.
+    otherwise. Replace `nova.types.Pose` fields with the api-client `Pose` in the generated
+    models and convert values with `to_api_model()` (spec §8, Q3).
   - `moves_robot` + `robot_field` from preconditions.
   - Handler: re-import `programs_dir` in the worker, build `Nova` + `ProgramContext`, inject the
     host (`checkpoint` → `run_rest.wait(False)`, `report_progress` → `ActionContext`), and run
@@ -190,14 +198,17 @@ Independent of M1; can run in parallel.
   nodes. Include a decision table.
 - [ ] NovaFlow docs: `novaflow/README.md` section pointing to programs as the
   "write once" path.
-- [ ] Ask the NOVA team for `Program.output_schema` + `ProgramRun.output` in the released API
-  (link this spec).
+
+## Milestone 6 — NOVA Program API (repo `service-manager`, after M1 release)
+
+- [ ] **M6.1** `program-discovery`: add `output_schema` to the `Program` model and
+  `api/v2/components/schemas/Program.yaml`, bump its `wandelbots-nova` pin, and release with
+  NOVA. `ProgramRun.output` is not needed there: NovaFlow reads the output from the NATS event.
 
 ## Order and parallelism
 
 ```text
-S1, S2 ──┐
-M1.1 → M1.2 → M1.3 ─┬→ M1.4(S1) → M1.5 → M1.6 → [SDK release] → M3.1 → M3.3 → M3.2(S2) → M3.4
-M2.1 → M2.2 ────────┤                                   → M4.1 → M4.2 → M4.3 → M4.4 → M4.5
-M2.3 → M2.4 ────────┘                                                                 → M5
+M1.1 → M1.7 → M1.2 → M1.3 → M1.4 ─┬→ M1.5 → M1.6 → [SDK release] → M3.1 → M3.3 → M3.2 → M3.4
+M2.1 → M2.2 ──────────────────────┤                              → M6.1
+M2.3 → M2.4 ──────────────────────┘                              → M4.1 → M4.2 → M4.3 → M4.4 → M4.5 → M5
 ```
