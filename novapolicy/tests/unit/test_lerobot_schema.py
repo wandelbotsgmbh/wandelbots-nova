@@ -491,14 +491,20 @@ def test_the_same_pose_in_the_wrong_units_is_still_rejected() -> None:
         check_observation_range(settings, {"arm_1": 90.0, "arm_2": -90.0}, _NAMES)
 
 
+async def _force(observation):
+    return {"force": 1.5}
+
+
 def test_state_names_include_velocities_and_poses_in_a_fixed_order():
-    """Joint positions, joint velocities, TCP poses, object poses, IOs: whatever the declaration order."""
+    """Joint positions, joint velocities, TCP poses, object poses, IOs, computed keys: whatever
+    the declaration order."""
     from nova.types import Pose
     from novapolicy.poses import QUATERNION
 
     mg = _mg()
     schema = PolicySchema(
         observations=[
+            Observation.computed(_force, keys=["force"]),
             Observation.pose("goal", source=Pose((0, 0, 0, 0, 0, 0)), orientation_type=QUATERNION),
             Observation.joint_velocities("qd", source=mg),
             Observation.joint_positions("q", source=mg, action=False),
@@ -509,4 +515,5 @@ def test_state_names_include_velocities_and_poses_in_a_fixed_order():
         "q_1", "q_2", "q_3",
         "qd_1", "qd_2", "qd_3",
         "goal_x", "goal_y", "goal_z", "goal_qx", "goal_qy", "goal_qz", "goal_qw",
+        "force",
     ]  # fmt: skip
