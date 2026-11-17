@@ -27,3 +27,11 @@ give me a slack message draft for this
 ---
 
 give me a slack message draft for this
+
+---
+
+the BA teams owns the novaflow side. how much stuff do we need to do there? we can still create prs in novaflow if needed
+
+---
+
+the BA teams owns the novaflow side. how much stuff do we need to do there? we can still create prs in novaflow if needed
