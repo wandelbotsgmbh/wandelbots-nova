@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 from pathlib import Path
+import threading
 from typing import Any
 
 import numpy as np
@@ -121,6 +122,7 @@ class LeappPipeline:
                 self._flows.setdefault(source, []).extend(targets)
         self._initial_values = pipeline.get("initial_values")
         self._buffers: dict[str, np.ndarray] = {}
+        self._lock = threading.Lock()  # run() may be called from a worker thread
         self.reset()
 
     def _load_model(self, name: str, model: dict[str, Any]) -> _Model:
@@ -146,6 +148,10 @@ class LeappPipeline:
 
     def reset(self) -> None:
         """Zero every input and load the feedback inputs' initial values: a new episode."""
+        with self._lock:
+            self._reset()
+
+    def _reset(self) -> None:
         self._buffers = {
             port.key: np.zeros(port.shape, dtype=_DTYPES.get(port.dtype, np.float32))
             for model in self._models
@@ -160,6 +166,10 @@ class LeappPipeline:
 
     def run(self, inputs: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """One step: ``inputs`` by ``node/name``; returns the pipeline outputs by ``node/name``."""
+        with self._lock:
+            return self._run(inputs)
+
+    def _run(self, inputs: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         for key, value in inputs.items():
             if key not in self._buffers:
                 msg = f"{key!r} is not an input of {self.path}"

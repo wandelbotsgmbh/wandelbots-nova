@@ -15,6 +15,7 @@ from novapolicy.lerobot.config import try_load_execution_settings
 from novapolicy.lerobot.schema import LeRobotSchema, check_observation_range
 from novapolicy.lerobot.transport import LeRobotGrpcTransport
 from novapolicy.policy_client import DEFAULT_CONTROL_FREQ, PolicyClient
+from novapolicy.poses import ROTATION_VECTOR
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -121,6 +122,11 @@ class LeRobotPolicyClient(PolicyClient):
             control_freq = fps if control_freq is None else control_freq
         if control_freq is None:
             control_freq = DEFAULT_CONTROL_FREQ
+            logger.warning(
+                "LeRobotPolicyClient got no control_freq; playing actions at %s Hz. Pass the "
+                "dataset's fps (meta/info.json): a policy recorded at 15 fps would run twice as fast",
+                control_freq,
+            )
         if control_freq <= 0:
             raise ValueError(f"control_freq must be positive, got {control_freq}")
         if playback_speed is not None:
@@ -208,6 +214,20 @@ class LeRobotPolicyClient(PolicyClient):
     async def validate_schema(self, schema: PolicySchema) -> None:
         """Validate schema constraints known without remote model metadata."""
         self._lerobot_schema.validate_schema(schema)
+        if self._async_queue is None:
+            return
+        averaged = [
+            key
+            for key, mg in schema.tcp_action_keys
+            if schema.tcp_action_orientation_type(mg.id) not in {None, ROTATION_VECTOR}
+        ]
+        if averaged:
+            msg = (
+                f"TCP actions {averaged} are not rotation vectors: the async queue averages "
+                "overlapping predictions value by value, which is wrong for quaternions and Euler "
+                "angles. Use use_async_queue=False"
+            )
+            raise ValueError(msg)
 
     def _resolve_settings(self) -> None:
         """Derive execution settings from the checkpoint, reconciling overrides.

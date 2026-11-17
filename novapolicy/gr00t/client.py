@@ -162,7 +162,15 @@ class Gr00tPolicyClient(PolicyClient):
         schema_state_keys = {m.key for m in schema.joint_mappings}
         schema_state_keys |= {m.key for m in schema.tcp_mappings}
         schema_state_keys |= {m.key for m in schema.obs_io_mappings}
+        schema_state_keys |= {m.key for m in schema.joint_velocity_mappings}
+        schema_state_keys |= {m.key for m in schema.pose_mappings}
         schema_state_keys |= {k for o in schema.computed_observations for k in o.keys}
+        errors.extend(
+            f"Observation.tcp({tm.key!r}) has a coordinate_system but no orientation_type: "
+            "GR00T's tcp_format applies only to world poses, so declare orientation_type"
+            for tm in schema.tcp_mappings
+            if tm.coordinate_system and tm.orientation_type is None
+        )
         self._server_state_keys = server_state_keys or None
         if self._statistics:
             self._state_ranges = self._ranges_for(server_state_keys)
@@ -404,6 +412,8 @@ class Gr00tPolicyClient(PolicyClient):
     ) -> dict[str, Any]:
         """Convert raw robot states → GR00T observation format."""
         state_dict = self._build_state_dict(states, schema, io_values)
+        for key, values in (await schema.velocity_and_pose_values(states)).items():
+            state_dict[key] = _to_state_array(values)
         await self._fill_computed_state(state_dict, schema)
         if self._server_state_keys is not None:
             # An observation the model does not take (a TCP pose that only pins the TCP

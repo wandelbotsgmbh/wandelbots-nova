@@ -80,8 +80,10 @@ class LeRobotSchema:
 
     @staticmethod
     def state_names(states: dict[str, RobotState], schema: PolicySchema) -> list[str]:
+        """The flat observation.state, in a fixed order: joint positions, joint velocities, TCP
+        poses, object poses, IOs. The checkpoint matches it by position."""
         names: list[str] = []
-        for mapping in schema.joint_mappings:
+        for mapping in [*schema.joint_mappings, *schema.joint_velocity_mappings]:
             dof = sum(
                 len(state.joints)
                 for motion_group in mapping.sources
@@ -92,6 +94,8 @@ class LeRobotSchema:
             state = states.get(mapping.source.id)
             if state is not None and state.pose is not None:
                 names.extend(tcp_value_names(mapping))
+        for pose in schema.pose_mappings:
+            names.extend(tcp_value_names(pose))
         names.extend(mapping.key for mapping in schema.obs_io_mappings)
         return names
 

@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from novapolicy.poses import QUATERNION
 from novapolicy.schema import BoolMapping, Observation, PolicySchema
 
 client_module = pytest.importorskip("novapolicy.lerobot.client")
@@ -176,9 +177,10 @@ def test_fps_still_works_but_is_deprecated_in_favour_of_control_freq() -> None:
     assert client.dt_ms == pytest.approx(1000.0 / 15.0)
 
 
-def test_control_freq_defaults_to_30_hz() -> None:
+def test_control_freq_defaults_to_30_hz_and_says_so(caplog) -> None:
     client = LeRobotPolicyClient("127.0.0.1:8080", "model", policy_type="act", actions_per_chunk=11)
     assert client.dt_ms == pytest.approx(1000.0 / 30.0)
+    assert any("got no control_freq" in r.message for r in caplog.records)
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -1016,3 +1018,18 @@ async def test_a_checkpoint_without_an_instruction_sends_no_task(fake_lerobot) -
 def test_a_blank_task_is_rejected() -> None:
     with pytest.raises(ValueError, match="non-empty"):
         LeRobotPolicyClient("127.0.0.1:8080", "model", task="  ", control_freq=15.0)
+
+
+@pytest.mark.asyncio
+async def test_the_async_queue_refuses_tcp_actions_it_cannot_average() -> None:
+    mg = _mg()
+    schema = PolicySchema(
+        observations=[Observation.tcp("eef", source=mg, action=True, orientation_type=QUATERNION)]
+    )
+    queued = LeRobotPolicyClient(
+        "127.0.0.1:8080", "model", policy_type="act", actions_per_chunk=8, use_async_queue=True
+    )
+    with pytest.raises(ValueError, match=r"\['eef'\] are not rotation vectors"):
+        await queued.validate_schema(schema)
+    plain = LeRobotPolicyClient("127.0.0.1:8080", "model", policy_type="act", actions_per_chunk=8)
+    await plain.validate_schema(schema)

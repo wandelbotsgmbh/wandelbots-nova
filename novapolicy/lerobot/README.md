@@ -500,6 +500,10 @@ becomes:
 }
 ```
 
+`observation.state` is filled in a fixed order, whatever order the schema declares: joint
+positions, joint velocities, TCP poses, object poses (`Observation.pose`), IOs. The checkpoint
+matches the values by position, so record the dataset in the same order.
+
 Image shape comes from the first camera frame.
 
 ### Camera resolution

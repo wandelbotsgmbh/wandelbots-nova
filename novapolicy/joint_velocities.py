@@ -34,6 +34,10 @@ DIFFERENCE_WINDOW_S = 0.02
 """Streamed positions are differenced across at least this much sample time (about one 60 Hz
 step): consecutive packets a few milliseconds apart turn position quantization into noise."""
 
+_REPEAT_HOLD_S = 0.1
+"""A repeated sample keeps the last velocity this long; positions unchanged for longer read as
+standstill."""
+
 _FED_STALE_S = 0.2
 """A velocity from streamed packets older than this is not used."""
 
@@ -123,7 +127,8 @@ class JointVelocities:
 
         Observations can repeat a state sample (the tick is faster than the stream, or the
         stream skipped); differencing a repeat would read as standstill, so a repeated
-        sample keeps the last velocity instead.
+        sample keeps the last velocity, for up to ``_REPEAT_HOLD_S``: positions that stay
+        unchanged longer than that are standstill.
         """
         sample = self._sample.get(motion_group_id)
         if sample is None or len(sample[1]) != len(joints):
@@ -134,6 +139,9 @@ class JointVelocities:
             self._velocity[motion_group_id] = [
                 (q - p) / (now - then) for q, p in zip(joints, before, strict=True)
             ]
+            self._sample[motion_group_id] = (now, joints)
+        elif joints == sample[1] and now - sample[0] > _REPEAT_HOLD_S:
+            self._velocity[motion_group_id] = [0.0] * len(joints)
             self._sample[motion_group_id] = (now, joints)
         return list(self._velocity[motion_group_id])
 

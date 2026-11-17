@@ -55,6 +55,7 @@ class QueuedPolicyClient(PolicyClient):
         self._queue = TimestampedActionQueue()
         self._replaceable = 0
         self._layout: list[tuple[str, str, int]] = []  # (kind, group id, width)
+        self._values: dict[str, dict[int, list[float]]] = {}  # key -> timestep -> row
 
     @property
     def policy(self) -> PolicyClient:
@@ -71,6 +72,7 @@ class QueuedPolicyClient(PolicyClient):
         self._queue.clear()
         self._replaceable = 0
         self._layout = []
+        self._values = {}
         await self._policy.connect(motion_group_ids)
 
     async def validate_schema(self, schema: PolicySchema) -> None:
@@ -113,9 +115,7 @@ class QueuedPolicyClient(PolicyClient):
         if predecessor is not None:
             plan.insert(0, (first - 1, predecessor))
             retained = 1 + min(frozen, len(plan) - 1)
-        values = chunk.values
-        if predecessor is not None:  # the plan starts one step before this chunk
-            values = {key: rows[:1] + rows for key, rows in values.items()}
+        values = self._merge_values(chunk.values, first, frozen, [ts for ts, _v in plan])
         merged = self._unflatten([v for _ts, v in plan], chunk, plan[0][0]).model_copy(
             update={"values": values}
         )
@@ -126,10 +126,32 @@ class QueuedPolicyClient(PolicyClient):
         self._queue.publish(zip([ts for ts, _v in plan], self._flatten(merged, None), strict=True))
         return merged
 
+    def _merge_values(
+        self, values: dict[str, list[list[float]]], first: int, frozen: int, timesteps: list[int]
+    ) -> dict[str, list[list[float]]]:
+        """``chunk.values`` rows on the plan's timesteps: rows already published for the steps
+        before ``first + frozen`` stay as they were, later ones are this chunk's. Values such
+        as a gripper command are not blended."""
+        merged: dict[str, list[list[float]]] = {}
+        for key, rows in values.items():
+            if not rows:
+                continue
+            published = self._values.setdefault(key, {})
+            for i, row in enumerate(rows):
+                if i >= frozen or first + i not in published:
+                    published[first + i] = row
+            for ts in [ts for ts in published if ts < timesteps[0]]:
+                del published[ts]
+            merged[key] = [
+                published.get(ts, rows[0] if ts < first else rows[-1]) for ts in timesteps
+            ]
+        return merged
+
     def _flatten(
         self, chunk: ActionChunk, predecessor: NDArray[np.float32] | None
     ) -> list[NDArray[np.float32]]:
-        """One vector per step: every joint group, then every TCP group (unwrapped)."""
+        """One vector per step: every joint group, then every TCP group, its rotations unwrapped
+        against the step before the chunk, or the chunk's own first step."""
         if not self._layout:
             self._layout = [("j", g, len(s[0])) for g, s in sorted(chunk.joints.items()) if s]
             self._layout += [("t", g, _TCP_DIM) for g, s in sorted(chunk.tcp.items()) if s]
@@ -137,9 +159,13 @@ class QueuedPolicyClient(PolicyClient):
         offset = 0
         for kind, group, width in self._layout:
             steps = (chunk.joints if kind == "j" else chunk.tcp)[group]
-            if kind == "t" and predecessor is not None:
-                ref = predecessor[offset : offset + width].tolist()
-                steps = unwrap_tcp_rotations(steps, ref[3:6]) if steps else steps
+            if kind == "t" and steps:
+                ref = (
+                    predecessor[offset + 3 : offset + 6].tolist()
+                    if predecessor is not None
+                    else steps[0][3:6]
+                )
+                steps = unwrap_tcp_rotations(steps, ref)
             columns.append(steps)
             offset += width
         n = min(len(c) for c in columns)

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from novapolicy.leapp.pipeline import LeappPipeline
+from novapolicy.leapp.pipeline import _DTYPES, LeappPipeline
 from novapolicy.policy_client import DEFAULT_CONTROL_FREQ, PolicyClient
 from novapolicy.types import ActionChunk
 
@@ -45,7 +46,8 @@ class LeappPolicyClient(PolicyClient):
 
     The joint target is the export's output of kind ``joint/position`` or with an Isaac Lab
     ``write:<robot>:set_joint_position_target...`` connection; where that is ambiguous, the
-    output named like the joint action. Other outputs, such as exported gains, are not sent.
+    output named like the joint action. An output named like a key of an ``Action.computed``
+    hook lands in ``chunk.values``; other outputs, such as exported gains, are not used.
     Feedback inputs such as the last action are carried from step to step and start from the
     export's initial values with every run.
 
@@ -81,6 +83,7 @@ class LeappPolicyClient(PolicyClient):
             raise ValueError(msg)
         self._feeds: dict[str, str] = {}  # export input key -> observation key
         self._target: tuple[Port, str] | None = None  # joint output -> joint action key
+        self._computed: dict[str, Port] = {}  # Action.computed key -> export output
 
     @property
     def control_freq(self) -> float:
@@ -115,6 +118,15 @@ class LeappPolicyClient(PolicyClient):
                 )
             self._feeds[port.key] = key
         self._target = self._joint_target(schema, errors)
+        self._computed = {}
+        outputs = {p.name: p for p in self._pipeline.outputs}
+        for key in schema.computed_action_keys:
+            if key in outputs:
+                self._computed[key] = outputs[key]
+            else:
+                errors.append(
+                    f"Action.computed key {key!r} matches no export output {list(outputs)}"
+                )
         if errors:
             msg = "Schema does not satisfy the LEAPP export:\n  - " + "\n  - ".join(errors)
             raise ValueError(msg)
@@ -156,7 +168,12 @@ class LeappPolicyClient(PolicyClient):
                 f"The export outputs absolute joint targets: declare Action.joint_positions"
                 f"({key!r}, ...) with mode='absolute'"
             )
-        ignored = [p.key for p in self._pipeline.outputs if p is not joint_outputs[0]]
+        computed = set(schema.computed_action_keys)
+        ignored = [
+            p.key
+            for p in self._pipeline.outputs
+            if p is not joint_outputs[0] and p.name not in computed
+        ]
         if ignored:
             logger.info("Export outputs not sent to the robot: %s", ignored)
         return joint_outputs[0], key
@@ -185,12 +202,17 @@ class LeappPolicyClient(PolicyClient):
                     f"observation {key!r} has {len(values)}"
                 )
                 raise ValueError(msg)
-            feeds[port.key] = np.asarray(values, dtype=np.float32).reshape(port.shape)
-        outputs = self._pipeline.run(feeds)
+            dtype = _DTYPES.get(port.dtype, np.float32)
+            feeds[port.key] = np.asarray(values, dtype=dtype).reshape(port.shape)
+        outputs = await asyncio.to_thread(self._pipeline.run, feeds)
         output, action_key = joint_output
         target = [float(v) for v in np.asarray(outputs[output.key]).reshape(-1)]
         return ActionChunk(
             joints=self._split(target, action_key, schema, states),
+            values={
+                key: [[float(v) for v in np.asarray(outputs[port.key]).reshape(-1)]]
+                for key, port in self._computed.items()
+            },
             dt_ms=1000.0 / self._control_freq,
         )
 

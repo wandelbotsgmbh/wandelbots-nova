@@ -258,6 +258,12 @@ class NatsPolicyClient(PolicyClient):
         :meth:`_build_proprio` — a schema can be right while the bound robot
         still has the wrong number of axes.
         """
+        unsent = [o.key for o in (*schema.joint_velocity_mappings, *schema.pose_mappings)]
+        if unsent:
+            raise ValueError(
+                f"Observations {unsent} are not sent to a NATS policy: its proprio carries "
+                "joint positions, joint velocities and the last action itself."
+            )
         consumed = {f"{ACTION_KEY}.{key}" for key in schema.computed_action_keys}
         unclaimed = [name for name in self._extra_actions if name not in consumed]
         if unclaimed:

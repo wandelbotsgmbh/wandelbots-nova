@@ -102,19 +102,39 @@ async def test_with_smoothing_the_frozen_head_stays_exactly_as_published():
 
 
 @pytest.mark.asyncio
-async def test_computed_action_values_stay_aligned_with_the_plan():
-    """The plan starts one step before a replacement; its hook values start there too."""
+async def test_computed_action_values_keep_published_rows_by_timestep():
+    """A gripper command already published for a step stays; later steps take the new chunk's
+    commands, unblended."""
     step = [[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]] * 4
-    client, schema, states, _mg_id = _setup([step, step])
+    client, schema, states, _mg_id = _setup([step, step], margin_steps=1)
     inner = client.policy
     assert isinstance(inner, _Chunks)
+    closes = [[0.0], [0.0], [1.0], [1.0]]  # timesteps 0..3
+    opens = [[0.0], [0.0], [0.0], [0.0]]  # timesteps 1..4
     inner.chunks = [
-        c.model_copy(update={"values": {"gripper": [[float(i)] for i in range(4)]}})
-        for c in inner.chunks
+        c.model_copy(update={"values": {"gripper": rows}})
+        for c, rows in zip(inner.chunks, [closes, opens], strict=True)
     ]
     first = await client.get_actions(states, schema)
-    assert first.values["gripper"] == [[0.0], [1.0], [2.0], [3.0]]
-    client.synchronize_action_timestep(2)
+    assert first.values["gripper"] == closes
+    client.synchronize_action_timestep(1)
     second = await client.get_actions(states, schema)
-    assert second.action_timestep == 1
-    assert second.values["gripper"][0] == second.values["gripper"][1] == [0.0]
+    assert second.action_timestep == 0  # the predecessor, then timesteps 1..4
+    # 0 and the frozen 1, 2 as published (2 closes); 3 and 4 from the new chunk
+    assert second.values["gripper"] == [[0.0], [0.0], [1.0], [0.0], [0.0]]
+
+
+@pytest.mark.asyncio
+async def test_the_first_chunk_s_rotation_vectors_are_unwrapped():
+    flip = [[0.0, 0.0, 0.0, 3.1, 0.0, 0.0], [0.0, 0.0, 0.0, -3.1, 0.0, 0.0]]
+    mg = _mg()
+    schema = PolicySchema(
+        observations=[Observation.tcp("tcp_pose", source=mg, tcp="flange")],
+        actions=[Action.tcp("eef", target=mg)],
+    )
+    client = QueuedPolicyClient(
+        _Chunks([ActionChunk(tcp={mg.id: flip}, dt_ms=DT)]), smoothing_passes=0
+    )
+    pose = SimpleNamespace(position=START[:3], orientation=START[3:])
+    chunk = await client.get_actions({mg.id: SimpleNamespace(joints=[0.0] * 6, pose=pose)}, schema)
+    assert chunk.tcp[mg.id][1][3] == pytest.approx(2.0 * math.pi - 3.1)

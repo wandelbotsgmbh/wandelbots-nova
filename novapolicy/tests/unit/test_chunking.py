@@ -313,6 +313,15 @@ def test_unwrap_keeps_equivalent_rotations_and_leaves_continuous_ones_alone():
         assert actual == pytest.approx(expected)
 
 
+def test_the_identity_after_unwrapped_steps_stays_a_full_turn():
+    """Steps unwrapped past pi that reach the identity become the full turn, not a jump to 0."""
+    steps = [[0.0] * 3 + [0.0, 0.0, -3.0], [0.0] * 6]
+    unwrapped = unwrap_tcp_rotations(steps, [0.0, 0.0, 3.2])
+    assert unwrapped[0][3:6] == pytest.approx([0.0, 0.0, 2.0 * math.pi - 3.0])
+    assert unwrapped[1][3:6] == pytest.approx([0.0, 0.0, 2.0 * math.pi])
+    assert unwrap_tcp_rotations([[0.0] * 6], [0.0, 0.0, 0.5])[0][3:6] == [0.0, 0.0, 0.0]
+
+
 def test_endpoint_ramps_do_not_interpolate_across_a_rotation_vector_flip():
     _, chunk = _tool_down_flip()
     flipped = chunk.model_copy(
@@ -490,6 +499,13 @@ _DOWN = [-100.0, -500.0, 300.0, math.pi, 0.0, 0.0]  # tool pointing straight dow
 
 def _rot(pose: list[float]) -> Rotation:
     return Rotation.from_rotvec(pose[3:6])
+
+
+@pytest.mark.parametrize("width", [7, 9])
+def test_relative_tcp_offsets_of_another_width_are_refused(width):
+    """A quaternion (7) or rot6d (9) offset read as a rotation vector would turn the tool."""
+    with pytest.raises(ValueError, match="6 values"):
+        compose_tcp_deltas(_DOWN, [[0.0] * width], TcpDelta())
 
 
 def test_relative_tcp_rotations_compose_instead_of_adding():

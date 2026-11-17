@@ -96,6 +96,7 @@ class EstopMonitor:
         self._motion_groups = motion_groups
         self._task: asyncio.Task[None] | None = None
         self.error: EmergencyStopError | None = None
+        self._skipping: set[str] = set()  # controllers whose last state did not parse
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._run(), name="estop-monitor")
@@ -136,12 +137,14 @@ class EstopMonitor:
             try:
                 await self._watch_stream(controller_id, api_client)
             except ValidationError as e:
-                logger.warning(
-                    "E-stop monitor for %s skipped an unparseable controller state, "
-                    "reconnecting: %s",
-                    controller_id,
-                    str(e).splitlines()[0],
-                )
+                if controller_id not in self._skipping:  # once per streak, not per retry
+                    self._skipping.add(controller_id)
+                    logger.warning(
+                        "E-stop monitor for %s skips unparseable controller states, "
+                        "reconnecting: %s",
+                        controller_id,
+                        str(e).splitlines()[0],
+                    )
                 await asyncio.sleep(_RECONNECT_DELAY_S)
                 continue
             return
@@ -156,6 +159,11 @@ class EstopMonitor:
                 response_rate=100,
             )
             async for state in stream:
+                if controller_id in self._skipping:
+                    self._skipping.discard(controller_id)
+                    logger.info(
+                        "E-stop monitor for %s reads controller states again", controller_id
+                    )
                 safety = getattr(state, "safety_state", None)
                 if safety is None:
                     continue

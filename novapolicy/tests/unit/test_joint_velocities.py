@@ -68,6 +68,15 @@ async def test_a_repeated_sample_keeps_the_velocity_instead_of_reading_standstil
 
 
 @pytest.mark.asyncio
+async def test_positions_unchanged_for_longer_than_a_repeat_read_as_standstill():
+    velocities = JointVelocities([_mg()])
+    velocities.read(MG_ID, [0.0], now=0.0)
+    assert velocities.read(MG_ID, [0.1], now=0.1) == pytest.approx([1.0])
+    assert velocities.read(MG_ID, [0.1], now=0.5) == [0.0]  # the arm stopped
+    assert velocities.read(MG_ID, [0.2], now=0.6) == pytest.approx([1.0])  # from the stop
+
+
+@pytest.mark.asyncio
 async def test_a_missing_measurement_is_not_reported_before_the_first_frame_can_arrive(caplog):
     velocities = JointVelocities([_mg()], measured=_FakeMeasured(None))
     await velocities.start()

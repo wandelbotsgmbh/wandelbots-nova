@@ -489,3 +489,24 @@ def test_the_same_pose_in_the_wrong_units_is_still_rejected() -> None:
 
     with pytest.raises(ValueError, match="implausibly far outside"):
         check_observation_range(settings, {"arm_1": 90.0, "arm_2": -90.0}, _NAMES)
+
+
+def test_state_names_include_velocities_and_poses_in_a_fixed_order():
+    """Joint positions, joint velocities, TCP poses, object poses, IOs: whatever the declaration order."""
+    from nova.types import Pose
+    from novapolicy.poses import QUATERNION
+
+    mg = _mg()
+    schema = PolicySchema(
+        observations=[
+            Observation.pose("goal", source=Pose((0, 0, 0, 0, 0, 0)), orientation_type=QUATERNION),
+            Observation.joint_velocities("qd", source=mg),
+            Observation.joint_positions("q", source=mg, action=False),
+        ]
+    )
+    names = LeRobotSchema.state_names({mg.id: _state((0.0,) * 3)}, schema)
+    assert names == [
+        "q_1", "q_2", "q_3",
+        "qd_1", "qd_2", "qd_3",
+        "goal_x", "goal_y", "goal_z", "goal_qx", "goal_qy", "goal_qz", "goal_qw",
+    ]  # fmt: skip

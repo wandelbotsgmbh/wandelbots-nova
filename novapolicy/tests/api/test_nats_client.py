@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from nova.types import Pose
 from novapolicy.nats.client import ACTION_KEY, PROPRIO_KEY, NatsPolicyClient
 from novapolicy.nats.protocol import (
     ActionSpec,
@@ -422,6 +423,22 @@ async def test_validate_schema_rejects_a_wrongly_bound_motion_group() -> None:
 
     with pytest.raises(ValueError, match="Schema binds motion groups"):
         await client.validate_schema(_schema(_mg("0@other")))
+
+
+@pytest.mark.asyncio
+async def test_validate_schema_refuses_observations_it_does_not_send() -> None:
+    client = _client()
+    mg = _mg(MG_ID)
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.joint_velocities("qd", source=mg),
+            Observation.pose("goal", Pose((500, 0, 300, 0, 0, 0))),
+        ]
+    )
+
+    with pytest.raises(ValueError, match=r"\['qd', 'goal'\] are not sent"):
+        await client.validate_schema(schema)
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,7 @@ non-operational safety state and stays clear on operational ones, and the
 from __future__ import annotations
 
 import asyncio
+import logging
 import types
 from unittest.mock import MagicMock, patch
 
@@ -155,6 +156,35 @@ async def test_monitor_keeps_watching_after_an_unparseable_state():
         await _run_monitor_until(monitor)
     assert isinstance(monitor.error, EmergencyStopError)
     assert monitor.error.safety_state == "SAFETY_STATE_ROBOT_EMERGENCY_STOP"
+
+
+class _UnparseableTimesThenStates(_FakeStream):
+    unparseable = 3
+
+    async def __anext__(self) -> object:
+        if _UnparseableTimesThenStates.unparseable > 0:
+            _UnparseableTimesThenStates.unparseable -= 1
+            raise _validation_error()
+        return await super().__anext__()
+
+
+@pytest.mark.asyncio
+async def test_a_streak_of_unparseable_states_is_logged_once_and_its_end_too(caplog):
+    _UnparseableTimesThenStates.unparseable = 3
+    estop = types.SimpleNamespace(safety_state=_SafetyState.SAFETY_STATE_ROBOT_EMERGENCY_STOP)
+    gateway = MagicMock()
+    gateway.controller_api.stream_robot_controller_state = lambda **_kw: (
+        _UnparseableTimesThenStates([estop])
+    )
+    monitor = _patched_monitor([])
+    with (
+        caplog.at_level(logging.INFO),
+        patch("novapolicy.estop.get_api_gateway", lambda _mg: gateway),
+    ):
+        await _run_monitor_until(monitor)
+    assert isinstance(monitor.error, EmergencyStopError)
+    assert sum("skips unparseable" in r.message for r in caplog.records) == 1
+    assert sum("reads controller states again" in r.message for r in caplog.records) == 1
 
 
 @pytest.mark.asyncio

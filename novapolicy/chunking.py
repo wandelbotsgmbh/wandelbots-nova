@@ -399,6 +399,10 @@ def create_bridge_chunk(
     return ActionChunk(joints=bridge_joints, tcp=bridge_tcp, dt_ms=chunk.dt_ms)
 
 
+_TCP_WIDTH = 6
+"""Values of a NOVA TCP pose: [x, y, z, rx, ry, rz]."""
+
+
 def unwrap_tcp_rotations(steps: list[list[float]], reference: list[float]) -> list[list[float]]:
     """Rewrite each TCP step's rotation vector as the equivalent one nearest its predecessor.
 
@@ -422,7 +426,14 @@ def unwrap_tcp_rotations(steps: list[list[float]], reference: list[float]) -> li
 def _equivalent_rotvec_near(rotvec: list[float], reference: list[float]) -> list[float]:
     angle = math.sqrt(sum(value * value for value in rotvec))
     if angle < _ROTVEC_EPSILON:
-        return list(rotvec)
+        # The identity has no axis of its own: its equivalents are the full turns about any
+        # axis, so take the one along the reference nearest to it.
+        reference_angle = math.sqrt(sum(value * value for value in reference))
+        if reference_angle < _ROTVEC_EPSILON:
+            return list(rotvec)
+        turns = round(reference_angle / (2.0 * math.pi))
+        scale = 2.0 * math.pi * turns / reference_angle
+        return [v + r * scale for v, r in zip(rotvec, reference, strict=True)]
     axis = [value / angle for value in rotvec]
     # Equivalent vectors lie on the axis line at angle + 2 pi k; pick the one
     # nearest the reference's projection onto that line.
@@ -584,6 +595,13 @@ def compose_tcp_deltas(
     post-multiplied in the tool coordinate system. A rotation vector is not additive, so adding them
     component-wise would turn a tool-down pose (rotation near pi) the wrong way.
     """
+    widths = sorted({len(step) for step in steps if len(step) != _TCP_WIDTH})
+    if widths:
+        msg = (
+            f"Relative TCP offsets must be [x, y, z, rx, ry, rz] (6 values), got {widths}: "
+            "declare the policy's rotation representation with orientation_type"
+        )
+        raise ValueError(msg)
     p0, r0 = np.asarray(start[:3], dtype=float), Rotation.from_rotvec(start[3:6])
     p, r = p0, r0
     out: list[list[float]] = []

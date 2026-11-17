@@ -230,3 +230,69 @@ async def test_a_connection_name_two_inputs_share_feeds_neither(tmp_path: Path):
         actions=[Action.joint_positions("arm", target=mg)],
     )
     await LeappPolicyClient(export).validate_schema(by_port)
+
+
+def _with_computed(mg, key: str) -> PolicySchema:
+    async def hook(chunk, ctx):
+        return None
+
+    return PolicySchema(
+        observations=_schema(mg)._observations,
+        actions=[Action.joint_positions("arm", target=mg), Action.computed(hook, keys=[key])],
+    )
+
+
+def _edited(tmp_path: Path, old: str, new: str) -> Path:
+    export = _copy_export(tmp_path)
+    text = export.read_text()
+    assert old in text
+    export.write_text(text.replace(old, new))
+    return export
+
+
+@pytest.mark.asyncio
+async def test_an_output_named_like_a_computed_key_lands_in_chunk_values(tmp_path: Path):
+    export = _edited(
+        tmp_path,
+        "reach_policy: [joint_pos_target]",
+        "reach_policy: [joint_pos_target, last_action_out]",
+    )
+    schema = _with_computed(_mg(), "last_action_out")
+    client = LeappPolicyClient(export)
+    await client.connect([MG_ID])
+    await client.validate_schema(schema)
+
+    chunk = await client.get_actions(_states(), schema)
+
+    assert list(chunk.values) == ["last_action_out"]
+    assert len(chunk.values["last_action_out"]) == 1  # one row: one step
+    assert len(chunk.values["last_action_out"][0]) == 6
+
+
+@pytest.mark.asyncio
+async def test_a_computed_key_no_output_produces_is_refused():
+    with pytest.raises(ValueError, match="'gripper' matches no export output"):
+        await LeappPolicyClient(EXPORT).validate_schema(_with_computed(_mg(), "gripper"))
+
+
+@pytest.mark.asyncio
+async def test_inputs_are_fed_in_the_dtype_the_export_declares(tmp_path: Path):
+    export = _edited(
+        tmp_path,
+        "    - name: robot_joint_pos\n      dtype: float32",
+        "    - name: robot_joint_pos\n      dtype: float64",
+    )
+    schema = _schema(_mg())
+    client = LeappPolicyClient(export)
+    await client.validate_schema(schema)
+    seen = {}
+
+    def run(feeds):
+        seen.update({key: str(value.dtype) for key, value in feeds.items()})
+        return {"reach_policy/joint_pos_target": [list(HOME)]}
+
+    client.pipeline.run = run  # ty: ignore[invalid-assignment]
+    await client.get_actions(_states(), schema)
+
+    assert seen["reach_policy/robot_joint_pos"] == "float64"
+    assert seen["reach_policy/robot_joint_vel"] == "float32"

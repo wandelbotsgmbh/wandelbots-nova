@@ -802,6 +802,64 @@ async def test_validate_schema_passes_when_state_key_is_io_observation() -> None
 
 
 @pytest.mark.asyncio
+async def test_joint_velocity_and_pose_observations_feed_server_state_keys() -> None:
+    """Observation.joint_velocities and Observation.pose count as state and are sent."""
+    from nova.types import Pose
+
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server._modality_config = {
+        "state": {
+            "__ModalityConfig_class__": True,
+            "as_json": {"modality_keys": ["arm", "arm_vel", "goal"]},
+        },
+    }
+    server.start()
+    try:
+        mg = _mg()
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.joint_velocities("arm_vel", source=mg),
+                Observation.pose("goal", source=Pose((500.0, 0.0, 300.0, 0.0, 0.0, 0.0))),
+            ]
+        )
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port, control_freq=30.0)
+        await client.connect([mg.id])
+        await client.validate_schema(schema)  # every server key is fed
+        await client.get_actions({mg.id: _state((0.0,) * 6)}, schema)
+        state = server.last_observation["state"]
+        assert state["arm_vel"].shape == (1, 1, 6)
+        np.testing.assert_allclose(state["goal"][0, 0], [500.0, 0.0, 300.0, 0.0, 0.0, 0.0])
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
+async def test_a_tcp_coordinate_system_without_orientation_type_is_refused() -> None:
+    """GR00T's tcp_format only applies to world poses; a frame alone would change the format."""
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server._modality_config = {
+        "state": {"__ModalityConfig_class__": True, "as_json": {"modality_keys": ["eef"]}},
+    }
+    server.start()
+    try:
+        mg = _mg()
+        schema = PolicySchema(
+            observations=[Observation.tcp("eef", source=mg, coordinate_system="table")]
+        )
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port, control_freq=30.0)
+        await client.connect([mg.id])
+        with pytest.raises(ValueError, match="coordinate_system but no orientation_type"):
+            await client.validate_schema(schema)
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
 async def test_validate_schema_rejects_malformed_modality_metadata() -> None:
     """Remote modality entries must expose LeRobot's serialized as_json payload."""
     port = _find_free_port()

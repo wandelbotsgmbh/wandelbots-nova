@@ -660,6 +660,11 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         entry = self._tcp_action_specs.get(motion_group_id)
         return 6 if entry is None else tcp_width(entry)
 
+    def tcp_action_orientation_type(self, motion_group_id: str) -> poses.OrientationType | None:
+        """The rotation representation of a motion group's TCP action; None: rotation vector."""
+        entry = self._tcp_action_specs.get(motion_group_id)
+        return None if entry is None else entry.orientation_type
+
     # -- Coordinate systems --
 
     async def load_coordinate_systems(self) -> None:
@@ -837,6 +842,25 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
     @property
     def tcp_mappings(self) -> list[_ObsTcp]:
         return [o for o in self._observations if isinstance(o, _ObsTcp)]
+
+    @property
+    def joint_velocity_mappings(self) -> list[_ObsJointVelocities]:
+        return [o for o in self._observations if isinstance(o, _ObsJointVelocities)]
+
+    @property
+    def pose_mappings(self) -> list[_ObsPose]:
+        return [o for o in self._observations if isinstance(o, _ObsPose)]
+
+    async def velocity_and_pose_values(
+        self, states: dict[str, RobotState]
+    ) -> dict[str, list[float]]:
+        """The values of every joint velocity and pose observation, one vector per key, for
+        clients that assemble their own state from the robot states."""
+        observation: dict[str, Any] = {}
+        self._fill_joint_velocities(observation, states)
+        await self._fill_poses(observation)
+        entries = [*self.joint_velocity_mappings, *self.pose_mappings]
+        return {o.key: self.observation_vector(observation, o.key) for o in entries}
 
     @property
     def obs_io_mappings(self) -> list[_ObsIO]:
