@@ -62,4 +62,4 @@ async def test_a_callback_control_freq_fills_chunks_without_step_spacing() -> No
     chunk = await CallbackPolicyClient(policy, control_freq=20.0).get_actions({}, schema)  # type: ignore[arg-type]
     assert chunk.dt_ms == pytest.approx(50.0)
     chunk = await CallbackPolicyClient(policy).get_actions({}, schema)  # type: ignore[arg-type]
-    assert chunk.dt_ms == pytest.approx(1000.0 / 30.0)
+    assert chunk.dt_ms == 0.0  # a single step stays one

@@ -81,13 +81,11 @@ DEFAULT_CONTROL_FREQ = 30.0
 class CallbackPolicyClient(PolicyClient):
     """Explicit adapter for a local asynchronous policy callback."""
 
-    def __init__(
-        self, fn: Callable[..., Any], *, control_freq: float = DEFAULT_CONTROL_FREQ
-    ) -> None:
-        """``control_freq``: the callback's step rate in Hz (default 30), for chunks that
-        carry no ``dt_ms``."""
+    def __init__(self, fn: Callable[..., Any], *, control_freq: float | None = None) -> None:
+        """``control_freq``: the callback's step rate in Hz, for chunks that carry no
+        ``dt_ms``. Without it, a chunk keeps its own ``dt_ms`` (``0`` = single step)."""
         self._fn = fn
-        self._dt_ms = 1000.0 / control_freq
+        self._dt_ms = 1000.0 / control_freq if control_freq else 0.0
 
     async def get_actions(
         self,
