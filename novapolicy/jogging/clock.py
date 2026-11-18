@@ -13,6 +13,7 @@ where an unscaled timeline executes at exactly the commanded speed.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 import logging
 import time
@@ -258,3 +259,73 @@ class JoggingTimeClock:
         if isinstance(ts, int):
             return ts
         return None
+
+
+SINGLE_STEP_MARGIN_MS = 67.0
+"""What the controller needs, beyond the network, to follow a one-step stream smoothly.
+
+Each one-step chunk replaces the queued waypoint, so the controller always heads for the newest
+one, and it has to be far enough ahead to plan a smooth approach. Measured on a virtual UR10e
+(NOVA 26.8.1) from inside the cluster (round trip 0.08 ms): 33 ms ahead was rough, 67 ms
+tracked smoothly; over a 40 to 100 ms VPN about 130 ms was needed."""
+
+SINGLE_STEP_DEFAULT_LEAD_MS = 150.0
+"""The lead before enough round trips are measured: safe over a typical VPN."""
+
+_ROUND_TRIP_SAMPLES = 64
+_ROUND_TRIP_MIN_SAMPLES = 20
+_ROUND_TRIP_PERCENTILE = 0.9
+_LEAD_SLEW_MS = 1.0
+"""Most the lead moves per sent chunk: a jump would change the spacing between consecutive
+waypoints, which the controller executes as a change of speed."""
+
+
+class RoundTrip:
+    """Round trip of action chunk requests, from send to the server's acknowledgement.
+
+    The server acknowledges every ``ActionChunkRequest`` in order, so the n-th acknowledgement
+    belongs to the n-th unacknowledged send. A one-step chunk is placed ahead of server "now"
+    by :attr:`single_step_lead_ms`: the client knows "now" only from state packets that took
+    the downlink to arrive, and the request still has to take the uplink.
+    """
+
+    def __init__(self) -> None:
+        self._sent: deque[float] = deque(maxlen=_ROUND_TRIP_SAMPLES)
+        self._samples: deque[float] = deque(maxlen=_ROUND_TRIP_SAMPLES)
+        self._lead_ms = SINGLE_STEP_DEFAULT_LEAD_MS
+
+    def sent(self, now: float | None = None) -> None:
+        self._sent.append(time.monotonic() if now is None else now)
+
+    def acknowledged(self, now: float | None = None) -> None:
+        if self._sent:
+            sent = self._sent.popleft()
+            self._samples.append(((time.monotonic() if now is None else now) - sent) * 1000.0)
+
+    @property
+    def ms(self) -> float | None:
+        """The 90th percentile of the recent round trips, ``None`` until a few are measured."""
+        if len(self._samples) < _ROUND_TRIP_MIN_SAMPLES:
+            return None
+        ordered = sorted(self._samples)
+        return ordered[min(len(ordered) - 1, int(_ROUND_TRIP_PERCENTILE * len(ordered)))]
+
+    @property
+    def target_lead_ms(self) -> float:
+        """The lead this connection needs: the round trip plus the controller's margin."""
+        round_trip = self.ms
+        if round_trip is None:
+            return SINGLE_STEP_DEFAULT_LEAD_MS
+        return SINGLE_STEP_MARGIN_MS + round_trip
+
+    @property
+    def single_step_lead_ms(self) -> float:
+        """How far ahead of server "now" the last one-step chunk's waypoint went."""
+        return self._lead_ms
+
+    def next_lead_ms(self) -> float:
+        """The lead for the next one-step chunk: towards :attr:`target_lead_ms`, by at most
+        ``_LEAD_SLEW_MS`` per chunk."""
+        change = self.target_lead_ms - self._lead_ms
+        self._lead_ms += max(-_LEAD_SLEW_MS, min(_LEAD_SLEW_MS, change))
+        return self._lead_ms

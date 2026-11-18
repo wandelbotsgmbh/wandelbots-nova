@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 import math
 import time
@@ -21,7 +21,7 @@ from nova import api
 from nova.types import Pose, RobotState
 from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.io import IOWriter
-from novapolicy.jogging.clock import JoggingTimeClock
+from novapolicy.jogging.clock import JoggingTimeClock, RoundTrip
 from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
 from novapolicy.jogging.waypoints import (
     PendingChunk,
@@ -129,6 +129,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         # server clock and client wall-clock, then scales outgoing timestamps
         # so the robot moves at real-time speed.
         self._clock = JoggingTimeClock()
+        self._round_trip = RoundTrip()
 
         # Pending waypoints to send (set by update_chunk, consumed by jogging loop).
         # For normal chunks, store raw steps/timing and build the request at
@@ -388,6 +389,13 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._config.single_step_dt_ms
 
     @property
+    def single_step_lead_ms(self) -> float:
+        """How far ahead of server "now" one-step chunks go: towards the measured round trip
+        of this session's requests plus what the controller needs to plan a smooth approach,
+        moving at most 1 ms per chunk."""
+        return self._round_trip.single_step_lead_ms
+
+    @property
     def min_chunk_horizon_ms(self) -> float:
         """Minimum waypoint horizon handed to the controller."""
         return self._config.min_chunk_horizon_ms
@@ -410,6 +418,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         server_dt_ms: float | None = None,
         action_timestep: int = -1,
         extend_buffer: bool = True,
+        lead: bool = False,
         **legacy: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
@@ -434,6 +443,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 only matters when the spacing must differ from ``dt_ms``.
             action_timestep: Absolute policy timestep represented by ``steps[0]``.
                 Logged with the scheduled request in Rerun.
+            lead: Place step zero :attr:`single_step_lead_ms` ahead of server "now" (a
+                one-step chunk in continuous execution); ``first_timestamp_ms`` and
+                ``timestamp_offset_steps`` are then not used.
         """
         if legacy:
             timestamp_offset_steps = self._resolve_legacy(legacy, timestamp_offset_steps)
@@ -459,6 +471,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             action_timestep=action_timestep,
             sequence=self._queued_chunk_count,
             caller_step_count=len(steps),
+            lead=lead,
         )
         self._pending_request_event.set()
 
@@ -809,6 +822,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 return
             if not self._ready.is_set():
                 self._ready.set()
+            if getattr(response, "kind", None) == "ACTION_CHUNK_RECEIVED":
+                self._round_trip.acknowledged()
             if hasattr(response, "kind") and response.kind == "MOTION_ERROR":
                 msg = getattr(response, "message", "unknown motion error")
                 raise MotionError(self.motion_group_id, msg)
@@ -897,6 +912,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._last_sent = (request.waypoints[-1].timestamp, list(pending.steps[-1]))
             self._start_waypoint_tracking_measurement(request)
 
+            self._round_trip.sent()
             yield request
 
         if self._stop_requested:
@@ -947,6 +963,11 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         steps = pending.steps
         dt_ms = step_spacing_ms(pending.dt_ms, pending.server_dt_ms)
         base_ms = pending.first_timestamp_ms
+        if pending.lead:
+            # Resolved here, at send time, like "now" itself.
+            lead_ms = self._round_trip.next_lead_ms()
+            base_ms = int(self._clock.estimated_server_timestamp_ms + lead_ms)
+            pending = replace(pending, first_timestamp_ms=base_ms, timestamp_offset_steps=0)
 
         if base_ms is None or dt_ms <= 0:
             # No caller-supplied anchor to measure the lead against: "now" is

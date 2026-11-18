@@ -1298,6 +1298,9 @@ class PolicyExecutor:
             return target_chunks
 
         place = placement(chunk, execution=self._execution)
+        # A one-step chunk placed ahead is replaced by the next step before it is due: padding
+        # it with a hold would make the controller brake towards every step.
+        hold = not place.lead
         server_dt_ms = (
             chunk.dt_ms
             if isinstance(self._execution, ContinuousExecution)
@@ -1324,6 +1327,8 @@ class PolicyExecutor:
                 ),
                 server_dt_ms=server_dt_ms,
                 action_timestep=chunk.action_timestep,
+                extend_buffer=hold,
+                lead=place.lead,
             )
             target_chunks[group_id] = session.queued_chunk_count
 
@@ -1346,6 +1351,8 @@ class PolicyExecutor:
                 ),
                 server_dt_ms=server_dt_ms,
                 action_timestep=chunk.action_timestep,
+                extend_buffer=hold,
+                lead=place.lead,
             )
             target_chunks[group_id] = session.queued_chunk_count
         self._schedule_ios(chunk)

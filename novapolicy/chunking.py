@@ -618,6 +618,12 @@ def compose_tcp_deltas(
     return unwrap_tcp_rotations(out, start[3:6])
 
 
+def is_single_step(chunk: ActionChunk) -> bool:
+    """Whether every motion group of ``chunk`` gets exactly one waypoint."""
+    groups = [steps for steps in (*chunk.joints.values(), *chunk.tcp.values()) if steps]
+    return bool(groups) and all(len(steps) == 1 for steps in groups)
+
+
 @dataclass(frozen=True, slots=True)
 class Placement:
     """Where a chunk's first step sits on one session's server timeline.
@@ -630,6 +636,9 @@ class Placement:
 
     first_timestamp_ms: int | None
     timestamp_offset_steps: int
+    lead: bool = False
+    """A one-step chunk in continuous execution: the session places it ahead of "now" by the
+    lead its connection needs (see :attr:`WaypointJoggingSession.single_step_lead_ms`)."""
 
 
 def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:
@@ -646,9 +655,12 @@ def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:
     * Sequential execution — "now", one step ahead.
     * Continuous execution — "now", backdated by ``seam_backdate_steps`` so
       the step matching the robot's current position lands at "now".
+    * Continuous execution of a one-step chunk — ahead of "now" by the session's lead.
     """
     if chunk.first_timestamp_ms >= 0:
         return Placement(chunk.first_timestamp_ms, 0)
     if isinstance(execution, ContinuousExecution):
+        if chunk.seam_backdate_steps == 0 and is_single_step(chunk):
+            return Placement(None, 0, lead=True)
         return Placement(None, -chunk.seam_backdate_steps)
     return Placement(None, 1)

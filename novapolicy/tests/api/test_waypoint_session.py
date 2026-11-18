@@ -24,13 +24,14 @@ import logging
 import time
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
 from nova import api
 from nova.types import Pose
 from novapolicy.jogging import jog_tcp
+from novapolicy.jogging.clock import SINGLE_STEP_DEFAULT_LEAD_MS
 from novapolicy.jogging.waypoint_session import MIN_LEAD_MS, WaypointJoggingSession
 from novapolicy.types import JoggingNotSupportedError, MotionError, WaypointConfig
 
@@ -275,6 +276,31 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
         assert sent.timestamp == 5_000  # absolute anchor honoured exactly
         assert session.scheduled_action_timestep == 7
         assert session.scheduled_waypoint_timestamps == (5_000,)
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_lead_chunk_goes_ahead_of_now_by_the_session_lead():
+    """A one-step chunk is stamped at send time: server now plus the session's lead."""
+    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        with now as estimated:
+            estimated.return_value = 1_000
+            session.update_chunk(steps=[[0.0] * 6], dt_ms=1000 / 30, lead=True)
+            await _wait_until(lambda: len(server.requests) >= 2)
+
+        sent = _inner(server.requests[1]).waypoints
+        assert [w.timestamp for w in sent] == [1_000 + int(session.single_step_lead_ms)]
+        assert session.single_step_lead_ms == pytest.approx(SINGLE_STEP_DEFAULT_LEAD_MS)
     finally:
         server.stop()
         await session.stop()

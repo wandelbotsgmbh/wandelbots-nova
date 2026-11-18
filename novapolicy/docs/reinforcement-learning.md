@@ -223,6 +223,7 @@ which works when that is close to what the policy saw in training.
 | Every input fed | `await client.validate_schema(schema)` names any input without an observation. |
 | Units, order and frame | Compare the dry run's observation with the training environment's. |
 | Rate | Compare `result.steps / result.duration_s` with `client.control_freq`. |
+| Latency | Run on the NOVA instance; over a remote network the arm follows about 180 ms late. |
 | Joint velocities | UR controllers send no measured velocity; expect differenced values. |
 | Response | Run on a virtual robot first and compare where it ends with the training environment. |
 | Inputs in range | A stop condition refuses goals or commands outside the trained range. |
@@ -272,11 +273,13 @@ execution runs each step to standstill, so the policy sees zero joint velocity a
 On a virtual UR10e a scripted one-step policy ran at 58 Hz of 60 continuously and at 6 Hz
 sequentially.
 
-**Pulsing under one-step chunks.** With the default `WaypointConfig`, each one-step chunk is padded
-with a 500 ms hold, so the arm accelerates and brakes every step and the observed joint velocity
-varies about as much as the motion. `WaypointConfig(min_chunk_horizon_ms=0,
-delay_until_braking_ms=200)` makes the motion smooth, but in 3 of 5 runs on a virtual UR10e (NOVA
-26.8.1) the arm did not start, so it is not used yet.
+**Latency.** Each one-step chunk replaces the queued waypoint, so the controller needs the newest
+waypoint far enough ahead to plan a smooth approach. The executor places it ahead of the server's
+clock by the measured round trip of its requests plus 67 ms, and sends it without a braking hold.
+The arm executes each target that much later: about 75 ms when the policy runs as an app on the
+NOVA instance, about 180 ms over a 40 to 100 ms VPN. A policy trained without that delay, which
+steps from the measured joints, overshoots and oscillates under the larger one, so run it on the
+instance, or train with a randomized action delay of the same size.
 
 **Limitations.** Only ONNX exports run; TorchScript and `pt2` exports need LEAPP's torch runtime.
 One joint target and one joint action are supported; image inputs are not fed yet.

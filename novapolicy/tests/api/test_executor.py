@@ -433,6 +433,33 @@ async def test_continuous_mode_does_not_bridge_chunks(robot: _Robot):
     assert first_send["steps"] == [[3.0] * 6, [4.0] * 6, [5.0] * 6]
 
 
+@pytest.mark.parametrize(
+    ("steps", "lead"),
+    [
+        ([[3.0] * 6], True),  # one step per inference: placed ahead, no braking hold
+        ([[3.0] * 6, [4.0] * 6], False),  # a chunk: at now, padded as before
+    ],
+)
+@pytest.mark.asyncio
+async def test_continuous_one_step_chunks_are_sent_ahead_without_a_hold(
+    robot: _Robot, steps: list[list[float]], lead: bool
+):
+    executor: PolicyExecutor
+
+    async def policy(_obs: object) -> ActionChunk:
+        executor.stop()
+        return ActionChunk(joints={MG_ID: steps}, dt_ms=1000 / 30)
+
+    executor = PolicyExecutor(
+        _schema(), _callback(policy), timeout_s=1.0, execution=ContinuousExecution()
+    )
+    await executor.run()
+
+    first_send = robot.session.update_chunk.call_args_list[0].kwargs
+    assert first_send["lead"] is lead
+    assert first_send["extend_buffer"] is not lead
+
+
 @pytest.mark.asyncio
 async def test_continuous_async_queue_policy_requests_a_measured_state_bridge(robot: _Robot):
     """Async ACT lookahead connects to the robot even though its executor rate is continuous."""

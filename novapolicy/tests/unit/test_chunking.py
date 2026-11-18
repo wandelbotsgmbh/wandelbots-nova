@@ -485,10 +485,19 @@ def test_sequential_execution_anchors_at_now_one_step_ahead():
 @given(seam=st.integers(min_value=0, max_value=64))
 def test_continuous_execution_anchors_at_now_backdated_by_the_seam(seam):
     """Continuous execution resolves now, backdated by the seam steps."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]}, seam_backdate_steps=seam)
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6] * 8}, seam_backdate_steps=seam, dt_ms=33.0)
     place = placement(chunk, execution=ContinuousExecution())
     assert place.first_timestamp_ms is None
     assert place.timestamp_offset_steps == -seam
+
+
+def test_a_one_step_chunk_is_placed_ahead_by_the_session():
+    """One waypoint per step is replaced before it is due: the session places it ahead."""
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]}, dt_ms=1000 / 30)
+    place = placement(chunk, execution=ContinuousExecution())
+    assert place.lead
+    assert place.first_timestamp_ms is None
+    assert not placement(chunk, execution=SequentialExecution()).lead
 
 
 # compose_tcp_deltas ---------------------------------------------------------
