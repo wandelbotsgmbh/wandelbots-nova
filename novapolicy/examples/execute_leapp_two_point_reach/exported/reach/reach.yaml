@@ -18,6 +18,10 @@ models:
       shape: [1, 7]
       type: tensor
       isaaclab_connection: command:ee_pose
+    - name: last_target_in
+      dtype: float32
+      shape: [1, 6]
+      type: tensor
     outputs:
     - name: joint_pos_target
       dtype: float32
@@ -25,10 +29,14 @@ models:
       type: tensor
       kind: joint/position
       isaaclab_connection: write:robot:set_joint_position_target
+    - name: last_target_out
+      dtype: float32
+      shape: [1, 6]
+      type: tensor
     parameters:
       model_path: reach_policy.onnx
-      md5sum: 690041e16eda2be5717b4ead3918a948
-      sha256sum: 1420d94117cd72c427a332d648555aab0eb6e0bd4d556dc3c1eb6ea1261eeef5
+      md5sum: d2a9f5b0cf514a117093b23c39e2a3f9
+      sha256sum: f4c74af0b5b06e6319bd6cf034f5aadad6280f302d148a3f20a420b51c4df02d
       backend: onnx
       warp_segments: 0
       opset_version: 20
@@ -37,7 +45,9 @@ pipeline:
   configs:
     frequency: 30.0
   data_flow: {}
-  feedback_flow: {}
+  feedback_flow:
+    reach_policy/last_target_out: [reach_policy/last_target_in]
+  initial_values: reach_initial_values.safetensors
   inputs:
     reach_policy: [robot_joint_pos, robot_joint_vel, ee_pose]
   outputs:

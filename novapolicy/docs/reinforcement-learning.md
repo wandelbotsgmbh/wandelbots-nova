@@ -274,13 +274,16 @@ On a virtual UR10e a scripted one-step policy ran at 58 Hz of 60 continuously an
 sequentially.
 
 **Latency.** Each one-step chunk replaces the queued waypoint, so the controller needs the newest
-waypoint far enough ahead to plan a smooth approach: about 67 ms plus the network round trip. The
-executor places it `WaypointConfig(max_expected_latency_ms=...)` ahead (100 ms by default, as
-MoveIt Servo's `max_expected_latency`), without a braking hold, and the arm executes each target
-that much later. If the waypoints keep arriving too late for it, the run stops with a
+waypoint far enough ahead to plan a smooth approach: about 67 ms plus the observation's age and the
+network round trip. A target is due `WaypointConfig(max_expected_latency_ms=...)` after the
+observation it was computed from (100 ms by default, as MoveIt Servo's `max_expected_latency`;
+dated by the observation as UMI and Diffusion Policy do), without a braking hold, so the arm
+executes it that much later. If the waypoints keep arriving too late for it, the run stops with a
 `MotionError` ("over budget") instead of degrading. Run the policy on the NOVA instance, where
-100 ms fits; over a remote network raise the value (150 ms over a 40 to 100 ms VPN). Train the
-policy with a randomized action delay that covers it.
+100 ms fits; over a remote network raise the value (250 ms over a 40 to 120 ms VPN, where state
+packets arrive late and in bursts). Train the policy for it as sim-to-real practice does: a
+randomized action delay that covers the value, and its previous action or target in the
+observation, as the [worked example](../examples/execute_leapp_two_point_reach/) does.
 
 **Limitations.** Only ONNX exports run; TorchScript and `pt2` exports need LEAPP's torch runtime.
 One joint target and one joint action are supported; image inputs are not fed yet.

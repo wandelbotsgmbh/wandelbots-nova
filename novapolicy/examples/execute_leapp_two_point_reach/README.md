@@ -21,13 +21,14 @@ before the robot moves toward it (`part_outside_trained_positions`): the policy 
 go there.
 
 It works like Isaac Lab's reach task: it observes the joint positions, the joint velocities and the
-target pose (19 values), and outputs absolute joint targets at 30 Hz, one per step. Feed the joint
-positions as NOVA reports them; the export subtracts the start pose itself.
+target pose, and outputs absolute joint targets at 30 Hz, one per step. Feed the joint positions as
+NOVA reports them; the export subtracts the start pose itself, and starts from it.
 
-NOVA moves the arm to every joint target, so each target has to be one the arm can follow: this
-export's action processing puts every target at most 2° per joint from the measured joints (60°/s
-at 30 Hz), whatever the network outputs. A policy whose targets jump to the goal makes the arm move
-as fast as the controller allows.
+NOVA moves the arm to every joint target, so each target has to be one the arm can follow: each one
+is the previous target moved by at most 2° per joint (60°/s at 30 Hz), whatever the network
+outputs. The export carries the previous target from step to step and the policy observes it, so
+it knows which commands are still on their way to the arm: it was trained with the arm reaching
+each target 67 to 200 ms after the observation it was computed from, as NOVA executes it.
 
 ## Run it
 
@@ -47,13 +48,13 @@ NOVA_API=http://<nova-host> uv run python run_reach.py --virtual --execute \
   --isaac-sim http://isaac-host:8011/omniservice/api/v2 --prim /World/Part --relative-to /World/UR10e/base --duration 12
 ```
 
-Run it on the NOVA instance (as an app): each target goes `--max-expected-latency-ms` (100 ms)
-ahead, which fits there; over a remote network pass 150, and the arm then follows that much later
-(see [Latency](../../docs/reinforcement-learning.md#background)). This policy was trained for at
-most 33 ms. On a virtual UR10e (NOVA 26.8.1), with the part detected at A, B, A, it ran at 29 Hz and
-ended 3 to 30 mm from its targets when run in the cluster (100 ms), and 22 to 77 mm over a VPN
-with a 62 ms ping (150 ms); with the default 100 ms over that VPN it stops as over budget. Training
-with a randomized action delay of that size is what closes the gap. A part detected 80 mm from A ended the
+Run it on the NOVA instance (as an app): each target is due `--max-expected-latency-ms` (100 ms)
+after the observation it was computed from, which fits there (see
+[Latency](../../docs/reinforcement-learning.md#background)). On a virtual UR10e (NOVA 26.8.1), with
+the part detected at A, B, A, it ran at 29 Hz and ended 1.0 to 1.3 mm from its targets when run in
+the cluster. Over a VPN with a 40 to 120 ms ping the state packets arrive late and in bursts:
+there it needed `--max-expected-latency-ms 250` (150 and 200 stopped as over budget) and ended 0.9
+to 1.2 mm from its targets. A part detected 80 mm from A ended the
 run with `stop condition: part_outside_trained_positions` after 0 policy steps. With
 `--controller NAME` instead of `--virtual` it uses an existing controller and asks before it moves
 it.
