@@ -109,6 +109,9 @@ class _TestPolicy(CallbackPolicyClient):
         return self._rtc
 
 
+_SLOW_SETUP_S = 1.0
+
+
 class _SlowSetupPolicy(PolicyClient):
     def __init__(self) -> None:
         self.prepare_calls = 0
@@ -130,7 +133,7 @@ class _SlowSetupPolicy(PolicyClient):
     ) -> None:
         self.prepare_calls += 1
         self.phase_during_prepare = self.executor.phase if self.executor is not None else None
-        await asyncio.sleep(0.25)
+        await asyncio.sleep(_SLOW_SETUP_S)
 
     async def get_actions(
         self,
@@ -687,7 +690,8 @@ async def test_policy_prepare_time_does_not_count_towards_execution_timeout(robo
     assert policy.phase_during_prepare == Phase.CONNECTING
     assert result.reason == "timeout"
     assert result.steps > 0
-    assert result.duration_s < 0.2
+    # Far below the setup time, which would count otherwise; loose enough for a busy CI runner.
+    assert result.duration_s < _SLOW_SETUP_S / 2
 
 
 # ---------------------------------------------------------------------------
