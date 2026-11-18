@@ -461,6 +461,9 @@ async def test_continuous_one_step_chunks_are_sent_ahead_without_a_hold(
     first_send = robot.session.update_chunk.call_args_list[0].kwargs
     assert first_send["lead"] is lead
     assert first_send["extend_buffer"] is not lead
+    # A one-step target is dated by the observation it was computed from.
+    expected = robot.session.current_state_server_ms if lead else None
+    assert first_send["observed_at_ms"] == expected
 
 
 @pytest.mark.asyncio

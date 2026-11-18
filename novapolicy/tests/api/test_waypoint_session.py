@@ -306,6 +306,32 @@ async def test_a_lead_chunk_goes_ahead_of_now_by_the_configured_latency():
             p.stop()
 
 
+@pytest.mark.asyncio
+async def test_a_lead_chunk_is_due_a_fixed_time_after_its_observation():
+    """Stamped from the observation, not the send: position and time stay consistent."""
+    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        with now as estimated:
+            estimated.return_value = 1_040  # the observed state is 40 ms old at send
+            session.update_chunk(
+                steps=[[0.0] * 6], dt_ms=1000 / 30, lead=True, observed_at_ms=1_000
+            )
+            await _wait_until(lambda: len(server.requests) >= 2)
+
+        sent = _inner(server.requests[1]).waypoints
+        assert [w.timestamp for w in sent] == [1_000 + 100]
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
 def test_one_step_waypoints_that_keep_arriving_too_late_stop_the_session():
     """A spike passes; a run of late waypoints is a network that no longer fits the latency."""
     session, _server = _build_session(config=WaypointConfig(max_expected_latency_ms=100))

@@ -287,6 +287,7 @@ class PolicyExecutor:
         self._io_tasks: set[asyncio.Task[None]] = set()
         self._policy_timelines: dict[str, _PolicyTimeline] = {}
         self._buffer_window_ms = max(0.0, buffer_window_ms)
+        self._observed_at_ms: dict[str, int | None] = {}
         _check_buffered_mode(self._buffer_window_ms, schema, plant)
         self._target_buffers: dict[str, list[TimedPoint]] = {}
         self._buffer_anchor_ms: float | None = None
@@ -1194,6 +1195,9 @@ class PolicyExecutor:
             state = session.current_state
             if state is not None:
                 result[group_id] = state
+                # When the state was measured, on the server's clock: a one-step target is
+                # due a fixed time after the observation it was computed from.
+                self._observed_at_ms[group_id] = session.current_state_server_ms
         return result
 
     def _log_observation_to_first_waypoint(
@@ -1329,6 +1333,7 @@ class PolicyExecutor:
                 action_timestep=chunk.action_timestep,
                 extend_buffer=hold,
                 lead=place.lead,
+                observed_at_ms=self._observed_at_ms.get(group_id) if place.lead else None,
             )
             target_chunks[group_id] = session.queued_chunk_count
 
@@ -1353,6 +1358,7 @@ class PolicyExecutor:
                 action_timestep=chunk.action_timestep,
                 extend_buffer=hold,
                 lead=place.lead,
+                observed_at_ms=self._observed_at_ms.get(group_id) if place.lead else None,
             )
             target_chunks[group_id] = session.queued_chunk_count
         self._schedule_ios(chunk)

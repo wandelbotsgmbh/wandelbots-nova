@@ -401,8 +401,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     def _check_round_trip(self, acknowledged: tuple[float, bool] | None) -> None:
         """Stop when one-step waypoints keep arriving too late for the fixed lead.
 
-        A waypoint stamped ``max_expected_latency_ms`` ahead arrives with about that minus the
-        round trip left, and the controller needs ``SINGLE_STEP_MARGIN_MS`` of it. A few late
+        A waypoint stamped ``max_expected_latency_ms`` after its observation arrives with about
+        that minus the observation's age at send and the round trip left, and the controller
+        needs ``SINGLE_STEP_MARGIN_MS`` of it. A few late
         ones in a row are tolerated (a single network spike); a run of them means the network
         no longer fits the configured latency, and the motion would degrade without a word.
         """
@@ -445,6 +446,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         action_timestep: int = -1,
         extend_buffer: bool = True,
         lead: bool = False,
+        observed_at_ms: int | None = None,
         **legacy: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
@@ -469,9 +471,12 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 only matters when the spacing must differ from ``dt_ms``.
             action_timestep: Absolute policy timestep represented by ``steps[0]``.
                 Logged with the scheduled request in Rerun.
-            lead: Place step zero :attr:`single_step_lead_ms` ahead of server "now" (a
-                one-step chunk in continuous execution); ``first_timestamp_ms`` and
-                ``timestamp_offset_steps`` are then not used.
+            lead: Place step zero :attr:`single_step_lead_ms` after ``observed_at_ms`` (a
+                one-step chunk in continuous execution), or after server "now" when that
+                is ``None``; ``first_timestamp_ms`` and ``timestamp_offset_steps`` are then
+                not used.
+            observed_at_ms: Server timestamp of the state the chunk was computed from
+                (:attr:`current_state_server_ms` at observation time).
         """
         if legacy:
             timestamp_offset_steps = self._resolve_legacy(legacy, timestamp_offset_steps)
@@ -498,6 +503,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             sequence=self._queued_chunk_count,
             caller_step_count=len(steps),
             lead=lead,
+            observed_at_ms=observed_at_ms,
         )
         self._pending_request_event.set()
 
@@ -938,7 +944,12 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._last_sent = (request.waypoints[-1].timestamp, list(pending.steps[-1]))
             self._start_waypoint_tracking_measurement(request)
 
-            self._round_trip.sent(lead=pending.lead)
+            age_ms = (
+                self._clock.estimated_server_timestamp_ms - pending.observed_at_ms
+                if pending.lead and pending.observed_at_ms is not None
+                else 0.0
+            )
+            self._round_trip.sent(lead=pending.lead, age_ms=max(0.0, age_ms))
             yield request
 
         if self._stop_requested:
@@ -990,8 +1001,13 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         dt_ms = step_spacing_ms(pending.dt_ms, pending.server_dt_ms)
         base_ms = pending.first_timestamp_ms
         if pending.lead:
-            # Resolved here, at send time, like "now" itself.
-            base_ms = int(self._clock.estimated_server_timestamp_ms + self.single_step_lead_ms)
+            # A fixed time after the observation the target was computed from, as UMI and
+            # Diffusion Policy stamp actions: the measured position and the time it is due
+            # then stay consistent however late or bursty the state packets arrived.
+            observed_ms = pending.observed_at_ms
+            if observed_ms is None:
+                observed_ms = int(self._clock.estimated_server_timestamp_ms)
+            base_ms = int(observed_ms + self.single_step_lead_ms)
             pending = replace(pending, first_timestamp_ms=base_ms, timestamp_offset_steps=0)
 
         if base_ms is None or dt_ms <= 0:

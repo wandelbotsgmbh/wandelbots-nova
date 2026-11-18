@@ -277,16 +277,17 @@ class RoundTrip:
     """
 
     def __init__(self) -> None:
-        self._sent: deque[tuple[float, bool]] = deque(maxlen=64)
+        self._sent: deque[tuple[float, bool, float]] = deque(maxlen=64)
 
-    def sent(self, *, lead: bool, now: float | None = None) -> None:
-        """Record a send; ``lead`` marks a one-step chunk placed ahead of server "now"."""
-        self._sent.append((time.monotonic() if now is None else now, lead))
+    def sent(self, *, lead: bool, age_ms: float = 0.0, now: float | None = None) -> None:
+        """Record a send; ``lead`` marks a one-step chunk, ``age_ms`` how old its observation
+        already was."""
+        self._sent.append((time.monotonic() if now is None else now, lead, age_ms))
 
     def acknowledged(self, now: float | None = None) -> tuple[float, bool] | None:
-        """The round trip in ms of the oldest unacknowledged send, and whether it was a lead
-        chunk; ``None`` without one."""
+        """The delay in ms of the oldest unacknowledged send (its observation's age plus the
+        round trip), and whether it was a lead chunk; ``None`` without one."""
         if not self._sent:
             return None
-        sent, lead = self._sent.popleft()
-        return ((time.monotonic() if now is None else now) - sent) * 1000.0, lead
+        sent, lead, age_ms = self._sent.popleft()
+        return age_ms + ((time.monotonic() if now is None else now) - sent) * 1000.0, lead

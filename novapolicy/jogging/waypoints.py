@@ -59,7 +59,9 @@ class PendingChunk:
     """The last target of a run: sent with ``delay_until_braking`` 0 so the robot
     stops on it instead of keeping its velocity past it."""
     lead: bool = False
-    """Placed ahead of server "now" by the session's measured lead (a one-step chunk)."""
+    """A one-step chunk: placed ``max_expected_latency_ms`` after its observation."""
+    observed_at_ms: int | None = None
+    """Server timestamp of the state the chunk was computed from (a lead chunk)."""
 
     @property
     def last_caller_step(self) -> int:

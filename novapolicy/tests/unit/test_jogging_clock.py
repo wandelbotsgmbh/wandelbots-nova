@@ -348,7 +348,7 @@ def test_a_wall_clock_step_cannot_shunt_the_estimate_into_the_future(manual_time
 def test_an_acknowledgement_belongs_to_the_oldest_unacknowledged_send():
     round_trip = RoundTrip()
     round_trip.sent(lead=False, now=0.0)
-    round_trip.sent(lead=True, now=0.01)
+    round_trip.sent(lead=True, age_ms=15.0, now=0.01)
     assert round_trip.acknowledged(now=0.05) == pytest.approx((50.0, False))
-    assert round_trip.acknowledged(now=0.07) == pytest.approx((60.0, True))
+    assert round_trip.acknowledged(now=0.07) == pytest.approx((75.0, True))  # age + trip
     assert round_trip.acknowledged(now=1.0) is None  # nothing left to acknowledge
