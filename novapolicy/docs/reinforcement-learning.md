@@ -223,7 +223,7 @@ which works when that is close to what the policy saw in training.
 | Every input fed | `await client.validate_schema(schema)` names any input without an observation. |
 | Units, order and frame | Compare the dry run's observation with the training environment's. |
 | Rate | Compare `result.steps / result.duration_s` with `client.control_freq`. |
-| Latency | Run on the NOVA instance; over a remote network the arm follows about 180 ms late. |
+| Latency | Run on the NOVA instance; over a remote network raise `max_expected_latency_ms`. |
 | Joint velocities | UR controllers send no measured velocity; expect differenced values. |
 | Response | Run on a virtual robot first and compare where it ends with the training environment. |
 | Inputs in range | A stop condition refuses goals or commands outside the trained range. |
@@ -274,12 +274,13 @@ On a virtual UR10e a scripted one-step policy ran at 58 Hz of 60 continuously an
 sequentially.
 
 **Latency.** Each one-step chunk replaces the queued waypoint, so the controller needs the newest
-waypoint far enough ahead to plan a smooth approach. The executor places it ahead of the server's
-clock by the measured round trip of its requests plus 67 ms, and sends it without a braking hold.
-The arm executes each target that much later: about 75 ms when the policy runs as an app on the
-NOVA instance, about 180 ms over a 40 to 100 ms VPN. A policy trained without that delay, which
-steps from the measured joints, overshoots and oscillates under the larger one, so run it on the
-instance, or train with a randomized action delay of the same size.
+waypoint far enough ahead to plan a smooth approach: about 67 ms plus the network round trip. The
+executor places it `WaypointConfig(max_expected_latency_ms=...)` ahead (100 ms by default, as
+MoveIt Servo's `max_expected_latency`), without a braking hold, and the arm executes each target
+that much later. If the waypoints keep arriving too late for it, the run stops with a
+`MotionError` ("over budget") instead of degrading. Run the policy on the NOVA instance, where
+100 ms fits; over a remote network raise the value (150 ms over a 40 to 100 ms VPN). Train the
+policy with a randomized action delay that covers it.
 
 **Limitations.** Only ONNX exports run; TorchScript and `pt2` exports need LEAPP's torch runtime.
 One joint target and one joint action are supported; image inputs are not fed yet.

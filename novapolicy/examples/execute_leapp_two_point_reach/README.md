@@ -47,12 +47,13 @@ NOVA_API=http://<nova-host> uv run python run_reach.py --virtual --execute \
   --isaac-sim http://isaac-host:8011/omniservice/api/v2 --prim /World/Part --relative-to /World/UR10e/base --duration 12
 ```
 
-Run it on the NOVA instance (as an app): the arm executes each target about the network round
-trip plus 67 ms after the policy chose it (see
-[Latency](../../docs/reinforcement-learning.md#background)), and this policy was trained for at most
-33 ms. On a virtual UR10e (NOVA 26.8.1), with the part detected at A, B, A, it ran at 29 Hz and
-ended 2.3 to 11.4 mm from its targets when run in the cluster, and 30 to 73 mm when run over a
-VPN with a 52 ms ping. A part detected 80 mm from A ended the
+Run it on the NOVA instance (as an app): each target goes `--max-expected-latency-ms` (100 ms)
+ahead, which fits there; over a remote network pass 150, and the arm then follows that much later
+(see [Latency](../../docs/reinforcement-learning.md#background)). This policy was trained for at
+most 33 ms. On a virtual UR10e (NOVA 26.8.1), with the part detected at A, B, A, it ran at 29 Hz and
+ended 3 to 30 mm from its targets when run in the cluster (100 ms), and 22 to 77 mm over a VPN
+with a 62 ms ping (150 ms); with the default 100 ms over that VPN it stops as over budget. Training
+with a randomized action delay of that size is what closes the gap. A part detected 80 mm from A ended the
 run with `stop condition: part_outside_trained_positions` after 0 policy steps. With
 `--controller NAME` instead of `--virtual` it uses an existing controller and asks before it moves
 it.

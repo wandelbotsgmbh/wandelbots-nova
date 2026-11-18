@@ -52,6 +52,7 @@ from novapolicy import (
     PolicySchema,
     Scale,
     StopContext,
+    WaypointConfig,
 )
 
 if TYPE_CHECKING:
@@ -268,6 +269,8 @@ async def run(mg: MotionGroup, args: argparse.Namespace) -> None:
         schema,
         client,
         execution=ContinuousExecution(rate_hz=client.control_freq),
+        # How far ahead each target goes: 100 ms on the instance; raise it over a remote network.
+        motion=WaypointConfig(max_expected_latency_ms=args.max_expected_latency_ms),
         n_action_steps=0,  # one step per inference, replaced by the next one
         stop_conditions=[part_outside_trained_positions(target), recorder],
         timeout_s=duration_s,
@@ -306,6 +309,12 @@ def main() -> None:
         "--relative-to", default=None, help="the robot base prim (with --isaac-sim)"
     )
     parser.add_argument("--duration", type=float, default=None, help="run time in s")
+    parser.add_argument(
+        "--max-expected-latency-ms",
+        type=float,
+        default=100.0,
+        help="how far ahead each target goes; 150 over a remote network",
+    )
     runner = run_program(make_program(parser.parse_args()))
     if runner.program_run.state == api.models.ProgramRunState.FAILED:
         sys.exit(1)

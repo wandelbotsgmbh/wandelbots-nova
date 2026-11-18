@@ -12,7 +12,6 @@ The clock keys off ``jogger_session_timestamp_ms`` from the state stream:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from itertools import pairwise
 import time
 
 import pytest
@@ -20,8 +19,6 @@ import pytest
 from novapolicy.jogging.clock import (
     _MAX_DELIVERY_DELAY_MS,
     _STATE_CLOCK_CALIBRATION_SAMPLES,
-    SINGLE_STEP_DEFAULT_LEAD_MS,
-    SINGLE_STEP_MARGIN_MS,
     JoggingTimeClock,
     RoundTrip,
 )
@@ -348,38 +345,10 @@ def test_a_wall_clock_step_cannot_shunt_the_estimate_into_the_future(manual_time
     assert clock.estimated_server_timestamp_ms in {capped - 1, capped}
 
 
-def _measured(round_trip: RoundTrip, delays_ms: list[float]) -> None:
-    for i, delay in enumerate(delays_ms):
-        round_trip.sent(float(i))
-        round_trip.acknowledged(float(i) + delay / 1000)
-
-
-def test_the_target_lead_is_the_measured_round_trip_plus_the_controller_margin():
-    round_trip = RoundTrip()
-    assert round_trip.ms is None
-    assert round_trip.target_lead_ms == SINGLE_STEP_DEFAULT_LEAD_MS  # not enough measured yet
-    _measured(round_trip, [float(d) for d in range(5, 105, 5)])  # 20 sends: 5, 10, ..., 100 ms
-    assert round_trip.ms == pytest.approx(95.0)  # the 90th percentile: jitter is covered
-    assert round_trip.target_lead_ms == pytest.approx(SINGLE_STEP_MARGIN_MS + 95.0)
-
-
-def test_the_lead_moves_towards_its_target_by_at_most_a_millisecond_per_chunk():
-    """A jump would change the spacing between consecutive waypoints: a change of speed."""
-    round_trip = RoundTrip()
-    _measured(round_trip, [1.0] * 20)  # in the cluster: the target is about 68 ms
-    leads = [round_trip.next_lead_ms() for _ in range(100)]
-    assert leads[0] == pytest.approx(SINGLE_STEP_DEFAULT_LEAD_MS - 1.0)
-    assert max(abs(b - a) for a, b in pairwise(leads)) <= 1.0
-    assert leads[-1] == pytest.approx(SINGLE_STEP_DEFAULT_LEAD_MS - 82.0)
-    assert round_trip.single_step_lead_ms == leads[-1]
-
-
 def test_an_acknowledgement_belongs_to_the_oldest_unacknowledged_send():
     round_trip = RoundTrip()
-    for t in range(20):
-        round_trip.sent(t / 100)
-    for t in range(20):
-        round_trip.acknowledged(t / 100 + 0.05)
-    assert round_trip.ms == pytest.approx(50.0)
-    round_trip.acknowledged(10.0)  # an acknowledgement with no send left is ignored
-    assert round_trip.ms == pytest.approx(50.0)
+    round_trip.sent(lead=False, now=0.0)
+    round_trip.sent(lead=True, now=0.01)
+    assert round_trip.acknowledged(now=0.05) == pytest.approx((50.0, False))
+    assert round_trip.acknowledged(now=0.07) == pytest.approx((60.0, True))
+    assert round_trip.acknowledged(now=1.0) is None  # nothing left to acknowledge

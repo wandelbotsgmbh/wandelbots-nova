@@ -637,8 +637,8 @@ class Placement:
     first_timestamp_ms: int | None
     timestamp_offset_steps: int
     lead: bool = False
-    """A one-step chunk in continuous execution: the session places it ahead of "now" by the
-    lead its connection needs (see :attr:`WaypointJoggingSession.single_step_lead_ms`)."""
+    """A one-step chunk in continuous execution: the session places it ahead of "now" by
+    ``WaypointConfig.max_expected_latency_ms``."""
 
 
 def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:

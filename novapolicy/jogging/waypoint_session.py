@@ -21,7 +21,7 @@ from nova import api
 from nova.types import Pose, RobotState
 from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.io import IOWriter
-from novapolicy.jogging.clock import JoggingTimeClock, RoundTrip
+from novapolicy.jogging.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, RoundTrip
 from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
 from novapolicy.jogging.waypoints import (
     PendingChunk,
@@ -45,6 +45,10 @@ _HTTP_NOT_FOUND = 404
 # the robot's current session time are unreachable, and commanding them makes
 # the server jump to catch up.
 MIN_LEAD_MS = 20.0
+
+_LATE_ACKS_LIMIT = 5
+"""Consecutive one-step waypoints acknowledged too late before the session stops (about 170 ms
+at 30 Hz): one network spike passes, a slower network stops the run."""
 
 # Longest a graceful stop waits for already-sent waypoints to finish executing.
 # Generous next to the horizon it drains (a few hundred ms), so it only trips
@@ -130,6 +134,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         # so the robot moves at real-time speed.
         self._clock = JoggingTimeClock()
         self._round_trip = RoundTrip()
+        self._late_acks = 0  # consecutive one-step chunks acknowledged too late for the lead
 
         # Pending waypoints to send (set by update_chunk, consumed by jogging loop).
         # For normal chunks, store raw steps/timing and build the request at
@@ -390,10 +395,31 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
     @property
     def single_step_lead_ms(self) -> float:
-        """How far ahead of server "now" one-step chunks go: towards the measured round trip
-        of this session's requests plus what the controller needs to plan a smooth approach,
-        moving at most 1 ms per chunk."""
-        return self._round_trip.single_step_lead_ms
+        """How far ahead of server "now" one-step chunks go: ``max_expected_latency_ms``."""
+        return self._config.max_expected_latency_ms
+
+    def _check_round_trip(self, acknowledged: tuple[float, bool] | None) -> None:
+        """Stop when one-step waypoints keep arriving too late for the fixed lead.
+
+        A waypoint stamped ``max_expected_latency_ms`` ahead arrives with about that minus the
+        round trip left, and the controller needs ``SINGLE_STEP_MARGIN_MS`` of it. A few late
+        ones in a row are tolerated (a single network spike); a run of them means the network
+        no longer fits the configured latency, and the motion would degrade without a word.
+        """
+        if acknowledged is None or not acknowledged[1]:
+            return
+        round_trip_ms = acknowledged[0]
+        budget_ms = self._config.max_expected_latency_ms - SINGLE_STEP_MARGIN_MS
+        self._late_acks = self._late_acks + 1 if round_trip_ms > budget_ms else 0
+        if self._late_acks >= _LATE_ACKS_LIMIT:
+            msg = (
+                f"over budget: {self._late_acks} waypoints in a row took {round_trip_ms:.0f} ms "
+                f"or more to reach the controller, which leaves less than the "
+                f"{SINGLE_STEP_MARGIN_MS:.0f} ms it needs of max_expected_latency_ms="
+                f"{self._config.max_expected_latency_ms:g}. Run the policy on the NOVA instance "
+                f"or raise WaypointConfig.max_expected_latency_ms"
+            )
+            raise MotionError(self.motion_group_id, msg)
 
     @property
     def min_chunk_horizon_ms(self) -> float:
@@ -823,7 +849,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             if not self._ready.is_set():
                 self._ready.set()
             if getattr(response, "kind", None) == "ACTION_CHUNK_RECEIVED":
-                self._round_trip.acknowledged()
+                self._check_round_trip(self._round_trip.acknowledged())
             if hasattr(response, "kind") and response.kind == "MOTION_ERROR":
                 msg = getattr(response, "message", "unknown motion error")
                 raise MotionError(self.motion_group_id, msg)
@@ -912,7 +938,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._last_sent = (request.waypoints[-1].timestamp, list(pending.steps[-1]))
             self._start_waypoint_tracking_measurement(request)
 
-            self._round_trip.sent()
+            self._round_trip.sent(lead=pending.lead)
             yield request
 
         if self._stop_requested:
@@ -965,8 +991,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         base_ms = pending.first_timestamp_ms
         if pending.lead:
             # Resolved here, at send time, like "now" itself.
-            lead_ms = self._round_trip.next_lead_ms()
-            base_ms = int(self._clock.estimated_server_timestamp_ms + lead_ms)
+            base_ms = int(self._clock.estimated_server_timestamp_ms + self.single_step_lead_ms)
             pending = replace(pending, first_timestamp_ms=base_ms, timestamp_offset_steps=0)
 
         if base_ms is None or dt_ms <= 0:
