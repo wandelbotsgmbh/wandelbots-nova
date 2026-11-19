@@ -332,6 +332,42 @@ async def test_a_lead_chunk_is_due_a_fixed_time_after_its_observation():
             p.stop()
 
 
+@pytest.mark.asyncio
+async def test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due():
+    """A rolling window: a new chunk would otherwise delete the waypoints queued before it."""
+    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        with now as estimated:
+            estimated.return_value = 1_000
+            for k, observed in enumerate((1_000, 1_033, 1_066)):
+                session.update_chunk(
+                    steps=[[float(k)] * 6], dt_ms=1000 / 30, lead=True, observed_at_ms=observed
+                )
+                await _wait_until(lambda k=k: len(server.requests) >= 2 + k)
+            estimated.return_value = 1_120
+            session.update_chunk(
+                steps=[[3.0] * 6], dt_ms=1000 / 30, lead=True, observed_at_ms=1_100
+            )
+            await _wait_until(lambda: len(server.requests) >= 5)
+
+        third = _inner(server.requests[3]).waypoints
+        assert [w.timestamp for w in third] == [1_100, 1_133, 1_166]
+        assert [_joints(w)[0] for w in third] == [0.0, 1.0, 2.0]
+        fourth = _inner(server.requests[4]).waypoints
+        # due within MIN_LEAD_MS of now (1100, 1133): left out
+        assert [w.timestamp for w in fourth] == [1_166, 1_200]
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
 def test_one_step_waypoints_that_keep_arriving_too_late_stop_the_session():
     """A spike passes; a run of late waypoints is a network that no longer fits the latency."""
     session, _server = _build_session(config=WaypointConfig(max_expected_latency_ms=100))

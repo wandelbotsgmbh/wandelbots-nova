@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 import logging
 import math
 import time
@@ -26,6 +26,7 @@ from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
 from novapolicy.jogging.waypoints import (
     PendingChunk,
     anchor_timestamp_ms,
+    make_timed_waypoints_request,
     make_waypoints_request,
     step_spacing_ms,
 )
@@ -135,6 +136,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._clock = JoggingTimeClock()
         self._round_trip = RoundTrip()
         self._late_acks = 0  # consecutive one-step chunks acknowledged too late for the lead
+        # One-step waypoints already sent and not yet due, resent with every new one.
+        self._lead_window: list[tuple[int, list[float]]] = []
 
         # Pending waypoints to send (set by update_chunk, consumed by jogging loop).
         # For normal chunks, store raw steps/timing and build the request at
@@ -600,6 +603,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             raise RuntimeError(msg)
 
         self._running = True
+        self._lead_window = []
         self._pending_request_event.clear()
         # A session can be started again after stop(); the last stop is over.
         self._stop_requested = False
@@ -980,6 +984,33 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._scheduled_action_timestep = pending.action_timestep
         self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
 
+    def _rolling_window_request(self, pending: PendingChunk) -> _ScheduledRequest:
+        """A one-step chunk with every earlier one that is not yet due, as MoveIt Servo sends
+        a rolling window of points.
+
+        The target is due ``max_expected_latency_ms`` after the observation it was computed
+        from, as UMI and Diffusion Policy stamp actions: the measured position and the time it
+        is due stay consistent however late or bursty the state packets arrived. A new chunk
+        removes the queued waypoints older than its first one, so sending the newest target
+        alone would delete the ones before it: the controller would head straight for a point
+        the whole latency ahead and cut through the path. With the window it holds the path up
+        to the newest target and passes each one at its time.
+        """
+        observed_ms = pending.observed_at_ms
+        if observed_ms is None:
+            observed_ms = int(self._clock.estimated_server_timestamp_ms)
+        due_ms = int(observed_ms + self.single_step_lead_ms)
+        earliest_ms = self._clock.estimated_server_timestamp_ms + MIN_LEAD_MS
+        window = [(t, step) for t, step in self._lead_window if earliest_ms <= t < due_ms]
+        window.append((due_ms, list(pending.steps[0])))
+        self._lead_window = window
+        request = make_timed_waypoints_request(
+            self._mode,
+            window,
+            delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
+        )
+        return _ScheduledRequest(request=request, skipped=0, step_timestamps=[due_ms])
+
     def _trimmed_request(self, pending: PendingChunk) -> _ScheduledRequest:
         """Build the request, dropping waypoints whose moment has already passed.
 
@@ -1001,14 +1032,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         dt_ms = step_spacing_ms(pending.dt_ms, pending.server_dt_ms)
         base_ms = pending.first_timestamp_ms
         if pending.lead:
-            # A fixed time after the observation the target was computed from, as UMI and
-            # Diffusion Policy stamp actions: the measured position and the time it is due
-            # then stay consistent however late or bursty the state packets arrived.
-            observed_ms = pending.observed_at_ms
-            if observed_ms is None:
-                observed_ms = int(self._clock.estimated_server_timestamp_ms)
-            base_ms = int(observed_ms + self.single_step_lead_ms)
-            pending = replace(pending, first_timestamp_ms=base_ms, timestamp_offset_steps=0)
+            return self._rolling_window_request(pending)
+        self._lead_window = []
 
         if base_ms is None or dt_ms <= 0:
             # No caller-supplied anchor to measure the lead against: "now" is

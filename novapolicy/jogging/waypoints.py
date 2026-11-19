@@ -146,6 +146,24 @@ def make_waypoints_request(
     )
 
 
+def make_timed_waypoints_request(
+    mode: JoggingMode,
+    timed_steps: list[tuple[int, list[float]]],
+    *,
+    delay_until_braking_ms: int | None = None,
+) -> api.models.ActionChunkRequest:
+    """Build an ActionChunkRequest from waypoints that carry their own timestamps."""
+    steps = [step for _timestamp, step in timed_steps]
+    coordinates = _pose_coordinates(steps) if mode == "cartesian" else _joint_coordinates(steps)
+    return ActionChunkRequest(
+        waypoints=[
+            api.models.Waypoint(timestamp=timestamp, waypoint=coordinate)
+            for (timestamp, _step), coordinate in zip(timed_steps, coordinates, strict=True)
+        ],
+        delay_until_braking=delay_until_braking_ms,
+    )
+
+
 def _joint_coordinates(
     steps: list[list[float]],
 ) -> list[api.models.WaypointCoordinates]:
