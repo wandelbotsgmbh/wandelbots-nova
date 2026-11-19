@@ -43,11 +43,11 @@ class TestMotionTargetConversion:
 
     def test_spline_existing_pose_passed_through(self):
         original = Pose((1, 2, 3, 4, 5, 6))
-        assert spline(original).target is original
+        assert spline(original, start=(0, 0, 0)).target is original
 
     def test_spline_wrong_length_raises(self):
         with pytest.raises(ValueError):
-            spline((1, 2, 3, 4))
+            spline((1, 2, 3, 4), start=(0, 0, 0))
 
 
 class TestMotionFactoriesAcceptLists:
@@ -81,10 +81,10 @@ class TestMotionFactoriesAcceptLists:
         assert action.intermediate == Pose((4, 5, 6, 0, 0, 0))
 
     def test_spline_six_list(self):
-        assert spline([1, 2, 3, 4, 5, 6]).target == Pose((1, 2, 3, 4, 5, 6))
+        assert spline([1, 2, 3, 4, 5, 6], start=(0, 0, 0)).target == Pose((1, 2, 3, 4, 5, 6))
 
     def test_spline_three_list_defaults_orientation(self):
-        assert spline([1, 2, 3]).target == Pose((1, 2, 3, 0, 0, 0))
+        assert spline([1, 2, 3], start=(0, 0, 0)).target == Pose((1, 2, 3, 0, 0, 0))
 
     def test_linear_numpy_array(self):
         assert linear(np.array([1, 2, 3, 4, 5, 6])).target == Pose((1, 2, 3, 4, 5, 6))
@@ -98,4 +98,6 @@ class TestMotionFactoriesAcceptLists:
         assert action.intermediate == Pose((7, 8, 9, 10, 11, 12))
 
     def test_spline_numpy_array(self):
-        assert spline(np.array([1, 2, 3, 4, 5, 6])).target == Pose((1, 2, 3, 4, 5, 6))
+        assert spline(np.array([1, 2, 3, 4, 5, 6]), start=(0, 0, 0)).target == Pose(
+            (1, 2, 3, 4, 5, 6)
+        )

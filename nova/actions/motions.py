@@ -1,3 +1,4 @@
+import itertools
 from abc import ABC
 from typing import Any, Literal, Sequence
 
@@ -294,27 +295,81 @@ jnt = joint_ptp
 
 
 class Spline(Motion):
-    """A spline motion
+    """A cartesian cubic spline through a list of poses
+
+    The spline starts at ``start``, passes through every pose of ``via`` and ends at ``target``.
+    The planner interpolates position and orientation (quaternion coefficients, normalized) with
+    a cubic spline through all poses and plans the whole spline as one motion command. With
+    uneven pose spacing the curve can overshoot between poses.
+
+    ``start`` is the pose the robot is
+    at when the spline begins, i.e. the target of the motion before it; the planner rejects the
+    spline otherwise (``FeedbackCubicSplineNotAtStartPose``).
 
     Args:
-        path_parameter: the path parameter between 0 and 1
-        time: the time in seconds
+        start: the pose the spline starts at
+        via: the poses the spline passes through between ``start`` and ``target``
+        parameters: the path parameter of every pose (``start``, ``via``, ``target``), strictly
+            rising. If ``None``, the chord length along the poses in mm is used.
 
     """
 
     type: Literal["spline"] = "spline"
-    path_parameter: float = pydantic.Field(1, ge=0)
-    time: float | None = pydantic.Field(default=None, ge=0)
+    target: Pose
+    start: Pose
+    via: tuple[Pose, ...] = ()
+    parameters: tuple[float, ...] | None = None
 
-    def to_api_model(self):
-        raise NotImplementedError("Spline motion is not implemented yet")
+    @pydantic.model_validator(mode="after")
+    def _validate_parameters(self):
+        if self.parameters is None:
+            return self
+        if len(self.parameters) != len(self.via) + 2:
+            raise ValueError("a spline needs one path parameter per pose")
+        if any(b <= a for a, b in itertools.pairwise(self.parameters)):
+            raise ValueError("the path parameters of a spline must be strictly rising")
+        return self
+
+    def to_api_model(self) -> api.models.PathCubicSpline:
+        """Serialize the model to the API model
+
+        Without ``parameters``, the path parameter is the chord length along the poses in mm.
+        Poses that share a position are given a minimal step, so the parameter still rises.
+
+        Examples:
+        >>> Spline(start=Pose((0, 0, 0)), via=(Pose((3, 4, 0)),), target=Pose((3, 4, 12))).to_api_model()
+        PathCubicSpline(parameters=[CubicSplineParameter(pose=Pose(position=(0.0, 0.0, 0.0), orientation=(0.0, 0.0, 0.0)), path_parameter=0.0), CubicSplineParameter(pose=Pose(position=(3.0, 4.0, 0.0), orientation=(0.0, 0.0, 0.0)), path_parameter=5.0), CubicSplineParameter(pose=Pose(position=(3.0, 4.0, 12.0), orientation=(0.0, 0.0, 0.0)), path_parameter=17.0)], path_definition_name='PathCubicSpline')
+        """
+        poses = (self.start, *self.via, self.target)
+        parameters = self.parameters or _chord_length_parameters(poses)
+        return api.models.PathCubicSpline(
+            parameters=[
+                api.models.CubicSplineParameter(
+                    pose=pose.to_api_model(), path_parameter=float(parameter)
+                )
+                for pose, parameter in zip(poses, parameters)
+            ],
+            path_definition_name="PathCubicSpline",
+        )
+
+
+#: Added to the path parameter where two poses share a position, so it still rises.
+_MIN_PARAMETER_STEP = 1e-3
+
+
+def _chord_length_parameters(poses: Sequence[Pose]) -> list[float]:
+    positions = np.array([[p.position.x, p.position.y, p.position.z] for p in poses])
+    steps = np.maximum(np.linalg.norm(np.diff(positions, axis=0), axis=1), _MIN_PARAMETER_STEP)
+    return [0.0, *np.cumsum(steps).tolist()]
 
 
 def spline(
     target: PoseLike,
+    via: Sequence[PoseLike] = (),
+    *,
+    start: PoseLike,
     settings: MotionSettings = MotionSettings(),
-    path_parameter: float = 1,
-    time=None,
+    parameters: Sequence[float] | None = None,
     collision_setup: api.models.CollisionSetup | None = None,
     **kwargs: dict[str, Any],
 ) -> Spline:
@@ -322,27 +377,34 @@ def spline(
 
     Args:
         target: the target pose or vector. If the target is a vector, the orientation is set to (0, 0, 0).
+        via: the poses or vectors the spline passes through between start and target
+        start: the pose or vector the robot is at when the spline begins, i.e. the target of the
+            motion before it
         settings: the motion settings
-        path_parameter: the path parameter between 0 and 1
-        time: the time in seconds
+        parameters: the path parameter of every pose (start, via, target), strictly rising. If
+            ``None``, the chord length along the poses in mm is used.
 
     Returns: the spline motion
 
     Examples:
     >>> ms = MotionSettings(tcp_acceleration_limit=10)
-    >>> assert spline((1, 2, 3, 4, 5, 6), settings=ms) == Spline(target=Pose((1, 2, 3, 4, 5, 6)), settings=ms, metas={'line_number': 1})
-    >>> assert spline((1, 2, 3)) == spline((1, 2, 3, 0, 0, 0))
-    >>> Action.from_dict(spline((1, 2, 3, 4, 5, 6), MotionSettings()).model_dump())
-    Spline(metas={'line_number': 1}, type='spline', target=Pose(position=Vector3d(x=1.0, y=2.0, z=3.0), orientation=Vector3d(x=4.0, y=5.0, z=6.0), kinematic_configuration=None), settings=MotionSettings(blending=None, blending_auto=None, blending_radius=None, joint_velocity_limits=None, joint_acceleration_limits=None, joint_jerk_limits=None, tcp_velocity_limit=50.0, tcp_acceleration_limit=None, tcp_jerk_limit=None, tcp_orientation_velocity_limit=None, tcp_orientation_acceleration_limit=None, tcp_orientation_jerk_limit=None, position_zone_radius=None, min_blending_velocity=None), collision_setup=None, path_parameter=1.0, time=None)
+    >>> assert spline((1, 2, 3, 4, 5, 6), start=(0, 0, 0), settings=ms) == Spline(target=Pose((1, 2, 3, 4, 5, 6)), start=Pose((0, 0, 0)), settings=ms, metas={'line_number': 1})
+    >>> assert spline((1, 2, 3), start=(0, 0, 0)) == spline((1, 2, 3, 0, 0, 0), start=(0, 0, 0, 0, 0, 0))
+    >>> Action.from_dict(spline((1, 2, 3), via=[(1, 1, 1)], start=(0, 0, 0)).model_dump()).via
+    (Pose(position=Vector3d(x=1.0, y=1.0, z=1.0), orientation=Vector3d(x=0.0, y=0.0, z=0.0), kinematic_configuration=None),)
 
     """
-    target = target if isinstance(target, Pose) else Pose(target)
+
+    def as_pose(value: PoseLike) -> Pose:
+        return value if isinstance(value, Pose) else Pose(value)
+
     kwargs.update(utils.get_caller_metas())
     return Spline(
-        target=target,
+        target=as_pose(target),
+        start=as_pose(start),
+        via=tuple(as_pose(pose) for pose in via),
         settings=settings,
-        path_parameter=path_parameter,
-        time=time,
+        parameters=None if parameters is None else tuple(float(x) for x in parameters),
         collision_setup=collision_setup,
         metas=kwargs,
     )
