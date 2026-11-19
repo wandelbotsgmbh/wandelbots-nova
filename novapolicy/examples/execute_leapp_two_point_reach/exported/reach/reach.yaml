@@ -35,8 +35,8 @@ models:
       type: tensor
     parameters:
       model_path: reach_policy.onnx
-      md5sum: d2a9f5b0cf514a117093b23c39e2a3f9
-      sha256sum: f4c74af0b5b06e6319bd6cf034f5aadad6280f302d148a3f20a420b51c4df02d
+      md5sum: 07ad19b5edcd66f1e81eca24c9ba6cb9
+      sha256sum: 5522a5240b2b4c7c932f44bbd1e2c633dee719a35f6dbf35d7d3f36ffb09a443
       backend: onnx
       warp_segments: 0
       opset_version: 20

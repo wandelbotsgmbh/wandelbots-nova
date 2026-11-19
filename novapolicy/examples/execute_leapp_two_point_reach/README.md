@@ -27,8 +27,10 @@ NOVA reports them; the export subtracts the start pose itself, and starts from i
 NOVA moves the arm to every joint target, so each target has to be one the arm can follow: each one
 is the previous target moved by at most 2° per joint (60°/s at 30 Hz), whatever the network
 outputs. The export carries the previous target from step to step and the policy observes it, so
-it knows which commands are still on their way to the arm: it was trained with the arm reaching
-each target 67 to 200 ms after the observation it was computed from, as NOVA executes it.
+it knows which commands are still on their way to the arm. It was trained against a model of how
+NOVA's controller follows the targets, fitted to a recorded run on a virtual UR10e: each target
+takes effect 67 to 233 ms after the observation it was computed from, and the arm follows it with
+limited acceleration (about 400°/s²), so the policy brakes early enough not to overshoot.
 
 ## Run it
 
@@ -51,10 +53,11 @@ NOVA_API=http://<nova-host> uv run python run_reach.py --virtual --execute \
 Run it on the NOVA instance (as an app): each target is due `--max-expected-latency-ms` (100 ms)
 after the observation it was computed from, which fits there (see
 [Latency](../../docs/reinforcement-learning.md#background)). On a virtual UR10e (NOVA 26.8.1), with
-the part detected at A, B, A, it ran at 29 Hz and ended 1.0 to 1.3 mm from its targets when run in
-the cluster. Over a VPN with a 40 to 120 ms ping the state packets arrive late and in bursts:
-there it needed `--max-expected-latency-ms 250` (150 and 200 stopped as over budget) and ended 0.9
-to 1.2 mm from its targets. A part detected 80 mm from A ended the
+the part detected at A, B, A, it ran at 29 Hz and ended 1.3 to 2.5 mm from its targets when run in
+the cluster, no joint past its end by more than 0.4°. Over a VPN with a 40 to 120 ms ping the state
+packets arrive late and in bursts: there it needed `--max-expected-latency-ms 250` (150 and 200
+stopped as over budget), ended 1.3 to 2.5 mm from its targets and went at most 1.9° past its end.
+The flange path between A and B is a joint-space path, 26 to 50 mm off the straight line. A part detected 80 mm from A ended the
 run with `stop condition: part_outside_trained_positions` after 0 policy steps. With
 `--controller NAME` instead of `--virtual` it uses an existing controller and asks before it moves
 it.
