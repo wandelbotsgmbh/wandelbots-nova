@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import itertools
 import logging
 import time
 from types import SimpleNamespace
@@ -380,6 +381,32 @@ def test_the_lead_left_on_arrival_is_recorded_for_one_step_chunks(caplog):
         with caplog.at_level(logging.INFO):
             session._log_lead_summary()
         assert any("55 ms at worst" in r.message for r in caplog.records)
+    finally:
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+def test_one_step_waypoints_are_spaced_by_the_policy_step_despite_bursty_observations():
+    """Observations dated 0 to 60 ms apart must not become speed jumps: the playback clock
+    keeps one step between waypoints and follows the observations slowly."""
+    session, _server = _build_session(config=WaypointConfig(max_expected_latency_ms=150))
+    step = 1000 / 30
+    try:
+        observed = [1_000.0, 1_008.0, 1_070.0, 1_100.0, 1_105.0, 1_170.0, 1_200.0, 1_233.0]
+        due = [session._playback.due_ms(t + 150, step, earliest_ms=0) for t in observed]
+        spacing = [b - a for a, b in itertools.pairwise(due)]
+        assert max(spacing) - min(spacing) < 0.3 * step  # observations jumped by 0 to 62 ms
+        assert all(0.85 * step < gap < 1.2 * step for gap in spacing)
+        assert abs(due[-1] - (observed[-1] + 150)) < 25  # it still follows the observations
+        # A stall: the next observation is 400 ms later; the clock starts again from it.
+        assert session._playback.due_ms(1_633 + 150, step, earliest_ms=0) == 1_633 + 150
+        # An observation dated far earlier never moves the clock backwards.
+        assert session._playback.due_ms(1_200 + 150, step, earliest_ms=0) > 1_633 + 150
+        # Observations too old to leave the controller its margin: the waypoint goes at the
+        # earliest plannable time, and the clock keeps real time instead of falling behind.
+        due = [session._playback.due_ms(1_800 + k * step, step, 2_200 + k * step) for k in range(5)]
+        assert all(d >= 2_200 + k * step for k, d in enumerate(due))
+        assert all(0.5 * step < b - a < 1.5 * step for a, b in itertools.pairwise(due))
     finally:
         for p in session._test_patches:  # type: ignore[attr-defined]
             p.stop()
