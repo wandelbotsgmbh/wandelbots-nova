@@ -161,6 +161,8 @@ class StateStreamer:
             "count": len(timestamps),
             "dt_ms": server_dt_ms,
         }
+        if session.lead_left_ms is not None:  # one-step chunks: the lead left on arrival
+            values["lead_left_ms"] = session.lead_left_ms
         for name, value in values.items():
             rr.log(
                 f"policy/{mg_id}/waypoint_request/{name}",

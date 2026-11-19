@@ -8,6 +8,7 @@ velocity profiling, interpolation, and limits internally.
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import contextlib
 from dataclasses import dataclass
 import logging
@@ -136,6 +137,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._clock = JoggingTimeClock()
         self._round_trip = RoundTrip()
         self._late_acks = 0  # consecutive one-step chunks acknowledged too late for the lead
+        # How much of its lead each acknowledged one-step chunk had left, newest last.
+        self._lead_left_ms: deque[float] = deque(maxlen=4096)
         # One-step waypoints already sent and not yet due, resent with every new one.
         self._lead_window: list[tuple[int, list[float]]] = []
 
@@ -401,6 +404,28 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """How far ahead of server "now" one-step chunks go: ``max_expected_latency_ms``."""
         return self._config.max_expected_latency_ms
 
+    @property
+    def lead_left_ms(self) -> float | None:
+        """How much of its lead the latest acknowledged one-step chunk had left on arrival
+        (estimated from its observation's age and the round trip); ``None`` before one."""
+        return self._lead_left_ms[-1] if self._lead_left_ms else None
+
+    def _log_lead_summary(self) -> None:
+        """Say once per session how much lead the one-step chunks had left."""
+        if not self._lead_left_ms:
+            return
+        left = sorted(self._lead_left_ms)
+        logger.info(
+            "%s: one-step waypoints had %.0f ms (median) of their %.0f ms lead left on arrival, "
+            "%.0f ms at worst; the controller needs about %.0f ms",
+            self.motion_group_id,
+            left[len(left) // 2],
+            self._config.max_expected_latency_ms,
+            left[0],
+            SINGLE_STEP_MARGIN_MS,
+        )
+        self._lead_left_ms.clear()
+
     def _check_round_trip(self, acknowledged: tuple[float, bool] | None) -> None:
         """Stop when one-step waypoints keep arriving too late for the fixed lead.
 
@@ -413,6 +438,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         if acknowledged is None or not acknowledged[1]:
             return
         round_trip_ms = acknowledged[0]
+        self._lead_left_ms.append(self._config.max_expected_latency_ms - round_trip_ms)
         budget_ms = self._config.max_expected_latency_ms - SINGLE_STEP_MARGIN_MS
         self._late_acks = self._late_acks + 1 if round_trip_ms > budget_ms else 0
         if self._late_acks >= _LATE_ACKS_LIMIT:
@@ -709,6 +735,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         :meth:`drain` first to let the accepted waypoints run out.
         """
         self._running = False
+        self._log_lead_summary()
         await self._request_server_stop()
 
         for task in (self._jogging_task, self._state_task):
@@ -990,11 +1017,14 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
         The target is due ``max_expected_latency_ms`` after the observation it was computed
         from, as UMI and Diffusion Policy stamp actions: the measured position and the time it
-        is due stay consistent however late or bursty the state packets arrived. A new chunk
-        removes the queued waypoints older than its first one, so sending the newest target
-        alone would delete the ones before it: the controller would head straight for a point
-        the whole latency ahead and cut through the path. With the window it holds the path up
-        to the newest target and passes each one at its time.
+        is due stay consistent however late or bursty the state packets arrived.
+
+        The follower keeps queued waypoints between "now" and a new chunk's first timestamp,
+        so one-step chunks do not delete each other's waypoints. But a backend may drop chunks:
+        WBR takes only the newest chunk per control cycle, so chunks arriving in a burst lose
+        all but the last. Resending the waypoints that are not yet due puts a dropped chunk's
+        target back in the queue with the next one; on a backend that keeps every chunk the
+        resent waypoints replace identical ones.
         """
         observed_ms = pending.observed_at_ms
         if observed_ms is None:

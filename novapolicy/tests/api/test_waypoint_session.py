@@ -368,6 +368,23 @@ async def test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due():
             p.stop()
 
 
+def test_the_lead_left_on_arrival_is_recorded_for_one_step_chunks(caplog):
+    session, _server = _build_session(config=WaypointConfig(max_expected_latency_ms=100))
+    try:
+        assert session.lead_left_ms is None
+        session._check_round_trip((500.0, False))  # a chunk of several steps: not a lead
+        assert session.lead_left_ms is None
+        session._check_round_trip((30.0, True))
+        session._check_round_trip((45.0, True))
+        assert session.lead_left_ms == pytest.approx(55.0)
+        with caplog.at_level(logging.INFO):
+            session._log_lead_summary()
+        assert any("55 ms at worst" in r.message for r in caplog.records)
+    finally:
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
 def test_one_step_waypoints_that_keep_arriving_too_late_stop_the_session():
     """A spike passes; a run of late waypoints is a network that no longer fits the latency."""
     session, _server = _build_session(config=WaypointConfig(max_expected_latency_ms=100))
