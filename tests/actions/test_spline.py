@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from nova import api
@@ -39,10 +41,25 @@ class TestSplineToApiModel:
         model = spline((3, 4, 12), via=[(3, 4, 0)], start=(0, 0, 0)).to_api_model()
         assert [p.path_parameter for p in model.parameters] == pytest.approx([0, 5, 17])
 
-    def test_default_path_parameter_rises_where_positions_coincide(self):
-        model = spline((1, 0, 0, 0, 0, 0), via=[(0, 0, 0, 0, 0, 1)], start=(0, 0, 0)).to_api_model()
-        values = [p.path_parameter for p in model.parameters]
-        assert all(b > a for a, b in zip(values, values[1:]))
+    def test_via_poses_keep_their_order(self):
+        model = spline((3, 0, 0), via=[(1, 0, 0), (2, 0, 0)], start=(0, 0, 0)).to_api_model()
+        assert [p.pose.position for p in model.parameters] == [
+            (0, 0, 0),
+            (1, 0, 0),
+            (2, 0, 0),
+            (3, 0, 0),
+        ]
+
+    def test_identical_duplicate_pose_gets_the_minimal_step(self):
+        model = spline((1, 0, 0, 0, 0, 1), via=[(0, 0, 0, 0, 0, 1)], start=(0, 0, 0, 0, 0, 1))
+        values = [p.path_parameter for p in model.to_api_model().parameters]
+        assert values == pytest.approx([0, 1e-3, 1 + 1e-3], rel=0, abs=1e-12)
+
+    def test_reorientation_in_place_with_explicit_parameters(self):
+        action = spline(
+            (1, 0, 0, 0, 0, 0), via=[(0, 0, 0, 0, 0, 1)], start=(0, 0, 0), parameters=(0, 1, 2)
+        )
+        assert [p.path_parameter for p in action.to_api_model().parameters] == [0, 1, 2]
 
     def test_explicit_path_parameters_are_used(self):
         action = spline((3, 4, 12), via=[(3, 4, 0)], start=(0, 0, 0), parameters=(0, 1, 2))
@@ -63,6 +80,28 @@ class TestSplineValidation:
     def test_model_validates_too(self):
         with pytest.raises(ValueError):
             Spline(target=Pose((1, 0, 0)), start=Pose((0, 0, 0)), parameters=(0, 0))
+
+    @pytest.mark.parametrize("parameters", [(0, math.nan, 2), (0, 1, math.inf), (-math.inf, 1, 2)])
+    def test_path_parameters_must_be_finite(self, parameters):
+        with pytest.raises(ValueError, match="finite"):
+            spline((3, 4, 12), via=[(3, 4, 0)], start=(0, 0, 0), parameters=parameters)
+
+    @pytest.mark.parametrize("value", [math.nan, math.inf])
+    @pytest.mark.parametrize("pose", ["start", "via", "target"])
+    @pytest.mark.parametrize("component", [0, 5])
+    def test_poses_must_be_finite(self, value, pose, component):
+        poses = {"start": [0.0] * 6, "via": [3.0, 4.0, 0, 0, 0, 0], "target": [3.0, 4, 12, 0, 0, 0]}
+        poses[pose][component] = value
+        with pytest.raises(ValueError, match="finite"):
+            spline(poses["target"], via=[poses["via"]], start=poses["start"])
+
+    def test_reorientation_in_place_needs_explicit_parameters(self):
+        with pytest.raises(ValueError, match="explicit"):
+            spline((1, 0, 0, 0, 0, 0), via=[(0, 0, 0, 0, 0, 1)], start=(0, 0, 0))
+
+    def test_model_rejects_reorientation_in_place_too(self):
+        with pytest.raises(ValueError, match="explicit"):
+            Spline(target=Pose((0, 0, 0, 0, 0, 1)), start=Pose((0, 0, 0, 0, 0, 0)))
 
 
 class TestSplineInActionList:

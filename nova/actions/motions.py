@@ -1,4 +1,5 @@
 import itertools
+import math
 from abc import ABC
 from typing import Any, Literal, Sequence
 
@@ -309,8 +310,13 @@ class Spline(Motion):
     Args:
         start: the pose the spline starts at
         via: the poses the spline passes through between ``start`` and ``target``
-        parameters: the path parameter of every pose (``start``, ``via``, ``target``), strictly
-            rising. If ``None``, the chord length along the poses in mm is used.
+        parameters: the path parameter of every pose (``start``, ``via``, ``target``), finite and
+            strictly rising. If ``None``, the chord length along the poses in mm is used;
+            identical consecutive poses get a minimal step, and consecutive poses that share a
+            position but differ in orientation (a reorientation in place) raise a ``ValueError``,
+            so pass explicit parameters for them.
+
+    All pose components must be finite.
 
     """
 
@@ -322,8 +328,19 @@ class Spline(Motion):
 
     @pydantic.model_validator(mode="after")
     def _validate_parameters(self):
+        poses = (self.start, *self.via, self.target)
+        if not all(math.isfinite(value) for pose in poses for value in pose.to_tuple()):
+            raise ValueError("the poses of a spline must be finite")
         if self.parameters is None:
+            for (a, b), step in zip(itertools.pairwise(poses), _chord_lengths(poses)):
+                if step < _MIN_PARAMETER_STEP and a.orientation != b.orientation:
+                    raise ValueError(
+                        "consecutive spline poses share a position but differ in orientation; "
+                        "pass explicit parameters"
+                    )
             return self
+        if not all(math.isfinite(parameter) for parameter in self.parameters):
+            raise ValueError("the path parameters of a spline must be finite")
         if len(self.parameters) != len(self.via) + 2:
             raise ValueError("a spline needs one path parameter per pose")
         if any(b <= a for a, b in itertools.pairwise(self.parameters)):
@@ -334,7 +351,9 @@ class Spline(Motion):
         """Serialize the model to the API model
 
         Without ``parameters``, the path parameter is the chord length along the poses in mm.
-        Poses that share a position are given a minimal step, so the parameter still rises.
+        Identical consecutive poses are given a minimal step, so the parameter still rises;
+        consecutive poses that share a position but differ in orientation (any difference in
+        the orientation vector) are rejected at construction unless ``parameters`` is given.
 
         Examples:
         >>> Spline(start=Pose((0, 0, 0)), via=(Pose((3, 4, 0)),), target=Pose((3, 4, 12))).to_api_model()
@@ -353,13 +372,17 @@ class Spline(Motion):
         )
 
 
-#: Added to the path parameter where two poses share a position, so it still rises.
+#: Path parameter step between identical poses, so the default parameter still rises.
 _MIN_PARAMETER_STEP = 1e-3
 
 
-def _chord_length_parameters(poses: Sequence[Pose]) -> list[float]:
+def _chord_lengths(poses: Sequence[Pose]) -> np.ndarray:
     positions = np.array([[p.position.x, p.position.y, p.position.z] for p in poses])
-    steps = np.maximum(np.linalg.norm(np.diff(positions, axis=0), axis=1), _MIN_PARAMETER_STEP)
+    return np.linalg.norm(np.diff(positions, axis=0), axis=1)
+
+
+def _chord_length_parameters(poses: Sequence[Pose]) -> list[float]:
+    steps = np.maximum(_chord_lengths(poses), _MIN_PARAMETER_STEP)
     return [0.0, *np.cumsum(steps).tolist()]
 
 
@@ -381,8 +404,11 @@ def spline(
         start: the pose or vector the robot is at when the spline begins, i.e. the target of the
             motion before it
         settings: the motion settings
-        parameters: the path parameter of every pose (start, via, target), strictly rising. If
-            ``None``, the chord length along the poses in mm is used.
+        parameters: the path parameter of every pose (start, via, target), finite and strictly
+            rising. If ``None``, the chord length along the poses in mm is used; identical
+            consecutive poses get a minimal step, and a reorientation in place (consecutive poses
+            with the same position but a different orientation) raises a ``ValueError``, so pass
+            explicit parameters for it.
 
     Returns: the spline motion
 

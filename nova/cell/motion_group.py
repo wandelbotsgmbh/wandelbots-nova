@@ -9,7 +9,7 @@ from nova import api
 from nova.actions import Action, CombinedActions, MovementController, MovementControllerContext
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
-from nova.actions.motions import CartesianPTP, Circular, CollisionFreeMotion, Linear
+from nova.actions.motions import CartesianPTP, Circular, CollisionFreeMotion, Linear, Spline
 from nova.actions.path_trigger_resolver import (
     has_distance_triggers,
     has_path_triggers,
@@ -992,11 +992,11 @@ class MotionGroup(AbstractRobot):
             raise ValueError("No actions provided")
 
         if tcp is None:
-            _requires_tcp = (Linear, CartesianPTP, Circular)
+            _requires_tcp = (Linear, CartesianPTP, Circular, Spline)
             for action in actions:
                 if isinstance(action, _requires_tcp):
                     raise ValueError(
-                        "TCP is required for cartesian motion actions (lin, ptp, cir). "
+                        "TCP is required for cartesian motion actions (lin, ptp, cir, spline). "
                         "Provide a TCP or use joint-space actions (jnt) instead."
                     )
                 if isinstance(action, CollisionFreeMotion) and isinstance(action.target, Pose):

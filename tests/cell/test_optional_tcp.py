@@ -12,6 +12,7 @@ import pytest
 
 from nova import api
 from nova.actions import cir, collision_free, jnt, lin, ptp, wait
+from nova.actions.motions import spline
 from nova.cell.motion_group import MotionGroup
 from nova.core.gateway import ApiGateway
 from nova.types import Pose
@@ -98,6 +99,11 @@ class TestPlanWithoutTcpRejectsCartesianActions:
     async def test_rejects_cir(self, mock_motion_group):
         with pytest.raises(ValueError, match="TCP is required for cartesian motion actions"):
             await mock_motion_group.plan([cir((0, 0, 0, 0, 0, 0), intermediate=(1, 1, 1, 0, 0, 0))])
+
+    @pytest.mark.asyncio
+    async def test_rejects_spline(self, mock_motion_group):
+        with pytest.raises(ValueError, match="TCP is required for cartesian motion actions"):
+            await mock_motion_group.plan([spline((1, 0, 0, 0, 0, 0), start=(0, 0, 0, 0, 0, 0))])
 
     @pytest.mark.asyncio
     async def test_rejects_collision_free_with_pose_target(self, mock_motion_group):
