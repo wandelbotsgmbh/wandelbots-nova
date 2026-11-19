@@ -8,20 +8,26 @@ directly with plain data.
 
 from __future__ import annotations
 
+import math
 from types import SimpleNamespace
 
 from hypothesis import given, settings, strategies as st
+import numpy as np
 import pytest
+from scipy.spatial.transform import Rotation
 
 from novapolicy.chunking import (
+    TcpDelta,
     apply_relative_mode,
     chunk_duration_s,
+    compose_tcp_deltas,
     connect_action_chunk,
     create_bridge_chunk,
     interpolate_action_chunk_ramps,
     placement,
     smooth_action_chunk,
     trim_chunk,
+    unwrap_tcp_rotations,
 )
 from novapolicy.types import ActionChunk, ContinuousExecution, SequentialExecution
 
@@ -261,6 +267,75 @@ def test_bridge_supports_tcp_translation_without_mixing_rotation_units():
         assert actual_step == pytest.approx(expected_step)
 
 
+def _tool_down_flip() -> tuple[SimpleNamespace, ActionChunk]:
+    """Tool pointing down: measured just under pi about +y, policy just over it.
+
+    The policy steps are written the way a rotation library returns them, as
+    angles under pi about -y. They differ from the measured orientation by under
+    a degree, but component-wise they are about 2 pi apart.
+    """
+    pose = SimpleNamespace(position=[0.0, 0.0, 0.0], orientation=[0.0, math.pi - 0.002, 0.0])
+    chunk = ActionChunk(
+        tcp={
+            "0@ur10e": [
+                [1.0, 0.0, 0.0, 0.0, -(math.pi - 0.004), 0.0],
+                [2.0, 0.0, 0.0, 0.0, -(math.pi - 0.006), 0.0],
+                [3.0, 0.0, 0.0, 0.0, -(math.pi - 0.008), 0.0],
+            ]
+        },
+        dt_ms=100.0,
+    )
+    return SimpleNamespace(pose=pose), chunk
+
+
+def test_bridge_does_not_swing_the_wrist_across_a_rotation_vector_flip():
+    """Regression: a sign flip near pi once bridged through the identity in 573 steps."""
+    state, chunk = _tool_down_flip()
+
+    connected = connect_action_chunk(chunk, {"0@ur10e": state}, always_anchor=True)
+
+    assert connected is not None
+    steps = connected.motion.tcp["0@ur10e"]
+    assert len(steps) < 10  # a short bridge, not the 573 steps of the incident
+    for step in steps:
+        # Every waypoint stays a near-half-turn about y: no pass through the identity.
+        assert math.hypot(*step[3:6]) == pytest.approx(math.pi, abs=0.01)
+        assert step[4] > 0  # unwrapped onto the measured side
+    assert steps[-1][4] == pytest.approx(math.pi + 0.008)
+
+
+def test_unwrap_keeps_equivalent_rotations_and_leaves_continuous_ones_alone():
+    unwrapped = unwrap_tcp_rotations([[0.0, 0.0, 0.0, 0.0, -(math.pi - 0.1), 0.0]], [0.0, 3.1, 0.0])
+    assert unwrapped[0][3:6] == pytest.approx([0.0, math.pi + 0.1, 0.0])
+
+    steps = [[5.0, 6.0, 7.0, 0.1, 0.2, 0.3], [5.0, 6.0, 7.0, 0.11, 0.2, 0.3]]
+    for actual, expected in zip(unwrap_tcp_rotations(steps, [0.1, 0.2, 0.3]), steps, strict=True):
+        assert actual == pytest.approx(expected)
+
+
+def test_the_identity_after_unwrapped_steps_stays_a_full_turn():
+    """Steps unwrapped past pi that reach the identity become the full turn, not a jump to 0."""
+    steps = [[0.0] * 3 + [0.0, 0.0, -3.0], [0.0] * 6]
+    unwrapped = unwrap_tcp_rotations(steps, [0.0, 0.0, 3.2])
+    assert unwrapped[0][3:6] == pytest.approx([0.0, 0.0, 2.0 * math.pi - 3.0])
+    assert unwrapped[1][3:6] == pytest.approx([0.0, 0.0, 2.0 * math.pi])
+    assert unwrap_tcp_rotations([[0.0] * 6], [0.0, 0.0, 0.5])[0][3:6] == [0.0, 0.0, 0.0]
+
+
+def test_endpoint_ramps_do_not_interpolate_across_a_rotation_vector_flip():
+    _, chunk = _tool_down_flip()
+    flipped = chunk.model_copy(
+        update={
+            "tcp": {"0@ur10e": [[0.0, 0.0, 0.0, 0.0, math.pi - 0.002, 0.0], *chunk.tcp["0@ur10e"]]}
+        }
+    )
+
+    ramped = interpolate_action_chunk_ramps(flipped).motion.tcp["0@ur10e"]
+
+    for step in ramped:
+        assert math.hypot(*step[3:6]) == pytest.approx(math.pi, abs=0.01)
+
+
 def test_bridge_requires_at_least_two_policy_waypoints_for_spacing():
     state = SimpleNamespace(joints=[0.0])
     chunk = ActionChunk(joints={"0@ur5e": [[10.0]]}, dt_ms=50.0)
@@ -410,7 +485,78 @@ def test_sequential_execution_anchors_at_now_one_step_ahead():
 @given(seam=st.integers(min_value=0, max_value=64))
 def test_continuous_execution_anchors_at_now_backdated_by_the_seam(seam):
     """Continuous execution resolves now, backdated by the seam steps."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]}, seam_backdate_steps=seam)
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6] * 8}, seam_backdate_steps=seam, dt_ms=33.0)
     place = placement(chunk, execution=ContinuousExecution())
     assert place.first_timestamp_ms is None
     assert place.timestamp_offset_steps == -seam
+
+
+def test_a_one_step_chunk_is_placed_ahead_by_the_session():
+    """One waypoint per step is replaced before it is due: the session places it ahead."""
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]}, dt_ms=1000 / 30)
+    place = placement(chunk, execution=ContinuousExecution())
+    assert place.lead
+    assert place.first_timestamp_ms is None
+    assert not placement(chunk, execution=SequentialExecution()).lead
+
+
+# compose_tcp_deltas ---------------------------------------------------------
+
+
+_DOWN = [-100.0, -500.0, 300.0, math.pi, 0.0, 0.0]  # tool pointing straight down
+
+
+def _rot(pose: list[float]) -> Rotation:
+    return Rotation.from_rotvec(pose[3:6])
+
+
+@pytest.mark.parametrize("width", [7, 9])
+def test_relative_tcp_offsets_of_another_width_are_refused(width):
+    """A quaternion (7) or rot6d (9) offset read as a rotation vector would turn the tool."""
+    with pytest.raises(ValueError, match="6 values"):
+        compose_tcp_deltas(_DOWN, [[0.0] * width], TcpDelta())
+
+
+def test_relative_tcp_rotations_compose_instead_of_adding():
+    """A yaw offset on a tool-down pose turns the tool about base z, not about a summed vector."""
+    yaw = math.radians(10.0)
+    out = compose_tcp_deltas(_DOWN, [[0.0, 0.0, 0.0, 0.0, 0.0, yaw]], TcpDelta())
+    expected = Rotation.from_rotvec([0.0, 0.0, yaw]) * _rot(_DOWN)
+    assert (_rot(out[0]) * expected.inv()).magnitude() == pytest.approx(0.0, abs=1e-9)
+    assert out[0][:3] == pytest.approx(_DOWN[:3])  # rotating about the TCP keeps it in place
+
+
+def test_accumulated_tcp_deltas_chain_from_step_to_step():
+    out = compose_tcp_deltas(
+        _DOWN, [[1.0, 0.0, -2.0, 0.0, 0.0, 0.0]] * 3, TcpDelta(accumulate=True)
+    )
+    assert [s[0] for s in out] == pytest.approx([-99.0, -98.0, -97.0])
+    assert [s[2] for s in out] == pytest.approx([298.0, 296.0, 294.0])
+    offsets = compose_tcp_deltas(_DOWN, [[1.0, 0.0, -2.0, 0.0, 0.0, 0.0]] * 3, TcpDelta())
+    assert [s[0] for s in offsets] == pytest.approx([-99.0] * 3)  # the default does not chain
+
+
+def test_tool_frame_tcp_deltas_follow_the_tool_axes():
+    out = compose_tcp_deltas(
+        _DOWN, [[0.0, 0.0, 10.0, 0.0, 0.0, 0.0]], TcpDelta(use_tool_coordinate_system=True)
+    )
+    assert out[0][:3] == pytest.approx([-100.0, -500.0, 290.0])  # tool z points down
+
+
+def test_tcp_deltas_stay_continuous_near_a_half_turn():
+    start = [*_DOWN[:3], 0.0, -math.pi, 0.0]
+    steps = [[0.0, 0.0, 0.0, 0.0, 0.0, math.radians(2.0)]] * 10
+    out = compose_tcp_deltas(start, steps, TcpDelta(accumulate=True))
+    rotvecs = np.asarray([s[3:] for s in out])
+    assert np.abs(np.diff(rotvecs, axis=0)).max() < 0.1  # no sign flip between steps
+
+
+def test_computed_action_values_survive_trimming_smoothing_and_relative_targets():
+    """Values for Action.computed hooks travel with the chunk through every rebuild."""
+    rows = [[float(i)] for i in range(6)]
+    chunk = ActionChunk(tcp={"mg": [[0.0] * 6] * 6}, values={"gripper": rows}, dt_ms=33.0)
+    assert trim_chunk(chunk, 4).values == {"gripper": rows[:4]}
+    assert smooth_action_chunk(chunk).values == {"gripper": rows}
+    pose = SimpleNamespace(position=[1.0, 2.0, 3.0], orientation=[0.0, 0.0, 0.0])
+    resolved = apply_relative_mode(chunk, {"mg": SimpleNamespace(joints=[], pose=pose)}, ["mg"])
+    assert resolved.values == {"gripper": rows}

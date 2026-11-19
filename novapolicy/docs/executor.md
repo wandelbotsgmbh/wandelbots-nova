@@ -180,6 +180,31 @@ the hold.
 With 20 Hz and 1s lookahead chunks, there is ~95% overlap between
 consecutive chunks, providing ample buffer.
 
+### Continuous execution for chunk-per-observation policies
+
+A policy that answers each observation with a fresh chunk and keeps no queue of its own
+(`Gr00tPolicyClient`, a `CallbackPolicyClient`) makes the arm jump at every replacement seam.
+Wrap it in `QueuedPolicyClient`: it resolves each chunk to absolute NOVA targets, keeps the steps
+that executed during inference (plus `margin_steps`) exactly as published, blends the overlap
+0.3/0.7, smooths the plan with that head retained and places it on the executor's timestep
+timeline, as the LeRobot async queue does.
+
+```python
+from novapolicy import ContinuousExecution, PolicyExecutor, QueuedPolicyClient
+
+executor = PolicyExecutor(
+    schema,
+    QueuedPolicyClient(Gr00tPolicyClient(host, port=port, control_freq=30)),
+    execution=ContinuousExecution(),
+    n_action_steps=0,  # keep the whole horizon as lookahead
+)
+```
+
+### Dry runs
+
+`resolve_actions(schema, chunk, states)` returns the targets the executor would send for a raw
+policy chunk.
+
 ## Stale inputs and how a run ends
 
 A camera can freeze and a policy service can hang. Both mean the same thing to the executor — the

@@ -58,6 +58,10 @@ class PendingChunk:
     final: bool = False
     """The last target of a run: sent with ``delay_until_braking`` 0 so the robot
     stops on it instead of keeping its velocity past it."""
+    lead: bool = False
+    """A one-step chunk: placed ``max_expected_latency_ms`` after its observation."""
+    observed_at_ms: int | None = None
+    """Server timestamp of the state the chunk was computed from (a lead chunk)."""
 
     @property
     def last_caller_step(self) -> int:
@@ -137,6 +141,24 @@ def make_waypoints_request(
         waypoints=[
             api.models.Waypoint(timestamp=ts, waypoint=coordinate)
             for ts, coordinate in zip(timestamps, coordinates, strict=True)
+        ],
+        delay_until_braking=delay_until_braking_ms,
+    )
+
+
+def make_timed_waypoints_request(
+    mode: JoggingMode,
+    timed_steps: list[tuple[int, list[float]]],
+    *,
+    delay_until_braking_ms: int | None = None,
+) -> api.models.ActionChunkRequest:
+    """Build an ActionChunkRequest from waypoints that carry their own timestamps."""
+    steps = [step for _timestamp, step in timed_steps]
+    coordinates = _pose_coordinates(steps) if mode == "cartesian" else _joint_coordinates(steps)
+    return ActionChunkRequest(
+        waypoints=[
+            api.models.Waypoint(timestamp=timestamp, waypoint=coordinate)
+            for (timestamp, _step), coordinate in zip(timed_steps, coordinates, strict=True)
         ],
         delay_until_braking=delay_until_braking_ms,
     )

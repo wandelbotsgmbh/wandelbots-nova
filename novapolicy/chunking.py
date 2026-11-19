@@ -12,7 +12,10 @@ from dataclasses import dataclass
 from itertools import pairwise
 import logging
 import math
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+
+import numpy as np
+from scipy.spatial.transform import Rotation
 
 from novapolicy.types import ActionChunk, ContinuousExecution
 
@@ -27,6 +30,7 @@ _MIN_SPACING_STEPS = 2
 _MIN_RAMP_STEPS = 2
 _MIN_SMOOTHING_STEPS = 2
 _SEGMENT_RATIO_EPSILON = 1e-12
+_ROTVEC_EPSILON = 1e-12
 
 
 def _max_steps(chunk: ActionChunk) -> int:
@@ -72,6 +76,7 @@ def trim_chunk(chunk: ActionChunk, n: int) -> ActionChunk:
         joints=trimmed_joints,
         tcp=trimmed_tcp,
         ios=chunk.ios,
+        values={key: rows[:n] for key, rows in chunk.values.items()},
         dt_ms=chunk.dt_ms,
         first_timestamp_ms=chunk.first_timestamp_ms,
         action_timestep=chunk.action_timestep,
@@ -123,6 +128,7 @@ def smooth_action_chunk(
         joints=joints,
         tcp=tcp,
         ios=chunk.ios,
+        values=chunk.values,
         dt_ms=chunk.dt_ms,
         first_timestamp_ms=chunk.first_timestamp_ms,
         action_timestep=chunk.action_timestep,
@@ -199,7 +205,7 @@ def interpolate_action_chunk_ramps(
 
     for group_id, steps in chunk.tcp.items():
         interpolated, indices = _interpolate_endpoint_intervals(
-            steps,
+            unwrap_tcp_rotations(steps, steps[0][3:6]) if steps else steps,
             accelerate=accelerate,
             brake=brake,
             interpolation_steps=interpolation_steps,
@@ -292,6 +298,7 @@ def connect_action_chunk(
     the exact waypoint where callers should fire the original chunk's IO and
     computed actions. Returns ``None`` when no motion group needs a bridge.
     """
+    chunk = _unwrap_chunk_rotations(chunk, states)
     bridge = create_bridge_chunk(chunk, states, always_anchor=always_anchor)
     if bridge is None:
         return None
@@ -380,7 +387,7 @@ def create_bridge_chunk(
         current = [*pose.position, *pose.orientation]
         bridge = _interpolated_bridge(
             current,
-            steps,
+            unwrap_tcp_rotations(steps, current[3:6]),
             tcp=True,
             always_anchor=always_anchor,
         )
@@ -390,6 +397,61 @@ def create_bridge_chunk(
     if not bridge_joints and not bridge_tcp:
         return None
     return ActionChunk(joints=bridge_joints, tcp=bridge_tcp, dt_ms=chunk.dt_ms)
+
+
+_TCP_WIDTH = 6
+"""Values of a NOVA TCP pose: [x, y, z, rx, ry, rz]."""
+
+
+def unwrap_tcp_rotations(steps: list[list[float]], reference: list[float]) -> list[list[float]]:
+    """Rewrite each TCP step's rotation vector as the equivalent one nearest its predecessor.
+
+    A rotation vector ``angle * axis`` describes the same orientation as
+    ``(angle + 2 pi k) * axis`` for any integer ``k``. Near pi, e.g. a tool pointing
+    straight down, measurements jump between ``v`` and roughly ``-v`` from one read
+    to the next. Bridges and ramps interpolate rotation vectors component-wise,
+    and between ``v`` and ``-v`` that passes through the identity: a real
+    half-turn of the wrist instead of no motion. Unwrapping first keeps every
+    interpolation on the short path. ``reference`` anchors the first step.
+    """
+    out: list[list[float]] = []
+    previous = list(reference)
+    for step in steps:
+        rotvec = _equivalent_rotvec_near(step[3:6], previous)
+        out.append([*step[:3], *rotvec, *step[6:]])
+        previous = rotvec
+    return out
+
+
+def _equivalent_rotvec_near(rotvec: list[float], reference: list[float]) -> list[float]:
+    angle = math.sqrt(sum(value * value for value in rotvec))
+    if angle < _ROTVEC_EPSILON:
+        # The identity has no axis of its own: its equivalents are the full turns about any
+        # axis, so take the one along the reference nearest to it.
+        reference_angle = math.sqrt(sum(value * value for value in reference))
+        if reference_angle < _ROTVEC_EPSILON:
+            return list(rotvec)
+        turns = round(reference_angle / (2.0 * math.pi))
+        scale = 2.0 * math.pi * turns / reference_angle
+        return [v + r * scale for v, r in zip(rotvec, reference, strict=True)]
+    axis = [value / angle for value in rotvec]
+    # Equivalent vectors lie on the axis line at angle + 2 pi k; pick the one
+    # nearest the reference's projection onto that line.
+    projection = sum(a * r for a, r in zip(axis, reference, strict=True))
+    turns = round((projection - angle) / (2.0 * math.pi))
+    return [a * (angle + 2.0 * math.pi * turns) for a in axis]
+
+
+def _unwrap_chunk_rotations(chunk: ActionChunk, states: dict[str, Any]) -> ActionChunk:
+    """Unwrap each TCP group's rotations against its measured pose."""
+    tcp: dict[str, list[list[float]]] = {}
+    for group_id, steps in chunk.tcp.items():
+        state = states.get(group_id)
+        pose = getattr(state, "pose", None) if state is not None else None
+        tcp[group_id] = (
+            unwrap_tcp_rotations(steps, list(pose.orientation)) if pose and steps else steps
+        )
+    return chunk.model_copy(update={"tcp": tcp}) if chunk.tcp else chunk
 
 
 def _interpolated_bridge(
@@ -457,16 +519,32 @@ def _euclidean_distance(left: list[float], right: list[float]) -> float:
     return math.sqrt(sum((b - a) ** 2 for a, b in zip(left, right, strict=True)))
 
 
+@dataclass(frozen=True, slots=True)
+class TcpDelta:
+    """How a relative TCP action's steps apply (see ``Action.tcp``)."""
+
+    accumulate: bool = False
+    """False: every step is an offset from the pose at inference time. True: every step
+    applies to the pose the previous step reached."""
+    use_tool_coordinate_system: bool = False
+    """As in NOVA's TCP jogging: True expresses the offset in the tool coordinate system
+    (given by the TCP) at the pose the step starts from; False in the coordinate system
+    the TCP pose is reported in (world)."""
+
+
 def apply_relative_mode(
     chunk: ActionChunk,
     states: dict[str, Any],
     relative_mgs: Iterable[str],
+    tcp_deltas: dict[str, TcpDelta] | None = None,
 ) -> ActionChunk:
     """Convert relative (delta) action targets to absolute positions.
 
-    For motion groups in ``relative_mgs``, each step is an offset from the
-    robot's state at inference time; joint deltas accumulate across steps.
-    Returns the chunk unmodified when ``relative_mgs`` is empty.
+    For motion groups in ``relative_mgs``, joint deltas accumulate across steps.
+    TCP steps compose with the pose at inference time as ``tcp_deltas`` declares
+    (default: each an offset from that pose, in world axes): positions add, rotations
+    compose as rotations about the TCP, and the result is unwrapped onto the starting
+    rotation vector. Returns the chunk unmodified when ``relative_mgs`` is empty.
     """
     relative_mgs = list(relative_mgs)
     if not relative_mgs:
@@ -492,20 +570,58 @@ def apply_relative_mode(
 
         # Relative TCP actions.
         if mg_id in new_tcp and hasattr(state, "pose") and state.pose is not None:
-            current_tcp = list(state.pose.position) + list(state.pose.orientation)
-            new_tcp[mg_id] = [
-                [c + d for c, d in zip(current_tcp, step, strict=True)] for step in new_tcp[mg_id]
-            ]
+            start = [*state.pose.position, *state.pose.orientation]
+            delta = (tcp_deltas or {}).get(mg_id, TcpDelta())
+            new_tcp[mg_id] = compose_tcp_deltas(start, new_tcp[mg_id], delta)
 
     return ActionChunk(
         joints=new_joints,
         tcp=new_tcp,
         ios=chunk.ios,
+        values=chunk.values,
         dt_ms=chunk.dt_ms,
         first_timestamp_ms=chunk.first_timestamp_ms,
         action_timestep=chunk.action_timestep,
         seam_backdate_steps=chunk.seam_backdate_steps,
     )
+
+
+def compose_tcp_deltas(
+    start: list[float], steps: list[list[float]], delta: TcpDelta
+) -> list[list[float]]:
+    """Absolute TCP targets ``[x, y, z, rx, ry, rz]`` (mm, rotation vector) from offsets.
+
+    A rotation offset turns the tool about the TCP: pre-multiplied in world axes,
+    post-multiplied in the tool coordinate system. A rotation vector is not additive, so adding them
+    component-wise would turn a tool-down pose (rotation near pi) the wrong way.
+    """
+    widths = sorted({len(step) for step in steps if len(step) != _TCP_WIDTH})
+    if widths:
+        msg = (
+            f"Relative TCP offsets must be [x, y, z, rx, ry, rz] (6 values), got {widths}: "
+            "declare the policy's rotation representation with orientation_type"
+        )
+        raise ValueError(msg)
+    p0, r0 = np.asarray(start[:3], dtype=float), Rotation.from_rotvec(start[3:6])
+    p, r = p0, r0
+    out: list[list[float]] = []
+    for step in steps:
+        base_p, base_r = (p, r) if delta.accumulate else (p0, r0)
+        dp, rv = np.asarray(step[:3], dtype=float), np.asarray(step[3:6], dtype=float)
+        if delta.use_tool_coordinate_system:
+            p = base_p + base_r.apply(dp)
+            r = cast("Rotation", base_r * Rotation.from_rotvec(rv))
+        else:
+            p = base_p + dp
+            r = cast("Rotation", Rotation.from_rotvec(rv) * base_r)
+        out.append([*p.tolist(), *r.as_rotvec().tolist()])
+    return unwrap_tcp_rotations(out, start[3:6])
+
+
+def is_single_step(chunk: ActionChunk) -> bool:
+    """Whether every motion group of ``chunk`` gets exactly one waypoint."""
+    groups = [steps for steps in (*chunk.joints.values(), *chunk.tcp.values()) if steps]
+    return bool(groups) and all(len(steps) == 1 for steps in groups)
 
 
 @dataclass(frozen=True, slots=True)
@@ -520,6 +636,9 @@ class Placement:
 
     first_timestamp_ms: int | None
     timestamp_offset_steps: int
+    lead: bool = False
+    """A one-step chunk in continuous execution: the session places it ahead of "now" by
+    ``WaypointConfig.max_expected_latency_ms``."""
 
 
 def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:
@@ -536,9 +655,12 @@ def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:
     * Sequential execution — "now", one step ahead.
     * Continuous execution — "now", backdated by ``seam_backdate_steps`` so
       the step matching the robot's current position lands at "now".
+    * Continuous execution of a one-step chunk — ahead of "now" by the session's lead.
     """
     if chunk.first_timestamp_ms >= 0:
         return Placement(chunk.first_timestamp_ms, 0)
     if isinstance(execution, ContinuousExecution):
+        if chunk.seam_backdate_steps == 0 and is_single_step(chunk):
+            return Placement(None, 0, lead=True)
         return Placement(None, -chunk.seam_backdate_steps)
     return Placement(None, 1)

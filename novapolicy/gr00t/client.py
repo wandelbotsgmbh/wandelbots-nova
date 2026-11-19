@@ -10,11 +10,15 @@ ZMQ transport and msgpack serialization live in ``transport.py``.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
+import warnings
 
 import numpy as np
 
+from novapolicy import training_range
 from novapolicy.gr00t.eef import TcpFormat, pose_to_eef
 from novapolicy.gr00t.rtc import (  # ruff: ignore[typing-only-first-party-import]
     RTCConfig,
@@ -24,7 +28,7 @@ from novapolicy.gr00t.rtc import (  # ruff: ignore[typing-only-first-party-impor
     seam_backdate_steps,
 )
 from novapolicy.gr00t.transport import Gr00tZmqTransport, require_dict
-from novapolicy.policy_client import PolicyClient
+from novapolicy.policy_client import DEFAULT_CONTROL_FREQ, PolicyClient
 from novapolicy.types import ActionChunk
 
 logger = logging.getLogger(__name__)
@@ -37,6 +41,7 @@ if TYPE_CHECKING:
     from novapolicy.schema import PolicySchema
 
 _RESPONSE_PAIR_SIZE = 2
+_DEFAULT_LANGUAGE_KEY = "annotation.language.language_instruction"
 _IMAGE_NDIM_SINGLE = 3  # (H, W, C)
 _IMAGE_NDIM_TEMPORAL = 4  # (T, H, W, C)
 _IMAGE_CHANNELS = 3
@@ -69,10 +74,24 @@ class Gr00tPolicyClient(PolicyClient):
         ZMQ send/recv timeout in milliseconds.
     api_token:
         Optional API token for authenticated servers.
+    control_freq:
+        The policy's control frequency in Hz, the rate of its action steps (not the
+        controller's servo rate): the training data's frame rate (``fps`` in the
+        dataset's ``meta/info.json``), or a reinforcement-learning policy's control frequency. Default 30 Hz;
+        GR00T servers do not report it. A ``dt_ms`` in a server's action info still wins.
     dt_ms:
-        Default step spacing if not in action info.
+        Deprecated: pass ``control_freq``.
     tcp_format:
-        TCP pose representation format sent to the server.
+        TCP pose representation format sent to the server, unless the
+        ``Observation.tcp`` declares an ``orientation_type``.
+    statistics:
+        Path to the checkpoint's ``statistics.json``. The first observation is held
+        against its state ranges: a value five times larger than anything in training
+        (a unit mismatch, such as degrees for radians) raises before the robot moves;
+        one merely outside the range warns. The server does not serve the file.
+    embodiment:
+        The embodiment tag in ``statistics.json``; by default the one whose state keys
+        are exactly the server's.
     """
 
     def __init__(
@@ -82,9 +101,12 @@ class Gr00tPolicyClient(PolicyClient):
         port: int = 5555,
         timeout_ms: int = 15000,
         api_token: str | None = None,
-        dt_ms: float = 33.0,
+        control_freq: float | None = None,
+        dt_ms: float | None = None,
         tcp_format: TcpFormat = TcpFormat.ROT6D,
         rtc: RTCConfig | None = None,
+        statistics: str | Path | None = None,
+        embodiment: str | None = None,
     ) -> None:
         self._transport = Gr00tZmqTransport(
             host=host,
@@ -92,9 +114,20 @@ class Gr00tPolicyClient(PolicyClient):
             timeout_ms=timeout_ms,
             api_token=api_token,
         )
-        self._dt_ms = dt_ms
+        self._dt_ms = _step_spacing_ms(control_freq, dt_ms)
         self._tcp_format = tcp_format
+        # The checkpoint's statistics.json, to hold the first observation against
+        self._statistics: dict[str, Any] = (
+            json.loads(Path(statistics).read_text(encoding="utf-8")) if statistics else {}
+        )
+        self._embodiment = embodiment
+        self._state_ranges: dict[str, list[tuple[float, float]]] = {}
+        self._range_checked = False
         self._actual_dof: dict[str, int] = {}
+        # What the server takes, learned in validate_schema (the executor calls it before
+        # the run): the state keys it expects and the key its language instruction goes in.
+        self._server_state_keys: set[str] | None = None
+        self._language_key = _DEFAULT_LANGUAGE_KEY
 
         # RTC (Real-Time Chunking) — client-side state
         self._rtc_config: RTCConfig | None = rtc
@@ -111,6 +144,7 @@ class Gr00tPolicyClient(PolicyClient):
         actions from a previous episode never bleed into the next one.
         """
         self.reset_rtc()
+        self._range_checked = False
         await asyncio.to_thread(self._transport.connect)
 
     async def validate_schema(self, schema: PolicySchema) -> None:
@@ -128,6 +162,18 @@ class Gr00tPolicyClient(PolicyClient):
         schema_state_keys = {m.key for m in schema.joint_mappings}
         schema_state_keys |= {m.key for m in schema.tcp_mappings}
         schema_state_keys |= {m.key for m in schema.obs_io_mappings}
+        schema_state_keys |= {m.key for m in schema.joint_velocity_mappings}
+        schema_state_keys |= {m.key for m in schema.pose_mappings}
+        schema_state_keys |= {k for o in schema.computed_observations for k in o.keys}
+        errors.extend(
+            f"Observation.tcp({tm.key!r}) has a coordinate_system but no orientation_type: "
+            "GR00T's tcp_format applies only to world poses, so declare orientation_type"
+            for tm in schema.tcp_mappings
+            if tm.coordinate_system and tm.orientation_type is None
+        )
+        self._server_state_keys = server_state_keys or None
+        if self._statistics:
+            self._state_ranges = self._ranges_for(server_state_keys)
         missing_state = server_state_keys - schema_state_keys
         if missing_state:
             errors.append(f"Missing state observations: {sorted(missing_state)}")
@@ -141,6 +187,8 @@ class Gr00tPolicyClient(PolicyClient):
 
         # Check language keys
         server_lang_keys = _extract_modality_keys(config, "language")
+        if len(server_lang_keys) == 1:
+            self._language_key = next(iter(server_lang_keys))
         if server_lang_keys:
             has_language = bool(schema.constants.get("language"))
             if not has_language:
@@ -166,6 +214,37 @@ class Gr00tPolicyClient(PolicyClient):
         if value is None:
             self._rtc_state.reset()
 
+    def _ranges_for(self, server_state_keys: set[str]) -> dict[str, list[tuple[float, float]]]:
+        """Per state key, the trained ``(min, max)`` of each dimension, from the embodiment
+        named in ``embodiment`` or the one whose state keys are exactly the server's."""
+        if self._embodiment is not None:
+            if self._embodiment not in self._statistics:
+                msg = f"statistics.json has no embodiment {self._embodiment!r} ({sorted(self._statistics)})"
+                raise ValueError(msg)
+            name = self._embodiment
+        else:
+            matches = [
+                tag
+                for tag, entry in self._statistics.items()
+                if isinstance(entry, dict) and set(entry.get("state", {})) == server_state_keys
+            ]
+            if len(matches) != 1:
+                msg = (
+                    f"statistics.json: {len(matches)} embodiments have exactly the server's "
+                    f"state keys {sorted(server_state_keys)}; pass embodiment= ({sorted(self._statistics)})"
+                )
+                raise ValueError(msg)
+            name = matches[0]
+        ranges: dict[str, list[tuple[float, float]]] = {}
+        for key, stats in self._statistics[name].get("state", {}).items():
+            lows, highs = stats.get("min") or [], stats.get("max") or []
+            ranges[key] = [(float(lo), float(hi)) for lo, hi in zip(lows, highs, strict=False)]
+        return ranges
+
+    def _step_ms(self) -> float:
+        """The step spacing from ``control_freq``."""
+        return self._dt_ms
+
     def reset_rtc(self) -> None:
         """Clear RTC state (call on episode/task boundaries)."""
         self._rtc_state.reset()
@@ -181,6 +260,9 @@ class Gr00tPolicyClient(PolicyClient):
         import time as _time  # ruff: ignore[import-outside-top-level]
 
         groot_obs = await self._build_groot_obs(states, schema, images, io_values)
+        if self._state_ranges and not self._range_checked:
+            self._range_checked = True
+            training_range.check(_bounded_state(groot_obs["state"], self._state_ranges))
 
         # RTC: compute options (overlap/frozen steps) based on latency
         # Server stores the previous action internally — we just send timing params
@@ -192,7 +274,7 @@ class Gr00tPolicyClient(PolicyClient):
                 else 0.0
             )
             options = compute_rtc_options(
-                self._rtc_config, self._rtc_state, latency_estimate, self._dt_ms
+                self._rtc_config, self._rtc_state, latency_estimate, self._step_ms()
             )
 
         t0 = _time.monotonic()
@@ -330,7 +412,13 @@ class Gr00tPolicyClient(PolicyClient):
     ) -> dict[str, Any]:
         """Convert raw robot states → GR00T observation format."""
         state_dict = self._build_state_dict(states, schema, io_values)
+        for key, values in (await schema.velocity_and_pose_values(states)).items():
+            state_dict[key] = _to_state_array(values)
         await self._fill_computed_state(state_dict, schema)
+        if self._server_state_keys is not None:
+            # An observation the model does not take (a TCP pose that only pins the TCP
+            # for relative actions, say) stays out of the request.
+            state_dict = {k: v for k, v in state_dict.items() if k in self._server_state_keys}
         groot_obs: dict[str, Any] = {"state": state_dict}
 
         if images:
@@ -340,9 +428,7 @@ class Gr00tPolicyClient(PolicyClient):
 
         language = schema.constants.get("language", "")
         if language:
-            groot_obs["language"] = {
-                "annotation.language.language_instruction": [[language]],
-            }
+            groot_obs["language"] = {self._language_key: [[language]]}
 
         return groot_obs
 
@@ -370,7 +456,12 @@ class Gr00tPolicyClient(PolicyClient):
         for tm in schema.tcp_mappings:
             s = states.get(tm.source.id)
             if s is not None and hasattr(s, "pose") and s.pose is not None:
-                state_dict[tm.key] = _to_state_array(pose_to_eef(s.pose, self._tcp_format))
+                if tm.orientation_type is None and not tm.coordinate_system:
+                    # GR00T's own default: metres and tcp_format (rot6d unless set).
+                    values = pose_to_eef(s.pose, self._tcp_format)
+                else:  # declared on the schema: the same conversion as every client
+                    values = schema.tcp_observation_values(tm, s)
+                state_dict[tm.key] = _to_state_array(values)
 
         if io_values:
             for iom in schema.obs_io_mappings:
@@ -436,10 +527,20 @@ class Gr00tPolicyClient(PolicyClient):
             if typed_arr is not None:
                 tcp_targets[mg.id] = typed_arr[0].astype(np.float32).tolist()
 
-        _require_some_action(schema, action, decoded=bool(joints or tcp_targets or ios))
+        # Outputs for Action.computed hooks (hardware outside NOVA)
+        values: dict[str, list[list[float]]] = {}
+        for key in schema.computed_action_keys:
+            typed_arr = _action_array(action, key)
+            if typed_arr is not None:
+                values[key] = typed_arr[0].astype(np.float32).tolist()
 
-        dt_ms = float(cast("float", info.get("dt_ms", self._dt_ms)))
-        return ActionChunk(joints=joints, tcp=tcp_targets, ios=ios or None, dt_ms=dt_ms)
+        _require_some_action(schema, action, decoded=bool(joints or tcp_targets or ios or values))
+
+        reported = info.get("dt_ms")
+        dt_ms = float(cast("float", reported)) if reported is not None else self._step_ms()
+        return ActionChunk(
+            joints=joints, tcp=tcp_targets, ios=ios or None, values=values, dt_ms=dt_ms
+        )
 
 
 def _require_some_action(schema: PolicySchema, action: dict[str, object], *, decoded: bool) -> None:
@@ -485,6 +586,39 @@ def _action_array(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _step_spacing_ms(control_freq: float | None, dt_ms: float | None) -> float:
+    if dt_ms is not None:
+        warnings.warn(
+            "Gr00tPolicyClient(dt_ms=...) is deprecated; pass control_freq=",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        if control_freq is None:
+            control_freq = 1000.0 / dt_ms
+    if control_freq is None:
+        control_freq = DEFAULT_CONTROL_FREQ
+    if control_freq <= 0:
+        raise ValueError(f"control_freq must be positive, got {control_freq}")
+    return 1000.0 / control_freq
+
+
+def _bounded_state(
+    state: dict[str, np.ndarray], ranges: dict[str, list[tuple[float, float]]]
+) -> list[tuple[str, float, float, float]]:
+    """``(name, value, low, high)`` per state dimension the statistics bound."""
+    values: list[tuple[str, float, float, float]] = []
+    for key, array in state.items():
+        bounds = ranges.get(key, [])
+        flat = np.asarray(array, dtype=float).reshape(-1)
+        if len(bounds) != flat.size:
+            continue  # width disagrees: the schema check owns that failure
+        values += [
+            (f"{key}[{i}]", float(v), lo, hi)
+            for i, (v, (lo, hi)) in enumerate(zip(flat, bounds, strict=True))
+        ]
+    return values
 
 
 def _to_state_array(values: list[float] | tuple[float, ...]) -> np.ndarray:

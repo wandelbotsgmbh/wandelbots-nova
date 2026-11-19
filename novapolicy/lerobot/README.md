@@ -83,7 +83,7 @@ device. Loading happens while `PolicyExecutor` is in `CONNECTING`, before its ex
 starts.
 
 The server also accepts `--fps`, `--inference_latency`, and `--obs_queue_timeout`. They are not
-required for the basic setup. If you set server `--fps`, keep it aligned with the client's `fps`.
+required for the basic setup. If you set server `--fps`, keep it aligned with the client's `control_freq`.
 
 ### 5. Execute the policy through NOVA
 
@@ -115,7 +115,6 @@ CLIENT_CHECKPOINT_CONFIG = "./my_lerobot_policy/config.json"
 CAMERA_API = "http://<camera-host>:8011/webrtc-streamer"
 CAMERA_DEVICE = "<scene-camera-device-id>"
 FPS = 15.0
-PLAYBACK_SPEED = 1.0
 
 
 async def main() -> None:
@@ -146,8 +145,7 @@ async def main() -> None:
             # The server loads SERVER_CHECKPOINT; the client reads this local
             # copy to derive policy_type, chunking, and the camera frame size.
             config_path=CLIENT_CHECKPOINT_CONFIG,
-            fps=FPS,
-            playback_speed=PLAYBACK_SPEED,
+            control_freq=FPS,  # the dataset's fps
             device="cuda",
         )
         executor = PolicyExecutor(
@@ -189,8 +187,7 @@ policy = LeRobotPolicyClient(
     server_address=LEROBOT_SERVER,
     pretrained_name_or_path=SERVER_CHECKPOINT,
     config_path=CLIENT_CHECKPOINT_CONFIG,
-    fps=FPS,
-    playback_speed=PLAYBACK_SPEED,
+    control_freq=FPS,  # the dataset's fps
     device="cuda",
     use_async_queue=True,
     async_queue_aggregation=AsyncQueueAggregation.AVERAGE,
@@ -199,7 +196,7 @@ policy = LeRobotPolicyClient(
 executor = PolicyExecutor(
     schema,
     policy,
-    execution=ContinuousExecution(rate_hz=FPS * PLAYBACK_SPEED),
+    execution=ContinuousExecution(rate_hz=FPS),
     n_action_steps=0,
     timeout_s=80,
 )
@@ -257,7 +254,7 @@ client = LeRobotPolicyClient(
     "127.0.0.1:8080",
     "lerobot/smolvla_base",
     task="pick up the cube and place it on the marker",
-    fps=10,
+    control_freq=10,
 )
 ```
 
@@ -266,37 +263,29 @@ its `policy_preprocessor.json`, so no list of policy types is involved. `connect
 an instruction-conditioned checkpoint without a task. Checkpoints that need no instruction (ACT,
 diffusion) ignore it.
 
-### `fps`
+### `control_freq`
 
-Control/dataset frequency used by the NOVA client to time returned actions:
-
-```python
-fps = 15  # ActionChunk.dt_ms = 1000 / 15
-```
-
-This should match the policy's intended control rate. This is separate from the LeRobot server's
-optional `--fps` CLI flag. The server flag is used by LeRobot when it creates `TimedAction`
-timestamps; `LeRobotPolicyClient` does not use those timestamps. It decodes the returned action
-tensors into NOVA `ActionChunk`s and sets the chunk `dt_ms` from this client-side `fps`.
-`PolicyExecutor` then uses that `dt_ms` when scheduling the returned chunk.
-
-### `playback_speed`
-
-Explicit physical playback speed relative to the dataset rate:
+The rate returned actions are played at, in steps per second (not how often the policy is asked:
+that is `ContinuousExecution(rate_hz=...)`). LeRobot calls this `fps`: it is the
+dataset's frame rate (`fps` in its `meta/info.json`) and the `fps` of LeRobot's own robot client.
+Pass that value as `control_freq`, the name every novapolicy client uses:
 
 ```python
-playback_speed = 0.75  # execute 25% slower: 15 Hz dataset actions use 88.89 ms intervals
+control_freq = 15  # the dataset's fps; ActionChunk.dt_ms = 1000 / 15
 ```
 
-The dataset frequency remains `fps=15`; only the physical `ActionChunk.dt_ms` is scaled:
+`fps=` still works but warns; it is the deprecated name of `control_freq`. The default is 30.
 
-```text
-dt_ms = 1000 / (fps * playback_speed)
-```
+This is separate from the LeRobot server's optional `--fps` CLI flag. The server flag is used by
+LeRobot when it creates `TimedAction` timestamps; `LeRobotPolicyClient` does not use those
+timestamps. It decodes the returned action tensors into NOVA `ActionChunk`s and sets the chunk
+`dt_ms` from this client-side `control_freq`. `PolicyExecutor` then uses that `dt_ms` when scheduling the
+returned chunk.
 
-Keep this at `1.0` for nominal dataset timing. Values below `1.0` are useful when the NOVA
-best-effort waypoint tracker follows the learned actions more aggressively than the original data
-collection controller.
+### `playback_speed` (deprecated)
+
+`playback_speed` scaled `dt_ms = 1000 / (control_freq * playback_speed)`, which plays the policy at a rate it
+was not trained at. It still works but warns; pass the dataset's `fps` as `control_freq` instead.
 
 ### Checkpoint execution settings
 
@@ -318,8 +307,8 @@ renamed LeRobot policy needs no change in novapolicy.
 A policy that declares no action chunk at all (`action_delta_indices is None`) needs
 `actions_per_chunk` explicitly.
 
-`fps` and `playback_speed` cannot be derived — frame rate is a property of the dataset, not the
-policy — so they stay explicit.
+`control_freq` cannot be derived — the frame rate is a property of the dataset (`fps` in its `meta/info.json`),
+not the policy — so pass it unless the dataset was recorded at the default 30.
 
 Pass any of the derived arguments only to override it. An override that contradicts the checkpoint
 is reported rather than silently accepted: a different `policy_type`, or a chunk length above the
@@ -367,7 +356,7 @@ policy = LeRobotPolicyClient(
     server_address=LEROBOT_SERVER,
     pretrained_name_or_path="/models/my_lerobot_policy",  # read by the server
     config_path="./my_lerobot_policy/config.json",  # read by the client
-    fps=15.0,
+    control_freq=15.0,
 )
 ```
 
@@ -457,7 +446,7 @@ The client normally consumes one action each policy control tick, requests a ref
 previous chunk remains by default, and merges overlapping actions using the selected enum mode.
 Refills use LeRobot's `must_go` flag because the server's default one-radian observation similarity
 tolerance would otherwise defer most ACT inference until queue depletion. Configure `PolicyExecutor` with
-`execution=ContinuousExecution(rate_hz=fps * playback_speed)` and `n_action_steps=0`.
+`execution=ContinuousExecution(rate_hz=control_freq)` and `n_action_steps=0`.
 Continuously replaced chunks do not expose per-chunk endpoint ramps.
 
 NOVA's jogger clock advances independently of the Python control loop. Before consuming an action,
@@ -510,6 +499,11 @@ becomes:
     },
 }
 ```
+
+`observation.state` is filled in a fixed order, whatever order the schema declares: joint
+positions, joint velocities, TCP poses, object poses (`Observation.pose`), IOs, then the keys of
+`Observation.computed` (one value each). The checkpoint matches the values by position, so record
+the dataset in the same order.
 
 Image shape comes from the first camera frame.
 
@@ -587,7 +581,7 @@ readiness/model-loading time is excluded from `timeout_s`.
 - `rename_map` (left empty by this client)
 
 The server does not expose model metadata before setup, which is why the client reads the
-checkpoint itself. Keep `fps` in your deployment configuration next to the checkpoint path, and
+checkpoint itself. Keep `control_freq` (the dataset's `fps`) in your deployment configuration next to the checkpoint path, and
 make sure the client can reach a copy of `config.json` — see
 [Checkpoint execution settings](#checkpoint-execution-settings).
 

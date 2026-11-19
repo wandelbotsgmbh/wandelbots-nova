@@ -15,11 +15,14 @@ jogging interface and servos onto the robot. NOVA handles cameras, robot state, 
 safety, and closing the loop every cycle; the policy only maps observation → action chunk.
 
 That interface is the same whether the policy is an imitation-learning model, a VLA like
-GR00T, or a world model, so any trained model is a swappable module.
+GR00T, a reinforcement-learning policy trained in Isaac Lab, or a world model, so any trained model is a swappable
+module.
 
 ![NOVA assembles an observation, the policy returns an action chunk, NOVA executes it on the robot](docs/images/policy-blackbox.png)
 
 **Robot control lives on the IPC, not on the (potentially remote) GPU server running the policy.**
+A small policy, such as a reinforcement-learning policy exported to ONNX, can also run in-process on the IPC, with no
+GPU server.
 
 ```mermaid
 flowchart LR
@@ -56,6 +59,7 @@ The executor decides **when** to start and **when** to stop, and runs the softwa
 | `novapolicy` | core `PolicyExecutor`, schema, waypoint jogging, WebRTC cameras, custom callback policies | `aiortc`, `Pillow`, `requests` |
 | `novapolicy-gr00t` | NVIDIA GR00T ZeroMQ policy client | core policy deps + `msgpack`, `pyzmq` |
 | `novapolicy-lerobot` | LeRobot async gRPC inference client/server integration | core policy deps + `lerobot[async]` |
+| `novapolicy-leapp` | reinforcement-learning policies exported with LEAPP (Isaac Lab), see [docs/reinforcement-learning.md](docs/reinforcement-learning.md) | core policy deps + `onnxruntime`, `PyYAML`, `safetensors` |
 
 Install exactly one policy-client extra if you know which backend you use:
 
@@ -68,6 +72,9 @@ uv add wandelbots-nova --extra novapolicy-gr00t
 
 # LeRobot async-inference client support
 uv add wandelbots-nova --extra novapolicy-lerobot
+
+# reinforcement-learning policies exported with LEAPP (Isaac Lab)
+uv add wandelbots-nova --extra novapolicy-leapp
 ```
 
 Extras can also be combined, for example when developing or testing multiple policy backends:
@@ -76,16 +83,18 @@ Extras can also be combined, for example when developing or testing multiple pol
 uv add wandelbots-nova --extra novapolicy-gr00t --extra novapolicy-lerobot
 ```
 
-The GR00T and LeRobot clients keep their heavy transport dependencies optional. If a missing-extra
+The GR00T, LeRobot and LEAPP clients keep their heavy dependencies optional. If a missing-extra
 error is raised at runtime, install the matching backend extra above.
 
 ## Quick Start
 
 A local policy callback is an async function wrapped by `CallbackPolicyClient`: observations in, an action chunk out.
+The example is a NOVA program that runs on a virtual UR10e, which NOVA creates before the program
+and deletes after it, so it moves no real robot; set `NOVA_API` to your NOVA instance.
 
 ```python
-import asyncio
-from nova import Nova
+from nova import ProgramContext, ProgramPreconditions, api, program, run_program
+from nova.cell import virtual_controller
 from novapolicy import (
     ActionChunk,
     CallbackPolicyClient,
@@ -96,41 +105,54 @@ from novapolicy import (
 )
 
 
-async def my_policy(obs) -> ActionChunk:
-    """Nudge each joint by a small offset (two steps, 50ms apart)."""
-    arm = [obs[f"arm_{i}"] for i in range(1, 7)]
-    return ActionChunk(
-        joints={"0@ur10e": [[j + 0.01 for j in arm], [j + 0.02 for j in arm]]},
-        dt_ms=50.0,
+@program(
+    preconditions=ProgramPreconditions(
+        controllers=[
+            virtual_controller(
+                name="quickstart-ur10e",
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type="universalrobots-ur10e",
+            )
+        ],
+        cleanup_controllers=True,  # delete the virtual robot when the program ends
     )
+)
+async def quickstart(ctx: ProgramContext):
+    mg = (await ctx.cell.controller("quickstart-ur10e"))[0]
 
-
-async def main():
-    async with Nova() as nova:
-        cell = nova.cell()
-        ctrl = await cell.controller("ur10e")
-        mg = ctrl[0]
-
-        schema = PolicySchema(
-            observations=[
-                Observation.joint_positions("arm", source=mg),
-            ]
+    async def my_policy(obs) -> ActionChunk:
+        """Nudge each joint by a small offset (two steps, 50ms apart)."""
+        arm = [obs[f"arm_{i}"] for i in range(1, 7)]
+        return ActionChunk(
+            joints={mg.id: [[j + 0.01 for j in arm], [j + 0.02 for j in arm]]}, dt_ms=50.0
         )
 
-        executor = PolicyExecutor(
-            schema,
-            CallbackPolicyClient(my_policy),
-            execution=SequentialExecution(),
-            timeout_s=10.0,
-        )
-        result = await executor.run()
-        print(f"Done: {result.reason}, {result.steps} steps, {result.duration_s:.1f}s")
+    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+    executor = PolicyExecutor(
+        schema, CallbackPolicyClient(my_policy), execution=SequentialExecution(), timeout_s=10.0
+    )
+    result = await executor.run()
+    print(f"Done: {result.reason}, {result.steps} steps, {result.duration_s:.1f}s")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    run_program(quickstart)
 ```
 
-Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
+For a robot of your cell, leave out the preconditions and use its controller name. See
+[NOVA programs](../docs/programs.md) for preconditions and running programs.
+
+### Policy clients
+
+| Client | For | The policy runs | Step rate | Execution | Docs |
+| --- | --- | --- | --- | --- | --- |
+| `CallbackPolicyClient(fn)` | your own async Python function | in-process | the chunk's `dt_ms`, or `control_freq=` | sequential or continuous | Quick Start above |
+| `Gr00tPolicyClient(host, port=...)` | an NVIDIA GR00T inference server | on the GR00T server, over ZMQ | `control_freq=`, default 30 Hz | sequential; continuous through `QueuedPolicyClient` or RTC | [docs/gr00t.md](docs/gr00t.md) |
+| `LeRobotPolicyClient(server_address, checkpoint)` | LeRobot policies (ACT, SmolVLA, pi0, ...) | on a LeRobot async-inference server, over gRPC | `control_freq=` = the dataset's `fps`, default 30 Hz | sequential or continuous | [lerobot/README.md](lerobot/README.md) |
+| `NatsPolicyClient(policy_id=..., servers=...)` | a policy service on a NATS broker | in the policy service's container | reported by the service | sequential or continuous | [example](examples/execute_nats_policy_dual_arm.py) |
+| `LeappPolicyClient(export)` | reinforcement-learning policies exported with LEAPP (Isaac Lab) | in-process, with onnxruntime | from the export | `ContinuousExecution(rate_hz=client.control_freq)`, `n_action_steps=0` | [docs/reinforcement-learning.md](docs/reinforcement-learning.md) |
+
+A client given no step rate where it needs one uses 30 Hz. Use `CallbackPolicyClient` to adapt an async callable that maps a feature `dict` to an `ActionChunk`; service integrations implement `PolicyClient` directly. An `ActionChunk` carries one or more future steps per motion group (with `dt_ms`, and an optional `first_timestamp_ms` anchor for overlapping chunks). The executor owns all complexity (motion control, safety, IO streaming, e-stop detection).
 
 ## PolicySchema
 
@@ -163,6 +185,10 @@ This produces observations like:
     "right_gripper": 100.0,   # open
 }
 ```
+
+Observations can also be joint velocities, a TCP pose, the pose of an object or goal (fixed, from a
+detector, or from an Isaac Sim scene), constants and computed values: see the table of all
+observation types in [docs/schema.md](docs/schema.md#observations).
 
 The policy returns an `ActionChunk` keyed by motion-group id. Targets are sent as an `ActionChunkRequest` — joint targets as `JOINTS` waypoints, TCP targets as `POSE` waypoints — and IO values get written to hardware (use `BoolMapping`/`Mapping` on the matching observation so a learned policy's scaled outputs map back to hardware values).
 
@@ -232,8 +258,33 @@ send back.
 The inversion happens in the executor, **before** relative targets resolve: a delta in degrees
 added to a state in radians is exactly the error this exists to prevent.
 
-> Rotation-representation conversion — rotation vector to quaternion or Euler — is out of scope.
-> These operators are element-wise scalars.
+These operators are element-wise scalars. Rotation representation and coordinate system are
+declared separately, below.
+
+### Rotation representation and coordinate systems
+
+NOVA reports TCP poses as `[x, y, z, rx, ry, rz]` (mm, rotation vector) in the controller's world.
+A policy trained on another rotation representation or another frame declares it on the TCP entry,
+with NOVA's own terms; the conversion is then the same for every policy client, on the observation
+and on the action:
+
+```python
+from novapolicy import Action, Observation, OrientationType
+
+Observation.tcp(
+    "eef",
+    source=mg,
+    orientation_type=OrientationType.QUATERNION,  # eef_qx, eef_qy, eef_qz, eef_qw
+    coordinate_system="table",  # a coordinate system of the controller
+)
+Action.tcp("eef", target=mg, orientation_type=OrientationType.QUATERNION, coordinate_system="table")
+```
+
+`orientation_type` takes any of NOVA's `OrientationType` values: rotation vector, quaternion
+`[x, y, z, w]` or one of the intrinsic/extrinsic Euler conventions (named `_e1.._e3`). Element-wise
+operators on quaternion components are rejected. `coordinate_system` expresses poses, and relative
+offsets, in that coordinate system (references are followed to the world); the executor fetches them
+at start, and `await schema.load_coordinate_systems()` does it for a dry run.
 
 ### Checking units against the checkpoint
 
@@ -245,14 +296,17 @@ checkpoint's normalization statistics (`policy_preprocessor.json` and its safete
   what a unit mismatch looks like; a pose does not land there.
 - **Somewhat outside** warns. Starting from a pose the demonstrations never visited is normal.
 
-A checkpoint shipped as `config.json` alone simply skips the check. One asymmetry worth knowing:
+A checkpoint shipped as `config.json` alone simply skips the check. GR00T servers do not serve their
+statistics, so pass the checkpoint's `statistics.json` to the client for the same check:
+`Gr00tPolicyClient(..., statistics="checkpoint/statistics.json")` (the embodiment whose state keys
+match the server's is used, or name it with `embodiment=`). One asymmetry worth knowing:
 bounds catch values that are too *large* for the training range — degrees where radians were
 expected. The reverse sits comfortably inside a degree range and cannot be caught this way.
 
 ### Stale inputs
 
-A camera can freeze and a policy service can hang. Both mean the same thing to the executor —
-the data needed for this tick did not arrive — and what happens next is declared, not implicit.
+A camera can freeze and a policy service can hang. Both mean the same thing to the executor — the data needed for this tick did not arrive — and what happens next
+is declared, not implicit.
 
 Freshness is declared per channel; the response is declared once, because one policy drives the
 whole cell and holding one arm while aborting another is incoherent.
@@ -333,7 +387,9 @@ result = await executor.run()
 
 Stop conditions must be fast (no network calls). Use `Observation.computed()` for async data.
 
-> These are **software** stop conditions running in the executor loop, not a safety system. The robot can still move fast and a stop condition has no notion of its braking distance. For production, rely on the safety zones and protective stops configured on the robot controller.
+Limits for moves NOVA plans, such as the move to the start pose, are `MotionSettings`, as everywhere
+in NOVA. Streamed policy steps run within the controller's own limits; for production, rely on the
+safety zones and protective stops configured on the robot controller.
 
 ## Teleoperation
 
@@ -348,15 +404,20 @@ arm, keyboard, gamepad, spacemouse) in your own script. See
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [docs/jogging.md](docs/jogging.md)   | Standalone jogging: `jog_joints` / `jog_tcp`, joint/TCP modes, chunked targets, dual-arm, and error handling                                                           |
 | [docs/executor.md](docs/executor.md) | Advanced: explicit sequential/continuous execution modes, asynchronous inference, RTC, and the client/server timestamp protocol                                |
-| [docs/schema.md](docs/schema.md)     | Advanced schema: IO mappings, relative actions, TCP actions, computed observations/actions                                                                             |
-| [docs/gr00t.md](docs/gr00t.md)       | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ (and [docs/rtc.md](docs/rtc.md) for real-time chunking) |
+| [docs/schema.md](docs/schema.md)     | Every observation type at a glance, then IO mappings, units, relative and TCP actions, object poses (incl. Isaac Sim prims), computed observations/actions                    |
+| [docs/gr00t.md](docs/gr00t.md)       | `Gr00tPolicyClient` for [NVIDIA Isaac GR00T](https://github.com/NVIDIA/Isaac-GR00T) inference servers over ZMQ, and setting up a GR00T policy on a real robot (what the actions mean, checking the cell, run script, execution mode, limits); [docs/rtc.md](docs/rtc.md) for real-time chunking |
 | [lerobot/README.md](lerobot/README.md) | LeRobot async inference, checkpoint-derived `chunk_size` / `n_action_steps`, and remote-checkpoint configuration                                                        |
+| [docs/reinforcement-learning.md](docs/reinforcement-learning.md)             | Run a trained reinforcement-learning policy (Isaac Lab / LEAPP export): mapping its inputs and outputs to a schema, goal and command inputs, checks before a real run |
 | [docs/rerun.md](docs/rerun.md)       | Optional real-time 3D visualization of execution                                                                                                                       |
+| [docs/migration.md](docs/migration.md) | Changes that need an edit when upgrading                                                                                                                             |
 
 ### Examples
 
 ▶ [`execute_custom_policy_on_dual_arm.py`](examples/execute_custom_policy_on_dual_arm.py): two UR5e robots with cameras, IOs, and stop conditions\
 ▶ [`execute_gr00t_dual_arm.py`](examples/execute_gr00t_dual_arm.py): dual arm with GR00T ZMQ + 4 cameras\
+▶ [`execute_gr00t_single_arm_pick_and_place/`](examples/execute_gr00t_single_arm_pick_and_place/): an IsaacLab-trained GR00T pick-and-place on a real UR10e with a Zimmer gripper, plus a training-episode replay\
+▶ [`execute_isaaclab_rl_reach/`](examples/execute_isaaclab_rl_reach/): an Isaac Lab reinforcement-learning reach policy (LEAPP export) on a UR10e at 60 Hz, one action per step, with `LeappPolicyClient`\
+▶ [`execute_leapp_two_point_reach/`](examples/execute_leapp_two_point_reach/): a trained reinforcement-learning policy (LEAPP export) that moves a UR10e to a part detected at one of two points\
 ▶ [`jogging/`](examples/jogging/): standalone jogging (single/dual arm, joint/TCP, chunked), no policy\
 ▶ [`pick_and_place_umi_ur10e.py`](examples/pick_and_place_umi_ur10e.py): the same pick-and-place the choreo3 checkpoints learn, written out by hand — a way to prove a cell before a policy runs on it
 

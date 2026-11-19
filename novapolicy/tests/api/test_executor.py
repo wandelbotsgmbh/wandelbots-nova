@@ -13,6 +13,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 import math
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -22,6 +23,7 @@ import pytest
 from novapolicy.executor import Phase, PolicyExecutor
 from novapolicy.ops import Rad2Deg
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
+from novapolicy.queued_client import QueuedPolicyClient
 from novapolicy.schema import Action, Observation, ObservationEntry, PolicySchema
 from novapolicy.types import (
     ActionChunk,
@@ -107,6 +109,9 @@ class _TestPolicy(CallbackPolicyClient):
         return self._rtc
 
 
+_SLOW_SETUP_S = 1.0
+
+
 class _SlowSetupPolicy(PolicyClient):
     def __init__(self) -> None:
         self.prepare_calls = 0
@@ -128,7 +133,7 @@ class _SlowSetupPolicy(PolicyClient):
     ) -> None:
         self.prepare_calls += 1
         self.phase_during_prepare = self.executor.phase if self.executor is not None else None
-        await asyncio.sleep(0.25)
+        await asyncio.sleep(_SLOW_SETUP_S)
 
     async def get_actions(
         self,
@@ -431,6 +436,36 @@ async def test_continuous_mode_does_not_bridge_chunks(robot: _Robot):
     assert first_send["steps"] == [[3.0] * 6, [4.0] * 6, [5.0] * 6]
 
 
+@pytest.mark.parametrize(
+    ("steps", "lead"),
+    [
+        ([[3.0] * 6], True),  # one step per inference: placed ahead, no braking hold
+        ([[3.0] * 6, [4.0] * 6], False),  # a chunk: at now, padded as before
+    ],
+)
+@pytest.mark.asyncio
+async def test_continuous_one_step_chunks_are_sent_ahead_without_a_hold(
+    robot: _Robot, steps: list[list[float]], lead: bool
+):
+    executor: PolicyExecutor
+
+    async def policy(_obs: object) -> ActionChunk:
+        executor.stop()
+        return ActionChunk(joints={MG_ID: steps}, dt_ms=1000 / 30)
+
+    executor = PolicyExecutor(
+        _schema(), _callback(policy), timeout_s=1.0, execution=ContinuousExecution()
+    )
+    await executor.run()
+
+    first_send = robot.session.update_chunk.call_args_list[0].kwargs
+    assert first_send["lead"] is lead
+    assert first_send["extend_buffer"] is not lead
+    # A one-step target is dated by the observation it was computed from.
+    expected = robot.session.current_state_server_ms if lead else None
+    assert first_send["observed_at_ms"] == expected
+
+
 @pytest.mark.asyncio
 async def test_continuous_async_queue_policy_requests_a_measured_state_bridge(robot: _Robot):
     """Async ACT lookahead connects to the robot even though its executor rate is continuous."""
@@ -658,7 +693,8 @@ async def test_policy_prepare_time_does_not_count_towards_execution_timeout(robo
     assert policy.phase_during_prepare == Phase.CONNECTING
     assert result.reason == "timeout"
     assert result.steps > 0
-    assert result.duration_s < 0.2
+    # Far below the setup time, which would count otherwise; loose enough for a busy CI runner.
+    assert result.duration_s < _SLOW_SETUP_S / 2
 
 
 # ---------------------------------------------------------------------------
@@ -843,6 +879,68 @@ async def test_send_routes_joint_and_tcp_targets_to_their_own_sessions():
     assert tcp_session.update_chunk.call_args.kwargs["steps"] == [
         [500.0, 200.0, 300.0, 0.0, 3.14, 0.0]
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_resolved_chunk_is_sent_without_resolving_it_again():
+    """A queued client's chunk is already absolute; relative mode must not apply twice."""
+    eef = _mg("0@ur5e-right")
+    schema = PolicySchema(
+        observations=[Observation.tcp("eef", source=eef)],
+        actions=[Action.tcp("eef", target=eef, mode="relative")],
+    )
+    target = [500.0, 200.0, 300.0, 0.0, 3.14, 0.0]
+
+    async def resolved_policy(_obs: object) -> ActionChunk:
+        return ActionChunk(tcp={eef.id: [target]}, dt_ms=33.0, resolved=True)
+
+    session = _fake_session()
+    session.motion_group_id = eef.id
+    session.current_state.pose = SimpleNamespace(
+        position=[400.0, 200.0, 300.0], orientation=[0.0, 3.14, 0.0]
+    )
+    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+    with (
+        patch("novapolicy.executor.WaypointJoggingSession", return_value=session),
+        patch("novapolicy.executor.EstopMonitor", return_value=estop),
+    ):
+        await PolicyExecutor(schema, _callback(resolved_policy), timeout_s=0.05).run()
+    assert session.update_chunk.call_args.kwargs["steps"][-1] == target
+
+
+@pytest.mark.asyncio
+async def test_a_queued_client_runs_continuously_on_the_timestep_timeline(robot: _Robot):
+    """QueuedPolicyClient through the executor: the chunk is resolved once, not twice.
+
+    The fake session's clock does not advance, so the run stays at its first chunk;
+    merging across replacements is covered by test_queued_client.py.
+    """
+    eef = _mg(MG_ID)
+    schema = PolicySchema(
+        observations=[Observation.tcp("eef", source=eef)],
+        actions=[Action.tcp("eef", target=eef, mode="relative", accumulate=True)],
+    )
+    robot.session.current_state.pose = SimpleNamespace(
+        position=[400.0, 200.0, 300.0], orientation=[0.0, 3.14, 0.0]
+    )
+
+    async def creep(_obs: object) -> ActionChunk:
+        await asyncio.sleep(0.01)
+        return ActionChunk(tcp={MG_ID: [[0.5, 0.0, 0.0, 0.0, 0.0, 0.0]] * 16}, dt_ms=33.0)
+
+    result = await PolicyExecutor(
+        schema,
+        QueuedPolicyClient(_callback(creep)),
+        timeout_s=0.3,
+        execution=ContinuousExecution(),
+        n_action_steps=0,
+    ).run()
+
+    assert result.reason == "timeout"
+    calls = robot.session.update_chunk.call_args_list
+    assert calls
+    xs = [step[0] for step in calls[0].kwargs["steps"]]
+    assert all(399.0 < x < 410.0 for x in xs)  # absolute, resolved once from 400 mm
 
 
 # ---------------------------------------------------------------------------
@@ -1279,3 +1377,24 @@ async def test_a_policy_answer_without_motion_is_logged_once(
     errors = [r for r in caplog.records if "no motion for any motion group" in r.getMessage()]
     assert len(errors) == 1
     assert "arm" in errors[0].getMessage()
+
+
+@pytest.mark.asyncio
+async def test_the_start_move_keeps_the_cells_collision_setups():
+    """Regression: the start move used to clear the collision setups and plan without them."""
+    mg = MagicMock()
+    setup = SimpleNamespace(collision_setups={"cell": object()})
+    mg.active_tcp_name = AsyncMock(return_value="Flange")
+    mg.get_setup = AsyncMock(return_value=setup)
+    mg.plan = AsyncMock(return_value="trajectory")
+    mg.execute = AsyncMock()
+    collision = setup.collision_setups["cell"]
+
+    async def policy(_obs: object) -> ActionChunk:
+        return ActionChunk(joints={MG_ID: [[0.0] * 6]}, dt_ms=10.0)
+
+    executor = PolicyExecutor(_schema(), _callback(policy), start_joint_position={mg: [0.1] * 6})
+    await executor._move_to_start_joint_position()
+
+    assert mg.plan.await_args.kwargs["motion_group_setup"] is setup
+    assert setup.collision_setups == {"cell": collision}

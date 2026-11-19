@@ -46,7 +46,9 @@ class _GreyCamera:
 @pytest.mark.asyncio
 async def test_every_action_the_server_serves_decodes() -> None:
     client = Gr00tPolicyClient(
-        host=os.environ["GR00T_HOST"], port=int(os.getenv("GR00T_PORT", "30555")), dt_ms=130.0
+        host=os.environ["GR00T_HOST"],
+        port=int(os.getenv("GR00T_PORT", "30555")),
+        control_freq=1000.0 / 130.0,
     )
     try:
         info = await client.get_server_info()

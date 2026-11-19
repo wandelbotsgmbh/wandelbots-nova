@@ -64,6 +64,11 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     :meth:`PolicySchema.apply_inverse_ops` before they reach the robot.
     """
 
+    values: dict[str, list[list[float]]] = pydantic.Field(default_factory=dict)
+    """Policy outputs for the keys ``Action.computed(..., keys=[...])`` hooks consume, one row
+    per step: actuators outside NOVA, such as a gripper on its own bus. Every policy client
+    fills it the same way, so a hook reads ``chunk.values[key]`` whatever the policy."""
+
     dt_ms: float = 0.0
     """Time spacing between steps in milliseconds. 0 = single-step."""
 
@@ -107,6 +112,11 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     chunk that corresponds to where the robot currently is. (This equals the RTC
     frozen-step count only when overlap is unclamped, hence the field name.)
     0 = no RTC / no backdate."""
+
+    resolved: bool = False
+    """The targets are already in NOVA units and absolute (the schema's operators and
+    relative modes applied), as :class:`~novapolicy.queued_client.QueuedPolicyClient`
+    returns them; the executor sends them as they are."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +239,18 @@ class WaypointConfig:
     live path with no timeline to lay waypoints on.
     """
 
+    max_expected_latency_ms: float = 100.0
+    """How far ahead of server "now" a one-step chunk's waypoint goes in continuous execution.
+
+    Each one-step chunk replaces the queued waypoint, so the controller heads for the newest one
+    and needs it far enough ahead to plan a smooth approach: about 67 ms, plus the network round
+    trip. Set it for the worst latency of the deployment, as MoveIt Servo's
+    ``max_expected_latency`` (default 0.1 s) does: 100 ms fits a policy running on the NOVA
+    instance; over a remote network raise it. The arm then follows the policy by this much.
+    When acknowledgements show the waypoints arriving too late for it, the session stops with a
+    ``MotionError`` instead of letting the motion degrade.
+    """
+
     delay_until_braking_ms: int | None = None
     """How long the robot keeps its velocity after a chunk's last waypoint before braking.
 
@@ -248,6 +270,8 @@ class WaypointConfig:
     """
 
     def __post_init__(self) -> None:
+        if self.max_expected_latency_ms <= 0:
+            raise ValueError("max_expected_latency_ms must be positive")
         if self.delay_until_braking_ms is not None and self.delay_until_braking_ms < 0:
             raise ValueError("delay_until_braking_ms must be non-negative")
         if not math.isfinite(self.single_step_dt_ms) or self.single_step_dt_ms <= 0:

@@ -221,6 +221,6 @@ def test_zero_window_keeps_the_chunk_path() -> None:
     assert executor._buffer_window_ms == 0.0
     _send_one(executor, session)
     assert session.sent, "the chunk path still sends"
-    # The chunk path leaves extend_buffer at its default, so the hold padding
-    # still applies there; only the buffered mode opts out.
-    assert "extend_buffer" not in session.sent[0]
+    # The hold padding still applies on the chunk path; only the buffered mode and
+    # one-step chunks in continuous execution opt out.
+    assert session.sent[0].get("extend_buffer", True) is True

@@ -134,8 +134,6 @@ class PolicyRerunLogger:
         self._start_wall: datetime | None = None
         self._tcp_trail: dict[str, list[list[float]]] = {}  # mg_id -> [[x,y,z], ...]
         self._tcp_target_trail: dict[str, list[list[float]]] = {}
-        self._plant_tcp_trail: dict[str, list[list[float]]] = {}
-        self._setpoint_tcp_trail: dict[str, list[list[float]]] = {}
         self._max_trail_points = 500
         self._streamer: StateStreamer | None = None
         self._last_robot_state_at: dict[str, float] = {}
@@ -516,30 +514,6 @@ class PolicyRerunLogger:
         except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.debug("log_observation error: %s", e)
 
-    def log_plant_observation(self, states: dict[str, RobotState], step: int) -> None:
-        """Log what the policy observed from a virtual plant, beside the robot.
-
-        The robot's own joints, mesh and TCP trail stay with the state streamer;
-        see :mod:`novapolicy.rerun.plant`.
-        """
-        if not self._initialized or self._recording is None:
-            return
-        try:
-            from novapolicy.rerun.plant import log_plant_observation
-
-            log_plant_observation(
-                states,
-                step,
-                start_time=self._start_time,
-                dh_robots=self._dh_robots,
-                tcp_offsets=self._tcp_offsets,
-                tcp_trail=self._plant_tcp_trail,
-                max_trail_points=self._max_trail_points,
-                recording=self._recording,
-            )
-        except (OSError, RuntimeError, ValueError, TypeError) as e:
-            logger.debug("log_plant_observation error: %s", e)
-
     def log_bridge_chunk(self, chunk: ActionChunk, step: int) -> None:
         """Log an interpolated connector in Nova Violet."""
         if not self._initialized or self._recording is None:
@@ -683,53 +657,6 @@ class PolicyRerunLogger:
             streamer.log_state(mg_id, state)
 
         self._defer(write, at=at)
-
-    def log_plant_tracking(
-        self,
-        setpoints: ActionChunk,
-        plant_states: dict[str, RobotState],
-        robot_states: dict[str, RobotState],
-        step: int,
-    ) -> None:
-        """Track the robot against the plant it follows, and show the setpoint.
-
-        The plant is the target of the tracking plots; its own TCP trail already
-        draws that path, so no second trail is drawn for it. The policy's raw
-        setpoint gets its own entities; see :mod:`novapolicy.rerun.plant`.
-        """
-        if not self._initialized or self._recording is None:
-            return
-        recording = self._recording
-        for mg_id, plant in plant_states.items():
-            robot = robot_states.get(mg_id)
-            if robot is None:
-                continue
-            self.log_joint_tracking(mg_id, list(plant.joints), robot, step, trail=False)
-            steps = setpoints.joints.get(mg_id)
-            if not steps:
-                continue
-            trail = self._setpoint_tcp_trail.setdefault(mg_id, [])
-
-            def write(
-                mg_id: str = mg_id,
-                setpoint: tuple[float, ...] = tuple(steps[0]),
-                trail: list[list[float]] = trail,
-            ) -> None:
-                from novapolicy.rerun.plant import log_plant_setpoint
-
-                log_plant_setpoint(
-                    mg_id,
-                    list(setpoint),
-                    step,
-                    start_time=self._start_time,
-                    dh_robot=self._dh_robots.get(mg_id),
-                    tcp_offset=self._tcp_offsets.get(mg_id),
-                    trail=trail,
-                    max_trail_points=self._max_trail_points,
-                    recording=recording,
-                )
-
-            self._defer(write)
 
     def log_tcp_tracking(
         self,

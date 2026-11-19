@@ -10,9 +10,11 @@ non-operational safety state and stays clear on operational ones, and the
 from __future__ import annotations
 
 import asyncio
+import logging
 import types
 from unittest.mock import MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from nova import api
@@ -120,6 +122,71 @@ async def test_monitor_fires_on_non_operational_state():
     assert monitor.error.safety_state == "SAFETY_STATE_PROTECTIVE_STOP"
 
 
+class _UnparseableThenStates(_FakeStream):
+    """First stream raises a ValidationError (as the SDK does on an unknown enum value)."""
+
+    calls = 0
+
+    async def __anext__(self) -> object:
+        _UnparseableThenStates.calls += 1
+        if _UnparseableThenStates.calls == 1:
+            raise _validation_error()
+        return await super().__anext__()
+
+
+def _validation_error() -> Exception:
+    try:
+        api.models.RobotControllerState.model_validate({"mode": "MODE_UNDEFINED"})
+    except ValidationError as e:
+        return e
+    raise AssertionError("expected a ValidationError")
+
+
+@pytest.mark.asyncio
+async def test_monitor_keeps_watching_after_an_unparseable_state():
+    """Regression: an unknown mode (MODE_UNDEFINED) once switched the monitor off for the run."""
+    _UnparseableThenStates.calls = 0
+    estop = types.SimpleNamespace(safety_state=_SafetyState.SAFETY_STATE_ROBOT_EMERGENCY_STOP)
+    gateway = MagicMock()
+    gateway.controller_api.stream_robot_controller_state = lambda **_kw: _UnparseableThenStates([
+        estop
+    ])
+    monitor = _patched_monitor([])
+    with patch("novapolicy.estop.get_api_gateway", lambda _mg: gateway):
+        await _run_monitor_until(monitor)
+    assert isinstance(monitor.error, EmergencyStopError)
+    assert monitor.error.safety_state == "SAFETY_STATE_ROBOT_EMERGENCY_STOP"
+
+
+class _UnparseableTimesThenStates(_FakeStream):
+    unparseable = 3
+
+    async def __anext__(self) -> object:
+        if _UnparseableTimesThenStates.unparseable > 0:
+            _UnparseableTimesThenStates.unparseable -= 1
+            raise _validation_error()
+        return await super().__anext__()
+
+
+@pytest.mark.asyncio
+async def test_a_streak_of_unparseable_states_is_logged_once_and_its_end_too(caplog):
+    _UnparseableTimesThenStates.unparseable = 3
+    estop = types.SimpleNamespace(safety_state=_SafetyState.SAFETY_STATE_ROBOT_EMERGENCY_STOP)
+    gateway = MagicMock()
+    gateway.controller_api.stream_robot_controller_state = lambda **_kw: (
+        _UnparseableTimesThenStates([estop])
+    )
+    monitor = _patched_monitor([])
+    with (
+        caplog.at_level(logging.INFO),
+        patch("novapolicy.estop.get_api_gateway", lambda _mg: gateway),
+    ):
+        await _run_monitor_until(monitor)
+    assert isinstance(monitor.error, EmergencyStopError)
+    assert sum("unparseable controller state" in r.message for r in caplog.records) == 1
+    assert sum("reads controller states again" in r.message for r in caplog.records) == 1
+
+
 @pytest.mark.asyncio
 async def test_monitor_stays_clear_on_operational_states():
     """NORMAL and REDUCED are operational — the monitor never fires."""
@@ -130,3 +197,50 @@ async def test_monitor_stays_clear_on_operational_states():
     monitor = _patched_monitor(states)
     await _run_monitor_until(monitor, timeout_s=0.2)
     assert monitor.error is None
+
+
+class _DroppingThenStates(_FakeStream):
+    """The first stream drops with a connection error; later ones deliver states."""
+
+    drops = 1
+
+    async def __anext__(self) -> object:
+        if _DroppingThenStates.drops > 0:
+            _DroppingThenStates.drops -= 1
+            raise OSError("connection reset")
+        return await super().__anext__()
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_connection_is_reopened_and_an_estop_still_detected():
+    _DroppingThenStates.drops = 1
+    estop = types.SimpleNamespace(safety_state=_SafetyState.SAFETY_STATE_ROBOT_EMERGENCY_STOP)
+    gateway = MagicMock()
+    gateway.controller_api.stream_robot_controller_state = lambda **_kw: _DroppingThenStates([
+        estop
+    ])
+    monitor = _patched_monitor([])
+    with patch("novapolicy.estop.get_api_gateway", lambda _mg: gateway):
+        await _run_monitor_until(monitor)
+    assert isinstance(monitor.error, EmergencyStopError)
+    assert monitor.error.safety_state == "SAFETY_STATE_ROBOT_EMERGENCY_STOP"
+
+
+class _AlwaysDropping(_FakeStream):
+    async def __anext__(self) -> object:
+        raise OSError("no route to host")
+
+
+@pytest.mark.asyncio
+async def test_a_monitor_that_reads_no_state_stops_the_run():
+    """Regression: a connection error used to end the monitor and leave the run unmonitored."""
+    gateway = MagicMock()
+    gateway.controller_api.stream_robot_controller_state = lambda **_kw: _AlwaysDropping([])
+    monitor = _patched_monitor([])
+    with (
+        patch("novapolicy.estop.get_api_gateway", lambda _mg: gateway),
+        patch("novapolicy.estop._BLIND_LIMIT_S", 0.2),
+    ):
+        await _run_monitor_until(monitor, timeout_s=2.0)
+    assert isinstance(monitor.error, EmergencyStopError)
+    assert monitor.error.safety_state == "E-STOP MONITOR BLIND"

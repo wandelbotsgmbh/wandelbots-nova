@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import itertools
 import logging
+import time
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
@@ -282,6 +284,153 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
 
 
 @pytest.mark.asyncio
+async def test_a_lead_chunk_goes_ahead_of_now_by_the_configured_latency():
+    """A one-step chunk is stamped at send time: server now plus max_expected_latency_ms."""
+    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        with now as estimated:
+            estimated.return_value = 1_000
+            session.update_chunk(steps=[[0.0] * 6], dt_ms=1000 / 30, lead=True)
+            await _wait_until(lambda: len(server.requests) >= 2)
+
+        sent = _inner(server.requests[1]).waypoints
+        assert [w.timestamp for w in sent] == [1_000 + 100]  # max_expected_latency_ms
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_lead_chunk_is_due_a_fixed_time_after_its_observation():
+    """Stamped from the observation, not the send: position and time stay consistent."""
+    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        with now as estimated:
+            estimated.return_value = 1_040  # the observed state is 40 ms old at send
+            session.update_chunk(
+                steps=[[0.0] * 6], dt_ms=1000 / 30, lead=True, observed_at_ms=1_000
+            )
+            await _wait_until(lambda: len(server.requests) >= 2)
+
+        sent = _inner(server.requests[1]).waypoints
+        assert [w.timestamp for w in sent] == [1_000 + 100]
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due():
+    """A rolling window: a new chunk would otherwise delete the waypoints queued before it."""
+    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        with now as estimated:
+            estimated.return_value = 1_000
+            for k, observed in enumerate((1_000, 1_033, 1_066)):
+                session.update_chunk(
+                    steps=[[float(k)] * 6], dt_ms=1000 / 30, lead=True, observed_at_ms=observed
+                )
+                await _wait_until(lambda k=k: len(server.requests) >= 2 + k)
+            estimated.return_value = 1_120
+            session.update_chunk(
+                steps=[[3.0] * 6], dt_ms=1000 / 30, lead=True, observed_at_ms=1_100
+            )
+            await _wait_until(lambda: len(server.requests) >= 5)
+
+        third = _inner(server.requests[3]).waypoints
+        assert [w.timestamp for w in third] == [1_100, 1_133, 1_166]
+        assert [_joints(w)[0] for w in third] == [0.0, 1.0, 2.0]
+        fourth = _inner(server.requests[4]).waypoints
+        # due within MIN_LEAD_MS of now (1100, 1133): left out
+        assert [w.timestamp for w in fourth] == [1_166, 1_200]
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+def test_the_lead_left_on_arrival_is_recorded_for_one_step_chunks(caplog):
+    session, _server = _build_session(config=WaypointConfig(max_expected_latency_ms=100))
+    try:
+        assert session.lead_left_ms is None
+        session._check_round_trip((500.0, False))  # a chunk of several steps: not a lead
+        assert session.lead_left_ms is None
+        session._check_round_trip((30.0, True))
+        session._check_round_trip((45.0, True))
+        assert session.lead_left_ms == pytest.approx(55.0)
+        with caplog.at_level(logging.INFO):
+            session._log_lead_summary()
+        assert any("55 ms at worst" in r.message for r in caplog.records)
+    finally:
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+def test_one_step_waypoints_are_spaced_by_the_policy_step_despite_bursty_observations():
+    """Observations dated 0 to 60 ms apart must not become speed jumps: the playback clock
+    keeps one step between waypoints and follows the observations slowly."""
+    session, _server = _build_session(config=WaypointConfig(max_expected_latency_ms=150))
+    step = 1000 / 30
+    try:
+        observed = [1_000.0, 1_008.0, 1_070.0, 1_100.0, 1_105.0, 1_170.0, 1_200.0, 1_233.0]
+        due = [session._playback.due_ms(t + 150, step, earliest_ms=0) for t in observed]
+        spacing = [b - a for a, b in itertools.pairwise(due)]
+        assert max(spacing) - min(spacing) < 0.3 * step  # observations jumped by 0 to 62 ms
+        assert all(0.85 * step < gap < 1.2 * step for gap in spacing)
+        assert abs(due[-1] - (observed[-1] + 150)) < 25  # it still follows the observations
+        # A stall: the next observation is 400 ms later; the clock starts again from it.
+        assert session._playback.due_ms(1_633 + 150, step, earliest_ms=0) == 1_633 + 150
+        # An observation dated far earlier never moves the clock backwards.
+        assert session._playback.due_ms(1_200 + 150, step, earliest_ms=0) > 1_633 + 150
+        # Observations too old to leave the controller its margin: the waypoint goes at the
+        # earliest plannable time, and the clock keeps real time instead of falling behind.
+        due = [session._playback.due_ms(1_800 + k * step, step, 2_200 + k * step) for k in range(5)]
+        assert all(d >= 2_200 + k * step for k, d in enumerate(due))
+        assert all(0.5 * step < b - a < 1.5 * step for a, b in itertools.pairwise(due))
+    finally:
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+def test_one_step_waypoints_that_keep_arriving_too_late_stop_the_session():
+    """A spike passes; a run of late waypoints is a network that no longer fits the latency."""
+    session, _server = _build_session(config=WaypointConfig(max_expected_latency_ms=100))
+    try:
+        late, on_time = (40.0, True), (20.0, True)  # 100 ms lead leaves 33 ms of network
+        for _ in range(4):
+            session._check_round_trip(late)
+        session._check_round_trip(on_time)  # the run of late ones is broken
+        session._check_round_trip((500.0, False))  # chunks of several steps are not judged
+        for _ in range(4):
+            session._check_round_trip(late)
+        with pytest.raises(MotionError, match=r"over budget.*max_expected_latency_ms=100"):
+            session._check_round_trip(late)
+    finally:
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
 async def test_the_configured_delay_until_braking_goes_out_with_every_chunk():
     session, server = _build_session(
         config=WaypointConfig(min_chunk_horizon_ms=0, delay_until_braking_ms=200)
@@ -527,6 +676,23 @@ async def test_a_motion_error_response_surfaces_as_a_failure():
     finally:
         server.stop()
         await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_stop_condition_during_startup_ends_waiting_instead_of_timing_out():
+    """A stop condition can end the session before it is ready (e.g. a part detected where
+    the policy cannot go); waiting must end normally so the run reports the condition."""
+    session, server = _build_session()
+    try:
+        session._stop_condition = "part_outside_trained_positions"
+        started = time.monotonic()
+        await session.wait_ready(timeout_s=2.0)
+        assert time.monotonic() - started < 0.5
+        assert session.stop_condition_triggered == "part_outside_trained_positions"
+    finally:
+        server.stop()
         for p in session._test_patches:  # type: ignore[attr-defined]
             p.stop()
 

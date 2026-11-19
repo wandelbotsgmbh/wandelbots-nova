@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from nova.types import Pose
 from novapolicy.nats.client import ACTION_KEY, PROPRIO_KEY, NatsPolicyClient
 from novapolicy.nats.protocol import (
     ActionSpec,
@@ -22,7 +23,8 @@ from novapolicy.nats.protocol import (
     PredictResponse,
     decode,
 )
-from novapolicy.schema import Observation, PolicySchema
+from novapolicy.schema import Action, Observation, PolicySchema
+from novapolicy.types import ActionChunk
 
 DOF = 6
 MG_ID = "0@ur10e"
@@ -421,3 +423,56 @@ async def test_validate_schema_rejects_a_wrongly_bound_motion_group() -> None:
 
     with pytest.raises(ValueError, match="Schema binds motion groups"):
         await client.validate_schema(_schema(_mg("0@other")))
+
+
+@pytest.mark.asyncio
+async def test_validate_schema_refuses_observations_it_does_not_send() -> None:
+    client = _client()
+    mg = _mg(MG_ID)
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=mg),
+            Observation.joint_velocities("qd", source=mg),
+            Observation.pose("goal", Pose((500, 0, 300, 0, 0, 0))),
+        ]
+    )
+
+    with pytest.raises(ValueError, match=r"\['qd', 'goal'\] are not sent"):
+        await client.validate_schema(schema)
+
+
+@pytest.mark.asyncio
+async def test_an_action_head_for_a_computed_hook_lands_in_chunk_values() -> None:
+    """A head without a matching observation drives nothing in NOVA: an Action.computed
+    hook that declares its key receives it through chunk.values."""
+    info = _dual_info()
+    info.actions = info.actions[:1]  # one arm ...
+    info.observations = info.observations[:1]
+    gripper = info.actions[0].model_copy(update={"name": f"{ACTION_KEY}.gripper", "dof": 1})
+    info.actions.append(gripper)  # ... plus a gripper head
+    client = _client(info, [LEFT_ID])
+    mg = _mg(LEFT_ID)
+    client._motion_group_ids = [LEFT_ID]
+
+    async def hook(_chunk: ActionChunk) -> None:
+        pass
+
+    schema = PolicySchema(
+        observations=[Observation.joint_positions("left", source=mg)],
+        actions=[Action.computed(hook, keys=["gripper"])],
+    )
+    await client.validate_schema(schema)
+    actions = {
+        info.actions[0].name: np.zeros((2, 7), np.float32),
+        f"{ACTION_KEY}.gripper": np.ones((2, 1), np.float32),
+    }
+    _stub_request(
+        client, PredictResponse(session_id="session-1", actions=actions, dt_ms=20.0).to_wire()
+    )
+    chunk = await client.get_actions({LEFT_ID: _FakeState((0.0,) * 7)}, schema)
+    assert chunk.values == {"gripper": [[1.0], [1.0]]}
+
+    with pytest.raises(ValueError, match=r"no Action\.computed"):
+        await client.validate_schema(
+            PolicySchema(observations=[Observation.joint_positions("left", source=mg)])
+        )

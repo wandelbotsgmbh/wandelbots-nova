@@ -1,0 +1,64 @@
+models:
+  reach_policy:
+    inputs:
+    - name: robot_joint_pos
+      dtype: float32
+      shape: [1, 6]
+      type: tensor
+      kind: joint/position
+      isaaclab_connection: state:robot:joint_pos
+    - name: robot_joint_vel
+      dtype: float32
+      shape: [1, 6]
+      type: tensor
+      kind: joint/velocity
+      isaaclab_connection: state:robot:joint_vel
+    - name: ee_pose
+      dtype: float32
+      shape: [1, 7]
+      type: tensor
+      isaaclab_connection: command:ee_pose
+    - name: last_action_in
+      dtype: float32
+      shape: [1, 6]
+      type: tensor
+    outputs:
+    - name: joint_pos_target
+      dtype: float32
+      shape: [1, 6]
+      type: tensor
+      kind: joint/position
+      isaaclab_connection: write:robot:set_joint_position_target
+    - name: last_action_out
+      dtype: float32
+      shape: [1, 6]
+      type: tensor
+    parameters:
+      model_path: reach_policy.onnx
+      md5sum: 2a5366dfd448a9b29b78d19274ba36ad
+      sha256sum: 84b697358d05310fdf433148f5b519f08300b16c9cc01e2e96bb087185312366
+      backend: onnx
+      warp_segments: 0
+      opset_version: 20
+
+pipeline:
+  configs:
+    frequency: 60.0
+  data_flow: {}
+  feedback_flow:
+    reach_policy/last_action_out: [reach_policy/last_action_in]
+  initial_values: reach_ur10e_initial_values.safetensors
+  inputs:
+    reach_policy: [robot_joint_pos, robot_joint_vel, ee_pose]
+  outputs:
+    reach_policy: [joint_pos_target]
+
+system information:
+  cuda version: None
+  leapp config version: '1.4'
+  leapp version: 0.8.1
+  os: macOS-27.2.1-arm64-arm-64bit
+  python version: 3.12.12
+  torch version: 2.15.0
+  warp version: null
+

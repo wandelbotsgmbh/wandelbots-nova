@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -49,3 +49,17 @@ async def test_callback_client_uses_explicit_no_op_capabilities() -> None:
 
     assert client.requires_first_waypoint_bridge is False
     assert client.rtc is None
+
+
+@pytest.mark.asyncio
+async def test_a_callback_control_freq_fills_chunks_without_step_spacing() -> None:
+    from types import SimpleNamespace
+
+    async def policy(_obs: object) -> ActionChunk:
+        return ActionChunk(joints={"mg": [[0.0]]})
+
+    schema = SimpleNamespace(build_observation=AsyncMock(return_value={}))
+    chunk = await CallbackPolicyClient(policy, control_freq=20.0).get_actions({}, schema)  # type: ignore[arg-type]
+    assert chunk.dt_ms == pytest.approx(50.0)
+    chunk = await CallbackPolicyClient(policy).get_actions({}, schema)  # type: ignore[arg-type]
+    assert chunk.dt_ms == 0.0  # a single step stays one

@@ -14,7 +14,7 @@ import novapolicy.jogging.clock as clock_module
 class ManualTime:
     """Controllable replacement for the monotonic clock used by jogging."""
 
-    now: float = 10.0
+    now: float = 1_800_000_000.0  # a real wall-clock time (2027): state stamps must be plausible
 
     def monotonic(self) -> float:
         return self.now

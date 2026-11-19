@@ -110,7 +110,7 @@ async def gr00t_dual_arm(ctx: ProgramContext):
     client = Gr00tPolicyClient(
         host=GROOT_HOST,
         port=GROOT_PORT,
-        dt_ms=130.0,
+        control_freq=1000.0 / 130.0,  # the training data's rate: one step every 130 ms
         rtc=RTCConfig() if use_rtc else None,
     )
 

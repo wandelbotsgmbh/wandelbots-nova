@@ -13,6 +13,7 @@ where an unscaled timeline executes at exactly the commanded speed.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 import logging
 import time
@@ -51,6 +52,18 @@ _STATE_CLOCK_CALIBRATION_WINDOW_S = 1.0
 # does not by itself read as a stalled link. A link with materially worse
 # delivery wants a larger value.
 _MAX_DELIVERY_DELAY_MS = 200.0
+
+_PLACEHOLDER_YEAR = 2000
+"""State timestamps before this year are placeholders: controllers that send no timestamp
+(FANUC, Staubli, Techman, Yaskawa) arrive stamped 1970-01-01. Taken at face value, a constant
+stamp looks older with every packet and is read as ever more delivery delay."""
+
+
+def _usable(state_timestamp: datetime | None) -> datetime | None:
+    """The state timestamp, or ``None`` when it is a placeholder."""
+    if state_timestamp is None or state_timestamp.year < _PLACEHOLDER_YEAR:
+        return None
+    return state_timestamp
 
 
 @dataclass
@@ -98,6 +111,7 @@ class JoggingTimeClock:
 
     def observe_state_timestamp(self, state_timestamp: datetime | None) -> None:
         """Observe a state generation timestamp during startup calibration."""
+        state_timestamp = _usable(state_timestamp)
         if state_timestamp is None or self.state_clock_calibrated:
             return
         observed_age_ms = time.time() * 1000.0 - state_timestamp.timestamp() * 1000.0
@@ -211,6 +225,7 @@ class JoggingTimeClock:
         """
         if timestamp_ms <= 0:
             return
+        state_timestamp = _usable(state_timestamp)
         received_wall = time.monotonic()
         sample_wall = received_wall
         if state_timestamp is not None:
@@ -258,3 +273,35 @@ class JoggingTimeClock:
         if isinstance(ts, int):
             return ts
         return None
+
+
+SINGLE_STEP_MARGIN_MS = 67.0
+"""What the controller needs, beyond the network, to plan a smooth approach to a one-step
+waypoint. Measured on a virtual UR10e (NOVA 26.8.1) from inside the cluster (round trip
+0.08 ms): 33 ms ahead was rough, 67 ms tracked smoothly."""
+
+
+class RoundTrip:
+    """Round trip of action chunk requests, from send to the server's acknowledgement.
+
+    The server acknowledges every ``ActionChunkRequest`` in order, so each acknowledgement
+    belongs to the oldest unacknowledged send. A waypoint stamped a fixed lead ahead of the
+    client's estimate of server "now" arrives with about the lead minus this round trip left:
+    the estimate is late by the downlink, the request takes the uplink.
+    """
+
+    def __init__(self) -> None:
+        self._sent: deque[tuple[float, bool, float]] = deque(maxlen=64)
+
+    def sent(self, *, lead: bool, age_ms: float = 0.0, now: float | None = None) -> None:
+        """Record a send; ``lead`` marks a one-step chunk, ``age_ms`` how old its observation
+        already was."""
+        self._sent.append((time.monotonic() if now is None else now, lead, age_ms))
+
+    def acknowledged(self, now: float | None = None) -> tuple[float, bool] | None:
+        """The delay in ms of the oldest unacknowledged send (its observation's age plus the
+        round trip), and whether it was a lead chunk; ``None`` without one."""
+        if not self._sent:
+            return None
+        sent, lead, age_ms = self._sent.popleft()
+        return age_ms + ((time.monotonic() if now is None else now) - sent) * 1000.0, lead

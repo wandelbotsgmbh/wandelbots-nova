@@ -8,6 +8,7 @@ velocity profiling, interpolation, and limits internally.
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import contextlib
 from dataclasses import dataclass
 import logging
@@ -21,11 +22,12 @@ from nova import api
 from nova.types import Pose, RobotState
 from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.io import IOWriter
-from novapolicy.jogging.clock import JoggingTimeClock
+from novapolicy.jogging.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, RoundTrip
 from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
 from novapolicy.jogging.waypoints import (
     PendingChunk,
     anchor_timestamp_ms,
+    make_timed_waypoints_request,
     make_waypoints_request,
     step_spacing_ms,
 )
@@ -45,6 +47,23 @@ _HTTP_NOT_FOUND = 404
 # the robot's current session time are unreachable, and commanding them makes
 # the server jump to catch up.
 MIN_LEAD_MS = 20.0
+
+_LATE_ACKS_LIMIT = 5
+
+_PLAYBACK_SLEW = 0.1
+"""Most the spacing between one-step waypoints may differ from the policy's step, as a share of
+the step, while the playback clock follows the observations (10%: the commanded speed varies by
+at most that much)."""
+
+_PLAYBACK_RESYNC_MS = 100.0
+"""Farther than this from "observation + lead" (a stall, a burst), the playback clock jumps back."""
+
+_PLAYBACK_RATE_GAIN = 0.05
+"""How fast the playback clock's step follows the measured time between observations: the loop
+may run slower than the policy's step (27 instead of 30 Hz over a network), and a clock stepping
+by the nominal step would fall behind and use up the lead."""
+"""Consecutive one-step waypoints acknowledged too late before the session stops (about 170 ms
+at 30 Hz): one network spike passes, a slower network stops the run."""
 
 # Longest a graceful stop waits for already-sent waypoints to finish executing.
 # Generous next to the horizon it drains (a few hundred ms), so it only trips
@@ -83,6 +102,41 @@ class _ScheduledRequest:
 # above which we treat it as a genuine discontinuity worth a WARNING (smaller
 # gaps are normal continuous-replacement lag and are logged at DEBUG).
 _DISCONTINUITY_WARN_DEG = 10.0
+
+
+@dataclass
+class _PlaybackClock:
+    """Due times for one-step waypoints, spaced like a streaming jitter buffer plays out."""
+
+    last_due_ms: float | None = None  # due time of the latest one-step waypoint
+    _last_target_ms: float | None = None  # its "observation + lead"
+    _step_ms: float | None = None  # measured time between observations, averaged
+
+    def due_ms(self, target_ms: float, step_ms: float, earliest_ms: float) -> float:
+        """The next one-step waypoint's due time: one step after the previous one, nudged
+        toward ``target_ms`` by at most ``_PLAYBACK_SLEW`` of a step. The step is the measured
+        time between observations, averaged slowly, starting from the policy's step."""
+        last, last_target = self.last_due_ms, self._last_target_ms
+        self._last_target_ms = target_ms
+        if last is None or last_target is None or step_ms <= 0:
+            due = target_ms
+        else:
+            interval = min(2 * step_ms, max(0.5 * step_ms, target_ms - last_target))
+            step_ms = self._step_ms if self._step_ms is not None else step_ms
+            step_ms += _PLAYBACK_RATE_GAIN * (interval - step_ms)
+            self._step_ms = step_ms
+            nominal = last + step_ms
+            error = target_ms - nominal
+            if abs(error) > _PLAYBACK_RESYNC_MS or nominal < earliest_ms:
+                # A stall or a burst: start the clock again from the observation, but no earlier
+                # than ``earliest_ms`` (the controller must still be able to plan it) and half
+                # a step after the previous waypoint (timestamps must keep increasing).
+                due = max(target_ms, earliest_ms, last + 0.5 * step_ms)
+            else:
+                slew = _PLAYBACK_SLEW * step_ms
+                due = nominal + max(-slew, min(slew, error))
+        self.last_due_ms = due
+        return due
 
 
 class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
@@ -129,6 +183,13 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         # server clock and client wall-clock, then scales outgoing timestamps
         # so the robot moves at real-time speed.
         self._clock = JoggingTimeClock()
+        self._round_trip = RoundTrip()
+        self._late_acks = 0  # consecutive one-step chunks acknowledged too late for the lead
+        # How much of its lead each acknowledged one-step chunk had left, newest last.
+        self._lead_left_ms: deque[float] = deque(maxlen=4096)
+        # One-step waypoints already sent and not yet due, resent with every new one.
+        self._lead_window: list[tuple[int, list[float]]] = []
+        self._playback = _PlaybackClock()  # due times of one-step waypoints
 
         # Pending waypoints to send (set by update_chunk, consumed by jogging loop).
         # For normal chunks, store raw steps/timing and build the request at
@@ -226,9 +287,15 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._current_state_server_ms
 
     async def wait_ready(self, timeout_s: float = 10.0) -> None:
-        """Wait until the jogging session is initialized or fail if startup dies."""
+        """Wait until the jogging session is initialized or fail if startup dies.
+
+        Returns early when a stop condition ended the session during startup: that is a
+        normal end, which the caller reports through :attr:`stop_condition_triggered`.
+        """
         deadline = time.monotonic() + timeout_s
         while not self._ready.is_set() or not self._clock.state_clock_calibrated:
+            if self._stop_condition is not None:
+                return
             if self._failed:
                 if self._failure_exception is not None:
                     raise RuntimeError(
@@ -382,6 +449,58 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._config.single_step_dt_ms
 
     @property
+    def single_step_lead_ms(self) -> float:
+        """How far ahead of server "now" one-step chunks go: ``max_expected_latency_ms``."""
+        return self._config.max_expected_latency_ms
+
+    @property
+    def lead_left_ms(self) -> float | None:
+        """How much of its lead the latest acknowledged one-step chunk had left on arrival
+        (estimated from its observation's age and the round trip); ``None`` before one."""
+        return self._lead_left_ms[-1] if self._lead_left_ms else None
+
+    def _log_lead_summary(self) -> None:
+        """Say once per session how much lead the one-step chunks had left."""
+        if not self._lead_left_ms:
+            return
+        left = sorted(self._lead_left_ms)
+        logger.info(
+            "%s: one-step waypoints had %.0f ms (median) of their %.0f ms lead left on arrival, "
+            "%.0f ms at worst; the controller needs about %.0f ms",
+            self.motion_group_id,
+            left[len(left) // 2],
+            self._config.max_expected_latency_ms,
+            left[0],
+            SINGLE_STEP_MARGIN_MS,
+        )
+        self._lead_left_ms.clear()
+
+    def _check_round_trip(self, acknowledged: tuple[float, bool] | None) -> None:
+        """Stop when one-step waypoints keep arriving too late for the fixed lead.
+
+        A waypoint stamped ``max_expected_latency_ms`` after its observation arrives with about
+        that minus the observation's age at send and the round trip left, and the controller
+        needs ``SINGLE_STEP_MARGIN_MS`` of it. A few late
+        ones in a row are tolerated (a single network spike); a run of them means the network
+        no longer fits the configured latency, and the motion would degrade without a word.
+        """
+        if acknowledged is None or not acknowledged[1]:
+            return
+        round_trip_ms = acknowledged[0]
+        self._lead_left_ms.append(self._config.max_expected_latency_ms - round_trip_ms)
+        budget_ms = self._config.max_expected_latency_ms - SINGLE_STEP_MARGIN_MS
+        self._late_acks = self._late_acks + 1 if round_trip_ms > budget_ms else 0
+        if self._late_acks >= _LATE_ACKS_LIMIT:
+            msg = (
+                f"over budget: {self._late_acks} waypoints in a row took {round_trip_ms:.0f} ms "
+                f"or more to reach the controller, which leaves less than the "
+                f"{SINGLE_STEP_MARGIN_MS:.0f} ms it needs of max_expected_latency_ms="
+                f"{self._config.max_expected_latency_ms:g}. Run the policy on the NOVA instance "
+                f"or raise WaypointConfig.max_expected_latency_ms"
+            )
+            raise MotionError(self.motion_group_id, msg)
+
+    @property
     def min_chunk_horizon_ms(self) -> float:
         """Minimum waypoint horizon handed to the controller."""
         return self._config.min_chunk_horizon_ms
@@ -404,6 +523,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         server_dt_ms: float | None = None,
         action_timestep: int = -1,
         extend_buffer: bool = True,
+        lead: bool = False,
+        observed_at_ms: int | None = None,
         **legacy: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
@@ -428,6 +549,12 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 only matters when the spacing must differ from ``dt_ms``.
             action_timestep: Absolute policy timestep represented by ``steps[0]``.
                 Logged with the scheduled request in Rerun.
+            lead: Place step zero :attr:`single_step_lead_ms` after ``observed_at_ms`` (a
+                one-step chunk in continuous execution), or after server "now" when that
+                is ``None``; ``first_timestamp_ms`` and ``timestamp_offset_steps`` are then
+                not used.
+            observed_at_ms: Server timestamp of the state the chunk was computed from
+                (:attr:`current_state_server_ms` at observation time).
         """
         if legacy:
             timestamp_offset_steps = self._resolve_legacy(legacy, timestamp_offset_steps)
@@ -453,6 +580,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             action_timestep=action_timestep,
             sequence=self._queued_chunk_count,
             caller_step_count=len(steps),
+            lead=lead,
+            observed_at_ms=observed_at_ms,
         )
         self._pending_request_event.set()
 
@@ -549,6 +678,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             raise RuntimeError(msg)
 
         self._running = True
+        self._lead_window = []
+        self._playback = _PlaybackClock()
         self._pending_request_event.clear()
         # A session can be started again after stop(); the last stop is over.
         self._stop_requested = False
@@ -654,6 +785,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         :meth:`drain` first to let the accepted waypoints run out.
         """
         self._running = False
+        self._log_lead_summary()
         await self._request_server_stop()
 
         for task in (self._jogging_task, self._state_task):
@@ -803,6 +935,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 return
             if not self._ready.is_set():
                 self._ready.set()
+            if getattr(response, "kind", None) == "ACTION_CHUNK_RECEIVED":
+                self._check_round_trip(self._round_trip.acknowledged())
             if hasattr(response, "kind") and response.kind == "MOTION_ERROR":
                 msg = getattr(response, "message", "unknown motion error")
                 raise MotionError(self.motion_group_id, msg)
@@ -891,6 +1025,15 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._last_sent = (request.waypoints[-1].timestamp, list(pending.steps[-1]))
             self._start_waypoint_tracking_measurement(request)
 
+            # How much of the lead this waypoint has already used up: it is due
+            # single_step_lead_ms after the time the playback clock dates it to.
+            age_ms = (
+                self._clock.estimated_server_timestamp_ms
+                - (self._playback.last_due_ms - self.single_step_lead_ms)
+                if pending.lead and self._playback.last_due_ms is not None
+                else 0.0
+            )
+            self._round_trip.sent(lead=pending.lead, age_ms=max(0.0, age_ms))
             yield request
 
         if self._stop_requested:
@@ -921,6 +1064,47 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._scheduled_action_timestep = pending.action_timestep
         self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
 
+    def _rolling_window_request(self, pending: PendingChunk) -> _ScheduledRequest:
+        """A one-step chunk with every earlier one that is not yet due, as MoveIt Servo sends
+        a rolling window of points.
+
+        Each target is due one policy step after the previous one, on a playback clock that
+        follows "observation + ``max_expected_latency_ms``" (as UMI and Diffusion Policy date
+        actions) by at most ``_PLAYBACK_SLEW`` of a step per step, as a streaming jitter buffer
+        does (FANUC Stream Motion; Isaac ROS spaces steps by ``step_dt``). The follower drives
+        toward each waypoint at distance over time left, so dating every target by its own
+        observation passed the state stream's jitter on as speed jumps: over a network the
+        spacing ranged from 0 to 120 ms for evenly spaced positions, and the arm zig-zagged
+        around the policy's path.
+
+        The follower keeps queued waypoints between "now" and a new chunk's first timestamp,
+        so one-step chunks do not delete each other's waypoints. But a backend may drop chunks:
+        WBR takes only the newest chunk per control cycle, so chunks arriving in a burst lose
+        all but the last. Resending the waypoints that are not yet due puts a dropped chunk's
+        target back in the queue with the next one; on a backend that keeps every chunk the
+        resent waypoints replace identical ones.
+        """
+        observed_ms = pending.observed_at_ms
+        if observed_ms is None:
+            observed_ms = int(self._clock.estimated_server_timestamp_ms)
+        earliest_ms = self._clock.estimated_server_timestamp_ms + MIN_LEAD_MS
+        # The clock may not lag so far that the controller's planning margin is gone.
+        latest_start_ms = self._clock.estimated_server_timestamp_ms + SINGLE_STEP_MARGIN_MS
+        due_ms = int(
+            self._playback.due_ms(
+                observed_ms + self.single_step_lead_ms, pending.dt_ms, latest_start_ms
+            )
+        )
+        window = [(t, step) for t, step in self._lead_window if earliest_ms <= t < due_ms]
+        window.append((due_ms, list(pending.steps[0])))
+        self._lead_window = window
+        request = make_timed_waypoints_request(
+            self._mode,
+            window,
+            delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
+        )
+        return _ScheduledRequest(request=request, skipped=0, step_timestamps=[due_ms])
+
     def _trimmed_request(self, pending: PendingChunk) -> _ScheduledRequest:
         """Build the request, dropping waypoints whose moment has already passed.
 
@@ -941,6 +1125,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         steps = pending.steps
         dt_ms = step_spacing_ms(pending.dt_ms, pending.server_dt_ms)
         base_ms = pending.first_timestamp_ms
+        if pending.lead:
+            return self._rolling_window_request(pending)
+        self._lead_window = []
+        self._playback = _PlaybackClock()
 
         if base_ms is None or dt_ms <= 0:
             # No caller-supplied anchor to measure the lead against: "now" is

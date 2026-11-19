@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
@@ -12,6 +12,8 @@ from lerobot.utils.constants import ACTION, OBS_IMAGES, OBS_STATE
 from lerobot.utils.feature_utils import dataset_to_policy_features
 import numpy as np
 
+from novapolicy import training_range
+from novapolicy.schema import tcp_value_names
 from novapolicy.types import ActionChunk
 
 if TYPE_CHECKING:
@@ -25,19 +27,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _IMAGE_NDIM = 3
-# A value this many training spans outside the range is worth mentioning: it is
-# a pose the demonstrations never visited, which is normal before homing.
-_WARN_MARGIN = 1.0
-
-# ...whereas a value this many times larger than anything in training is not a
-# pose at all. A units error is an error of *scale* — radians read as degrees is
-# ~57x — so it is caught by magnitude, not by span. Scaling the failure
-# threshold by span instead was measured wrong against a live UR10e: a joint
-# that barely moved during training (0.022 rad) got a +/-0.09 rad window, and
-# the arm's own park pose was reported as a unit mismatch.
-_FAIL_SCALE = 5.0
-_TCP_SUFFIXES = ("x", "y", "z", "rx", "ry", "rz")
-_TCP_ACTION_DIM = len(_TCP_SUFFIXES)
 
 JointActionSlice = tuple[str, slice]
 TcpActionSlice = tuple[str, slice]
@@ -56,6 +45,8 @@ class FlatActionLayout:
     joints: list[JointActionSlice]
     tcp: list[TcpActionSlice]
     ios: list[IOActionSlice]
+    values: list[tuple[str, slice]] = field(default_factory=list)
+    """One column per ``Action.computed(..., keys=[...])`` key, after the IOs."""
 
     @property
     def width(self) -> int:
@@ -63,6 +54,7 @@ class FlatActionLayout:
         stops = [action_slice.stop for _group, action_slice in self.joints]
         stops.extend(action_slice.stop for _group, action_slice in self.tcp)
         stops.extend(action_slice.stop for _group, _io, _mapping, action_slice in self.ios)
+        stops.extend(action_slice.stop for _key, action_slice in self.values)
         return max(stops, default=0)
 
 
@@ -88,8 +80,11 @@ class LeRobotSchema:
 
     @staticmethod
     def state_names(states: dict[str, RobotState], schema: PolicySchema) -> list[str]:
+        """The flat observation.state, in a fixed order: joint positions, joint velocities, TCP
+        poses, object poses, IOs, then the keys of ``Observation.computed`` (one value each).
+        The checkpoint matches it by position."""
         names: list[str] = []
-        for mapping in schema.joint_mappings:
+        for mapping in [*schema.joint_mappings, *schema.joint_velocity_mappings]:
             dof = sum(
                 len(state.joints)
                 for motion_group in mapping.sources
@@ -99,8 +94,11 @@ class LeRobotSchema:
         for mapping in schema.tcp_mappings:
             state = states.get(mapping.source.id)
             if state is not None and state.pose is not None:
-                names.extend(f"{mapping.key}_{suffix}" for suffix in _TCP_SUFFIXES)
+                names.extend(tcp_value_names(mapping))
+        for pose in schema.pose_mappings:
+            names.extend(tcp_value_names(pose))
         names.extend(mapping.key for mapping in schema.obs_io_mappings)
+        names.extend(key for computed in schema.computed_observations for key in computed.keys)
         return names
 
     @staticmethod
@@ -121,14 +119,22 @@ class LeRobotSchema:
 
         tcp_slices: list[TcpActionSlice] = []
         for _key, motion_group in schema.tcp_action_keys:
-            tcp_slices.append((motion_group.id, slice(offset, offset + _TCP_ACTION_DIM)))
-            offset += _TCP_ACTION_DIM
+            width = schema.tcp_action_width(motion_group.id)
+            tcp_slices.append((motion_group.id, slice(offset, offset + width)))
+            offset += width
 
         io_slices: list[IOActionSlice] = []
         for _key, motion_group, io, mapping in schema.io_action_keys:
             io_slices.append((motion_group.id, io, mapping, slice(offset, offset + 1)))
             offset += 1
-        return FlatActionLayout(joints=joint_slices, tcp=tcp_slices, ios=io_slices)
+        # Actuators outside NOVA (a gripper on its own bus): one column per declared key.
+        value_slices = [
+            (key, slice(offset + i, offset + i + 1))
+            for i, key in enumerate(schema.computed_action_keys)
+        ]
+        return FlatActionLayout(
+            joints=joint_slices, tcp=tcp_slices, ios=io_slices, values=value_slices
+        )
 
     @staticmethod
     def validate_schema(schema: PolicySchema) -> None:
@@ -305,10 +311,11 @@ class LeRobotSchema:
                 joints[motion_group_id].append([float(value) for value in action[action_slice]])
             for motion_group_id, action_slice in layout.tcp:
                 values = action[action_slice]
-                if values.size != _TCP_ACTION_DIM:
+                width = action_slice.stop - action_slice.start
+                if values.size != width:
                     msg = (
                         f"LeRobot TCP action for {motion_group_id!r} expected "
-                        f"{_TCP_ACTION_DIM} values, got {values.size}"
+                        f"{width} values, got {values.size}"
                     )
                     raise ValueError(msg)
                 tcp[motion_group_id].append([float(value) for value in values])
@@ -331,10 +338,15 @@ class LeRobotSchema:
                     raise ValueError(msg)
                 ios.setdefault(motion_group_id, {})[io] = mapping.to_hardware(float(values[0]))
 
+        values = {
+            key: [[float(v) for v in action[action_slice]] for action in action_arrays]
+            for key, action_slice in layout.values
+        }
         return ActionChunk(
             joints=joints,
             tcp=tcp,
             ios=ios or None,
+            values=values,
             dt_ms=self._dt_ms,
             action_timestep=action_timestep,
         )
@@ -507,25 +519,7 @@ def check_observation_range(
         )
         return
 
-    problems, warnings = _classify_observations(stats, observation, state_names)
-
-    for note in warnings:
-        logger.warning(
-            "Observation outside the training distribution: %s. Normal at a start pose the "
-            "demonstrations never visited; suspicious otherwise.",
-            note,
-        )
-
-    if problems:
-        detail = "\n  - ".join(problems)
-        msg = (
-            "Observations are implausibly far outside what this checkpoint was trained on:"
-            f"\n  - {detail}\n"
-            "This is what a unit mismatch looks like — check whether the dataset was "
-            "recorded in different units than NOVA reports, and declare the conversion "
-            "with ops= on the observation."
-        )
-        raise ValueError(msg)
+    training_range.check(_bounded_values(stats, observation, state_names))
 
 
 def _stats_width(stats: FeatureStats) -> int | None:
@@ -535,29 +529,18 @@ def _stats_width(stats: FeatureStats) -> int | None:
     return None
 
 
-def _classify_observations(
+def _bounded_values(
     stats: FeatureStats,
     observation: dict[str, Any],
     state_names: list[str],
-) -> tuple[list[str], list[str]]:
-    """Split state values into implausible ones and merely unusual ones."""
-    problems: list[str] = []
-    warnings: list[str] = []
+) -> list[tuple[str, float, float, float]]:
+    """``(name, value, low, high)`` for every state value the statistics bound."""
+    values: list[tuple[str, float, float, float]] = []
     for index, name in enumerate(state_names):
         value = observation.get(name)
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             continue
         bounds = stats.bounds(index)
-        if bounds is None:
-            continue
-        low, high = bounds
-        span = high - low
-        magnitude = max(abs(low), abs(high))
-        if span <= 0 and magnitude <= 0:
-            continue
-        note = f"{name!r} is {float(value):.4g}, training range [{low:.4g}, {high:.4g}]"
-        if magnitude > 0 and abs(value) > _FAIL_SCALE * magnitude:
-            problems.append(note)
-        elif span > 0 and not (low - _WARN_MARGIN * span <= value <= high + _WARN_MARGIN * span):
-            warnings.append(note)
-    return problems, warnings
+        if bounds is not None:
+            values.append((name, float(value), *bounds))
+    return values
