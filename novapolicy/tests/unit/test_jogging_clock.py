@@ -352,3 +352,18 @@ def test_an_acknowledgement_belongs_to_the_oldest_unacknowledged_send():
     assert round_trip.acknowledged(now=0.05) == pytest.approx((50.0, False))
     assert round_trip.acknowledged(now=0.07) == pytest.approx((75.0, True))  # age + trip
     assert round_trip.acknowledged(now=1.0) is None  # nothing left to acknowledge
+
+
+def test_a_placeholder_state_timestamp_is_not_read_as_delivery_delay(manual_time) -> None:
+    """Regression: controllers without timestamps send 1970-01-01. A constant stamp looked
+    older with every packet, so the estimate ran 200 ms ahead and one-step waypoints read as
+    late."""
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    clock = JoggingTimeClock()
+    clock.start()
+    for i in range(_STATE_CLOCK_CALIBRATION_SAMPLES + 50):
+        clock.observe_state_timestamp(epoch)
+        clock.update(1_000 + 8 * i, epoch)
+        manual_time.advance(0.008)
+    last = 1_000 + 8 * (_STATE_CLOCK_CALIBRATION_SAMPLES + 49)
+    assert clock.estimated_server_timestamp_ms in {last + 7, last + 8}

@@ -53,6 +53,18 @@ _STATE_CLOCK_CALIBRATION_WINDOW_S = 1.0
 # delivery wants a larger value.
 _MAX_DELIVERY_DELAY_MS = 200.0
 
+_PLACEHOLDER_YEAR = 2000
+"""State timestamps before this year are placeholders: controllers that send no timestamp
+(FANUC, Staubli, Techman, Yaskawa) arrive stamped 1970-01-01. Taken at face value, a constant
+stamp looks older with every packet and is read as ever more delivery delay."""
+
+
+def _usable(state_timestamp: datetime | None) -> datetime | None:
+    """The state timestamp, or ``None`` when it is a placeholder."""
+    if state_timestamp is None or state_timestamp.year < _PLACEHOLDER_YEAR:
+        return None
+    return state_timestamp
+
 
 @dataclass
 class JoggingTimeClock:
@@ -99,6 +111,7 @@ class JoggingTimeClock:
 
     def observe_state_timestamp(self, state_timestamp: datetime | None) -> None:
         """Observe a state generation timestamp during startup calibration."""
+        state_timestamp = _usable(state_timestamp)
         if state_timestamp is None or self.state_clock_calibrated:
             return
         observed_age_ms = time.time() * 1000.0 - state_timestamp.timestamp() * 1000.0
@@ -212,6 +225,7 @@ class JoggingTimeClock:
         """
         if timestamp_ms <= 0:
             return
+        state_timestamp = _usable(state_timestamp)
         received_wall = time.monotonic()
         sample_wall = received_wall
         if state_timestamp is not None:
