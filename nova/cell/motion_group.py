@@ -493,7 +493,11 @@ class MotionGroup(AbstractRobot):
         return response.joints  # ty: ignore[invalid-return-type]
 
     async def forward_kinematics(
-        self, joints: list[tuple[float, ...]], tcp: str | None
+        self,
+        joints: list[tuple[float, ...]],
+        tcp: str | None,
+        *,
+        external_tool_coordinate_system: str | None = None,
     ) -> list[Pose]:
         """Get the forward kinematics of the motion group.
 
@@ -501,6 +505,9 @@ class MotionGroup(AbstractRobot):
             joints: The joint configurations to compute poses for.
             tcp: The TCP to apply. If None, no TCP offset is applied and the returned
                 poses are the flange poses.
+            external_tool_coordinate_system: Name of an external tool coordinate system of the
+                controller. If set, the poses are expressed relative to it, matching how a
+                motion planned with the same external tool interprets its path.
 
         Returns:
             list[Pose]: The forward kinematics of the motion group. Empty list if not available.
@@ -513,6 +520,13 @@ class MotionGroup(AbstractRobot):
         tcp_offset = (await self.tcp_offset(tcp)).to_api_model() if tcp is not None else None
         motion_group_model = await self.get_model()
         mounting = await self.get_mounting()
+        external_tool = (
+            get_coordinate_system_pose(
+                external_tool_coordinate_system, await self._fetch_coordinate_systems()
+            )
+            if external_tool_coordinate_system is not None
+            else None
+        )
 
         response = await self._api_client.kinematics_api.forward_kinematics(
             cell=self._cell,
@@ -520,6 +534,7 @@ class MotionGroup(AbstractRobot):
                 motion_group_model=motion_group_model,
                 joint_positions=joint_positions,
                 tcp_offset=tcp_offset,
+                external_tool_coordinate_system=external_tool,
                 mounting=mounting.to_api_model() if mounting is not None else None,
             ),
         )
@@ -1114,12 +1129,15 @@ class MotionGroup(AbstractRobot):
         combined_actions: CombinedActions,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
+        external_tool_coordinate_system: str | None = None,
     ) -> list[api.models.SetIO] | None:
         """Resolve path-triggered write actions into the ``set_outputs`` IO overlay.
 
         Time and distance triggers only become concrete once the trajectory is
         planned. Distance triggers additionally need the per-sample TCP positions,
-        computed here via forward kinematics (only when such triggers are present).
+        computed here via forward kinematics (only when such triggers are present). With an
+        external tool the planned path is the TCP pose relative to that tool, so the
+        kinematics are requested relative to it too; the robot-frame path has another length.
 
         Returns ``None`` when no write action carries a trigger, so the default
         ``CombinedActions.to_set_io()`` overlay applies unchanged.
@@ -1136,7 +1154,9 @@ class MotionGroup(AbstractRobot):
                 )
             else:
                 joints = [tuple(sample) for sample in joint_trajectory.joint_positions]
-                poses = await self.forward_kinematics(joints, tcp)
+                poses = await self.forward_kinematics(
+                    joints, tcp, external_tool_coordinate_system=external_tool_coordinate_system
+                )
                 tcp_positions = [pose.position.to_tuple() for pose in poses]
 
         set_outputs = resolve_set_outputs(
@@ -1190,7 +1210,12 @@ class MotionGroup(AbstractRobot):
         )
 
         combined_actions = CombinedActions(items=tuple(actions))  # ty: ignore[invalid-argument-type]
-        set_outputs = await self._resolve_set_outputs(combined_actions, joint_trajectory, tcp)
+        set_outputs = await self._resolve_set_outputs(
+            combined_actions,
+            joint_trajectory,
+            tcp,
+            external_tool_coordinate_system=external_tool_coordinate_system,
+        )
 
         # A controller-side IO pause is only resumed by a new start, and only
         # once the condition has cleared; the movement controller needs a way

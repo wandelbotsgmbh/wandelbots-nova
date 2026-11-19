@@ -569,6 +569,64 @@ async def test_forward_kinematics_with_tcp_applies_tcp_offset(mock_motion_group)
 
 
 @pytest.mark.asyncio
+async def test_forward_kinematics_with_external_tool_forwards_its_pose(mock_motion_group):
+    """An external tool name is resolved on the controller and sent with the FK request."""
+    mock_motion_group._api_client.motion_group_api.get_motion_group_description.return_value = (
+        api.models.MotionGroupDescription(
+            motion_group_model="test-model",
+            operation_limits=api.models.OperationLimits(),
+            mounting=None,
+            tcps={
+                "gripper": api.models.TcpOffset(
+                    name="gripper", pose=api.models.Pose(position=[1, 2, 3], orientation=[0, 0, 0])
+                )
+            },
+        )
+    )
+    mock_motion_group._api_client.controller_api = MagicMock()
+    mock_motion_group._api_client.controller_api.list_coordinate_systems = AsyncMock(
+        return_value=[
+            api.models.CoordinateSystem(
+                coordinate_system="ext_tool", position=[100.0, 200.0, 300.0], orientation=[0, 0, 0]
+            )
+        ]
+    )
+    mock_motion_group._api_client.kinematics_api.forward_kinematics.return_value = MagicMock(
+        tcp_poses=[api.models.Pose(position=[1, 2, 3], orientation=[0, 0, 0])]
+    )
+
+    await mock_motion_group.forward_kinematics(
+        joints=[(0, 0, 0, 0, 0, 0)], tcp="gripper", external_tool_coordinate_system="ext_tool"
+    )
+
+    request = mock_motion_group._api_client.kinematics_api.forward_kinematics.call_args.kwargs[
+        "forward_kinematics_request"
+    ]
+    assert tuple(request.external_tool_coordinate_system.position) == (100.0, 200.0, 300.0)
+
+
+@pytest.mark.asyncio
+async def test_forward_kinematics_without_external_tool_sends_none(mock_motion_group):
+    mock_motion_group._api_client.motion_group_api.get_motion_group_description.return_value = (
+        api.models.MotionGroupDescription(
+            motion_group_model="test-model",
+            operation_limits=api.models.OperationLimits(),
+            mounting=None,
+        )
+    )
+    mock_motion_group._api_client.kinematics_api.forward_kinematics.return_value = MagicMock(
+        tcp_poses=[api.models.Pose(position=[1, 2, 3], orientation=[0, 0, 0])]
+    )
+
+    await mock_motion_group.forward_kinematics(joints=[(0, 0, 0, 0, 0, 0)], tcp=None)
+
+    request = mock_motion_group._api_client.kinematics_api.forward_kinematics.call_args.kwargs[
+        "forward_kinematics_request"
+    ]
+    assert request.external_tool_coordinate_system is None
+
+
+@pytest.mark.asyncio
 async def test_get_kinematic_configuration_empty_joints_raises(mock_motion_group):
     """Passing an empty joints list must raise ValueError."""
     with pytest.raises(ValueError, match="at least one"):
@@ -686,7 +744,45 @@ async def test_resolve_set_outputs_distance_trigger_uses_forward_kinematics(mock
     # anchor arc length 100 mm + 25 mm -> 125 mm -> location 1.25
     assert [entry.location for entry in set_outputs] == [1.25]
     mock_motion_group.forward_kinematics.assert_awaited_once_with(
-        [tuple(sample) for sample in trajectory.joint_positions], "Flange"
+        [tuple(sample) for sample in trajectory.joint_positions],
+        "Flange",
+        external_tool_coordinate_system=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_set_outputs_distance_trigger_uses_external_tool_frame_path(
+    mock_motion_group,
+):
+    """With an external tool the planned path is the tool-frame pose, not the robot-frame TCP.
+
+    The mocked FK returns a 50 mm/sample path only when asked for the external tool; the
+    robot-frame path is 4x longer. Resolving against the wrong one gives location 1.0625.
+    """
+    trajectory = _planned_line()
+
+    async def fake_fk(joints, tcp, *, external_tool_coordinate_system=None):
+        step = 50.0 if external_tool_coordinate_system == "ext_tool" else 200.0
+        return [Pose((step * i, 0, 0, 0, 0, 0)) for i in range(len(joints))]
+
+    mock_motion_group.forward_kinematics = AsyncMock(side_effect=fake_fk)
+    actions = CombinedActions(
+        items=(
+            linear((1, 2, 3)),
+            io_write("a", True, at=after_start(millimeters=25)),
+            linear((4, 5, 6)),
+        )
+    )
+
+    set_outputs = await mock_motion_group._resolve_set_outputs(
+        actions, trajectory, "Flange", external_tool_coordinate_system="ext_tool"
+    )
+
+    assert [entry.location for entry in set_outputs] == [1.25]
+    mock_motion_group.forward_kinematics.assert_awaited_once_with(
+        [tuple(sample) for sample in trajectory.joint_positions],
+        "Flange",
+        external_tool_coordinate_system="ext_tool",
     )
 
 
