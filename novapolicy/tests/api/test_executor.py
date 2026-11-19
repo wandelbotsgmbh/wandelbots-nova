@@ -13,6 +13,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 import math
+import time
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -639,6 +640,34 @@ async def test_connected_chunk_defers_io_and_computed_action_to_policy_boundary(
 def test_endpoint_ramp_validates_interpolation_steps() -> None:
     with pytest.raises(ValueError, match="interpolation_steps must be at least 2"):
         EndpointRamp(interpolation_steps=1)
+
+
+@pytest.mark.asyncio
+async def test_fixed_rate_makes_up_slow_ticks_instead_of_lowering_the_rate(robot: _Robot):
+    """A tick that overruns its period is caught up by the next one, as ROS Rate.sleep."""
+    period_s = 0.04
+    calls: list[float] = []
+    executor: PolicyExecutor
+
+    async def get_actions(_obs: object) -> ActionChunk:
+        calls.append(time.monotonic())
+        if len(calls) % 2:
+            await asyncio.sleep(1.5 * period_s)  # every other tick overruns by half a period
+        if len(calls) == 13:
+            executor.stop()
+        return ActionChunk(joints={MG_ID: [[0.0] * 6]})
+
+    executor = PolicyExecutor(
+        _schema(),
+        _TestPolicy(get_actions),
+        timeout_s=5.0,
+        execution=ContinuousExecution(rate_hz=1 / period_s),
+    )
+    await executor.run()
+
+    mean_interval_s = (calls[-1] - calls[0]) / (len(calls) - 1)
+    # Relative pacing (sleep the rest of each tick) averages 1.25 periods here.
+    assert mean_interval_s < 1.12 * period_s
 
 
 def test_continuous_execution_rejects_invalid_fixed_rates() -> None:

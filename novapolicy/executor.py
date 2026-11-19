@@ -515,6 +515,7 @@ class PolicyExecutor:
             and self._execution.rate_hz is not None
             else 0.0
         )
+        tick_due: float | None = None  # when the current tick was due on the fixed-rate grid
 
         while not self._stop_event.is_set():
             # Always yield once per iteration so stop()/other tasks make progress
@@ -578,7 +579,8 @@ class PolicyExecutor:
             if stopped_by is not None:
                 return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
 
-            await self._wait_after_send(tick_start, start_time, fixed_rate_period)
+            tick_due = tick_start if tick_due is None else tick_due
+            tick_due = await self._wait_after_send(tick_due, start_time, fixed_rate_period)
 
         return _result("stopped", step, start_time or time.monotonic(), last_obs)
 
@@ -1104,19 +1106,29 @@ class PolicyExecutor:
 
     async def _wait_after_send(
         self,
-        tick_start: float,
+        tick_due: float,
         start_time: float,
         fixed_rate_period: float,
-    ) -> None:
-        """Pace the loop after a chunk is sent, per the configured timing mode."""
+    ) -> float:
+        """Pace the loop after a chunk is sent, per the configured timing mode.
+
+        Fixed-rate execution sleeps until the next tick on an absolute grid (as ROS
+        ``Rate.sleep``), so a slow tick or a late wake-up is made up by the next tick
+        instead of lowering the rate. More than a period behind, the grid restarts
+        from now rather than firing catch-up ticks. Returns when the next tick is due.
+        """
         if isinstance(self._execution, SequentialExecution):
             await self._wait_until_sessions_settled(start_time)
-        elif fixed_rate_period > 0:
-            # Fixed-rate continuous execution sleeps for the remainder of the period.
-            elapsed = time.monotonic() - tick_start
-            sleep_time = fixed_rate_period - elapsed
-            if sleep_time > 0:
-                await asyncio.sleep(sleep_time)
+            return time.monotonic()
+        if fixed_rate_period <= 0:
+            return time.monotonic()
+        next_due = tick_due + fixed_rate_period
+        delay = next_due - time.monotonic()
+        if delay > 0:
+            await asyncio.sleep(delay)
+        elif delay < -fixed_rate_period:
+            return time.monotonic()
+        return next_due
 
     async def _wait_until_sessions_settled(self, exec_start: float) -> None:
         """Wait until every submitted chunk has run out *and* the robot has stopped.
