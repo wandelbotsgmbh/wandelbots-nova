@@ -1377,3 +1377,24 @@ async def test_a_policy_answer_without_motion_is_logged_once(
     errors = [r for r in caplog.records if "no motion for any motion group" in r.getMessage()]
     assert len(errors) == 1
     assert "arm" in errors[0].getMessage()
+
+
+@pytest.mark.asyncio
+async def test_the_start_move_keeps_the_cells_collision_setups():
+    """Regression: the start move used to clear the collision setups and plan without them."""
+    mg = MagicMock()
+    setup = SimpleNamespace(collision_setups={"cell": object()})
+    mg.active_tcp_name = AsyncMock(return_value="Flange")
+    mg.get_setup = AsyncMock(return_value=setup)
+    mg.plan = AsyncMock(return_value="trajectory")
+    mg.execute = AsyncMock()
+    collision = setup.collision_setups["cell"]
+
+    async def policy(_obs: object) -> ActionChunk:
+        return ActionChunk(joints={MG_ID: [[0.0] * 6]}, dt_ms=10.0)
+
+    executor = PolicyExecutor(_schema(), _callback(policy), start_joint_position={mg: [0.1] * 6})
+    await executor._move_to_start_joint_position()
+
+    assert mg.plan.await_args.kwargs["motion_group_setup"] is setup
+    assert setup.collision_setups == {"cell": collision}

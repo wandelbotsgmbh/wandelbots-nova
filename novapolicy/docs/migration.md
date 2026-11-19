@@ -44,3 +44,15 @@ looked at later steps of the horizon no longer sees them.
 
 `novapolicy/gr00t/README.md` is now [docs/gr00t.md](gr00t.md), together with the guide for setting
 up a GR00T policy on a real robot.
+
+## `PolicyExecutor(plant=...)` is removed
+
+The executor no longer simulates a plant between a policy and the robot: it maps observations,
+runs the policy and sends its actions to NOVA, and NOVA moves the robot. `novapolicy.plant`
+(`VirtualPlant`) and the `plant=` argument are gone; no shipped plant existed. Drop the argument.
+
+## The start move keeps the cell's collision setups
+
+`PolicyExecutor(start_joint_position=...)` used to clear the motion group's collision setups for
+the move to the start pose. That move is now planned with them, like any other move: a start pose
+inside a collision zone fails to plan instead of being reached without collision checks.

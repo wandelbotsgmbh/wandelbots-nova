@@ -37,7 +37,6 @@ from novapolicy.jogging.live_buffer import (
 )
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.joint_limits import fetch_joint_limits
-from novapolicy.plant import VirtualPlant
 from novapolicy.policy_client import PolicyClient
 from novapolicy.types import (
     ActionChunk,
@@ -143,16 +142,8 @@ class ExecutionResult:
     """Last observed robot state (per motion group). Useful to know where the robot stopped."""
 
 
-def _check_buffered_mode(
-    buffer_window_ms: float, schema: PolicySchema, plant: VirtualPlant | None
-) -> None:
+def _check_buffered_mode(buffer_window_ms: float, schema: PolicySchema) -> None:
     """Reject a buffered-mode setup before anything moves."""
-    if plant is not None and not isinstance(plant, VirtualPlant):
-        msg = "plant must implement novapolicy.plant.VirtualPlant"
-        raise TypeError(msg)
-    if plant is not None and buffer_window_ms <= 0:
-        msg = "a plant is followed through the ring buffer; set buffer_window_ms > 0"
-        raise ValueError(msg)
     if buffer_window_ms > 0 and schema.tcp_action_groups():
         msg = "buffer_window_ms supports joint targets only; this schema has TCP actions."
         raise ValueError(msg)
@@ -199,7 +190,6 @@ class PolicyExecutor:
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
         buffer_window_ms: float = 0.0,
         clamp_to_joint_limits: bool = True,
-        plant: VirtualPlant | None = None,
     ) -> None:
         """Create a policy executor.
 
@@ -245,10 +235,6 @@ class PolicyExecutor:
                 which remains available to asynchronous policy clients.
             start_joint_position: Optional mapping of motion group to joint pose
                 to PTP-move to before starting waypoint jogging.
-            plant: Optional :class:`~novapolicy.plant.VirtualPlant` for
-                setpoint policies. The policy then observes the plant, and the
-                robot follows the plant's path through the ring buffer, so
-                ``buffer_window_ms`` must be set.
         """
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
@@ -288,13 +274,12 @@ class PolicyExecutor:
         self._policy_timelines: dict[str, _PolicyTimeline] = {}
         self._buffer_window_ms = max(0.0, buffer_window_ms)
         self._observed_at_ms: dict[str, int | None] = {}
-        _check_buffered_mode(self._buffer_window_ms, schema, plant)
+        _check_buffered_mode(self._buffer_window_ms, schema)
         self._target_buffers: dict[str, list[TimedPoint]] = {}
         self._buffer_anchor_ms: float | None = None
         self._buffer_timeline_ms = 0.0
         self._clamp_to_joint_limits = clamp_to_joint_limits
         self._joint_limits: dict[str, JointLimits] = {}
-        self._plant = plant
         self._rerun: PolicyRerunLogger | None = None
         self._logged_first_images = False
         self._reported_missing_motion = False
@@ -425,8 +410,9 @@ class PolicyExecutor:
 
         async def ptp(mg: MotionGroup, joints: list[float]) -> None:
             tcp = await mg.active_tcp_name() or (await mg.tcp_names())[0]
+            # The cell's collision setups stay in force: the start move is planned like any
+            # other move, not around them.
             setup = await mg.get_setup(tcp)
-            setup.collision_setups = {}
             target = tuple(joints)
             trajectory = await mg.plan([jnt(target)], tcp, motion_group_setup=setup)
             await mg.execute(trajectory, tcp, actions=[jnt(target)])
@@ -512,7 +498,7 @@ class PolicyExecutor:
     # Observe → act loop
     # -------------------------------------------------------------------------
 
-    async def _execute(self) -> ExecutionResult:  # ruff: ignore[complex-structure]
+    async def _execute(self) -> ExecutionResult:
         """Run the observe-act loop until termination.
 
         Raises MotionError, EmergencyStopError directly.
@@ -547,10 +533,6 @@ class PolicyExecutor:
             if not robot_states:
                 await asyncio.sleep(0.01)  # retry shortly
                 continue
-            if self._plant is not None:
-                if step == 0:
-                    self._plant.reset(robot_states)
-                robot_states = self._plant.observe(robot_states)
             observation_time = time.monotonic()
             try:
                 action, start_time = await self._observe_and_infer(robot_states, step, start_time)
@@ -929,7 +911,7 @@ class PolicyExecutor:
         if stopped_by is not None:
             return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
 
-        if self._rerun is not None and self._plant is None:
+        if self._rerun is not None:
             self._rerun.log_target_tracking(trimmed, robot_states, step)
 
         # The buffer is its own continuity: a bridge or an endpoint ramp would
@@ -951,10 +933,6 @@ class PolicyExecutor:
         await self._schema.run_computed_actions(action)
         self._log_policy_action(action, step)
         self._send(sent_chunk)
-        if self._rerun is not None and self._plant is not None:
-            # robot_states is what the policy saw: the plant. The robot is
-            # tracked against it, and the raw setpoint is shown beside both.
-            self._rerun.log_plant_tracking(trimmed, robot_states, self._observe(), step)
         return None
 
     async def _observe_and_infer(
@@ -1112,12 +1090,7 @@ class PolicyExecutor:
         """Log one policy observation to Rerun when visualization is active."""
         if self._rerun is None:
             return
-        if self._plant is not None:
-            # The policy saw the plant; the robot's own state is streamed by the
-            # logger in the background and must not be overwritten with it.
-            self._rerun.log_plant_observation(robot_states, step)
-        else:
-            self._rerun.log_observation(robot_states, step)
+        self._rerun.log_observation(robot_states, step)
         if images:
             self._rerun.log_images(images)
 
@@ -1293,8 +1266,6 @@ class PolicyExecutor:
         dt_ms`` must exceed the inference latency (increase dt_ms or cut latency
         otherwise).
         """
-        if self._plant is not None:
-            chunk = self._plant.shape(chunk)
         chunk = self._clamp_chunk(chunk)
         if self._buffer_window_ms > 0:
             target_chunks = self._send_buffered(chunk)
