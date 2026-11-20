@@ -410,6 +410,29 @@ async def test_a_lead_chunk_of_several_steps_is_dated_by_its_observation():
 
 
 @pytest.mark.asyncio
+async def test_a_lead_chunk_dated_from_the_send_keeps_every_step():
+    """Without an observation the send is the reference, so nothing is ever late."""
+    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        with now as estimated:
+            estimated.return_value = 50_000
+            session.update_chunk(steps=[[float(k)] * 6 for k in range(4)], dt_ms=40, lead=True)
+            await _wait_until(lambda: len(server.requests) >= 2)
+        sent = _inner(server.requests[1]).waypoints
+        assert [w.timestamp for w in sent] == [50_100, 50_140, 50_180, 50_220]
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
 async def test_a_lead_chunk_resends_the_earlier_waypoints_due_before_it():
     session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
     now = patch.object(

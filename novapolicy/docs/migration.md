@@ -99,3 +99,11 @@ paths) or after the loop blocked until that moment (chunks with a bridge in fron
 longer waits for them. A chunk replaced before it was sent runs neither (its motion never ran);
 one still pending when the run stops is cancelled; a hook that raises ends the run. NOVA's action
 chunks carry no IO, so the write reaches the controller one network delay after that moment.
+
+## One placement rule for both modes
+
+Step `k` of a chunk is now due `WaypointConfig.max_expected_latency_ms + k·dt` after a reference
+in both modes: the observation in `ContinuousExecution`, the send in `SequentialExecution` (the
+robot was at rest when it was observed). Sequential chunks used to start one `dt` after the send;
+they now start one lead later (100 ms by default), and keep their hold padding. Chunks with their
+own `first_timestamp_ms` are unchanged.

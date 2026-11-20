@@ -1073,6 +1073,29 @@ async def test_setup_objects_are_frozen_only_while_the_loop_runs(robot: _Robot):
 
 
 @pytest.mark.asyncio
+async def test_a_sequential_chunk_is_dated_from_its_send_and_keeps_its_hold(robot: _Robot):
+    """The robot was at rest when observed, so inference time cannot cost a sequential chunk
+    any steps: it is due one lead after the send, padded with a hold as before."""
+    executor: PolicyExecutor
+
+    async def slow_policy(_obs: object) -> ActionChunk:
+        await asyncio.sleep(0.3)  # longer than the 100 ms lead plus the chunk
+        executor.stop()
+        return ActionChunk(joints={MG_ID: [[0.0] * 6]}, dt_ms=1000 / 30)
+
+    robot.session.current_state_server_ms = 1_000
+    executor = PolicyExecutor(
+        _schema(), _callback(slow_policy), timeout_s=2.0, execution=SequentialExecution()
+    )
+    await executor.run()
+
+    first_send = robot.session.update_chunk.call_args_list[0].kwargs
+    assert first_send["lead"] is True
+    assert first_send["observed_at_ms"] is None  # the send is the reference
+    assert first_send["extend_buffer"] is True
+
+
+@pytest.mark.asyncio
 async def test_a_chunk_with_its_own_backdate_is_not_dated_by_the_observation(robot: _Robot):
     """An RTC chunk carries the backdate its client computed; it keeps the old anchor."""
     executor: PolicyExecutor

@@ -1264,7 +1264,11 @@ class PolicyExecutor:
         place = placement(chunk, execution=self._execution, from_observation=from_observation)
         # A one-step chunk placed ahead is replaced by the next step before it is due: padding
         # it with a hold would make the controller brake towards every step.
-        hold = not (place.lead and is_single_step(chunk))
+        hold = not (
+            place.lead
+            and is_single_step(chunk)
+            and isinstance(self._execution, ContinuousExecution)
+        )
         server_dt_ms = (
             chunk.dt_ms
             if isinstance(self._execution, ContinuousExecution)
@@ -1337,7 +1341,10 @@ class PolicyExecutor:
         return target_chunks
 
     def _observed_ms(self, group_id: str, chunk: ActionChunk) -> int | None:
-        """When the observation behind ``chunk`` was taken, on the server's clock."""
+        """When the observation behind ``chunk`` was taken, on the server's clock; ``None`` in
+        sequential execution, where the send is the reference (the robot was at rest)."""
+        if isinstance(self._execution, SequentialExecution):
+            return None
         if is_single_step(chunk):
             return self._observed_at_ms.get(group_id)
         return self._observed_clock_ms.get(group_id)

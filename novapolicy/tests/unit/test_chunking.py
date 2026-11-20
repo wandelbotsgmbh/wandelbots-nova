@@ -474,12 +474,13 @@ def test_an_explicit_start_time_always_wins(explicit):
         assert place.timestamp_offset_steps == 0
 
 
-def test_sequential_execution_anchors_at_now_one_step_ahead():
-    """Sequential execution with no explicit start resolves now one step ahead."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]})
-    place = placement(chunk, execution=SequentialExecution())
-    assert place.first_timestamp_ms is None
-    assert place.timestamp_offset_steps == 1
+def test_sequential_execution_uses_the_same_lead_rule():
+    """One rule for both modes; the session dates a sequential chunk from its send."""
+    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6] * 4}, dt_ms=1000 / 30)
+    for from_observation in (True, False):
+        place = placement(chunk, execution=SequentialExecution(), from_observation=from_observation)
+        assert place.lead
+        assert place.first_timestamp_ms is None
 
 
 @given(seam=st.integers(min_value=0, max_value=64))
@@ -499,7 +500,6 @@ def test_a_chunk_answering_an_observation_is_dated_by_it():
         place = placement(chunk, execution=ContinuousExecution(), from_observation=True)
         assert place.lead
         assert place.first_timestamp_ms is None
-        assert not placement(chunk, execution=SequentialExecution(), from_observation=True).lead
         assert not placement(chunk, execution=ContinuousExecution()).lead
 
 

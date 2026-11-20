@@ -646,28 +646,27 @@ def placement(
 ) -> Placement:
     """Decide how a chunk is anchored on one session's timeline.
 
-    The "now" component is intentionally NOT resolved here — it is computed at
-    yield time in :func:`novapolicy.jogging.waypoints.make_waypoints_request` so the
-    timestamp cannot go stale while the chunk waits in the session queue.
+    One rule for both modes: step ``k`` is due ``max_expected_latency_ms + k * dt`` after a
+    reference, and steps already too close to send are dropped (``Placement.lead``; the session
+    applies it). The reference is the observation in continuous execution, and the send in
+    sequential execution, where the robot was at rest when it was observed.
 
-    * An explicit ``chunk.first_timestamp_ms`` (>=0) set by the policy wins —
-      used verbatim, anchored exactly.
-    * Sequential execution — "now", one step ahead.
-    * Continuous execution of a chunk the policy computed from the latest observation
-      (``from_observation``) — dated by that observation plus the session's lead, as UMI and
-      Diffusion Policy date actions. Not for a chunk on a timeline of its own: one with an
-      ``action_timestep``, a backdate its client computed (RTC), or a bridge in front.
-    * Any other continuous chunk — "now", backdated by ``seam_backdate_steps``.
+    Exceptions, each a timeline of the policy's own:
+
+    * an explicit ``chunk.first_timestamp_ms`` (>=0): used verbatim;
+    * in continuous execution a chunk that does not answer the latest observation as returned
+      (``from_observation`` false: a bridge in front), or carries a timestep or a backdate its
+      client computed (RTC): "now", backdated by ``seam_backdate_steps``.
     """
     if chunk.first_timestamp_ms >= 0:
         return Placement(chunk.first_timestamp_ms, 0)
-    if isinstance(execution, ContinuousExecution):
-        if (
-            from_observation
-            and chunk.seam_backdate_steps == 0
-            and chunk.action_timestep < 0
-            and (chunk.dt_ms > 0 or is_single_step(chunk))
-        ):
-            return Placement(None, 0, lead=True)
-        return Placement(None, -chunk.seam_backdate_steps)
-    return Placement(None, 1)
+    if not isinstance(execution, ContinuousExecution):
+        return Placement(None, 0, lead=True)
+    if (
+        from_observation
+        and chunk.seam_backdate_steps == 0
+        and chunk.action_timestep < 0
+        and (chunk.dt_ms > 0 or is_single_step(chunk))
+    ):
+        return Placement(None, 0, lead=True)
+    return Placement(None, -chunk.seam_backdate_steps)
