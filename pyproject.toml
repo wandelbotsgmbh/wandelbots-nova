@@ -17,7 +17,7 @@ dependencies = [
     # Lab pin: service-manager MR !3081 build with PauseOnIO.auto_resume (robotics/wbr!2384).
     # Not on public PyPI; served (anonymously readable) from the internal GitLab registry,
     # see [[tool.uv.index]]. Revert to a public release before landing.
-    "wandelbots_api_client==26.9.0+a3190.e56e96bb.520372",
+    "wandelbots_api_client==26.9.0.dev122",
     "websockets>=14.1.0,<15",
     "loguru>=0.7.2,<0.8",
     "pydantic>=2.11.4,<3",
@@ -90,15 +90,6 @@ dev = [
     "ty>=0.0.53",
     "pytest-timeout>=2.3.1",
 ]
-
-[tool.uv.sources]
-wandelbots_api_client = { index = "wandelbots-internal" }
-
-[[tool.uv.index]]
-# GitLab PyPI registry of wandelos/service-manager, which hosts the per-MR api-client builds.
-name = "wandelbots-internal"
-url = "https://code.wabo.run/api/v4/projects/889/packages/pypi/simple"
-explicit = true
 
 [tool.hatch.metadata]
 allow-direct-references = true
@@ -194,26 +185,6 @@ missing-argument = "ignore"
 
 [tool.ruff.lint.isort]
 known-first-party = ["nova", "nova_rerun_bridge", "novax"]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 [build-system]
 requires = ["hatchling"]
