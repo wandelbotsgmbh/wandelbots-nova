@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+from novapolicy.jogging.clock import ServerMs
 from novapolicy.types import ActionChunk, ContinuousExecution
 
 if TYPE_CHECKING:
@@ -634,7 +635,7 @@ class Placement:
     negative = backdated overlap, ``0`` = exact.
     """
 
-    first_timestamp_ms: int | None
+    first_timestamp_ms: ServerMs | None
     timestamp_offset_steps: int
     lead: bool = False
     """Continuous execution of a chunk answering an observation: the session dates step ``k``
@@ -659,7 +660,7 @@ def placement(
       client computed (RTC): "now", backdated by ``seam_backdate_steps``.
     """
     if chunk.first_timestamp_ms >= 0:
-        return Placement(chunk.first_timestamp_ms, 0)
+        return Placement(ServerMs(chunk.first_timestamp_ms), 0)
     if not isinstance(execution, ContinuousExecution):
         return Placement(None, 0, lead=True)
     if (

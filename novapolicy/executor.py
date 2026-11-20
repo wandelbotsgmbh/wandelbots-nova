@@ -29,6 +29,7 @@ from novapolicy.estop import (
     triggered_stop_condition,
 )
 from novapolicy.io import IOStreamManager
+from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.live_buffer import (
     LIVE_LEAD_MS,
     append_and_prune,
@@ -298,8 +299,8 @@ class PolicyExecutor:
         self._io_tasks: set[asyncio.Task[None]] = set()
         self._policy_timelines: dict[str, _PolicyTimeline] = {}
         self._buffer_window_ms = max(0.0, buffer_window_ms)
-        self._observed_at_ms: dict[str, int | None] = {}
-        self._observed_clock_ms: dict[str, int] = {}
+        self._observed_at_ms: dict[str, ServerMs | None] = {}
+        self._observed_clock_ms: dict[str, ServerMs] = {}
         self._gc_frozen = False
         _check_buffered_mode(self._buffer_window_ms, schema)
         self._target_buffers: dict[str, list[TimedPoint]] = {}
@@ -1340,7 +1341,7 @@ class PolicyExecutor:
             task.add_done_callback(self._io_tasks.discard)
         return target_chunks
 
-    def _observed_ms(self, group_id: str, chunk: ActionChunk) -> int | None:
+    def _observed_ms(self, group_id: str, chunk: ActionChunk) -> ServerMs | None:
         """When the observation behind ``chunk`` was taken, on the server's clock; ``None`` in
         sequential execution, where the send is the reference (the robot was at rest)."""
         if isinstance(self._execution, SequentialExecution):
@@ -1472,10 +1473,12 @@ class PolicyExecutor:
             session.update_chunk(
                 steps=replayed,
                 dt_ms=step_dt_ms,
-                first_timestamp_ms=timeline_timestamp_ms(
-                    self._buffer_anchor_ms or 0.0,
-                    horizon_end_time_s(grid_start, self._buffer_window_ms),
-                    lead_ms=LIVE_LEAD_MS,
+                first_timestamp_ms=ServerMs(
+                    timeline_timestamp_ms(
+                        self._buffer_anchor_ms or 0.0,
+                        horizon_end_time_s(grid_start, self._buffer_window_ms),
+                        lead_ms=LIVE_LEAD_MS,
+                    )
                 ),
                 extend_buffer=False,
                 action_timestep=chunk.action_timestep,
@@ -1487,13 +1490,13 @@ class PolicyExecutor:
         self,
         chunk: ActionChunk,
         group_id: str,
-    ) -> int | None:
+    ) -> ServerMs | None:
         """Map a policy action timestep onto its immutable NOVA timeline."""
         timeline = self._policy_timelines.get(group_id)
         if chunk.action_timestep < 0 or timeline is None:
             return None
         elapsed_steps = chunk.action_timestep - timeline.action_timestep
-        return int(timeline.server_timestamp_ms + elapsed_steps * timeline.policy_dt_ms)
+        return ServerMs(int(timeline.server_timestamp_ms + elapsed_steps * timeline.policy_dt_ms))
 
     def _create_session(self, mg: MotionGroup) -> WaypointJoggingSession:
         """Create a waypoint jogging session for a motion group."""

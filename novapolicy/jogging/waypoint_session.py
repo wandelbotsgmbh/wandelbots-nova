@@ -22,7 +22,7 @@ from nova import api
 from nova.types import Pose, RobotState
 from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.io import IOWriter
-from novapolicy.jogging.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, RoundTrip
+from novapolicy.jogging.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, RoundTrip, ServerMs
 from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
 from novapolicy.jogging.waypoints import (
     PendingChunk,
@@ -275,7 +275,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._clock.last_sample_wall
 
     @property
-    def current_state_server_ms(self) -> int | None:
+    def current_state_server_ms(self) -> ServerMs | None:
         """Jogger-session timestamp the cached :attr:`current_state` was measured at.
 
         State packets are delivered in bursts on some deployments — on a wandelbox,
@@ -285,7 +285,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         timestamp; using wall-clock "now" instead reports a tracking error that
         ramps at the path speed and snaps back when the burst lands.
         """
-        return self._current_state_server_ms
+        ts = self._current_state_server_ms
+        return None if ts is None else ServerMs(ts)
 
     async def wait_ready(self, timeout_s: float = 10.0) -> None:
         """Wait until the jogging session is initialized or fail if startup dies.
@@ -385,7 +386,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._scheduled_chunk_count
 
     @property
-    def scheduled_until_server_ms(self) -> int:
+    def scheduled_until_server_ms(self) -> ServerMs:
         """When the commanded motion of the latest scheduled chunk runs out.
 
         The timestamp of the last waypoint the *caller* asked for — not of the
@@ -396,7 +397,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         rest of the buffer before the next chunk could be considered, which at a
         500ms buffer is most of the wait.
         """
-        return self._scheduled_until_server_ms
+        return ServerMs(self._scheduled_until_server_ms)
 
     @property
     def scheduled_waypoint_timestamps(self) -> tuple[int, ...]:
@@ -409,7 +410,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """
         return tuple(self._scheduled_waypoint_timestamps)
 
-    def scheduled_timestamp_for_step(self, step: int) -> int | None:
+    def scheduled_timestamp_for_step(self, step: int) -> ServerMs | None:
         """Absolute NOVA timestamp assigned to the caller's step ``step``.
 
         Indexed by the caller's own step numbering, so trimming and dropping are
@@ -421,7 +422,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         ``None`` when the latest chunk had no such step.
         """
         if 0 <= step < len(self._scheduled_step_timestamps):
-            return self._scheduled_step_timestamps[step]
+            return ServerMs(self._scheduled_step_timestamps[step])
         return None
 
     @property
@@ -430,17 +431,17 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._scheduled_action_timestep
 
     @property
-    def scheduled_at_server_ms(self) -> int:
+    def scheduled_at_server_ms(self) -> ServerMs:
         """Latest server timestamp observed when the request was scheduled."""
-        return self._scheduled_at_server_ms
+        return ServerMs(self._scheduled_at_server_ms)
 
     @property
-    def last_server_timestamp_ms(self) -> int:
+    def last_server_timestamp_ms(self) -> ServerMs:
         """Latest raw NOVA jogger-session timestamp from the state stream."""
         return self._clock.last_server_timestamp_ms
 
     @property
-    def estimated_server_timestamp_ms(self) -> int:
+    def estimated_server_timestamp_ms(self) -> ServerMs:
         """Estimated current raw NOVA jogger-session timestamp."""
         return self._clock.estimated_server_timestamp_ms
 
@@ -519,13 +520,13 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         steps: list[list[float]],
         dt_ms: float,
         *,
-        first_timestamp_ms: int | None = None,
+        first_timestamp_ms: ServerMs | None = None,
         timestamp_offset_steps: int = 0,
         server_dt_ms: float | None = None,
         action_timestep: int = -1,
         extend_buffer: bool = True,
         lead: bool = False,
-        observed_at_ms: int | None = None,
+        observed_at_ms: ServerMs | None = None,
         when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None,
         **legacy: object,
     ) -> None:
@@ -780,7 +781,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._pending_request = PendingChunk(
             steps=[target],
             dt_ms=self._config.single_step_dt_ms,
-            first_timestamp_ms=timestamp_ms,
+            first_timestamp_ms=ServerMs(timestamp_ms),
             sequence=self._queued_chunk_count,
             final=True,
         )

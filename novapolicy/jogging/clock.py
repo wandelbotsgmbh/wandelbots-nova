@@ -17,12 +17,18 @@ from collections import deque
 from dataclasses import dataclass, field
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NewType
 
 if TYPE_CHECKING:
     from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+ServerMs = NewType("ServerMs", int)
+"""A time on the jogger session's clock: milliseconds since the server started executing the
+session's first chunk (``jogger_session_timestamp_ms``). Every waypoint timestamp is one. Not
+the client's ``time.monotonic()`` and not wall-clock time; convert only through
+:class:`JoggingTimeClock`."""
 
 # Number of continuously advancing state-envelope timestamps observed before
 # freezing the server/client UTC skew estimate. At a 10ms state rate this adds
@@ -141,9 +147,9 @@ class JoggingTimeClock:
         return self._last_server_wall
 
     @property
-    def last_server_timestamp_ms(self) -> int:
+    def last_server_timestamp_ms(self) -> ServerMs:
         """Latest acknowledged NOVA jogger-session timestamp."""
-        return self._last_server_ts_ms
+        return ServerMs(self._last_server_ts_ms)
 
     @property
     def client_elapsed_ms(self) -> int:
@@ -153,7 +159,7 @@ class JoggingTimeClock:
         return int((time.monotonic() - self._client_start_time) * 1000)
 
     @property
-    def estimated_server_timestamp_ms(self) -> int:
+    def estimated_server_timestamp_ms(self) -> ServerMs:
         """Estimate the server clock at the current wall-clock instant.
 
         The latest state-stream timestamp is extrapolated with the measured
@@ -161,11 +167,12 @@ class JoggingTimeClock:
         server "now" when timestamping a waypoint request.
         """
         if not self.synced:
-            return self.client_elapsed_ms
+            # Before the first server timestamp, the server clock starts with the first send.
+            return ServerMs(self.client_elapsed_ms)
         drift_ms = (time.monotonic() - self._last_server_wall) * 1000.0
         if drift_ms >= self.max_lookahead_ms:
             self._note_stall(drift_ms)
-        return self._last_server_ts_ms + int(max(0.0, drift_ms))
+        return ServerMs(self._last_server_ts_ms + int(max(0.0, drift_ms)))
 
     @property
     def acknowledged_elapsed_ms(self) -> int:

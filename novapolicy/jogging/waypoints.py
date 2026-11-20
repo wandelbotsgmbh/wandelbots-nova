@@ -18,7 +18,7 @@ from nova import api
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from novapolicy.jogging.clock import JoggingTimeClock
+    from novapolicy.jogging.clock import JoggingTimeClock, ServerMs
     from novapolicy.types import JoggingMode
 
 
@@ -42,7 +42,7 @@ class PendingChunk:
 
     steps: list[list[float]]
     dt_ms: float
-    first_timestamp_ms: int | None = None
+    first_timestamp_ms: ServerMs | None = None
     timestamp_offset_steps: int = 0
     server_dt_ms: float | None = None
     action_timestep: int = -1
@@ -62,7 +62,7 @@ class PendingChunk:
     stops on it instead of keeping its velocity past it."""
     lead: bool = False
     """A one-step chunk: placed ``max_expected_latency_ms`` after its observation."""
-    observed_at_ms: int | None = None
+    observed_at_ms: ServerMs | None = None
     when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None
     """``(step, action)``: run ``action`` when the caller's ``step`` is due, see
     :meth:`~novapolicy.jogging.waypoint_session.WaypointJoggingSession.update_chunk`."""

@@ -29,6 +29,7 @@ from novapolicy.estop import (
     check_sessions,
     triggered_stop_condition,
 )
+from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.live_buffer import (
     LIVE_LEAD_MS,
     append_and_prune,
@@ -167,7 +168,7 @@ class _BaseJogger:
 
     def _timeline_timestamp_ms(
         self, mg: MotionGroup, trajectory_time_s: float, lead_ms: float = LEAD_MS
-    ) -> int | None:
+    ) -> ServerMs | None:
         """Absolute server timestamp for a target generated at ``trajectory_time_s``.
 
         The whole session shares **one fixed timeline**: content generated at
@@ -189,9 +190,9 @@ class _BaseJogger:
         # commanded points to new absolute times, and the robot executes each
         # such shift as a lurch -- an adaptive lead measured worse than a fixed
         # one on every pattern tried.
-        return int(self._ack0_ms + trajectory_time_s * 1000.0 + lead_ms)
+        return ServerMs(int(self._ack0_ms + trajectory_time_s * 1000.0 + lead_ms))
 
-    def _anchor_for_now(self, mg: MotionGroup, lead_ms: float = LEAD_MS) -> int | None:
+    def _anchor_for_now(self, mg: MotionGroup, lead_ms: float = LEAD_MS) -> ServerMs | None:
         """Timeline anchor for content generated at this iteration's instant."""
         return self._timeline_timestamp_ms(mg, self.elapsed, lead_ms)
 
