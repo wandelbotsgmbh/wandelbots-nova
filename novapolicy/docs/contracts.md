@@ -61,8 +61,10 @@ after resolution; IO and metadata are kept. Tests: `test_trim_bounds_each_arm_to
 bridges included; the first clip per joint is logged. Tests: `test_a_target_below_the_bound_is_held_at_it`,
 `test_the_first_clip_per_joint_is_reported`; the executor's use of it is *untested*.
 
-**M8 IO values** in `ActionChunk.ios` are in hardware units and written once per change.
-Tests: `test_io_action_decoding`, `test_bool_mapping`.
+**M8 IO values** in `ActionChunk.ios` are in hardware units and written once per change. A
+client that receives IO for every step of a chunk takes the first step's, since IO fires when
+that step is due (T7). Tests: `test_io_action_decoding`, `test_bool_mapping`,
+`test_io_actions_come_from_the_chunks_first_step`.
 
 **M9 Joint velocities** are the controller's measurement when it sends one, otherwise
 differenced from consecutive positions. Tests: `test_measured_velocities_are_used_when_the_controller_sends_them`,
@@ -168,6 +170,5 @@ Behaviour the contracts above do not cover yet, found while writing them:
 - **IO names are not scoped by controller:** the same name on two controllers resolves to the
   last.
 - **The observed TCP is the controller's active TCP**, not the one named for the action.
-- **Clients read IO from different steps:** LeRobot from step 0, GR00T from the last; LEAPP and
-  NATS map no IO actions.
+- **LEAPP and NATS policies map no IO actions.**
 - **GR00T's TCP default** (metres and rot6d in, mm and rotation vectors out) bypasses M3.

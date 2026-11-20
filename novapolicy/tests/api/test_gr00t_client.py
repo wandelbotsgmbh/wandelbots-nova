@@ -568,6 +568,35 @@ async def test_io_action_decoding() -> None:
 
 
 @pytest.mark.asyncio
+async def test_io_actions_come_from_the_chunks_first_step() -> None:
+    """IO fires when the policy's first step is due, so it carries that step's value."""
+    from novapolicy.schema import BoolMapping
+
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    gripper = np.array([[[0.0], [0.0], [1.0]]], dtype=np.float32)  # (B=1, T=3, D=1)
+    server.action_response = ({"arm": np.zeros((1, 3, 6), np.float32), "gripper": gripper}, {})
+    server.start()
+    try:
+        mg = _mg()
+        schema = PolicySchema(
+            observations=[
+                Observation.joint_positions("arm", source=mg),
+                Observation.io(
+                    "gripper", source=mg, io="digital_out[0]", mapping=BoolMapping(on=1.0)
+                ),
+            ]
+        )
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port, control_freq=30.0)
+        await client.connect([mg.id])
+        result = await client.get_actions({mg.id: _state((0.0,) * 6)}, schema)
+        assert result.ios == {mg.id: {"digital_out[0]": False}}
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
 async def test_io_action_bool_mapping_off() -> None:
     """IO value below threshold should map to False."""
     port = _find_free_port()

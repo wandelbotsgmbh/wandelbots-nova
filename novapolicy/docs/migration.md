@@ -107,3 +107,9 @@ in both modes: the observation in `ContinuousExecution`, the send in `Sequential
 robot was at rest when it was observed). Sequential chunks used to start one `dt` after the send;
 they now start one lead later (100 ms by default), and keep their hold padding. Chunks with their
 own `first_timestamp_ms` are unchanged.
+
+## GR00T IO comes from the chunk's first step
+
+`Gr00tPolicyClient` used to take an IO action's value from the last step of the chunk; it now
+takes the first, like the LeRobot client, since IO is written when that step is due. A policy
+that toggles a gripper inside a chunk now has it follow the first step of each chunk.

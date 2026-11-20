@@ -515,8 +515,13 @@ class Gr00tPolicyClient(PolicyClient):
         for key, mg, hw_key, mapping in schema.io_action_keys:
             arr = action.get(key)
             if isinstance(arr, np.ndarray):
-                # GR00T IO arrays are (B, T, 1) — take the last timestep
-                val = float(arr.flat[-1])
+                # GR00T IO arrays are (B, T, 1). Take the first step: IO fires when the
+                # chunk's first step is due (contract T7), so it must carry that step's value.
+                val = (
+                    float(arr.reshape(arr.shape[0], -1)[0, 0])
+                    if arr.ndim > 1
+                    else float(arr.flat[0])
+                )
                 ios.setdefault(mg.id, {})[hw_key] = mapping.to_hardware(val)
             elif key in action:
                 val = float(cast("Any", action[key]))
