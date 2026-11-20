@@ -72,3 +72,10 @@ timeline keep the old placement: RTC (`seam_backdate_steps`), the timestep queue
 Such a chunk's IO actions (`ActionChunk.ios`) are written when its first step is due rather than
 at send, so they keep their place relative to the arm. NOVA's action chunks carry no IO, so the
 write reaches the controller one network delay after that moment.
+
+## GR00T applies the schema's joint operators
+
+`Gr00tPolicyClient` used to send joint positions to the server in radians even when the schema
+declared `ops` (`Observation.joint_positions(..., ops=[Rad2Deg()])`), while the executor still
+inverted those ops on the returned actions. It now applies them on the way in, as every other
+client does. A GR00T schema without `ops` is unaffected.

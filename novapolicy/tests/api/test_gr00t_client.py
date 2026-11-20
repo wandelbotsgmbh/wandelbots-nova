@@ -837,6 +837,32 @@ async def test_joint_velocity_and_pose_observations_feed_server_state_keys() -> 
 
 
 @pytest.mark.asyncio
+async def test_joint_observations_apply_the_schema_operators() -> None:
+    """The executor inverts ops on the actions, so GR00T has to apply them on the observations:
+    with Rad2Deg the policy sees degrees in and its degrees are read back as degrees."""
+    from novapolicy.ops import Rad2Deg
+
+    port = _find_free_port()
+    server = _RecordingGr00tServer(port)
+    server._modality_config = {
+        "state": {"__ModalityConfig_class__": True, "as_json": {"modality_keys": ["arm"]}},
+    }
+    server.start()
+    try:
+        mg = _mg()
+        schema = PolicySchema(
+            observations=[Observation.joint_positions("arm", source=mg, ops=[Rad2Deg()])]
+        )
+        client = Gr00tPolicyClient(host="127.0.0.1", port=port, control_freq=30.0)
+        await client.connect([mg.id])
+        await client.get_actions({mg.id: _state((math.pi / 2,) * 6)}, schema)
+        np.testing.assert_allclose(server.last_observation["state"]["arm"][0, 0], [90.0] * 6)
+        await client.close()
+    finally:
+        server.close()
+
+
+@pytest.mark.asyncio
 async def test_a_tcp_coordinate_system_without_orientation_type_is_refused() -> None:
     """GR00T's tcp_format only applies to world poses; a frame alone would change the format."""
     port = _find_free_port()

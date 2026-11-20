@@ -28,6 +28,7 @@ from novapolicy.gr00t.rtc import (  # ruff: ignore[typing-only-first-party-impor
     seam_backdate_steps,
 )
 from novapolicy.gr00t.transport import Gr00tZmqTransport, require_dict
+from novapolicy.ops import apply_ops
 from novapolicy.policy_client import DEFAULT_CONTROL_FREQ, PolicyClient
 from novapolicy.types import ActionChunk
 
@@ -451,7 +452,8 @@ class Gr00tPolicyClient(PolicyClient):
                 self._actual_dof[mg.id] = len(joints)
                 concat_joints.extend(joints)
             if concat_joints:
-                state_dict[m.key] = _to_state_array(concat_joints)
+                # The same operators as every client: the executor inverts them on the actions.
+                state_dict[m.key] = _to_state_array(apply_ops(concat_joints, m.ops))
 
         for tm in schema.tcp_mappings:
             s = states.get(tm.source.id)
