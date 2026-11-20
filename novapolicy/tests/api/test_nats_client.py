@@ -399,6 +399,19 @@ async def test_validate_schema_accepts_one_joint_target_per_block() -> None:
 
 
 @pytest.mark.asyncio
+async def test_validate_schema_rejects_joint_operators() -> None:
+    """The policy declares its own layout in rad; ops would only be inverted on the actions."""
+    from novapolicy.ops import Rad2Deg
+
+    client = _client()
+    schema = PolicySchema(
+        observations=[Observation.joint_positions("arm", source=_mg(MG_ID), ops=[Rad2Deg()])]
+    )
+    with pytest.raises(ValueError, match="declare ops"):
+        await client.validate_schema(schema)
+
+
+@pytest.mark.asyncio
 async def test_validate_schema_rejects_the_wrong_number_of_joint_targets() -> None:
     client = _client()  # single-block policy
 

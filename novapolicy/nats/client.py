@@ -264,6 +264,12 @@ class NatsPolicyClient(PolicyClient):
                 f"Observations {unsent} are not sent to a NATS policy: its proprio carries "
                 "joint positions, joint velocities and the last action itself."
             )
+        converted = [m.key for m in schema.joint_mappings if m.ops]
+        if converted:
+            raise ValueError(
+                f"Observations {converted} declare ops, but a NATS policy takes and returns "
+                "joints in NOVA units (rad) in the layout it declares; remove the ops."
+            )
         consumed = {f"{ACTION_KEY}.{key}" for key in schema.computed_action_keys}
         unclaimed = [name for name in self._extra_actions if name not in consumed]
         if unclaimed:
