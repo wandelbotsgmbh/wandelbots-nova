@@ -1336,7 +1336,7 @@ class PolicyExecutor:
             )
             target_chunks[group_id] = session.queued_chunk_count
         self._schedule_ios(effects, skip=set(moving))
-        if not moving:
+        if not moving and self._schema.has_computed_actions:
             task = asyncio.create_task(self._schema.run_computed_actions(effects))
             self._io_tasks.add(task)
             task.add_done_callback(self._io_tasks.discard)
@@ -1361,7 +1361,7 @@ class PolicyExecutor:
         with the waypoints, on the controller's clock, and only computed actions remain here.
         """
         ios = (effects.ios or {}).get(group_id)
-        computed = group_id == moving[0]
+        computed = group_id == moving[0] and self._schema.has_computed_actions
         session = self._sessions[group_id]
 
         async def run() -> None:

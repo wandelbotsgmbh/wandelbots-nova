@@ -867,6 +867,11 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         return [o for o in self._observations if isinstance(o, _ObsIO)]
 
     @property
+    def has_computed_actions(self) -> bool:
+        """Whether any ``Action.computed`` hook is declared."""
+        return any(isinstance(a, _ActComputed) for a in self._actions)
+
+    @property
     def computed_action_keys(self) -> list[str]:
         """Action keys ``Action.computed`` hooks consume (``chunk.values``)."""
         return [k for a in self._actions if isinstance(a, _ActComputed) for k in a.keys]
