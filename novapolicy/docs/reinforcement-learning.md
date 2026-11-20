@@ -273,9 +273,10 @@ execution runs each step to standstill, so the policy sees zero joint velocity a
 On a virtual UR10e a scripted one-step policy ran at 58 Hz of 60 continuously and at 6 Hz
 sequentially.
 
-**Latency.** Each one-step chunk replaces the queued waypoint, so the controller needs the newest
-waypoint far enough ahead to plan a smooth approach: about 67 ms plus the observation's age and the
-network round trip. A target is due `WaypointConfig(max_expected_latency_ms=...)` after the
+**Latency.** Each waypoint must reach the controller about 67 ms before it is due, so it needs a
+lead that also covers the observation's age and the network round trip. Every request re-sends
+the earlier waypoints that are not due yet, so the controller always has the next few queued. A
+target is due `WaypointConfig(max_expected_latency_ms=...)` after the
 observation it was computed from (100 ms by default, as MoveIt Servo's `max_expected_latency`;
 dated by the observation as UMI and Diffusion Policy do), without a braking hold, so the arm
 executes it that much later. Consecutive targets are spaced one policy step apart on a playback
