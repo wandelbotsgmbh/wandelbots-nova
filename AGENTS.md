@@ -117,3 +117,17 @@ for working on this repository.
   Cover new scanner checks in `tests/nova/agent_skills/test_scan.py`.
 - When you change the `nova-skills` command or its options, update the `README.md` section and the
   hint in `docs/programs.md`.
+
+## novapolicy: the executor maps and transports
+
+`PolicyExecutor` turns robot state, cameras and IOs into the observations the `PolicySchema`
+declares, calls the policy, converts its actions back to NOVA (units, frames, relative targets),
+and streams them as timestamped action chunks. How well the robot follows those waypoints
+(interpolation, smoothing, limits, tracking) is NOVA's job, in its action chunk streaming.
+
+- Do not add trajectory generation, filters, actuator models or controllers to the executor or
+  the jogging sessions. If the robot does not follow the commanded waypoints faithfully, fix or
+  report it on the NOVA side.
+- Transport timing is in scope: waypoint timestamps, the lead, loop pacing, and guards that stop
+  a run loudly instead of degrading it silently.
+- Light output smoothing is acceptable only if it stays small; prefer none.
