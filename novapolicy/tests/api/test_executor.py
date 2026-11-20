@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterator
+import contextlib
 from dataclasses import dataclass
+import gc
 import math
 import time
 from types import SimpleNamespace
@@ -1001,6 +1003,33 @@ def test_rtc_with_continuous_execution_is_accepted():
         motion=WaypointConfig(),
         execution=ContinuousExecution(rate_hz=20),
     )  # no raise
+
+
+@pytest.mark.asyncio
+async def test_setup_objects_are_frozen_only_while_the_loop_runs(robot: _Robot):
+    """Full collections skip what setup allocated while the loop runs; afterwards, also after a
+    failed run, nothing stays frozen."""
+    before = gc.get_freeze_count()  # the interpreter freezes some objects at startup
+    frozen: list[int] = []
+
+    def policy_that(*, fails: bool):
+        async def policy(_obs: object) -> ActionChunk:
+            frozen.append(gc.get_freeze_count())
+            if fails:
+                raise RuntimeError("policy crashed")
+            executor.stop()
+            return ActionChunk(joints={MG_ID: [[0.0] * 6]}, dt_ms=1000 / 30)
+
+        return _callback(policy)
+
+    for fails in (False, True):
+        executor = PolicyExecutor(
+            _schema(), policy_that(fails=fails), timeout_s=1.0, execution=ContinuousExecution()
+        )
+        with contextlib.suppress(RuntimeError):
+            await executor.run()
+        assert frozen.pop() > before
+        assert gc.get_freeze_count() == 0
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 from dataclasses import dataclass
 from enum import StrEnum
+import gc
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -276,6 +277,7 @@ class PolicyExecutor:
         self._buffer_window_ms = max(0.0, buffer_window_ms)
         self._observed_at_ms: dict[str, int | None] = {}
         self._observed_clock_ms: dict[str, int] = {}
+        self._gc_frozen = False
         _check_buffered_mode(self._buffer_window_ms, schema)
         self._target_buffers: dict[str, list[TimedPoint]] = {}
         self._buffer_anchor_ms: float | None = None
@@ -486,6 +488,9 @@ class PolicyExecutor:
         finally:
             # Release only what this method started; sessions + policy are
             # handled by _cleanup() in run()'s finally.
+            if self._gc_frozen:
+                gc.unfreeze()
+                self._gc_frozen = False
             if self._rerun is not None:
                 await self._rerun.stop_streaming()
             if self._estop_monitor is not None:
@@ -923,11 +928,28 @@ class PolicyExecutor:
 
         if start_time is None:
             await self._prepare_policy(robot_states, images)
+            self._freeze_setup_objects()
             start_time = time.monotonic()
             self.status.phase = Phase.EXECUTING
             self.status.message = "Running policy..."
 
         return await self._infer(robot_states, images), start_time
+
+    def _freeze_setup_objects(self) -> None:
+        """Keep full garbage collections from pausing the control loop.
+
+        Everything allocated up to here (SDK clients, sessions, a loaded model) lives for the
+        whole run, yet every full collection traverses it again: on a virtual UR10e that stopped
+        the event loop, the policy loop and the state stream together, for 135 to 240 ms every
+        7 s or so. ``gc.freeze()`` takes those objects out of collection, so collections only
+        traverse what the loop allocates (gaps below 45 ms); the collector stays on. ``run()``
+        unfreezes at the end, so a long-lived host still collects cycles left by finished runs.
+        ``gc.unfreeze()`` releases everything frozen, including what the interpreter or the host
+        froze; only a pre-forking server that froze objects for copy-on-write would notice.
+        """
+        gc.collect()
+        gc.freeze()
+        self._gc_frozen = True
 
     def _read_policy_images(self) -> dict[str, Any] | None:
         """Read one frame per camera, or report the channel as stale."""
