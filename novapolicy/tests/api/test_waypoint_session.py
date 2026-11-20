@@ -488,6 +488,7 @@ def test_a_lead_chunk_that_is_late_entirely_is_not_sent_and_not_guarded():
 @pytest.mark.asyncio
 async def test_a_chunk_action_runs_when_its_step_is_due_or_at_once_when_past():
     session, _server = _build_session()
+    session._running = True  # a started session, without its network loop
     now = patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
     )
@@ -518,6 +519,7 @@ async def test_a_chunk_action_runs_when_its_step_is_due_or_at_once_when_past():
 @pytest.mark.asyncio
 async def test_a_chunk_action_fails_the_session_when_it_raises():
     session, _server = _build_session()
+    session._running = True  # a started session, without its network loop
 
     async def broken() -> None:
         raise RuntimeError("gripper unreachable")
@@ -528,6 +530,33 @@ async def test_a_chunk_action_fails_the_session_when_it_raises():
         await asyncio.sleep(0.01)
         assert session.has_failed
         assert isinstance(session.failure_exception, RuntimeError)
+    finally:
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_action_is_skipped_when_the_motion_stopped_before_it_was_due():
+    """A stop condition or a failure ends the motion; the gripper must not still fire."""
+    session, _server = _build_session()
+    session._running = True
+    ran: list[str] = []
+
+    async def run() -> None:
+        ran.append("ran")
+
+    try:
+        for stop in ("stop condition", "failure"):
+            pending = PendingChunk(steps=[[0.0] * 6], dt_ms=50, when_due=(0, run))
+            due = int(session.estimated_server_timestamp_ms) + 30
+            session._run_when_due(pending, [due])
+            if stop == "stop condition":
+                session._stop_condition = "door opened"
+            else:
+                session._stop_condition = None
+                session._failed = True
+            await asyncio.sleep(0.08)
+        assert ran == []
     finally:
         for p in session._test_patches:  # type: ignore[attr-defined]
             p.stop()

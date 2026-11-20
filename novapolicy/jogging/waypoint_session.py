@@ -202,6 +202,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._queued_chunk_count = 0
         self._scheduled_chunk_count = 0
         self._due_tasks: set[asyncio.Task[None]] = set()
+        self._due_lock = asyncio.Lock()
         self._scheduled_until_server_ms = 0
         self._scheduled_waypoint_timestamps: list[int] = []
         self._scheduled_step_timestamps: list[int] = []
@@ -561,8 +562,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             when_due: ``(step, action)``. ``action`` runs when the caller's ``step`` is due on
                 the server's clock, for the chunk's IO and computed actions. It runs at once
                 when that step was already past (a dropped chunk), never when the chunk is
-                replaced before it is sent (its motion never runs), and is cancelled by
-                :meth:`stop` if not due by then. An exception fails the session.
+                replaced before it is sent (its motion never runs), and not when the session
+                stopped, failed or hit a stop condition before it was due. Actions of one
+                session run one after another. An exception fails the session.
         """
         if legacy:
             timestamp_offset_steps = self._resolve_legacy(legacy, timestamp_offset_steps)
@@ -1073,8 +1075,11 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         delay_s = (due_ms - self._clock.estimated_server_timestamp_ms) / 1000.0
         if delay_s > 0:
             await asyncio.sleep(delay_s)
+        if self._failed or self._stop_condition is not None or not self._running:
+            return  # the motion it belongs to was stopped
         try:
-            await action()
+            async with self._due_lock:  # one chunk's actions after the other's
+                await action()
         except Exception as error:  # ruff: ignore[blind-except] (any hook error fails the run)
             self._failed = True
             self._failure_reason = f"action at a chunk step failed for {self.motion_group_id}"
