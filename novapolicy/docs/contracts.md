@@ -1,0 +1,155 @@
+# Executor contracts
+
+What `PolicyExecutor` promises, as numbered invariants: **M** for mapping (robot ↔ policy),
+**T** for timing (when each waypoint, IO and hook happens). The executor maps and transports;
+how the arm follows the waypoints is NOVA's job (see `AGENTS.md`). Each invariant names the test
+that asserts it; one marked *untested* is a promise without a guard yet. The reasons behind the
+choices are in the [decision records](adr/).
+
+## Clocks and units
+
+| Name | What it is | In code |
+| --- | --- | --- |
+| Session clock | ms since NOVA started executing the session's first chunk (`jogger_session_timestamp_ms`). Every waypoint timestamp is one. | `ServerMs` (`jogging/clock.py`) |
+| Client clock | `time.monotonic()` of this process: run timeout, tick grid, inference timeout | `float` seconds |
+| State timestamp | the session-clock time a state packet was measured at; arrives late and in bursts | `current_state_server_ms` |
+
+Session-clock values are estimated on the client by `JoggingTimeClock`: the last acknowledged
+timestamp plus the client time since that state was measured, never rescaled
+(`test_server_time_is_never_rescaled_by_a_derived_rate`,
+`test_delayed_state_uses_generation_time_not_receipt_time`). Placeholder state timestamps from
+before 2000 are ignored (`test_a_placeholder_state_timestamp_is_not_read_as_delivery_delay`).
+
+Units at NOVA's side: joints in rad, TCP positions in mm, orientations as rotation vectors (rad),
+in world coordinates. Everything the policy sees is converted from these and back.
+
+## M: Mapping
+
+**M1 Operators run both ways.** A channel's `ops` convert NOVA → policy on observations, front
+to back, and are inverted policy → NOVA on actions, back to front. An explicit `Action`'s ops
+win over its observation's. Every client applies them, GR00T included.
+Tests: `test_operator_lists_reverse_on_the_way_back`, `test_joint_observations_are_converted_on_the_way_in`,
+`test_joint_actions_are_converted_on_the_way_out`, `test_an_explicit_action_overrides_the_observations_operators`,
+`test_joint_observations_apply_the_schema_operators`.
+
+**M2 Joint observations** concatenate the source groups' joints in list order, keyed
+`<key>_1..n`. Tests: `test_dual_arm_observation`, `test_concatenated_observation`.
+
+**M3 TCP observations** are converted into the declared `coordinate_system`, then to the
+declared `orientation_type` (quaternions scalar-last), then through `position_ops` and
+`orientation_ops`. Tests: `test_quaternion_observations_are_named_and_converted`,
+`test_coordinate_systems_chain_their_references`, `test_world_is_an_exact_no_op`,
+`test_tcp_position_and_orientation_convert_independently`.
+
+**M4 Action resolution order:** inverse ops, then relative targets, then frame to world.
+Tests: `test_units_are_inverted_before_relative_deltas_resolve`,
+`test_absolute_targets_reach_the_robot_in_nova_units`,
+`test_relative_targets_compose_in_the_coordinate_system_and_return_to_world`.
+
+**M5 Relative targets are relative to the observation** the policy saw (the snapshot before
+inference), not to the live state or the previous target. Joint deltas accumulate: step `i` is
+`q_obs + Σ d[0..i]`. TCP rotations compose as rotations. Tests:
+`test_relative_joint_steps_are_the_running_cumulative_sum`, `test_relative_tcp_rotations_compose_instead_of_adding`,
+`test_accumulated_tcp_deltas_chain_from_step_to_step`, `test_tool_frame_tcp_deltas_follow_the_tool_axes`.
+
+**M6 Trimming.** A chunk is cut to `n_action_steps` (argument, else the policy's own, else all)
+after resolution; IO and metadata are kept. Tests: `test_trim_bounds_each_arm_to_n_and_preserves_a_prefix`,
+`test_the_policys_declared_horizon_is_used_when_none_is_given`.
+
+**M7 Joint limits.** Joint targets are held inside NOVA's limits minus 2° before they are sent,
+bridges included; the first clip per joint is logged. Tests: `test_a_target_below_the_bound_is_held_at_it`,
+`test_the_first_clip_per_joint_is_reported`; the executor's use of it is *untested*.
+
+**M8 IO values** in `ActionChunk.ios` are in hardware units and written once per change.
+Tests: `test_io_action_decoding`, `test_bool_mapping`.
+
+## T: Timing
+
+**T1 One placement rule.** Step `k` of a chunk is due
+`reference + max_expected_latency_ms + k·dt` on the session clock. The reference is the
+observation in `ContinuousExecution` and the send in `SequentialExecution`, where the robot was
+at rest when it was observed.
+Tests: `test_a_lead_chunk_of_several_steps_is_dated_by_its_observation`,
+`test_a_lead_chunk_dated_from_the_send_keeps_every_step`, `test_continuous_chunks_are_dated_by_their_observation`,
+`test_a_sequential_chunk_is_dated_from_its_send_and_keeps_its_hold`, `test_sequential_execution_uses_the_same_lead_rule`.
+
+**T2 Timelines of the policy's own are kept.** Exceptions to T1, each used verbatim:
+an explicit `first_timestamp_ms` (never bridged); a timestep queue's chunk at
+`origin + Δtimestep·dt`; an RTC chunk at "now" minus `seam_backdate_steps·dt`; a continuous
+chunk with a bridge in front at "now".
+Tests: `test_an_explicit_start_time_always_wins`, `test_a_chunk_with_its_own_timestamp_is_not_bridged`,
+`test_async_queue_replacements_preserve_the_initial_policy_timeline`, `test_a_chunk_on_its_own_timeline_is_not_dated_by_the_observation`,
+`test_a_chunk_with_its_own_backdate_is_not_dated_by_the_observation`.
+
+**T3 Late steps are dropped, never retimed.** A step due within `MIN_LEAD_MS` (20 ms) of now is
+not sent; the others keep their times, and every step's time is still reported. A chunk late
+entirely is not sent. Under T1 in sequential execution nothing is ever late.
+Tests: `test_waypoints_already_in_the_past_are_trimmed_before_sending`,
+`test_a_trimmed_chunk_still_reports_where_each_caller_step_landed`, `test_a_lead_chunk_that_is_late_entirely_is_not_sent_and_not_guarded`.
+Exception: an RTC chunk's backdated head is sent although it is past (*untested*).
+
+**T4 One-step chunks in continuous execution** are spaced one policy step apart by a playback
+clock that follows the observations by at most 10% of a step per step and jumps to them when
+more than 100 ms off. This is the one bounded retiming. Test:
+`test_one_step_waypoints_are_spaced_by_the_policy_step_despite_bursty_observations`.
+
+**T5 Rolling window.** A request dated by T1 re-sends the earlier waypoints that are not due
+yet. Tests: `test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due`,
+`test_a_lead_chunk_resends_the_earlier_waypoints_due_before_it`.
+
+**T6 End of a chunk.** A chunk is extended with its last target up to `min_chunk_horizon_ms`
+(500 ms), except one-step chunks in continuous execution, which the next step replaces before
+they are due. The padding is not motion anyone waits for. Tests:
+`test_a_short_chunk_holds_its_final_target_to_fill_the_buffer`,
+`test_the_padded_tail_of_a_short_chunk_is_not_motion_anyone_waits_for`.
+
+**T7 IO and computed actions run when the policy's first step is due**, on every path and
+without blocking the loop: policy waypoint zero of what is sent (behind a bridge too). A chunk
+replaced before it is sent runs neither; one pending when the session stops is cancelled; a hook
+that raises ends the run. IO without motion runs at once. IO is a separate write, so it reaches
+the controller one network delay later; NOVA's action chunks are to carry it.
+Tests: `test_io_of_a_continuous_chunk_goes_with_its_first_step`,
+`test_a_bridged_chunk_hands_its_io_and_computed_action_to_the_policys_first_step`,
+`test_a_chunk_action_runs_when_its_step_is_due_or_at_once_when_past`,
+`test_a_replaced_chunk_never_runs_its_action_and_stop_cancels_the_rest`, `test_a_chunk_action_fails_the_session_when_it_raises`.
+
+**T8 Pacing.** Sequential: the next observation waits until the chunk's last step is due and the
+robot stands still. Continuous with `rate_hz`: ticks on an absolute grid; more than one period
+behind, the grid restarts instead of firing catch-up ticks (*restart untested*).
+Tests: `test_sequential_mode_delays_next_inference_until_deadline_and_standstill`,
+`test_sequential_mode_waits_out_the_braking_ramp_after_the_deadline`,
+`test_fixed_rate_makes_up_slow_ticks_instead_of_lowering_the_rate`.
+
+**T9 Loud, not degraded.** Five one-step waypoints in a row that reach the controller with less
+than 67 ms of their lead left stop the run with `MotionError` ("over budget"). Test:
+`test_one_step_waypoints_that_keep_arriving_too_late_stop_the_session`.
+
+**T10 End of a run.** A normal end waits until the session clock passes the last waypoint and
+stops on the last target; an error drops what was accepted. Tests:
+`test_a_normal_end_drains_before_stopping`, `test_drain_stops_on_the_last_target_instead_of_keeping_the_velocity`,
+`test_an_error_drops_the_accepted_waypoints_instead_of_draining`.
+
+**T11 Garbage collection.** Objects allocated up to policy preparation are frozen out of
+collection while the loop runs and released when the run ends. Test:
+`test_setup_objects_are_frozen_only_while_the_loop_runs`.
+
+**T12 Setups sequential execution would run wrongly are refused at construction:** RTC, a
+timestep queue (`QueuedPolicyClient`, LeRobot's async queue), `buffer_window_ms`. Tests:
+`test_rtc_without_overlapping_placement_is_rejected`,
+`test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected`.
+
+## Known gaps
+
+Behaviour the contracts above do not cover yet, found while writing them:
+
+- **Missing data is filled silently.** A missing group's joints are skipped (later indices
+  shift), a missing pose drops its keys, a missing IO reads `0.0`; relative targets for a group
+  without state are sent as absolute.
+- **Relative mode is per motion group:** one relative observation makes the group's joints and
+  TCP relative.
+- **IO names are not scoped by controller:** the same name on two controllers resolves to the
+  last.
+- **The observed TCP is the controller's active TCP**, not the one named for the action.
+- **Clients read IO from different steps:** LeRobot from step 0, GR00T from the last; LEAPP and
+  NATS map no IO actions.
+- **GR00T's TCP default** (metres and rot6d in, mm and rotation vectors out) bypasses M3.

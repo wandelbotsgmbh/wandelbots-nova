@@ -115,8 +115,9 @@ the current state to the predicted motion. The bridge and policy chunk are sent 
 request, so NOVA does not stop at the boundary and IO or computed actions remain aligned with policy
 waypoint zero.
 
-Continuous policies may use this bridge for their initial lookahead only. Later lookaheads replace
-the active trajectory without re-anchoring it to the measured state. The same behavior is available
+In continuous execution only a timestep queue (`QueuedPolicyClient`, LeRobot's async queue) is
+bridged, and only until its timeline exists: its later chunks carry an `action_timestep` and
+continue on that timeline without re-anchoring to the measured state. The same behavior is available
 through `novapolicy.connect_action_chunk(...)` and `novapolicy.create_bridge_chunk(...)`.
 
 ### Sequential endpoint ramps
@@ -172,7 +173,8 @@ request endpoint rather than trying to guess which prediction will be the episod
 Higher rates give smoother overlapping but require faster inference.
 The server requires continuous waypoint updates — if the buffer empties
 (no new chunk arrives before the previous one finishes), the robot pauses.
-Chunks shorter than `WaypointConfig.min_chunk_horizon_ms` are padded by repeating
+Chunks shorter than `WaypointConfig.min_chunk_horizon_ms` (except one-step chunks in
+continuous execution, which the next step replaces) are padded by repeating
 their final target so the server always has a horizon it can brake within. That
 padding is excluded from `scheduled_until_server_ms`, so waits for a chunk to
 finish end at the last waypoint the caller asked for rather than sitting through
@@ -302,35 +304,14 @@ job; on the client side it owns only when each waypoint is due and when it is se
 
 ![The executor maps and transports; NOVA's action chunk streaming owns the motion. The timing contracts sit on the stage they govern.](images/executor-contracts.png)
 
-**Contracts**
+What it promises is listed as numbered, tested invariants in [contracts.md](contracts.md):
+**M** for mapping, **T** for timing. Why each choice was made, with the alternative it was
+measured against, is in the [decision records](adr/).
 
-- **Placement.** A continuous chunk answering the latest observation has step `k` due
-  `max_expected_latency_ms + k·dt` after that observation, on the server's clock. Other chunks keep
-  their anchor (table under [Trajectory-absolute timestamps](#trajectory-absolute-timestamps)).
-- **IO follows the motion.** A chunk's IO and computed actions run when the policy's first step
-  is due, on every path, without blocking the loop. A replaced chunk runs neither; a pending one
-  is cancelled when the run stops. IO is a separate write (action chunks carry no IO yet), so it
-  reaches the controller one network delay later.
-- **Late steps are dropped, never retimed.** A step due within `MIN_LEAD_MS` of now is not sent; the
-  rest keep the time the policy meant.
-- **Pacing.** `ContinuousExecution(rate_hz=...)` ticks on an absolute grid; more than one period
-  behind, the grid restarts instead of firing catch-up ticks.
-- **Loud, not degraded.** One-step waypoints that keep arriving too late for the lead stop the run
-  with `MotionError` ("over budget").
-- **Garbage collection.** What setup allocated is frozen (`gc.freeze()`) while the loop runs and
-  unfrozen afterwards.
-
-**Decisions** (virtual UR10e, in-cluster unless noted)
-
-| Decision | Why | Measured alternative |
-|---|---|---|
-| Fixed lead, `max_expected_latency_ms` (100 ms) | A latency change must not change the motion silently (MoveIt Servo, UMI, Diffusion Policy) | Lead adapted to the measured round trip: degraded without a word when latency rose |
-| Date by the observation, not the send | The chunk answers the observation, so inference time no longer shifts it. Cost: chunks run about one lead later (lag ~108 ms instead of 24–50 ms) | Backdate by inference time in whole steps: 0.74–1.14° rms at 200 ms inference (now 0.45°, one run); better for chunks indexed by call time at 30 ms inference (0.016–0.019° against 0.045–0.048°) |
-| Chunks: the server clock at observation. One step: the state's timestamp through a playback clock | State timestamps jitter and stall; shifted chunks overlap and the follower spikes at every seam | State timestamp for chunks: 0.13–0.15° rms on the NATS mock policy (now 0.006–0.009°) |
-| Re-send waypoints not yet due | WBR keeps only the newest chunk per control cycle | – |
-| Absolute tick grid | Each overrun was lost for good | Sleep for the rest of the tick: 27 Hz instead of 30 with the Rerun viewer |
-| Freeze setup objects during the loop | Full collections stopped the event loop for 135–240 ms every ~7 s | With the freeze, the longest gap between policy calls was 36–43 ms |
-| No client-side smoothing | It is motion shaping, NOVA's job | Spline resampling doubled the time at the acceleration limit; `buffer_window_ms` lagged more and shook (measured 2026-11-18, before `max_expected_latency_ms`) |
+In short: step `k` of a chunk is due `reference + max_expected_latency_ms + k·dt` on the session
+clock, in both modes. The reference is the observation in continuous execution and the send in
+sequential execution. Late steps are dropped, never retimed. IO and computed actions run when
+the policy's first step is due.
 
 ## Timestamp Protocol
 
@@ -417,7 +398,7 @@ offset measured in whole `dt` steps —
 | case | anchor | offset |
 |------|--------|--------|
 | explicit `first_timestamp_ms >= 0` | that value | `0` (exact) |
-| `SequentialExecution` | `now` | `+1` step (one dt ahead) |
+| `SequentialExecution` | the send on the server's clock + `max_expected_latency_ms` | step `k` at `+ k·dt`; nothing is late |
 | `ContinuousExecution`, chunk from the latest observation | the observation time on the server's clock + `max_expected_latency_ms` | step `k` at `+ k·dt`; steps too close to send are dropped |
 | `ContinuousExecution`, chunk with its own timeline (RTC backdate, policy timestep, bridge) | `now` | `-seam_backdate_steps` (backdated) |
 
