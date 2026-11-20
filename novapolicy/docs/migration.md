@@ -69,5 +69,6 @@ later than before, and lose no head steps while the latency stays below it. Chun
 timeline keep the old placement: RTC (`seam_backdate_steps`), the timestep queues
 (`QueuedPolicyClient`, the LeRobot async queue) and bridged chunks.
 
-A chunk's IO actions (`ActionChunk.ios`) are still written when the chunk is sent, so relative to
-the arm they now fire about `max_expected_latency_ms` earlier than before.
+Such a chunk's IO actions (`ActionChunk.ios`) are written when its first step is due rather than
+at send, so they keep their place relative to the arm. NOVA's action chunks carry no IO, so the
+write reaches the controller one network delay after that moment.

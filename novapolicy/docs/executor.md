@@ -305,6 +305,9 @@ job; on the client side it owns only when each waypoint is due and when it is se
 - **Placement.** A continuous chunk answering the latest observation has step `k` due
   `max_expected_latency_ms + k·dt` after that observation, on the server's clock. Other chunks keep
   their anchor (table under [Trajectory-absolute timestamps](#trajectory-absolute-timestamps)).
+- **IO follows the motion.** The IO of a chunk dated by its observation is written when its first
+  step is due. It is a separate write (action chunks carry no IO), so it reaches the controller one
+  network delay later; timestamped IO in the action chunk would be exact.
 - **Late steps are dropped, never retimed.** A step due within `MIN_LEAD_MS` of now is not sent; the
   rest keep the time the policy meant.
 - **Pacing.** `ContinuousExecution(rate_hz=...)` ticks on an absolute grid; more than one period

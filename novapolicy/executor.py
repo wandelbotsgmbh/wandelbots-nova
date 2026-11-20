@@ -151,6 +151,15 @@ def _check_buffered_mode(buffer_window_ms: float, schema: PolicySchema) -> None:
         raise ValueError(msg)
 
 
+async def _write_ios_after(
+    session: WaypointJoggingSession, ios: dict[str, Any], delay_s: float
+) -> None:
+    """Write ``ios`` after ``delay_s``, at once when it is not positive."""
+    if delay_s > 0:
+        await asyncio.sleep(delay_s)
+    await session.write_ios(ios)
+
+
 def resolve_actions(
     schema: PolicySchema, chunk: ActionChunk, states: dict[str, RobotState]
 ) -> ActionChunk:
@@ -1286,6 +1295,7 @@ class PolicyExecutor:
             else None
         )
         target_chunks: dict[str, int] = {}
+        due_ms: dict[str, float] = {}
         for group_id, steps in chunk.joints.items():
             session = self._sessions.get(group_id)
             if session is None:
@@ -1310,6 +1320,8 @@ class PolicyExecutor:
                 observed_at_ms=self._observed_ms(group_id, chunk) if place.lead else None,
             )
             target_chunks[group_id] = session.queued_chunk_count
+            if place.lead and server_timestamp_ms is None:
+                due_ms[group_id] = self._first_step_due_ms(session, group_id, chunk)
 
         for group_id, raw_tcp_steps in chunk.tcp.items():
             session = self._sessions.get(group_id)
@@ -1335,7 +1347,9 @@ class PolicyExecutor:
                 observed_at_ms=self._observed_ms(group_id, chunk) if place.lead else None,
             )
             target_chunks[group_id] = session.queued_chunk_count
-        self._schedule_ios(chunk)
+            if place.lead and server_timestamp_ms is None:
+                due_ms[group_id] = self._first_step_due_ms(session, group_id, chunk)
+        self._schedule_ios(chunk, due_ms)
         return target_chunks
 
     def _observed_ms(self, group_id: str, chunk: ActionChunk) -> int | None:
@@ -1344,13 +1358,34 @@ class PolicyExecutor:
             return self._observed_at_ms.get(group_id)
         return self._observed_clock_ms.get(group_id)
 
-    def _schedule_ios(self, chunk: ActionChunk) -> None:
-        """Write the chunk's IO actions, alongside the motion in either send path."""
+    def _first_step_due_ms(
+        self, session: WaypointJoggingSession, group_id: str, chunk: ActionChunk
+    ) -> float:
+        """When a chunk dated by its observation reaches its first step, on the server's clock:
+        the session's rule (observation + lead), without its one-step playback smoothing."""
+        observed_ms = self._observed_ms(group_id, chunk)
+        if observed_ms is None:
+            observed_ms = session.estimated_server_timestamp_ms
+        return observed_ms + session.single_step_lead_ms
+
+    def _schedule_ios(self, chunk: ActionChunk, due_ms: dict[str, float] | None = None) -> None:
+        """Write the chunk's IO actions, alongside the motion in either send path.
+
+        Contract: IO for a group in ``due_ms`` is written when that group's first step is due,
+        so it keeps its place relative to the arm although the motion runs one lead after the
+        send. NOVA's action chunks carry no IO, so this is a separate write that reaches the
+        controller one network delay after that moment. Other IO is written at once.
+
+        Interim: NOVA's action chunk API is to carry timestamped IO itself. Then the IO goes out
+        with the waypoints, on the controller's clock, and this delayed write is removed.
+        """
         for group_id, ios in (chunk.ios or {}).items():
             session = self._sessions.get(group_id)
             if session is None:
                 continue
-            task = asyncio.create_task(session.write_ios(ios))
+            due = (due_ms or {}).get(group_id)
+            delay_s = 0.0 if due is None else (due - session.estimated_server_timestamp_ms) / 1000
+            task = asyncio.create_task(_write_ios_after(session, ios, delay_s))
             self._io_tasks.add(task)
             task.add_done_callback(self._io_tasks.discard)
 

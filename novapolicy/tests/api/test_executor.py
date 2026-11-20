@@ -1006,6 +1006,32 @@ def test_rtc_with_continuous_execution_is_accepted():
 
 
 @pytest.mark.asyncio
+async def test_io_of_a_chunk_dated_by_its_observation_is_written_when_it_is_due(robot: _Robot):
+    """The motion runs one lead after the send; the chunk's IO waits for its first step."""
+    executor: PolicyExecutor
+    sent_at: list[float] = []
+    written_at: list[float] = []
+    robot.session.estimated_server_timestamp_ms = 1_000
+    robot.session.single_step_lead_ms = 100.0
+    robot.session.update_chunk.side_effect = lambda **_: sent_at.append(time.monotonic())
+    robot.session.write_ios.side_effect = lambda _ios: written_at.append(time.monotonic())
+
+    async def policy(_obs: object) -> ActionChunk:
+        executor.stop()
+        return ActionChunk(
+            joints={MG_ID: [[0.0] * 6] * 4}, dt_ms=1000 / 30, ios={MG_ID: {"digital_out[0]": True}}
+        )
+
+    executor = PolicyExecutor(
+        _schema(), _callback(policy), timeout_s=1.0, execution=ContinuousExecution()
+    )
+    await executor.run()
+
+    robot.session.write_ios.assert_awaited_once_with({"digital_out[0]": True})
+    assert written_at[0] - sent_at[0] >= 0.09  # observed at 1000 ms, first step due at 1100 ms
+
+
+@pytest.mark.asyncio
 async def test_setup_objects_are_frozen_only_while_the_loop_runs(robot: _Robot):
     """Full collections skip what setup allocated while the loop runs; afterwards, also after a
     failed run, nothing stays frozen."""
