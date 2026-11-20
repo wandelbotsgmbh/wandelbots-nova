@@ -300,6 +300,8 @@ sample counts, because state packets arrive in bursts on some deployments.
 The executor maps and transports (see `AGENTS.md`). How the arm follows the waypoints is NOVA's
 job; on the client side it owns only when each waypoint is due and when it is sent.
 
+![The executor maps and transports; NOVA's action chunk streaming owns the motion. The timing contracts sit on the stage they govern.](images/executor-contracts.png)
+
 **Contracts**
 
 - **Placement.** A continuous chunk answering the latest observation has step `k` due
