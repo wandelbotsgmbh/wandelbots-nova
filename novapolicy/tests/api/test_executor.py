@@ -438,15 +438,15 @@ async def test_continuous_mode_does_not_bridge_chunks(robot: _Robot):
 
 
 @pytest.mark.parametrize(
-    ("steps", "lead"),
+    ("steps", "hold"),
     [
-        ([[3.0] * 6], True),  # one step per inference: placed ahead, no braking hold
-        ([[3.0] * 6, [4.0] * 6], False),  # a chunk: at now, padded as before
+        ([[3.0] * 6], False),  # one step per inference: no braking hold
+        ([[3.0] * 6, [4.0] * 6], True),  # a chunk keeps its hold padding
     ],
 )
 @pytest.mark.asyncio
-async def test_continuous_one_step_chunks_are_sent_ahead_without_a_hold(
-    robot: _Robot, steps: list[list[float]], lead: bool
+async def test_continuous_chunks_are_dated_by_their_observation(
+    robot: _Robot, steps: list[list[float]], hold: bool
 ):
     executor: PolicyExecutor
 
@@ -454,17 +454,18 @@ async def test_continuous_one_step_chunks_are_sent_ahead_without_a_hold(
         executor.stop()
         return ActionChunk(joints={MG_ID: steps}, dt_ms=1000 / 30)
 
+    robot.session.current_state_server_ms = 1_000  # when the state was measured
+    robot.session.estimated_server_timestamp_ms = 1_006  # server clock at observation
     executor = PolicyExecutor(
         _schema(), _callback(policy), timeout_s=1.0, execution=ContinuousExecution()
     )
     await executor.run()
 
     first_send = robot.session.update_chunk.call_args_list[0].kwargs
-    assert first_send["lead"] is lead
-    assert first_send["extend_buffer"] is not lead
-    # A one-step target is dated by the observation it was computed from.
-    expected = robot.session.current_state_server_ms if lead else None
-    assert first_send["observed_at_ms"] == expected
+    assert first_send["lead"] is True
+    assert first_send["extend_buffer"] is hold
+    # One step: the state's own timestamp. A chunk: the clock estimate at observation time.
+    assert first_send["observed_at_ms"] == (1_006 if hold else 1_000)
 
 
 @pytest.mark.asyncio
@@ -557,6 +558,8 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
     first_send, replacement, second_replacement, third_replacement = (
         robot.session.update_chunk.call_args_list
     )
+    # A timestep queue places chunks on its own timeline, never by the observation.
+    assert all(call.kwargs["lead"] is False for call in robot.session.update_chunk.call_args_list)
     assert first_send.kwargs["steps"] == [
         [0.0] * 6,
         [0.5] * 6,
@@ -1000,29 +1003,24 @@ def test_rtc_with_continuous_execution_is_accepted():
     )  # no raise
 
 
-def test_continuous_chunks_are_backdated_by_inference_time():
-    """A continuous chunk's step zero belongs where the observation was taken."""
-    import time
+@pytest.mark.asyncio
+async def test_a_chunk_with_its_own_backdate_is_not_dated_by_the_observation(robot: _Robot):
+    """An RTC chunk carries the backdate its client computed; it keeps the old anchor."""
+    executor: PolicyExecutor
 
-    from novapolicy.types import ActionChunk
+    async def policy(_obs: object) -> ActionChunk:
+        executor.stop()
+        return ActionChunk(joints={MG_ID: [[3.0] * 6] * 8}, dt_ms=1000 / 30, seam_backdate_steps=3)
 
     executor = PolicyExecutor(
-        _schema(),
-        _callback(AsyncMock()),
-        execution=ContinuousExecution(),
+        _schema(), _callback(policy), timeout_s=1.0, execution=ContinuousExecution()
     )
-    chunk = ActionChunk(joints={MG_ID: [[0.0] * 6] * 48}, dt_ms=66.7)
+    await executor.run()
 
-    aligned = executor._align_seam_to_observation(chunk, time.monotonic() - 0.2)
-    assert aligned.seam_backdate_steps == 2  # 200 ms of thinking at 66.7 ms steps
-
-    # A chunk whose client already computed its own seam is left alone.
-    rtc = chunk.model_copy(update={"seam_backdate_steps": 5})
-    assert executor._align_seam_to_observation(rtc, time.monotonic() - 0.2) is rtc
-
-    # Sequential execution never backdates: its chunks start from standstill.
-    settled = PolicyExecutor(_schema(), _callback(AsyncMock()), execution=SequentialExecution())
-    assert settled._align_seam_to_observation(chunk, time.monotonic() - 0.2) is chunk
+    first_send = robot.session.update_chunk.call_args_list[0].kwargs
+    assert first_send["lead"] is False
+    assert first_send["observed_at_ms"] is None
+    assert first_send["timestamp_offset_steps"] == -3
 
 
 # ---------------------------------------------------------------------------

@@ -240,10 +240,11 @@ class WaypointConfig:
     """
 
     max_expected_latency_ms: float = 100.0
-    """How far after its observation a one-step chunk's waypoint is due, in continuous execution.
+    """How far after its observation a chunk's first waypoint is due, in continuous execution.
 
-    Consecutive waypoints are spaced one policy step apart, and every request re-sends the earlier
-    ones that are not due yet, so the controller always has the next few queued. Each one must
+    Step ``k`` follows ``k`` policy steps later. One-step chunks are spaced one policy step apart,
+    and every request re-sends the earlier waypoints that are not due yet, so the controller
+    always has the next few queued. Each one must
     reach the controller at least about 67 ms before it is due, so this covers that margin plus
     the network round trip. Set it for the worst latency of the deployment, as MoveIt Servo's
     ``max_expected_latency`` (default 0.1 s) does: 100 ms fits a policy running on the NOVA

@@ -637,30 +637,37 @@ class Placement:
     first_timestamp_ms: int | None
     timestamp_offset_steps: int
     lead: bool = False
-    """A one-step chunk in continuous execution: the session places it ahead of "now" by
-    ``WaypointConfig.max_expected_latency_ms``."""
+    """Continuous execution of a chunk answering an observation: the session dates step ``k``
+    ``WaypointConfig.max_expected_latency_ms + k * dt`` after that observation."""
 
 
-def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:
+def placement(
+    chunk: ActionChunk, *, execution: ExecutionMode, from_observation: bool = False
+) -> Placement:
     """Decide how a chunk is anchored on one session's timeline.
 
     The "now" component is intentionally NOT resolved here — it is computed at
     yield time in :func:`novapolicy.jogging.waypoints.make_waypoints_request` so the
-    timestamp cannot go stale while the chunk waits in the session queue. This
-    matters most for continuous replacement, whose seam alignment is sensitive
-    to that delay.
+    timestamp cannot go stale while the chunk waits in the session queue.
 
     * An explicit ``chunk.first_timestamp_ms`` (>=0) set by the policy wins —
       used verbatim, anchored exactly.
     * Sequential execution — "now", one step ahead.
-    * Continuous execution — "now", backdated by ``seam_backdate_steps`` so
-      the step matching the robot's current position lands at "now".
-    * Continuous execution of a one-step chunk — ahead of "now" by the session's lead.
+    * Continuous execution of a chunk the policy computed from the latest observation
+      (``from_observation``) — dated by that observation plus the session's lead, as UMI and
+      Diffusion Policy date actions. Not for a chunk on a timeline of its own: one with an
+      ``action_timestep``, a backdate its client computed (RTC), or a bridge in front.
+    * Any other continuous chunk — "now", backdated by ``seam_backdate_steps``.
     """
     if chunk.first_timestamp_ms >= 0:
         return Placement(chunk.first_timestamp_ms, 0)
     if isinstance(execution, ContinuousExecution):
-        if chunk.seam_backdate_steps == 0 and is_single_step(chunk):
+        if (
+            from_observation
+            and chunk.seam_backdate_steps == 0
+            and chunk.action_timestep < 0
+            and (chunk.dt_ms > 0 or is_single_step(chunk))
+        ):
             return Placement(None, 0, lead=True)
         return Placement(None, -chunk.seam_backdate_steps)
     return Placement(None, 1)

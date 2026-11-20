@@ -491,13 +491,30 @@ def test_continuous_execution_anchors_at_now_backdated_by_the_seam(seam):
     assert place.timestamp_offset_steps == -seam
 
 
-def test_a_one_step_chunk_is_placed_ahead_by_the_session():
-    """One waypoint per step is replaced before it is due: the session places it ahead."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6]}, dt_ms=1000 / 30)
-    place = placement(chunk, execution=ContinuousExecution())
-    assert place.lead
-    assert place.first_timestamp_ms is None
-    assert not placement(chunk, execution=SequentialExecution()).lead
+def test_a_chunk_answering_an_observation_is_dated_by_it():
+    """One step or many: a continuous chunk from the latest observation is placed by the
+    session, a fixed lead after that observation."""
+    for steps in ([[0.0] * 6], [[0.0] * 6] * 8):
+        chunk = ActionChunk(joints={"0@ur5e": steps}, dt_ms=1000 / 30)
+        place = placement(chunk, execution=ContinuousExecution(), from_observation=True)
+        assert place.lead
+        assert place.first_timestamp_ms is None
+        assert not placement(chunk, execution=SequentialExecution(), from_observation=True).lead
+        assert not placement(chunk, execution=ContinuousExecution()).lead
+
+
+def test_a_chunk_on_its_own_timeline_is_not_dated_by_the_observation():
+    """A policy timestep, a client-computed backdate (RTC) or a spacing-less multi-step chunk
+    keeps the anchor it already has."""
+    base = ActionChunk(joints={"0@ur5e": [[0.0] * 6] * 8}, dt_ms=1000 / 30)
+    for chunk in (
+        base.model_copy(update={"action_timestep": 4}),
+        base.model_copy(update={"seam_backdate_steps": 3}),
+        base.model_copy(update={"dt_ms": 0.0}),
+    ):
+        place = placement(chunk, execution=ContinuousExecution(), from_observation=True)
+        assert not place.lead
+        assert place.timestamp_offset_steps == -chunk.seam_backdate_steps
 
 
 # compose_tcp_deltas ---------------------------------------------------------

@@ -17,6 +17,7 @@ from novapolicy.chunking import (
     apply_relative_mode,
     connect_action_chunk,
     interpolate_action_chunk_ramps,
+    is_single_step,
     placement,
     trim_chunk,
 )
@@ -274,6 +275,7 @@ class PolicyExecutor:
         self._policy_timelines: dict[str, _PolicyTimeline] = {}
         self._buffer_window_ms = max(0.0, buffer_window_ms)
         self._observed_at_ms: dict[str, int | None] = {}
+        self._observed_clock_ms: dict[str, int] = {}
         _check_buffered_mode(self._buffer_window_ms, schema)
         self._target_buffers: dict[str, list[TimedPoint]] = {}
         self._buffer_anchor_ms: float | None = None
@@ -563,7 +565,6 @@ class PolicyExecutor:
                 step=step,
                 start_time=start_time,
                 last_obs=last_obs,
-                observation_time=observation_time,
             )
             if termination is not None:
                 return termination
@@ -679,41 +680,6 @@ class PolicyExecutor:
         if connected is None:
             return None
         return self._apply_connected_endpoint_ramp(connected)
-
-    def _align_seam_to_observation(
-        self, chunk: ActionChunk, observation_time: float
-    ) -> ActionChunk:
-        """Backdate a continuous chunk by the time inference took.
-
-        The chunk's step zero answers the observation, so on the session's
-        timeline it belongs at the moment the observation was taken - not at
-        "now", which is one inference later. Anchoring it at "now" replays the
-        motion the robot made while the policy was thinking, and every
-        replacement visibly pulls the arm back through it.
-
-        `seam_backdate_steps` is the existing seam contract for exactly this
-        (`placement` shifts the anchor, the session skips its discontinuity
-        warning, the server discards the past-stamped head), and a client that
-        computed its own - the RTC path - is left alone.
-        """
-        if (
-            not isinstance(self._execution, ContinuousExecution)
-            or chunk.seam_backdate_steps != 0
-            or chunk.dt_ms <= 0
-            # A chunk on a policy timeline is placed by its own absolute
-            # timestamps; there is no "now" anchor to correct.
-            or chunk.action_timestep >= 0
-        ):
-            return chunk
-        shortest = min(
-            (len(steps) for steps in (*chunk.joints.values(), *chunk.tcp.values())),
-            default=0,
-        )
-        elapsed_steps = int((time.monotonic() - observation_time) * 1000.0 / chunk.dt_ms)
-        backdate = min(elapsed_steps, max(0, shortest - 2))
-        if backdate <= 0:
-            return chunk
-        return chunk.model_copy(update={"seam_backdate_steps": backdate})
 
     def _apply_endpoint_ramp(self, chunk: ActionChunk) -> ActionChunk:
         ramp = (
@@ -905,7 +871,6 @@ class PolicyExecutor:
         step: int,
         start_time: float,
         last_obs: dict[str, Any] | None,
-        observation_time: float,
     ) -> ExecutionResult | None:
         """Trim, place and send one chunk. Returns a result when the run ends here."""
         trimmed = trim_chunk(action, self._n_action_steps)
@@ -929,12 +894,10 @@ class PolicyExecutor:
                 last_obs=last_obs,
             )
 
-        sent_chunk = self._align_seam_to_observation(
-            trimmed if buffered else self._apply_endpoint_ramp(trimmed), observation_time
-        )
+        sent_chunk = trimmed if buffered else self._apply_endpoint_ramp(trimmed)
         await self._schema.run_computed_actions(action)
         self._log_policy_action(action, step)
-        self._send(sent_chunk)
+        self._send(sent_chunk, from_observation=True)
         return None
 
     async def _observe_and_infer(
@@ -1180,9 +1143,18 @@ class PolicyExecutor:
             state = session.current_state
             if state is not None:
                 result[group_id] = state
-                # When the state was measured, on the server's clock: a one-step target is
-                # due a fixed time after the observation it was computed from.
-                self._observed_at_ms[group_id] = session.current_state_server_ms
+                # When the observation was taken, on the server's clock: a continuous chunk is
+                # due a fixed time after it. A one-step target goes by the state's own timestamp
+                # (its playback clock smooths that); a multi-step chunk by the clock estimate,
+                # since the state stream's jitter and stalls would shift whole chunks against
+                # each other and the follower turns every shifted seam into a speed spike.
+                self._observed_clock_ms[group_id] = session.estimated_server_timestamp_ms
+                measured_ms = session.current_state_server_ms
+                self._observed_at_ms[group_id] = (
+                    measured_ms
+                    if measured_ms is not None
+                    else session.estimated_server_timestamp_ms
+                )
         return result
 
     def _log_observation_to_first_waypoint(
@@ -1268,15 +1240,12 @@ class PolicyExecutor:
                     return getattr(condition, "__name__", repr(condition))
         return None
 
-    def _send(self, chunk: ActionChunk) -> dict[str, int]:
+    def _send(self, chunk: ActionChunk, *, from_observation: bool = False) -> dict[str, int]:
         """Send an action chunk to the motion groups.
 
-        Placement (relative vs. absolute, with optional overlap backdate) is
-        decided per session by :func:`novapolicy.chunking.placement`; the "now"
-        component is resolved at yield time inside the session. For overlapping
-        mode to keep the robot moving, ``(horizon - seam_backdate_steps) *
-        dt_ms`` must exceed the inference latency (increase dt_ms or cut latency
-        otherwise).
+        Placement is decided per session by :func:`novapolicy.chunking.placement`.
+        ``from_observation`` says the chunk answers the latest observation as the policy
+        returned it (no bridge in front), so continuous execution dates it by that observation.
         """
         chunk = self._clamp_chunk(chunk)
         if self._buffer_window_ms > 0:
@@ -1284,10 +1253,10 @@ class PolicyExecutor:
             self._schedule_ios(chunk)
             return target_chunks
 
-        place = placement(chunk, execution=self._execution)
+        place = placement(chunk, execution=self._execution, from_observation=from_observation)
         # A one-step chunk placed ahead is replaced by the next step before it is due: padding
         # it with a hold would make the controller brake towards every step.
-        hold = not place.lead
+        hold = not (place.lead and is_single_step(chunk))
         server_dt_ms = (
             chunk.dt_ms
             if isinstance(self._execution, ContinuousExecution)
@@ -1315,8 +1284,8 @@ class PolicyExecutor:
                 server_dt_ms=server_dt_ms,
                 action_timestep=chunk.action_timestep,
                 extend_buffer=hold,
-                lead=place.lead,
-                observed_at_ms=self._observed_at_ms.get(group_id) if place.lead else None,
+                lead=place.lead and server_timestamp_ms is None,
+                observed_at_ms=self._observed_ms(group_id, chunk) if place.lead else None,
             )
             target_chunks[group_id] = session.queued_chunk_count
 
@@ -1340,12 +1309,18 @@ class PolicyExecutor:
                 server_dt_ms=server_dt_ms,
                 action_timestep=chunk.action_timestep,
                 extend_buffer=hold,
-                lead=place.lead,
-                observed_at_ms=self._observed_at_ms.get(group_id) if place.lead else None,
+                lead=place.lead and server_timestamp_ms is None,
+                observed_at_ms=self._observed_ms(group_id, chunk) if place.lead else None,
             )
             target_chunks[group_id] = session.queued_chunk_count
         self._schedule_ios(chunk)
         return target_chunks
+
+    def _observed_ms(self, group_id: str, chunk: ActionChunk) -> int | None:
+        """When the observation behind ``chunk`` was taken, on the server's clock."""
+        if is_single_step(chunk):
+            return self._observed_at_ms.get(group_id)
+        return self._observed_clock_ms.get(group_id)
 
     def _schedule_ios(self, chunk: ActionChunk) -> None:
         """Write the chunk's IO actions, alongside the motion in either send path."""

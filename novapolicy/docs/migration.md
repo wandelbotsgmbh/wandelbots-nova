@@ -56,3 +56,15 @@ runs the policy and sends its actions to NOVA, and NOVA moves the robot. `novapo
 `PolicyExecutor(start_joint_position=...)` used to clear the motion group's collision setups for
 the move to the start pose. That move is now planned with them, like any other move: a start pose
 inside a collision zone fails to plan instead of being reached without collision checks.
+
+## Continuous chunks are dated by their observation
+
+In `ContinuousExecution`, a chunk the policy returns for the latest observation is now dated like
+a one-step target: step `k` is due `WaypointConfig.max_expected_latency_ms + k·dt` after the
+moment it was observed (on the server's clock, 100 ms by default), and steps already too close to
+send are dropped. Before, step 0
+was placed at server "now" minus the inference time, rounded to whole steps. Chunk policies
+(GR00T, LeRobot without the async queue, NATS) therefore run about `max_expected_latency_ms`
+later than before, and lose no head steps while the latency stays below it. Chunks on their own
+timeline keep the old placement: RTC (`seam_backdate_steps`), the timestep queues
+(`QueuedPolicyClient`, the LeRobot async queue) and bridged chunks.

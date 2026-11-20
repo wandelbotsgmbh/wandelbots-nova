@@ -549,8 +549,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 only matters when the spacing must differ from ``dt_ms``.
             action_timestep: Absolute policy timestep represented by ``steps[0]``.
                 Logged with the scheduled request in Rerun.
-            lead: Place step zero :attr:`single_step_lead_ms` after ``observed_at_ms`` (a
-                one-step chunk in continuous execution), or after server "now" when that
+            lead: Date step ``k`` :attr:`single_step_lead_ms` ``+ k * dt_ms`` after
+                ``observed_at_ms`` (continuous execution), or after server "now" when that
                 is ``None``; ``first_timestamp_ms`` and ``timestamp_offset_steps`` are then
                 not used.
             observed_at_ms: Server timestamp of the state the chunk was computed from
@@ -1027,13 +1027,16 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
             # How much of the lead this waypoint has already used up: it is due
             # single_step_lead_ms after the time the playback clock dates it to.
+            one_step = pending.lead and len(pending.steps) == 1
             age_ms = (
                 self._clock.estimated_server_timestamp_ms
                 - (self._playback.last_due_ms - self.single_step_lead_ms)
-                if pending.lead and self._playback.last_due_ms is not None
+                if one_step and self._playback.last_due_ms is not None
                 else 0.0
             )
-            self._round_trip.sent(lead=pending.lead, age_ms=max(0.0, age_ms))
+            # Only one-step chunks are guarded: a multi-step chunk that arrives late loses its
+            # first steps and keeps the rest on time.
+            self._round_trip.sent(lead=one_step, age_ms=max(0.0, age_ms))
             yield request
 
         if self._stop_requested:
@@ -1064,46 +1067,52 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._scheduled_action_timestep = pending.action_timestep
         self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
 
-    def _rolling_window_request(self, pending: PendingChunk) -> _ScheduledRequest:
-        """A one-step chunk with every earlier one that is not yet due, as MoveIt Servo sends
-        a rolling window of points.
+    def _lead_request(self, pending: PendingChunk) -> _ScheduledRequest:
+        """A continuous chunk dated by its observation, with the waypoints still queued before it.
 
-        Each target is due one policy step after the previous one, on a playback clock that
-        follows "observation + ``max_expected_latency_ms``" (as UMI and Diffusion Policy date
-        actions) by at most ``_PLAYBACK_SLEW`` of a step per step, as a streaming jitter buffer
-        does (FANUC Stream Motion; Isaac ROS spaces steps by ``step_dt``). The follower drives
-        toward each waypoint at distance over time left, so dating every target by its own
-        observation passed the state stream's jitter on as speed jumps: over a network the
-        spacing ranged from 0 to 120 ms for evenly spaced positions, and the arm zig-zagged
-        around the policy's path.
+        Contract: step ``k`` is due ``max_expected_latency_ms + k * dt`` after the observation
+        (``observed_at_ms``, else server "now"), as UMI and Diffusion Policy date actions. Steps
+        due within ``MIN_LEAD_MS`` of now are dropped; the rest keep their times, and
+        ``step_timestamps`` reports every step, sent or not.
 
-        The follower keeps queued waypoints between "now" and a new chunk's first timestamp,
-        so one-step chunks do not delete each other's waypoints. But a backend may drop chunks:
-        WBR takes only the newest chunk per control cycle, so chunks arriving in a burst lose
-        all but the last. Resending the waypoints that are not yet due puts a dropped chunk's
-        target back in the queue with the next one; on a backend that keeps every chunk the
-        resent waypoints replace identical ones.
+        One-step chunks are spaced by a playback clock instead: it follows the observations by
+        at most ``_PLAYBACK_SLEW`` of a step per step, as a streaming jitter buffer does (FANUC
+        Stream Motion; Isaac ROS spaces steps by ``step_dt``), so state-stream jitter does not
+        reach the follower as speed jumps (over a network: 0 to 120 ms between evenly spaced
+        targets, and a zig-zagging arm). A multi-step chunk carries its own spacing.
+
+        Each request re-sends the earlier waypoints that are not yet due, as MoveIt Servo sends
+        a rolling window: the follower keeps them anyway, but WBR takes only the newest chunk
+        per control cycle, and a chunk lost in a burst comes back with the next one.
         """
+        now_ms = self._clock.estimated_server_timestamp_ms
         observed_ms = pending.observed_at_ms
-        if observed_ms is None:
-            observed_ms = int(self._clock.estimated_server_timestamp_ms)
-        earliest_ms = self._clock.estimated_server_timestamp_ms + MIN_LEAD_MS
-        # The clock may not lag so far that the controller's planning margin is gone.
-        latest_start_ms = self._clock.estimated_server_timestamp_ms + SINGLE_STEP_MARGIN_MS
-        due_ms = int(
-            self._playback.due_ms(
-                observed_ms + self.single_step_lead_ms, pending.dt_ms, latest_start_ms
+        first_ms = (now_ms if observed_ms is None else observed_ms) + self.single_step_lead_ms
+        if len(pending.steps) == 1:
+            # A lagging clock may not eat the controller's planning margin.
+            first_ms = self._playback.due_ms(
+                first_ms, pending.dt_ms, now_ms + SINGLE_STEP_MARGIN_MS
             )
-        )
-        window = [(t, step) for t, step in self._lead_window if earliest_ms <= t < due_ms]
-        window.append((due_ms, list(pending.steps[0])))
-        self._lead_window = window
+        else:
+            self._playback = _PlaybackClock()
+        dt_ms = step_spacing_ms(pending.dt_ms, pending.server_dt_ms)
+        stamps = [int(first_ms + k * dt_ms) for k in range(len(pending.steps))]
+        earliest_ms = now_ms + MIN_LEAD_MS
+        skip = sum(t < earliest_ms for t in stamps)
+        if skip == len(stamps):
+            return _ScheduledRequest(request=None, skipped=skip, step_timestamps=stamps)
+        sent = [
+            (t, list(step)) for t, step in zip(stamps[skip:], pending.steps[skip:], strict=True)
+        ]
+        self._lead_window = [
+            (t, step) for t, step in self._lead_window if earliest_ms <= t < sent[0][0]
+        ] + sent
         request = make_timed_waypoints_request(
             self._mode,
-            window,
+            self._lead_window,
             delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
         )
-        return _ScheduledRequest(request=request, skipped=0, step_timestamps=[due_ms])
+        return _ScheduledRequest(request=request, skipped=skip, step_timestamps=stamps)
 
     def _trimmed_request(self, pending: PendingChunk) -> _ScheduledRequest:
         """Build the request, dropping waypoints whose moment has already passed.
@@ -1126,7 +1135,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         dt_ms = step_spacing_ms(pending.dt_ms, pending.server_dt_ms)
         base_ms = pending.first_timestamp_ms
         if pending.lead:
-            return self._rolling_window_request(pending)
+            return self._lead_request(pending)
         self._lead_window = []
         self._playback = _PlaybackClock()
 

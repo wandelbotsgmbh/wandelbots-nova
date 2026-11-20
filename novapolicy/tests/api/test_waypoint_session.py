@@ -33,6 +33,7 @@ from nova import api
 from nova.types import Pose
 from novapolicy.jogging import jog_tcp
 from novapolicy.jogging.waypoint_session import MIN_LEAD_MS, WaypointJoggingSession
+from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.types import JoggingNotSupportedError, MotionError, WaypointConfig
 
 if TYPE_CHECKING:
@@ -365,6 +366,98 @@ async def test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due():
     finally:
         server.stop()
         await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_lead_chunk_of_several_steps_is_dated_by_its_observation():
+    """Step k is due the lead plus k steps after the observation; steps already too close to
+    send are dropped and the rest keep their times; earlier waypoints not yet due are resent."""
+    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        with now as estimated:
+            estimated.return_value = 1_030  # 30 ms of inference: nothing is late yet
+            session.update_chunk(
+                steps=[[float(k)] * 6 for k in range(4)], dt_ms=40, lead=True, observed_at_ms=1_000
+            )
+            await _wait_until(lambda: len(server.requests) >= 2)
+            # The next chunk took 200 ms: its first steps are too close to send.
+            estimated.return_value = 1_280
+            session.update_chunk(
+                steps=[[10.0 + k] * 6 for k in range(6)], dt_ms=40, lead=True, observed_at_ms=1_080
+            )
+            await _wait_until(lambda: len(server.requests) >= 3)
+
+        first = _inner(server.requests[1]).waypoints
+        assert [w.timestamp for w in first] == [1_100, 1_140, 1_180, 1_220]
+        second = _inner(server.requests[2]).waypoints
+        # Dated 1180, 1220, 1260, 1300, ... from its observation. Below now + MIN_LEAD_MS (1300)
+        # they are left out; the rest keep their times.
+        assert [w.timestamp for w in second] == [1_300, 1_340, 1_380]
+        assert [_joints(w)[0] for w in second] == [13.0, 14.0, 15.0]
+        assert session._scheduled_step_timestamps[:3] == [1_180, 1_220, 1_260]
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_lead_chunk_resends_the_earlier_waypoints_due_before_it():
+    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        with now as estimated:
+            estimated.return_value = 1_010
+            session.update_chunk(
+                steps=[[float(k)] * 6 for k in range(4)], dt_ms=40, lead=True, observed_at_ms=1_000
+            )
+            await _wait_until(lambda: len(server.requests) >= 2)
+            estimated.return_value = 1_050
+            session.update_chunk(
+                steps=[[10.0 + k] * 6 for k in range(4)], dt_ms=40, lead=True, observed_at_ms=1_040
+            )
+            await _wait_until(lambda: len(server.requests) >= 3)
+
+        second = _inner(server.requests[2]).waypoints
+        # The first chunk's 1100 is not yet due and comes before the new chunk's 1140.
+        assert [w.timestamp for w in second] == [1_100, 1_140, 1_180, 1_220, 1_260]
+        assert [_joints(w)[0] for w in second] == [0.0, 10.0, 11.0, 12.0, 13.0]
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+def test_a_lead_chunk_that_is_late_entirely_is_not_sent_and_not_guarded():
+    """Whole chunk in the past: nothing to send. Multi-step chunks never count as late."""
+    session, _server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        with now as estimated:
+            estimated.return_value = 2_000
+            pending = PendingChunk(
+                steps=[[0.0] * 6] * 3, dt_ms=40, lead=True, observed_at_ms=1_000, sequence=1
+            )
+            scheduled = session._trimmed_request(pending)
+        assert scheduled.request is None
+        assert scheduled.skipped == 3
+        assert scheduled.step_timestamps == [1_100, 1_140, 1_180]
+    finally:
         for p in session._test_patches:  # type: ignore[attr-defined]
             p.stop()
 

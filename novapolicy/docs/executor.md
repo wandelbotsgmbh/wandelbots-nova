@@ -381,7 +381,8 @@ offset measured in whole `dt` steps —
 |------|--------|--------|
 | explicit `first_timestamp_ms >= 0` | that value | `0` (exact) |
 | `SequentialExecution` | `now` | `+1` step (one dt ahead) |
-| `ContinuousExecution` | `now` | `-seam_backdate_steps` (backdated) |
+| `ContinuousExecution`, chunk from the latest observation | the observation time on the server's clock + `max_expected_latency_ms` | step `k` at `+ k·dt`; steps too close to send are dropped |
+| `ContinuousExecution`, chunk with its own timeline (RTC backdate, policy timestep, bridge) | `now` | `-seam_backdate_steps` (backdated) |
 
 The `now` anchor is resolved at *yield time* (right before the websocket send)
 so it cannot go stale while the chunk waits in the session queue.
