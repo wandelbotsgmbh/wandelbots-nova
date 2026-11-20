@@ -16,6 +16,8 @@ from pydantic import Field
 from nova import api
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from novapolicy.jogging.clock import JoggingTimeClock
     from novapolicy.types import JoggingMode
 
@@ -61,6 +63,9 @@ class PendingChunk:
     lead: bool = False
     """A one-step chunk: placed ``max_expected_latency_ms`` after its observation."""
     observed_at_ms: int | None = None
+    when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None
+    """``(step, action)``: run ``action`` when the caller's ``step`` is due, see
+    :meth:`~novapolicy.jogging.waypoint_session.WaypointJoggingSession.update_chunk`."""
     """Server timestamp of the state the chunk was computed from (a lead chunk)."""
 
     @property

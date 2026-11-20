@@ -34,7 +34,7 @@ from novapolicy.jogging.waypoints import (
 from novapolicy.types import JoggingNotSupportedError, MotionError, StopContext
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable, Mapping
+    from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 
     from nova.cell.motion_group import MotionGroup
     from novapolicy.types import JoggingMode, StopCondition, ValueType, WaypointConfig
@@ -146,7 +146,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     The server computes the motion profile and handles IK (for TCP mode).
     """
 
-    def __init__(
+    def __init__(  # ruff: ignore[too-many-statements]
         self,
         motion_group: MotionGroup,
         config: WaypointConfig,
@@ -201,6 +201,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._stop_settled = asyncio.Event()
         self._queued_chunk_count = 0
         self._scheduled_chunk_count = 0
+        self._due_tasks: set[asyncio.Task[None]] = set()
         self._scheduled_until_server_ms = 0
         self._scheduled_waypoint_timestamps: list[int] = []
         self._scheduled_step_timestamps: list[int] = []
@@ -525,6 +526,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         extend_buffer: bool = True,
         lead: bool = False,
         observed_at_ms: int | None = None,
+        when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None,
         **legacy: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
@@ -555,6 +557,11 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 not used.
             observed_at_ms: Server timestamp of the state the chunk was computed from
                 (:attr:`current_state_server_ms` at observation time).
+            when_due: ``(step, action)``. ``action`` runs when the caller's ``step`` is due on
+                the server's clock, for the chunk's IO and computed actions. It runs at once
+                when that step was already past (a dropped chunk), never when the chunk is
+                replaced before it is sent (its motion never runs), and is cancelled by
+                :meth:`stop` if not due by then. An exception fails the session.
         """
         if legacy:
             timestamp_offset_steps = self._resolve_legacy(legacy, timestamp_offset_steps)
@@ -582,6 +589,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             caller_step_count=len(steps),
             lead=lead,
             observed_at_ms=observed_at_ms,
+            when_due=when_due,
         )
         self._pending_request_event.set()
 
@@ -786,6 +794,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """
         self._running = False
         self._log_lead_summary()
+        for task in self._due_tasks:
+            task.cancel()  # not due yet: the motion it belongs to is stopped too
         await self._request_server_stop()
 
         for task in (self._jogging_task, self._state_task):
@@ -1000,6 +1010,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 first_chunk = False
 
             trimmed = self._trimmed_request(pending)
+            self._run_when_due(pending, trimmed.step_timestamps)
             if trimmed.request is None:
                 self._record_dropped_chunk(pending, trimmed.step_timestamps)
                 continue
@@ -1046,6 +1057,27 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             settled = asyncio.create_task(self._stop_settled.wait())
             _ = await asyncio.wait((settled, response_task), return_when=asyncio.FIRST_COMPLETED)
             settled.cancel()
+
+    def _run_when_due(self, pending: PendingChunk, step_timestamps: list[int]) -> None:
+        """Start the chunk's ``when_due`` action for the moment its step is due."""
+        if pending.when_due is None or not step_timestamps:
+            return
+        step, action = pending.when_due
+        due_ms = step_timestamps[min(step, len(step_timestamps) - 1)]
+        task = asyncio.create_task(self._at(due_ms, action))
+        self._due_tasks.add(task)
+        task.add_done_callback(self._due_tasks.discard)
+
+    async def _at(self, due_ms: int, action: Callable[[], Awaitable[None]]) -> None:
+        delay_s = (due_ms - self._clock.estimated_server_timestamp_ms) / 1000.0
+        if delay_s > 0:
+            await asyncio.sleep(delay_s)
+        try:
+            await action()
+        except Exception as error:  # ruff: ignore[blind-except] (any hook error fails the run)
+            self._failed = True
+            self._failure_reason = f"action at a chunk step failed for {self.motion_group_id}"
+            self._failure_exception = error
 
     def _record_dropped_chunk(self, pending: PendingChunk, step_timestamps: list[int]) -> None:
         """Account for a chunk that was dropped for being entirely in the past.

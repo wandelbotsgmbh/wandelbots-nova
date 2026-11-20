@@ -69,9 +69,6 @@ later than before, and lose no head steps while the latency stays below it. Chun
 timeline keep the old placement: RTC (`seam_backdate_steps`), the timestep queues
 (`QueuedPolicyClient`, the LeRobot async queue) and bridged chunks.
 
-Such a chunk's IO actions (`ActionChunk.ios`) are written when its first step is due rather than
-at send, so they keep their place relative to the arm. NOVA's action chunks carry no IO, so the
-write reaches the controller one network delay after that moment.
 
 ## GR00T applies the schema's joint operators
 
@@ -93,3 +90,12 @@ depend on that, instead of running them with timings that never come:
 
 A chunk with its own `first_timestamp_ms` is no longer bridged from the measured pose: the bridge
 rebuilt the chunk without that timestamp. It is sent at the time the policy set.
+
+## IO and computed actions run when the policy's first step is due
+
+A chunk's IO (`ActionChunk.ios`) and its `Action.computed` hooks now run when the policy's first
+step is due on the server's clock, in both modes and on every path, instead of at send (most
+paths) or after the loop blocked until that moment (chunks with a bridge in front). The loop no
+longer waits for them. A chunk replaced before it was sent runs neither (its motion never ran);
+one still pending when the run stops is cancelled; a hook that raises ends the run. NOVA's action
+chunks carry no IO, so the write reaches the controller one network delay after that moment.

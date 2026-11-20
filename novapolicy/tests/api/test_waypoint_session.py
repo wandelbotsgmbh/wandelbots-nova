@@ -462,6 +462,89 @@ def test_a_lead_chunk_that_is_late_entirely_is_not_sent_and_not_guarded():
             p.stop()
 
 
+@pytest.mark.asyncio
+async def test_a_chunk_action_runs_when_its_step_is_due_or_at_once_when_past():
+    session, _server = _build_session()
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    ran: list[str] = []
+
+    def action(name: str):
+        async def run() -> None:
+            ran.append(name)
+
+        return run
+
+    try:
+        with now as estimated:
+            estimated.return_value = 1_000
+            later = PendingChunk(steps=[[0.0] * 6] * 2, dt_ms=50, when_due=(1, action("later")))
+            session._run_when_due(later, [1_000, 1_050])
+            past = PendingChunk(steps=[[0.0] * 6], dt_ms=50, when_due=(0, action("past")))
+            session._run_when_due(past, [900])
+            await asyncio.sleep(0.01)
+            assert ran == ["past"]
+            await asyncio.sleep(0.06)
+            assert ran == ["past", "later"]
+    finally:
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_action_fails_the_session_when_it_raises():
+    session, _server = _build_session()
+
+    async def broken() -> None:
+        raise RuntimeError("gripper unreachable")
+
+    try:
+        pending = PendingChunk(steps=[[0.0] * 6], dt_ms=50, when_due=(0, broken))
+        session._run_when_due(pending, [0])
+        await asyncio.sleep(0.01)
+        assert session.has_failed
+        assert isinstance(session.failure_exception, RuntimeError)
+    finally:
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_replaced_chunk_never_runs_its_action_and_stop_cancels_the_rest():
+    """The replaced chunk's motion never ran, so neither does its action; one not yet due when
+    the session stops belongs to a stopped motion."""
+    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    ran: list[str] = []
+
+    def action(name: str):
+        async def run() -> None:
+            ran.append(name)
+
+        return run
+
+    try:
+        await session.start()
+        await session.wait_ready()
+        # Both queued before the loop sends: the second replaces the first.
+        session.update_chunk(steps=[[0.0] * 6], dt_ms=33, when_due=(0, action("replaced")))
+        session.update_chunk(
+            steps=[[0.1] * 6],
+            dt_ms=33,
+            first_timestamp_ms=int(session.estimated_server_timestamp_ms) + 10_000,
+            when_due=(0, action("not yet due")),
+        )
+        await _wait_until(lambda: len(server.requests) >= 2)
+        await session.stop()
+        await asyncio.sleep(0.01)
+        assert ran == []
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
 def test_the_lead_left_on_arrival_is_recorded_for_one_step_chunks(caplog):
     session, _server = _build_session(config=WaypointConfig(max_expected_latency_ms=100))
     try:

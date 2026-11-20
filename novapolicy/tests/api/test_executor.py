@@ -589,8 +589,12 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
 
 
 @pytest.mark.asyncio
-async def test_connected_chunk_defers_io_and_computed_action_to_policy_boundary(robot: _Robot):
+async def test_a_bridged_chunk_hands_its_io_and_computed_action_to_the_policys_first_step(
+    robot: _Robot,
+):
+    """The session runs the side effects when policy waypoint zero is due, behind the bridge."""
     computed_fired = asyncio.Event()
+    executor: PolicyExecutor
 
     async def computed(_chunk: ActionChunk) -> None:
         computed_fired.set()
@@ -601,45 +605,25 @@ async def test_connected_chunk_defers_io_and_computed_action_to_policy_boundary(
     )
 
     async def policy(_obs: object) -> ActionChunk:
+        executor.stop()
         return ActionChunk(
             joints={MG_ID: [[3.0] * 6, [4.0] * 6, [5.0] * 6]},
             ios={MG_ID: {"digital_out[0]": True}},
             dt_ms=10.0,
         )
 
-    def schedule_without_progress(*_args: object, **kwargs: object) -> None:
-        robot.session.queued_chunk_count += 1
-        robot.session.scheduled_chunk_count = robot.session.queued_chunk_count
-        count = len(kwargs["steps"])
-        robot.session.scheduled_waypoint_timestamps = tuple(range(100, 100 * (count + 1), 100))
-        robot.session.scheduled_until_server_ms = robot.session.scheduled_waypoint_timestamps[-1]
-        robot.session.last_server_timestamp_ms = 599
-        robot.session.jogging_state = "RUNNING"
+    executor = PolicyExecutor(schema, _callback(policy), timeout_s=1.0)
+    await executor.run()
 
-    robot.session.update_chunk.side_effect = schedule_without_progress
-    executor = PolicyExecutor(
-        schema,
-        _callback(policy),
-        timeout_s=1.0,
-    )
-    run_task = asyncio.create_task(executor.run())
-
-    await _wait_until(lambda: robot.session.update_chunk.call_count > 0)
-    await asyncio.sleep(0)
-    robot.session.write_ios.assert_not_awaited()
+    robot.session.write_ios.assert_not_awaited()  # not at send
     assert not computed_fired.is_set()
-
-    # Combined steps are [current, 1, 2, policy[0], policy[1], policy[2]].
-    # Acceleration interpolation remaps policy waypoint zero from index 3 to 5,
-    # so its scheduled boundary is timestamp 600.
-    robot.session.last_server_timestamp_ms = 600
-    await asyncio.wait_for(computed_fired.wait(), timeout=0.5)
+    # Combined steps are [current, 1, 2, policy[0], policy[1], policy[2]]; acceleration
+    # interpolation remaps policy waypoint zero from index 3 to 5.
+    step, run = robot.session.update_chunk.call_args_list[0].kwargs["when_due"]
+    assert step == 5
+    await run()
     robot.session.write_ios.assert_awaited_once_with({"digital_out[0]": True})
-
-    executor.stop()
-    robot.session.last_server_timestamp_ms = 1000
-    robot.session.jogging_state = "PAUSED_BY_USER"
-    _ = await run_task
+    assert computed_fired.is_set()
 
 
 def test_endpoint_ramp_validates_interpolation_steps() -> None:
@@ -1039,15 +1023,9 @@ def test_rtc_with_continuous_execution_is_accepted():
 
 
 @pytest.mark.asyncio
-async def test_io_of_a_chunk_dated_by_its_observation_is_written_when_it_is_due(robot: _Robot):
-    """The motion runs one lead after the send; the chunk's IO waits for its first step."""
+async def test_io_of_a_continuous_chunk_goes_with_its_first_step(robot: _Robot):
+    """The motion runs one lead after the send; the chunk's IO goes with step 0, not the send."""
     executor: PolicyExecutor
-    sent_at: list[float] = []
-    written_at: list[float] = []
-    robot.session.estimated_server_timestamp_ms = 1_000
-    robot.session.single_step_lead_ms = 100.0
-    robot.session.update_chunk.side_effect = lambda **_: sent_at.append(time.monotonic())
-    robot.session.write_ios.side_effect = lambda _ios: written_at.append(time.monotonic())
 
     async def policy(_obs: object) -> ActionChunk:
         executor.stop()
@@ -1060,8 +1038,11 @@ async def test_io_of_a_chunk_dated_by_its_observation_is_written_when_it_is_due(
     )
     await executor.run()
 
+    robot.session.write_ios.assert_not_awaited()
+    step, run = robot.session.update_chunk.call_args_list[0].kwargs["when_due"]
+    assert step == 0
+    await run()
     robot.session.write_ios.assert_awaited_once_with({"digital_out[0]": True})
-    assert written_at[0] - sent_at[0] >= 0.09  # observed at 1000 ms, first step due at 1100 ms
 
 
 @pytest.mark.asyncio
