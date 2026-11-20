@@ -68,3 +68,6 @@ was placed at server "now" minus the inference time, rounded to whole steps. Chu
 later than before, and lose no head steps while the latency stays below it. Chunks on their own
 timeline keep the old placement: RTC (`seam_backdate_steps`), the timestep queues
 (`QueuedPolicyClient`, the LeRobot async queue) and bridged chunks.
+
+A chunk's IO actions (`ActionChunk.ios`) are still written when the chunk is sent, so relative to
+the arm they now fire about `max_expected_latency_ms` earlier than before.

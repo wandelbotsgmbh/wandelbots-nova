@@ -295,6 +295,37 @@ otherwise read as standstill forever — while bounded encoder noise never
 accumulates out of the band. The hold is measured in server milliseconds, not
 sample counts, because state packets arrive in bursts on some deployments.
 
+## Timing: contracts and decisions
+
+The executor maps and transports (see `AGENTS.md`). How the arm follows the waypoints is NOVA's
+job; on the client side it owns only when each waypoint is due and when it is sent.
+
+**Contracts**
+
+- **Placement.** A continuous chunk answering the latest observation has step `k` due
+  `max_expected_latency_ms + k·dt` after that observation, on the server's clock. Other chunks keep
+  their anchor (table under [Trajectory-absolute timestamps](#trajectory-absolute-timestamps)).
+- **Late steps are dropped, never retimed.** A step due within `MIN_LEAD_MS` of now is not sent; the
+  rest keep the time the policy meant.
+- **Pacing.** `ContinuousExecution(rate_hz=...)` ticks on an absolute grid; more than one period
+  behind, the grid restarts instead of firing catch-up ticks.
+- **Loud, not degraded.** One-step waypoints that keep arriving too late for the lead stop the run
+  with `MotionError` ("over budget").
+- **Garbage collection.** What setup allocated is frozen (`gc.freeze()`) while the loop runs and
+  unfrozen afterwards.
+
+**Decisions** (virtual UR10e, in-cluster unless noted)
+
+| Decision | Why | Measured alternative |
+|---|---|---|
+| Fixed lead, `max_expected_latency_ms` (100 ms) | A latency change must not change the motion silently (MoveIt Servo, UMI, Diffusion Policy) | Lead adapted to the measured round trip: degraded without a word when latency rose |
+| Date by the observation, not the send | The chunk answers the observation, so inference time no longer shifts it. Cost: chunks run about one lead later (lag ~108 ms instead of 24–50 ms) | Backdate by inference time in whole steps: 0.74–1.14° rms at 200 ms inference (now 0.45°, one run); better for chunks indexed by call time at 30 ms inference (0.016–0.019° against 0.045–0.048°) |
+| Chunks: the server clock at observation. One step: the state's timestamp through a playback clock | State timestamps jitter and stall; shifted chunks overlap and the follower spikes at every seam | State timestamp for chunks: 0.13–0.15° rms on the NATS mock policy (now 0.006–0.009°) |
+| Re-send waypoints not yet due | WBR keeps only the newest chunk per control cycle | – |
+| Absolute tick grid | Each overrun was lost for good | Sleep for the rest of the tick: 27 Hz instead of 30 with the Rerun viewer |
+| Freeze setup objects during the loop | Full collections stopped the event loop for 135–240 ms every ~7 s | With the freeze, the longest gap between policy calls was 36–43 ms |
+| No client-side smoothing | It is motion shaping, NOVA's job | Spline resampling doubled the time at the acceleration limit; `buffer_window_ms` lagged more and shook (measured 2026-11-18, before `max_expected_latency_ms`) |
+
 ## Timestamp Protocol
 
 Each waypoint carries a timestamp (milliseconds since session start). The server
