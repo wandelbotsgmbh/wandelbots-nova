@@ -14,8 +14,9 @@ observation time, one-step chunks by the state's timestamp through a playback cl
 Timelines of the policy's own (explicit timestamps, timestep queues, RTC) are kept.
 
 **Alternatives measured.** Backdating by inference time: 0.74–1.14° rms at 200 ms inference
-(now 0.45°). Dating chunks by the state timestamp: shifted chunks overlapped and the follower
-spiked at every seam, 0.13–0.15° rms on the NATS mock policy (now 0.006–0.009°).
+(now 0.45°, one run). Dating chunks by the state timestamp: shifted chunks overlapped and the
+follower spiked at every seam, 0.014–0.016° rms on the NATS mock policy before any GC pause (now
+0.006–0.009°).
 
 **Consequences.** The modes differ only in when the next observation is taken. Continuous chunks
 run about one lead later (lag ~108 ms instead of 24–50 ms); sequential chunks start one lead

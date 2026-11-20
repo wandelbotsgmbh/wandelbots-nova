@@ -73,25 +73,15 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     """Time spacing between steps in milliseconds. 0 = single-step."""
 
     first_timestamp_ms: int = -1
-    """Where this chunk's first waypoint sits on the server's session timeline.
+    """Where this chunk's first waypoint sits, in ms on the session clock
+    (``jogger_session_timestamp_ms``, see :data:`novapolicy.jogging.clock.ServerMs`); not
+    ``time.monotonic()`` and not wall-clock time.
 
-    Two placement models, selected by this one field:
-
-    * **Absolute** (``>= 0``): timestamps are pinned to the server timeline as
-      ``[first_timestamp_ms, first_timestamp_ms + dt, first_timestamp_ms + 2*dt, ...]`` — the
-      first waypoint lands exactly at the anchor (which may be in the *past*).
-      The *caller* decides
-      the anchor. Required for overlapping chunks (RTC), where a specific
-      interior step must land at "now" so consecutive chunks align and the
-      server can replace waypoints older than the new anchor. Also used when the
-      caller already knows the absolute time (standalone jogging, replay).
-    * **Relative** (``-1``, default): the session ignores any caller anchor and
-      places waypoints at ``[now + dt, now + 2*dt, ...]`` using the server clock
-      read at *send time*. The simplest correct placement for sequential,
-      non-overlapping jogging: there is no timeline to align to, and deriving
-      "now" at the last instant avoids queue staleness.
-
-    Rule of thumb: overlapping/RTC ⇒ absolute; plain sequential ⇒ relative."""
+    * ``>= 0``: the policy's own timeline. Step ``k`` is due ``first_timestamp_ms + k*dt``,
+      exactly; steps already past are dropped. The chunk is never bridged.
+    * ``-1`` (default): the executor places it (contract T1 in ``docs/contracts.md``): step ``k``
+      is due ``max_expected_latency_ms + k*dt`` after the observation (continuous execution) or
+      the send (sequential execution)."""
 
     action_timestep: int = -1
     """Absolute policy-queue timestep of the first action, or ``-1`` if absent.

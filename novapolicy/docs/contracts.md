@@ -27,10 +27,11 @@ in world coordinates. Everything the policy sees is converted from these and bac
 
 **M1 Operators run both ways.** A channel's `ops` convert NOVA → policy on observations, front
 to back, and are inverted policy → NOVA on actions, back to front. An explicit `Action`'s ops
-win over its observation's. Every client applies them, GR00T included.
+win over its observation's. Every client applies them; a NATS policy takes NOVA units in the
+layout it declares, so ops on its schema are refused.
 Tests: `test_operator_lists_reverse_on_the_way_back`, `test_joint_observations_are_converted_on_the_way_in`,
 `test_joint_actions_are_converted_on_the_way_out`, `test_an_explicit_action_overrides_the_observations_operators`,
-`test_joint_observations_apply_the_schema_operators`.
+`test_joint_observations_apply_the_schema_operators`, `test_validate_schema_rejects_joint_operators`.
 
 **M2 Joint observations** concatenate the source groups' joints in list order, keyed
 `<key>_1..n`. Tests: `test_dual_arm_observation`, `test_concatenated_observation`.
@@ -62,6 +63,20 @@ bridges included; the first clip per joint is logged. Tests: `test_a_target_belo
 
 **M8 IO values** in `ActionChunk.ios` are in hardware units and written once per change.
 Tests: `test_io_action_decoding`, `test_bool_mapping`.
+
+**M9 Joint velocities** are the controller's measurement when it sends one, otherwise
+differenced from consecutive positions. Tests: `test_measured_velocities_are_used_when_the_controller_sends_them`,
+`test_without_a_measurement_positions_are_finite_differenced`.
+
+**M10 Stale inputs.** A camera frame older than its `max_age_s`, or an inference past
+`inference_timeout_s`, is handled by `on_stale`: stop (default), controlled stop, or hold and
+retry within a budget. Tests: `test_a_stale_camera_aborts_by_default`,
+`test_controlled_stop_ends_the_run_and_names_the_stale_input`, `test_hold_retries_then_escalates_when_the_budget_runs_out`.
+
+**M11 Step spacing.** `dt_ms` comes from the policy: the server's value where it reports one
+(GR00T), otherwise the client's `control_freq` (30 Hz by default). A chunk with `resolved=True`
+is already in NOVA units and is sent as it is. Tests: `test_a_callback_control_freq_fills_chunks_without_step_spacing`,
+`test_control_freq_defaults_to_30_hz_and_says_so`, `test_a_resolved_chunk_is_sent_without_resolving_it_again`.
 
 ## T: Timing
 
@@ -106,12 +121,15 @@ they are due. The padding is not motion anyone waits for. Tests:
 **T7 IO and computed actions run when the policy's first step is due**, on every path and
 without blocking the loop: policy waypoint zero of what is sent (behind a bridge too). A chunk
 replaced before it is sent runs neither; one pending when the session stops is cancelled; a hook
-that raises ends the run. IO without motion runs at once. IO is a separate write, so it reaches
-the controller one network delay later; NOVA's action chunks are to carry it.
+that raises ends the run, and none runs once its motion was stopped (stop condition, failure).
+IO without motion, and everything in `buffer_window_ms` mode, runs at once. IO is a separate
+write, so it reaches the controller one network delay later; NOVA's action chunks are to carry
+it.
 Tests: `test_io_of_a_continuous_chunk_goes_with_its_first_step`,
 `test_a_bridged_chunk_hands_its_io_and_computed_action_to_the_policys_first_step`,
 `test_a_chunk_action_runs_when_its_step_is_due_or_at_once_when_past`,
-`test_a_replaced_chunk_never_runs_its_action_and_stop_cancels_the_rest`, `test_a_chunk_action_fails_the_session_when_it_raises`.
+`test_a_replaced_chunk_never_runs_its_action_and_stop_cancels_the_rest`, `test_a_chunk_action_fails_the_session_when_it_raises`,
+`test_a_chunk_action_is_skipped_when_the_motion_stopped_before_it_was_due`.
 
 **T8 Pacing.** Sequential: the next observation waits until the chunk's last step is due and the
 robot stands still. Continuous with `rate_hz`: ticks on an absolute grid; more than one period

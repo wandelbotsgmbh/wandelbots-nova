@@ -170,7 +170,8 @@ def _check_execution_mode(
     if policy.requires_first_waypoint_bridge:
         raise ValueError(
             f"{type(policy).__name__} replaces its plan step by step and requires "
-            "ContinuousExecution; use the wrapped policy directly for SequentialExecution"
+            "ContinuousExecution. For SequentialExecution drop the queue: the policy without "
+            "QueuedPolicyClient, or LeRobotPolicyClient(use_async_queue=False)"
         )
     if buffer_window_ms > 0:
         raise ValueError("buffer_window_ms requires ContinuousExecution")

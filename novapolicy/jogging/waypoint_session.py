@@ -453,7 +453,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
     @property
     def single_step_lead_ms(self) -> float:
-        """How far ahead of server "now" one-step chunks go: ``max_expected_latency_ms``."""
+        """The lead of the placement rule: ``max_expected_latency_ms``."""
         return self._config.max_expected_latency_ms
 
     @property
@@ -554,8 +554,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             action_timestep: Absolute policy timestep represented by ``steps[0]``.
                 Logged with the scheduled request in Rerun.
             lead: Date step ``k`` :attr:`single_step_lead_ms` ``+ k * dt_ms`` after
-                ``observed_at_ms`` (continuous execution), or after server "now" when that
-                is ``None``; ``first_timestamp_ms`` and ``timestamp_offset_steps`` are then
+                ``observed_at_ms``, or after the send when that is ``None`` (sequential
+                execution); ``first_timestamp_ms`` and ``timestamp_offset_steps`` are then
                 not used.
             observed_at_ms: Server timestamp of the state the chunk was computed from
                 (:attr:`current_state_server_ms` at observation time).
@@ -1106,7 +1106,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
 
     def _lead_request(self, pending: PendingChunk) -> _ScheduledRequest:
-        """A continuous chunk dated by its observation, with the waypoints still queued before it.
+        """A chunk placed by the lead rule, with the waypoints still queued before it.
 
         Contract: step ``k`` is due ``max_expected_latency_ms + k * dt`` after the observation
         (``observed_at_ms``, else server "now"), as UMI and Diffusion Policy date actions. Steps

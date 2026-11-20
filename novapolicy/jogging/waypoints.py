@@ -61,7 +61,8 @@ class PendingChunk:
     """The last target of a run: sent with ``delay_until_braking`` 0 so the robot
     stops on it instead of keeping its velocity past it."""
     lead: bool = False
-    """A one-step chunk: placed ``max_expected_latency_ms`` after its observation."""
+    """Placed by the lead rule: step ``k`` due ``max_expected_latency_ms + k * dt`` after
+    ``observed_at_ms``, or after the send when that is ``None``."""
     observed_at_ms: ServerMs | None = None
     when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None
     """``(step, action)``: run ``action`` when the caller's ``step`` is due, see

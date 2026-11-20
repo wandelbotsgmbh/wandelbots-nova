@@ -638,8 +638,9 @@ class Placement:
     first_timestamp_ms: ServerMs | None
     timestamp_offset_steps: int
     lead: bool = False
-    """Continuous execution of a chunk answering an observation: the session dates step ``k``
-    ``WaypointConfig.max_expected_latency_ms + k * dt`` after that observation."""
+    """Placed by the lead rule (contract T1): the session dates step ``k``
+    ``WaypointConfig.max_expected_latency_ms + k * dt`` after the observation, or after the send
+    in sequential execution."""
 
 
 def placement(
