@@ -79,3 +79,17 @@ write reaches the controller one network delay after that moment.
 declared `ops` (`Observation.joint_positions(..., ops=[Rad2Deg()])`), while the executor still
 inverted those ops on the returned actions. It now applies them on the way in, as every other
 client does. A GR00T schema without `ops` is unaffected.
+
+## Sequential execution refuses setups it would run wrongly
+
+`SequentialExecution` waits for standstill before it observes again, so nothing replaces a
+running plan. `PolicyExecutor` now raises `ValueError` at construction for the setups that
+depend on that, instead of running them with timings that never come:
+
+| Before (ran, wrongly) | Now |
+| --- | --- |
+| `QueuedPolicyClient(...)` or `LeRobotPolicyClient(use_async_queue=True)` with `SequentialExecution()` | use `ContinuousExecution()`, or the wrapped policy without the queue |
+| `buffer_window_ms=...` with `SequentialExecution()` | use `ContinuousExecution()` |
+
+A chunk with its own `first_timestamp_ms` is no longer bridged from the measured pose: the bridge
+rebuilt the chunk without that timestamp. It is sent at the time the policy set.

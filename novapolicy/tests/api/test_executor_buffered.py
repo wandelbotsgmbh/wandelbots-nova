@@ -17,7 +17,7 @@ from novapolicy.executor import PolicyExecutor
 from novapolicy.jogging.live_buffer import LIVE_LEAD_MS
 from novapolicy.policy_client import CallbackPolicyClient
 from novapolicy.schema import Observation, PolicySchema
-from novapolicy.types import ActionChunk
+from novapolicy.types import ActionChunk, ContinuousExecution
 
 MG_ID = "0@robot"
 DOF = 6
@@ -56,7 +56,10 @@ def _executor(window_ms: float = WINDOW_MS) -> tuple[PolicyExecutor, MagicMock]:
         raise AssertionError("these tests drive _send directly")
 
     executor = PolicyExecutor(
-        schema, CallbackPolicyClient(_never_called), buffer_window_ms=window_ms
+        schema,
+        CallbackPolicyClient(_never_called),
+        execution=ContinuousExecution(),
+        buffer_window_ms=window_ms,
     )
     session = _session()
     executor._sessions = {MG_ID: session}

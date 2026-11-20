@@ -160,6 +160,28 @@ async def _write_ios_after(
     await session.write_ios(ios)
 
 
+def _check_execution_mode(
+    execution: ExecutionMode, policy: PolicyClient, buffer_window_ms: float
+) -> None:
+    """Reject a setup that sequential execution would run wrongly, before anything moves.
+
+    Sequential execution waits for standstill and observes again, so nothing in it replaces a
+    plan while it runs: an RTC seam, a timestep queue (``QueuedPolicyClient``, LeRobot's async
+    queue) or a live-target buffer would be fed timings that never come.
+    """
+    if not isinstance(execution, SequentialExecution):
+        return
+    if policy.rtc is not None:
+        raise ValueError("RTC requires ContinuousExecution")
+    if policy.requires_first_waypoint_bridge:
+        raise ValueError(
+            f"{type(policy).__name__} replaces its plan step by step and requires "
+            "ContinuousExecution; use the wrapped policy directly for SequentialExecution"
+        )
+    if buffer_window_ms > 0:
+        raise ValueError("buffer_window_ms requires ContinuousExecution")
+
+
 def resolve_actions(
     schema: PolicySchema, chunk: ActionChunk, states: dict[str, RobotState]
 ) -> ActionChunk:
@@ -272,8 +294,7 @@ class PolicyExecutor:
         self._execution = execution
         self._n_action_steps_cfg = n_action_steps
 
-        if isinstance(execution, SequentialExecution) and self._policy.rtc is not None:
-            raise ValueError("RTC requires ContinuousExecution")
+        _check_execution_mode(execution, self._policy, buffer_window_ms)
 
         self._sessions: dict[str, WaypointJoggingSession] = {}
         self._cameras = CameraManager(camera_max_age_s)
@@ -673,6 +694,8 @@ class PolicyExecutor:
         chunk: ActionChunk,
         robot_states: dict[str, RobotState],
     ) -> ConnectedActionChunk | None:
+        if chunk.first_timestamp_ms >= 0:
+            return None  # the policy set its own timeline; a bridge would discard it
         continuous_bridge = self._policy.requires_first_waypoint_bridge
         needs_continuous_bridge = continuous_bridge and (
             chunk.action_timestep < 0 or not self._policy_timelines

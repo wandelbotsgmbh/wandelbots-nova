@@ -994,6 +994,39 @@ def test_rtc_without_overlapping_placement_is_rejected():
         )
 
 
+def test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected():
+    """Sequential execution never replaces a running plan, so neither gets its timing."""
+    with pytest.raises(ValueError, match="requires ContinuousExecution"):
+        PolicyExecutor(
+            _schema(),
+            _TestPolicy(_hold_action, requires_bridge=True),
+            execution=SequentialExecution(),
+        )
+    with pytest.raises(ValueError, match="buffer_window_ms requires ContinuousExecution"):
+        PolicyExecutor(_schema(), _hold, execution=SequentialExecution(), buffer_window_ms=80.0)
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_with_its_own_timestamp_is_not_bridged(robot: _Robot):
+    """A bridge would rebuild the chunk without the policy's timestamp; it keeps it instead."""
+    executor: PolicyExecutor
+
+    async def policy(_obs: object) -> ActionChunk:
+        executor.stop()
+        return ActionChunk(
+            joints={MG_ID: [[3.0] * 6, [3.1] * 6]}, dt_ms=1000 / 30, first_timestamp_ms=5_000
+        )
+
+    executor = PolicyExecutor(
+        _schema(), _callback(policy), timeout_s=1.0, execution=SequentialExecution()
+    )
+    await executor.run()
+
+    first_send = robot.session.update_chunk.call_args_list[0].kwargs
+    assert first_send["first_timestamp_ms"] == 5_000
+    assert first_send["steps"][0] == [3.0] * 6
+
+
 def test_rtc_with_continuous_execution_is_accepted():
     """RTC and continuous replacement are a valid combination."""
     policy = _TestPolicy(_hold_action, rtc=object())
