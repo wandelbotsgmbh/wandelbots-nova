@@ -413,7 +413,8 @@ intervals for acceleration and braking of each settled request. See
 
 ### `use_async_queue`
 
-Enable this only when the robot transport can track LeRobot's fixed-rate client queue:
+Enable this only when the robot transport can track LeRobot's fixed-rate client queue. It needs
+`ContinuousExecution`; `PolicyExecutor` refuses it with `SequentialExecution`:
 
 ```python
 from novapolicy.lerobot import AsyncQueueAggregation, LeRobotPolicyClient
