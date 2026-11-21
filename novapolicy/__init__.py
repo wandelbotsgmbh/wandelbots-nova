@@ -32,7 +32,7 @@ from novapolicy.executor import (
     resolve_actions,
 )
 from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
-from novapolicy.jogging import JointJogger, TcpJogger, jog_joints, jog_tcp
+from novapolicy.jogging import EaseIn, JointJogger, TcpJogger, WaypointStage, jog_joints, jog_tcp
 from novapolicy.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.pose_sources import OmniverseScene, PoseSource
@@ -110,6 +110,7 @@ __all__ = [
     "Clamp",
     "ConnectedActionChunk",
     "ContinuousExecution",
+    "EaseIn",
     "EmergencyStopError",
     "EndpointRamp",
     "ExecutionMode",
@@ -144,6 +145,7 @@ __all__ = [
     "TcpJogger",
     "ValueOp",
     "WaypointConfig",
+    "WaypointStage",
     "WebRTCCameras",
     "connect_action_chunk",
     "create_bridge_chunk",

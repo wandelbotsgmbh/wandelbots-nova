@@ -54,13 +54,14 @@ from novapolicy.types import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Mapping
+    from collections.abc import Awaitable, Callable, Mapping, Sequence
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.jogging.live_buffer import (
         TimedPoint,
     )
+    from novapolicy.jogging.stages import WaypointStage
     from novapolicy.joint_limits import JointLimits
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
@@ -218,6 +219,7 @@ class PolicyExecutor:
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
         buffer_window_ms: float = 0.0,
         clamp_to_joint_limits: bool = True,
+        stages: Sequence[WaypointStage] = (),
     ) -> None:
         """Create a policy executor.
 
@@ -263,7 +265,11 @@ class PolicyExecutor:
                 which remains available to asynchronous policy clients.
             start_joint_position: Optional mapping of motion group to joint pose
                 to PTP-move to before starting waypoint jogging.
+            stages: Opt-in pre-send stages that reshape waypoint values right before
+                they go to NOVA, e.g. ``[EaseIn(duration_s=1.0)]``; none by default. Each
+                motion group runs its own copy. See :mod:`novapolicy.jogging.stages`.
         """
+        self._stages = tuple(stages)
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
 
@@ -1513,6 +1519,7 @@ class PolicyExecutor:
             tcp=tcp,
             stop_conditions=self._stop_conditions,
             mode=mode,
+            stages=self._stages,
         )
 
     @property

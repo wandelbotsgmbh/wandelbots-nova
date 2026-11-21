@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 import contextlib
+import copy
 from dataclasses import dataclass
 import logging
 import math
@@ -24,19 +25,20 @@ from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.io import IOWriter
 from novapolicy.jogging.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, RoundTrip, ServerMs
 from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
+from novapolicy.jogging.stages import StageContext
 from novapolicy.jogging.waypoints import (
     PendingChunk,
     anchor_timestamp_ms,
     make_timed_waypoints_request,
-    make_waypoints_request,
     step_spacing_ms,
 )
 from novapolicy.types import JoggingNotSupportedError, MotionError, StopContext
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
+    from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping, Sequence
 
     from nova.cell.motion_group import MotionGroup
+    from novapolicy.jogging.stages import WaypointStage
     from novapolicy.types import JoggingMode, StopCondition, ValueType, WaypointConfig
 
 logger = logging.getLogger(__name__)
@@ -154,8 +156,12 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         tcp: str = "",
         mode: JoggingMode = "joint",
         stop_conditions: list[StopCondition] | None = None,
+        stages: Sequence[WaypointStage] = (),
     ) -> None:
         self._motion_group = motion_group
+        # Each session runs its own copy, so two arms never share a stage's state.
+        self._stages = [copy.deepcopy(stage) for stage in stages]
+        self._last_sent_value: list[float] = []
         self._config = config
         self._tcp = tcp
         self._mode: JoggingMode = mode
@@ -1036,7 +1042,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 else pending.action_timestep
             )
             self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
-            self._last_sent = (request.waypoints[-1].timestamp, list(pending.steps[-1]))
+            # What was actually sent, after the stages: the drain stops on this.
+            self._last_sent = (request.waypoints[-1].timestamp, list(self._last_sent_value))
             self._start_waypoint_tracking_measurement(request)
 
             # How much of the lead this waypoint has already used up: it is due
@@ -1145,11 +1152,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._lead_window = [
             (t, step) for t, step in self._lead_window if earliest_ms <= t < sent[0][0]
         ] + sent
-        request = make_timed_waypoints_request(
-            self._mode,
-            self._lead_window,
-            delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
-        )
+        request = self._request(self._lead_window, pending)
         return _ScheduledRequest(request=request, skipped=skip, step_timestamps=stamps)
 
     def _trimmed_request(self, pending: PendingChunk) -> _ScheduledRequest:
@@ -1179,22 +1182,13 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
         if base_ms is None or dt_ms <= 0:
             # No caller-supplied anchor to measure the lead against: "now" is
-            # resolved inside the request builder, so nothing can be stale yet.
-            request = make_waypoints_request(
-                self._clock,
-                self._mode,
-                steps=steps,
-                effective_dt_ms=pending.dt_ms,
-                first_timestamp_ms=base_ms,
-                timestamp_offset_steps=pending.timestamp_offset_steps,
-                server_dt_ms=pending.server_dt_ms,
-                delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
-            )
-            return _ScheduledRequest(
-                request=request,
-                skipped=0,
-                step_timestamps=[waypoint.timestamp for waypoint in request.waypoints],
-            )
+            # resolved here, at send time, so nothing can be stale yet.
+            if base_ms is None:
+                base_ms = self._clock.estimated_server_timestamp_ms
+            first_ms = max(0, anchor_timestamp_ms(base_ms, pending.timestamp_offset_steps, dt_ms))
+            stamps = [first_ms + int(i * dt_ms) for i in range(len(steps))]
+            request = self._request(list(zip(stamps, steps, strict=True)), pending)
+            return _ScheduledRequest(request=request, skipped=0, step_timestamps=stamps)
 
         anchor_ms = max(0, anchor_timestamp_ms(base_ms, pending.timestamp_offset_steps, dt_ms))
         earliest_ms = self._clock.estimated_server_timestamp_ms + MIN_LEAD_MS
@@ -1219,28 +1213,50 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 step_timestamps=[anchor_ms + int(i * dt_ms) for i in range(len(steps))],
             )
 
-        # The offset is already folded into ``anchor_ms``, so it must not be
-        # applied a second time here.
-        request = make_waypoints_request(
-            self._clock,
-            self._mode,
-            steps=steps[skip:],
-            effective_dt_ms=pending.dt_ms,
-            first_timestamp_ms=anchor_ms + int(skip * dt_ms),
-            timestamp_offset_steps=0,
-            server_dt_ms=pending.server_dt_ms,
-            delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
-        )
         # Dropped steps keep the timestamps they were going to be sent with, so
         # the caller's step numbering still indexes this list directly.
+        first_ms = anchor_ms + int(skip * dt_ms)
+        sent = [(first_ms + int(i * dt_ms), step) for i, step in enumerate(steps[skip:])]
+        request = self._request(sent, pending)
         return _ScheduledRequest(
             request=request,
             skipped=skip,
             step_timestamps=[
                 *(anchor_ms + int(i * dt_ms) for i in range(skip)),
-                *(waypoint.timestamp for waypoint in request.waypoints),
+                *(t for t, _ in sent),
             ],
         )
+
+    def _request(
+        self, timed: list[tuple[int, list[float]]], pending: PendingChunk
+    ) -> api.models.ActionChunkRequest:
+        """The request for these timed waypoints, after the stages reshaped their values."""
+        values = [list(v) for _, v in timed]
+        if self._stages:
+            waypoints = [(ServerMs(t), v) for t, v in timed]
+            context = StageContext(
+                now_ms=self._clock.estimated_server_timestamp_ms, position=self._position()
+            )
+            for stage in self._stages:
+                values = stage(
+                    [(t, v) for (t, _), v in zip(waypoints, values, strict=True)], context
+                )
+                if len(values) != len(timed):
+                    msg = f"{type(stage).__name__} returned {len(values)} values for {len(timed)} waypoints"
+                    raise ValueError(msg)
+        self._last_sent_value = values[-1]
+        return make_timed_waypoints_request(
+            self._mode,
+            [(t, v) for (t, _), v in zip(timed, values, strict=True)],
+            delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
+        )
+
+    def _position(self) -> list[float] | None:
+        """The latest measured position in the waypoints' form."""
+        if self._mode == "joint":
+            return None if self._current_joints is None else list(self._current_joints)
+        pose = self._current_tcp_pose
+        return None if pose is None else [*pose.position, *pose.orientation]
 
     async def _jogging_loop(self) -> None:
         """Open jogging session and send waypoints when available.

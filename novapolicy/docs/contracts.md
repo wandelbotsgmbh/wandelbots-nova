@@ -158,6 +158,16 @@ timestep queue (`QueuedPolicyClient`, LeRobot's async queue), `buffer_window_ms`
 `test_rtc_without_overlapping_placement_is_rejected`,
 `test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected`.
 
+**T13 Pre-send stages reshape values, never timing.** Stages passed as `stages=[...]` (to
+`PolicyExecutor`; none by default) run in each session after placement, on every request: they
+get the waypoints about to be sent as `(timestamp, values)` and return their values, one per
+waypoint, so every contract above holds unchanged. Each session runs its own copy; a re-sent
+waypoint is staged from its raw value again. `EaseIn(duration_s)` blends from where the robot
+stood by each waypoint's timestamp, so overlapping chunks agree.
+Tests: `test_stages_reshape_the_values_but_never_the_timestamps`, `test_each_session_runs_its_own_copy_of_a_stage`,
+`test_a_stage_may_not_add_or_drop_waypoints`, `test_ease_in_gives_a_moment_the_same_value_whenever_it_is_sent`,
+`test_stages_are_handed_to_every_session`.
+
 ## Known gaps
 
 Behaviour the contracts above do not cover yet, found while writing them:

@@ -1045,6 +1045,19 @@ async def test_io_of_a_continuous_chunk_goes_with_its_first_step(robot: _Robot):
     robot.session.write_ios.assert_awaited_once_with({"digital_out[0]": True})
 
 
+def test_stages_are_handed_to_every_session():
+    """Opt-in pre-send stages run in the sessions; none by default."""
+    from novapolicy import EaseIn
+
+    ease = EaseIn(duration_s=1.0)
+    with patch("novapolicy.executor.WaypointJoggingSession") as session_cls:
+        executor = PolicyExecutor(_schema(), _hold, stages=[ease])
+        executor._create_session(_mg())
+        assert session_cls.call_args.kwargs["stages"] == (ease,)
+        PolicyExecutor(_schema(), _hold)._create_session(_mg())
+        assert session_cls.call_args.kwargs["stages"] == ()
+
+
 @pytest.mark.asyncio
 async def test_setup_objects_are_frozen_only_while_the_loop_runs(robot: _Robot):
     """Full collections skip what setup allocated while the loop runs; afterwards, also after a

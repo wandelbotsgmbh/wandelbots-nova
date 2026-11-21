@@ -145,6 +145,7 @@ def _build_session(
     mode: str = "joint",
     config: WaypointConfig | None = None,
     response_delay: float = 0.003,
+    stages: Sequence[object] = (),
 ) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
     server = FakeJoggingServer(
         fault=fault,
@@ -177,6 +178,7 @@ def _build_session(
         tcp="Flange",
         mode=mode,
         stop_conditions=stop_conditions,
+        stages=stages,  # type: ignore[arg-type]
     )
 
     patches = [
@@ -593,6 +595,77 @@ async def test_a_replaced_chunk_never_runs_its_action_and_stop_cancels_the_rest(
     finally:
         server.stop()
         await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+class _AddOne:
+    """A stage that adds 1 to joint 0 and counts how often it ran."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self, waypoints, context):
+        self.calls += 1
+        return [[v[0] + 1.0, *v[1:]] for _, v in waypoints]
+
+
+@pytest.mark.asyncio
+async def test_stages_reshape_the_values_but_never_the_timestamps():
+    """A re-sent waypoint is staged from its raw value again, so it gets the same value in
+    every request; the drain's final target is what was actually sent."""
+    session, server = _build_session(
+        config=WaypointConfig(min_chunk_horizon_ms=0), stages=[_AddOne()]
+    )
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        await session.start()
+        await session.wait_ready()
+        with now as estimated:
+            estimated.return_value = 1_000
+            for k, observed in enumerate((1_000, 1_033)):
+                session.update_chunk(
+                    steps=[[float(k)] * 6], dt_ms=1000 / 30, lead=True, observed_at_ms=observed
+                )
+                await _wait_until(lambda k=k: len(server.requests) >= 2 + k)
+        first, second = (_inner(r).waypoints for r in server.requests[1:3])
+        assert [_joints(w)[0] for w in first] == [1.0]
+        assert [_joints(w)[0] for w in second] == [1.0, 2.0]  # re-sent once, not staged twice
+        assert [w.timestamp for w in second] == [1_100, 1_133]  # timestamps untouched
+        assert session._last_sent[1][0] == 2.0
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+def test_each_session_runs_its_own_copy_of_a_stage():
+    stage = _AddOne()
+    left, _ = _build_session(stages=[stage])
+    right, _ = _build_session(stages=[stage])
+    try:
+        assert left._stages[0] is not right._stages[0]
+        assert left._stages[0] is not stage
+    finally:
+        for session in (left, right):
+            for p in session._test_patches:  # type: ignore[attr-defined]
+                p.stop()
+
+
+def test_a_stage_may_not_add_or_drop_waypoints():
+    class _DropsOne:
+        def __call__(self, waypoints, context):
+            return [v for _, v in waypoints][1:]
+
+    session, _ = _build_session(stages=[_DropsOne()])
+    try:
+        pending = PendingChunk(steps=[[0.0] * 6] * 2, dt_ms=40, first_timestamp_ms=5_000)
+        with pytest.raises(ValueError, match="returned 1 values for 2 waypoints"):
+            session._trimmed_request(pending)
+    finally:
         for p in session._test_patches:  # type: ignore[attr-defined]
             p.stop()
 
