@@ -86,7 +86,7 @@ depend on that, instead of running them with timings that never come:
 | Before (ran, wrongly) | Now |
 | --- | --- |
 | `QueuedPolicyClient(...)` or `LeRobotPolicyClient(use_async_queue=True)` with `SequentialExecution()` | use `ContinuousExecution()`, or the wrapped policy without the queue |
-| `live_buffer=...` with `SequentialExecution()` | use `ContinuousExecution()` |
+| a `LiveBuffer` in `pipeline=` with `SequentialExecution()` | use `ContinuousExecution()` |
 
 A chunk with its own `first_timestamp_ms` is no longer bridged from the measured pose: the bridge
 rebuilt the chunk without that timestamp. It is sent at the time the policy set.
@@ -114,28 +114,22 @@ own `first_timestamp_ms` are unchanged.
 takes the first, like the LeRobot client, since IO is written when that step is due. A policy
 that toggles a gripper inside a chunk now has it follow the first step of each chunk.
 
-## `PolicyExecutor(buffer_window_ms=...)` is now `live_buffer=LiveBuffer(...)`
+## Buffering and ease-in are pipeline modules
+
+`buffer_window_ms` (on `PolicyExecutor`, `jog_joints`, `jog_tcp`) and `ease_in_s` (on the
+joggers) are gone. Both are opt-in modules of the send pipeline now, passed as `pipeline=[...]`,
+and none runs by default:
 
 | Before | Now |
 | --- | --- |
-| `PolicyExecutor(..., buffer_window_ms=80)` | `PolicyExecutor(..., live_buffer=LiveBuffer(window_ms=80))` |
-
-The live-target buffer is one module now (`novapolicy.LiveBuffer`), shared with the joggers. For a
-one-step policy it measured worse than the default lead path; see `docs/adr/0004`.
-
-## Jogging: no live buffer and no ease-in unless passed
-
-`jog_joints` and `jog_tcp` no longer buffer live targets by default, and `ease_in_s` and
-`buffer_window_ms` are gone. Both are opt-in modules now, shared with `PolicyExecutor`:
-
-| Before | Now |
-| --- | --- |
-| `jog_joints(mg)` (500 ms buffer for `set_target`) | `jog_joints(mg, live_buffer=LiveBuffer(window_ms=500))` |
+| `jog_joints(mg)` (500 ms buffer for `set_target`) | `jog_joints(mg, pipeline=[LiveBuffer(window_ms=500)])` |
 | `jog_joints(mg, buffer_window_ms=0)` | `jog_joints(mg)` |
-| `jog_joints(mg, ease_in_s=1.0)` | `jog_joints(mg, stages=[EaseIn(duration_s=1.0)])` |
+| `jog_joints(mg, ease_in_s=1.0)` | `jog_joints(mg, pipeline=[EaseIn(duration_s=1.0)])` |
+| `PolicyExecutor(..., buffer_window_ms=80)` | `PolicyExecutor(..., pipeline=[LiveBuffer(window_ms=80)])` |
 
-**A script that relied on the default buffer now sends each live target alone:** measured at a
-~90 Hz loop, 0.45–0.84° from the target instead of 0.015°, with arm peaks up to twice the
-commanded speed. Pass `live_buffer=LiveBuffer(window_ms=500)` to keep the old behaviour; the
-shipped live-target examples do. `set_chunk` is unchanged. `EaseIn` now blends by each
-waypoint's timestamp and with a smootherstep.
+**A jogging script that relied on the default buffer now sends each live target alone:** measured
+at a ~90 Hz loop, 0.45–0.84° from the target instead of 0.015°, with arm peaks up to twice the
+commanded speed. Pass `pipeline=[LiveBuffer(window_ms=500)]` to keep the old behaviour; the shipped
+live-target examples do. For a one-step policy in `PolicyExecutor` the buffer measured worse than
+the default lead path (`docs/adr/0009`). `EaseIn` now blends by each waypoint's timestamp with a
+smootherstep. With a buffer, a chunk's IO goes with its newest target instead of at once.

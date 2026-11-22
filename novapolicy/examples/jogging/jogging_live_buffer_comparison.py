@@ -35,7 +35,7 @@ DURATION_S, AMPLITUDE, FREQUENCY = 6.0, 0.3, 0.5
 ROUNDS = 3
 
 VARIANTS = {
-    "buffer": {"live_buffer": LiveBuffer(window_ms=500.0), "config": WaypointConfig()},
+    "buffer": {"pipeline": [LiveBuffer(window_ms=500.0)], "config": WaypointConfig()},
     "lone": {"config": WaypointConfig()},
     "lone+braking": {
         "config": WaypointConfig(delay_until_braking_ms=200, min_chunk_horizon_ms=0),

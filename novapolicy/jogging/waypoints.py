@@ -64,6 +64,9 @@ class PendingChunk:
     """Placed by the lead rule: step ``k`` due ``max_expected_latency_ms + k * dt`` after
     ``observed_at_ms``, or after the send when that is ``None``."""
     observed_at_ms: ServerMs | None = None
+    extend_buffer: bool = True
+    """Pad the chunk with its last target up to ``min_chunk_horizon_ms`` after the chunk modules
+    ran (contract T6)."""
     when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None
     """``(step, action)``: run ``action`` when the caller's ``step`` is due, see
     :meth:`~novapolicy.jogging.waypoint_session.WaypointJoggingSession.update_chunk`."""

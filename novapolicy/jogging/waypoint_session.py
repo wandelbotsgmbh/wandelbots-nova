@@ -11,7 +11,7 @@ import asyncio
 from collections import deque
 import contextlib
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 import math
 import time
@@ -24,8 +24,8 @@ from nova.types import Pose, RobotState
 from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.io import IOWriter
 from novapolicy.jogging.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, RoundTrip, ServerMs
+from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
 from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
-from novapolicy.jogging.stages import StageContext
 from novapolicy.jogging.waypoints import (
     PendingChunk,
     anchor_timestamp_ms,
@@ -38,7 +38,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping, Sequence
 
     from nova.cell.motion_group import MotionGroup
-    from novapolicy.jogging.stages import WaypointStage
     from novapolicy.types import JoggingMode, StopCondition, ValueType, WaypointConfig
 
 logger = logging.getLogger(__name__)
@@ -156,11 +155,11 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         tcp: str = "",
         mode: JoggingMode = "joint",
         stop_conditions: list[StopCondition] | None = None,
-        stages: Sequence[WaypointStage] = (),
+        pipeline: Sequence[object] = (),
     ) -> None:
         self._motion_group = motion_group
-        # Each session runs its own copy, so two arms never share a stage's state.
-        self._stages = [copy.deepcopy(stage) for stage in stages]
+        # Each session runs its own copy, so two arms never share a module's state.
+        self._chunk_modules, self._waypoint_modules = split_pipeline(copy.deepcopy(list(pipeline)))
         self._last_sent_value: list[float] = []
         self._config = config
         self._tcp = tcp
@@ -578,28 +577,31 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         if not steps:
             return
 
-        effective_dt_ms = dt_ms if dt_ms > 0 else self._config.single_step_dt_ms
-        buffered_steps = (
-            self._extend_to_min_horizon(steps, effective_dt_ms) if extend_buffer else steps
+        chunk = PendingChunk(
+            steps=[list(step) for step in steps],
+            dt_ms=dt_ms if dt_ms > 0 else self._config.single_step_dt_ms,
+            first_timestamp_ms=first_timestamp_ms,
+            timestamp_offset_steps=timestamp_offset_steps,
+            server_dt_ms=server_dt_ms,
+            action_timestep=action_timestep,
+            caller_step_count=len(steps),
+            lead=lead,
+            observed_at_ms=observed_at_ms,
+            when_due=when_due,
+            extend_buffer=extend_buffer,
         )
+        # Chunk modules see every chunk, before the session keeps only the newest one.
+        for module in self._chunk_modules:
+            chunk = module.on_chunk(chunk, self._module_context())
+        if chunk.extend_buffer:
+            chunk = replace(chunk, steps=self._extend_to_min_horizon(chunk.steps, chunk.dt_ms))
+        buffered_steps = chunk.steps
 
         # Store raw chunk data. Timestamps are computed in _jogging_loop
         # immediately before yielding to the server, avoiding drift from any
         # internal await/scheduling delay between policy and stream send.
         self._queued_chunk_count += 1
-        self._pending_request = PendingChunk(
-            steps=buffered_steps,
-            dt_ms=effective_dt_ms,
-            first_timestamp_ms=first_timestamp_ms,
-            timestamp_offset_steps=timestamp_offset_steps,
-            server_dt_ms=server_dt_ms,
-            action_timestep=action_timestep,
-            sequence=self._queued_chunk_count,
-            caller_step_count=len(steps),
-            lead=lead,
-            observed_at_ms=observed_at_ms,
-            when_due=when_due,
-        )
+        self._pending_request = replace(chunk, sequence=self._queued_chunk_count)
         self._pending_request_event.set()
 
         # Compare current robot position vs chunk first step (joint mode only).
@@ -1230,25 +1232,31 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     def _request(
         self, timed: list[tuple[int, list[float]]], pending: PendingChunk
     ) -> api.models.ActionChunkRequest:
-        """The request for these timed waypoints, after the stages reshaped their values."""
+        """The request for these timed waypoints, after the waypoint modules set their values."""
         values = [list(v) for _, v in timed]
-        if self._stages:
-            waypoints = [(ServerMs(t), v) for t, v in timed]
-            context = StageContext(
-                now_ms=self._clock.estimated_server_timestamp_ms, position=self._position()
-            )
-            for stage in self._stages:
-                values = stage(
-                    [(t, v) for (t, _), v in zip(waypoints, values, strict=True)], context
-                )
+        if self._waypoint_modules:
+            times = [ServerMs(t) for t, _ in timed]
+            context = self._module_context()
+            for module in self._waypoint_modules:
+                values = module.on_waypoints(list(zip(times, values, strict=True)), context)
                 if len(values) != len(timed):
-                    msg = f"{type(stage).__name__} returned {len(values)} values for {len(timed)} waypoints"
+                    msg = (
+                        f"{type(module).__name__} returned {len(values)} values for "
+                        f"{len(timed)} waypoints"
+                    )
                     raise ValueError(msg)
         self._last_sent_value = values[-1]
         return make_timed_waypoints_request(
             self._mode,
             [(t, v) for (t, _), v in zip(timed, values, strict=True)],
             delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
+        )
+
+    def _module_context(self) -> ModuleContext:
+        return ModuleContext(
+            now_ms=self._clock.estimated_server_timestamp_ms,
+            position=self._position(),
+            step_ms=self._config.single_step_dt_ms,
         )
 
     def _position(self) -> list[float] | None:

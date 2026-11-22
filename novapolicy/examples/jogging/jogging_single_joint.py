@@ -26,7 +26,7 @@ async def main(ctx: nova.ProgramContext):
     # the moving target smoothly, about 500 ms behind. Without it each target goes out
     # alone and the robot brakes toward every one of them.
     async with jog_joints(
-        mg, start_joint_position=HOME, live_buffer=LiveBuffer(window_ms=500)
+        mg, start_joint_position=HOME, pipeline=[LiveBuffer(window_ms=500)]
     ) as jogger:
         async for _ in jogger:
             t = jogger.elapsed

@@ -151,7 +151,7 @@ waypoint, and a lone waypoint is a **terminal** target: with no successor the se
 an accelerate/decelerate-to-standstill profile, so a target replaced every tick makes the
 robot brake toward every one of them.
 
-`live_buffer=LiveBuffer(window_ms=500)` (opt-in) holds the last `window_ms` of targets and
+`pipeline=[LiveBuffer(window_ms=500)]` (opt-in) holds the last `window_ms` of targets and
 replays them as a continuous waypoint horizon on an even grid
 (`WaypointConfig.single_step_dt_ms`), so the server always has somewhere to be going next.
 Nothing in that horizon is invented: every waypoint is a target that was really measured,
@@ -165,7 +165,7 @@ server caps its speed at whatever it can brake to a stop within; on the UR10e a 
 window stalled a fifth of all samples.
 
 ```python
-async with jog_tcp(mg, tcp="Flange", live_buffer=LiveBuffer(window_ms=500)) as jogger:
+async with jog_tcp(mg, tcp="Flange", pipeline=[LiveBuffer(window_ms=500)]) as jogger:
     async for state in jogger:
         jogger.set_target(read_controller_pose())
 ```
@@ -216,23 +216,28 @@ async with jog_joints(mg) as jogger:
         jogger.set_target(target)
 ```
 
-## Ease-in and other pre-send stages (`stages=[...]`)
+## The send pipeline (`pipeline=[...]`)
 
-A time-parameterised target with non-zero velocity at `t=0` (a sinusoid has maximum velocity
-there) makes the robot lunge from a standstill to full speed on the first move. Pass
-`stages=[EaseIn(duration_s=1.0)]` to `jog_joints`/`jog_tcp` (or `PolicyExecutor`): each
-waypoint is blended from where the robot stood toward its value over the first second, by its
-own timestamp, and is unchanged after. Off by default.
-
-The blend is a smootherstep, zero in velocity and acceleration at both ends. A stage reshapes
-the values of the waypoints right before they are sent and never their timing; see
-`novapolicy.jogging.stages` and contract T13 in [contracts.md](contracts.md).
+What `set_target` and `set_chunk` produce reaches NOVA through one ordered list of opt-in modules,
+the same one `PolicyExecutor` uses:
 
 ```python
-async with jog_joints(mg, stages=[EaseIn(duration_s=1.0)]) as jogger:
-    async for _ in jogger:
-        ...
+async with jog_joints(
+    mg, pipeline=[LiveBuffer(window_ms=500), Timestamps(), EaseIn(duration_s=1.0)]
+) as jogger:
+    ...
 ```
+
+Modules before `Timestamps()` work on chunks (`LiveBuffer`); modules after it get the timed
+waypoints and may change their values only (`EaseIn`). `Timestamps()` may be left out; it then
+sits after the last chunk module. Each motion group runs its own copy. See
+`novapolicy.jogging.pipeline` and contract T13 in [contracts.md](contracts.md).
+
+A time-parameterised target with non-zero velocity at `t=0` (a sinusoid has maximum velocity
+there) makes the robot lunge from a standstill. `EaseIn(duration_s=1.0)` blends each waypoint from
+where the robot stood toward its value over the first second, by its own timestamp, with a
+smootherstep. Measured on a sine at about 90 Hz with a 500 ms buffer: peak speed in the first
+second 54°/s instead of 85°/s.
 
 ## Dual-arm
 

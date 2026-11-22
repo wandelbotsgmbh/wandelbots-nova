@@ -43,7 +43,7 @@ async def main(ctx: nova.ProgramContext):
     async with jog_tcp(
         {mg1: tcp1, mg2: tcp2},
         start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT},
-        live_buffer=LiveBuffer(window_ms=500),
+        pipeline=[LiveBuffer(window_ms=500)],
     ) as jogger:
         start1 = None
         start2 = None

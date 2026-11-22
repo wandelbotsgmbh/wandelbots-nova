@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from novapolicy.jogging import jog_joints, jog_tcp
-from novapolicy.jogging.jogger import LIVE_LEAD_MS, JointJogger, TcpJogger
+from novapolicy.jogging.jogger import JointJogger, TcpJogger
 from novapolicy.jogging.live_buffer import LiveBuffer
 from novapolicy.types import MotionError
 
@@ -93,8 +93,7 @@ def _fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
 def _build_joint_jogger(
     *mg_ids: str,
     num_joints: int = 6,
-    stages: tuple[object, ...] = (),
-    buffer_window_ms: float = 0.0,
+    pipeline: tuple[object, ...] = (),
 ) -> _JointSetup:
     """Build a real joint jogger over fake robot transports.
 
@@ -107,15 +106,11 @@ def _build_joint_jogger(
 
     def make_session(*, motion_group: object, **kw: object) -> MagicMock:
         sessions[motion_group] = _fake_session(num_joints)
-        sessions[motion_group].stages = kw.get("stages")
+        sessions[motion_group].pipeline = kw.get("pipeline")
         return sessions[motion_group]
 
     with patch("novapolicy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
-        jogger = jog_joints(
-            mgs if len(mgs) > 1 else mgs[0],
-            stages=stages,  # type: ignore[arg-type]
-            live_buffer=LiveBuffer(window_ms=buffer_window_ms) if buffer_window_ms > 0 else None,
-        )
+        jogger = jog_joints(mgs if len(mgs) > 1 else mgs[0], pipeline=pipeline)
     return jogger, mgs, sessions
 
 
@@ -124,22 +119,19 @@ def _build_tcp_jogger(
     tcp: str = "Flange",
     *,
     num_joints: int = 6,
-    buffer_window_ms: float = 0.0,
+    pipeline: tuple[object, ...] = (),
 ) -> _TcpSetup:
     """Build a real single-arm TCP jogger over a fake robot transport."""
     mg = _mg(mg_id)
     sessions: dict[object, MagicMock] = {}
 
-    def make_session(*, motion_group: object, **_kw: object) -> MagicMock:
+    def make_session(*, motion_group: object, **kw: object) -> MagicMock:
         sessions[motion_group] = _fake_session(num_joints, mode="cartesian")
+        sessions[motion_group].pipeline = kw.get("pipeline")
         return sessions[motion_group]
 
     with patch("novapolicy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
-        jogger = jog_tcp(
-            mg,
-            tcp=tcp,
-            live_buffer=LiveBuffer(window_ms=buffer_window_ms) if buffer_window_ms > 0 else None,
-        )
+        jogger = jog_tcp(mg, tcp=tcp, pipeline=pipeline)
     return jogger, mg, sessions
 
 
@@ -171,14 +163,16 @@ def test_setting_a_single_target_streams_it_to_the_robot():
     assert jogger.target == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
 
 
-def test_stages_are_handed_to_every_session():
-    """Opt-in pre-send stages (e.g. EaseIn) run in the sessions; the jogger does not shape
+def test_the_pipeline_is_handed_to_every_session():
+    """Opt-in modules (e.g. LiveBuffer, EaseIn) run in the sessions; the jogger does not shape
     targets itself, and a live target goes out unchanged by default."""
     from novapolicy import EaseIn
 
-    ease = EaseIn(duration_s=1.0)
-    jogger, mgs, sessions = _build_joint_jogger("0@left", "0@right", stages=(ease,))
-    assert all(sessions[mg].stages == (ease,) for mg in mgs)
+    pipeline = (LiveBuffer(window_ms=30.0), EaseIn(duration_s=1.0))
+    jogger, mgs, sessions = _build_joint_jogger("0@left", "0@right", pipeline=pipeline)
+    assert all(sessions[mg].pipeline == pipeline for mg in mgs)
+    _, tcp_mg, tcp_sessions = _build_tcp_jogger("0@ur10e", pipeline=pipeline)
+    assert tcp_sessions[tcp_mg].pipeline == pipeline
     jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
     jogger.set_target([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
     assert sessions[mg].update_chunk.call_args.kwargs["steps"][0] == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
@@ -198,126 +192,29 @@ def test_setting_a_chunk_streams_every_step_and_tracks_the_last():
     assert jogger.target == chunk[-1]
 
 
-def test_buffered_target_sends_a_rolling_window_played_back_from_now():
-    """The recent-target window is played back from the current anchor.
-
-    The samples cannot keep their original slots: those moments have passed, so
-    the whole window would be dropped as unreachable. Playing it back from now
-    is what buys smoothness at the cost of roughly ``buffer_window_ms`` of delay.
-    """
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    _tick(jogger, sessions, 0.0)
-    jogger.set_target([1.0] * 6)
-    _tick(jogger, sessions, 10.0)
-    jogger.set_target([2.0] * 6)
-    _tick(jogger, sessions, 20.0)
-    jogger.set_target([3.0] * 6)
-
-    kwargs = sessions[mg].update_chunk.call_args.kwargs
-    # Every waypoint is a measured sample and nothing follows the newest one:
-    # the window IS the horizon, so there is no predicted continuation.
-    assert kwargs["steps"] == [[1.0] * 6, [2.0] * 6, [3.0] * 6]
-    assert kwargs["dt_ms"] == pytest.approx(10.0)  # measured, not assumed
-    assert kwargs["extend_buffer"] is False
-    # Oldest sample (t=0) played back at a constant buffer_window_ms delay, plus lead.
-    assert kwargs["first_timestamp_ms"] == int(30 + LIVE_LEAD_MS)
-
-
-def test_buffered_target_keeps_streaming_before_the_timeline_starts():
-    """A live target must go out even while `elapsed` is still pinned at zero.
-
-    Waiting for the window to fill on a clock that only starts ticking once a
-    chunk has been sent deadlocks: nothing is sent, so nothing ever ticks.
-    """
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    for value in (1.0, 2.0, 3.0):
-        jogger.set_target([value] * 6)
-
-    assert sessions[mg].update_chunk.call_count == 3
-    assert sessions[mg].update_chunk.call_args.kwargs["steps"] == [[3.0] * 6]
-
-
-def test_buffered_window_drops_samples_older_than_the_buffer():
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    for i, value in enumerate((1.0, 2.0, 3.0, 4.0, 5.0)):
-        _tick(jogger, sessions, i * 10.0)
-        jogger.set_target([value] * 6)
-
-    steps = sessions[mg].update_chunk.call_args.kwargs["steps"]
-    # The window is resampled onto the grid the controller executes best on, so
-    # the recorded samples are interpolated rather than passed through
-    # one-for-one. What must hold is that the replay spans the *retained*
-    # window: it starts at the oldest sample still inside buffer_window_ms (the 1.0
-    # sample has aged out) and reaches the newest.
-    replayed = [step[0] for step in steps]
-    assert replayed[0] >= 2.0, replayed
-    assert max(replayed) >= 5.0, replayed
-    assert replayed == sorted(replayed), replayed
-
-
-def test_explicit_chunk_clears_buffered_live_samples():
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    for i, value in enumerate((1.0, 2.0, 3.0)):
-        _tick(jogger, sessions, i * 10.0)
-        jogger.set_target([value] * 6)
-    jogger.set_chunk([[9.0] * 6, [9.0] * 6], dt_ms=10.0)
-
-    for i, value in enumerate((10.0, 11.0, 12.0)):
-        _tick(jogger, sessions, 30.0 + i * 10.0)
-        jogger.set_target([value] * 6)
-
-    # The window restarted from the first post-chunk sample: nothing from
-    # before the explicit chunk survives into the replay.
-    replayed = [step[0] for step in sessions[mg].update_chunk.call_args.kwargs["steps"]]
-    assert replayed[0] == 10.0, replayed
-    assert max(replayed) >= 12.0, replayed
-    assert all(value >= 10.0 for value in replayed), replayed
-
-
-def test_mixing_target_forms_is_reported_once_per_motion_group(caplog):
-    """Discarding the live buffer is correct, but must not be silent.
-
-    ``buffer_window_ms`` applies only to live targets, so a caller that also sends
-    chunks pays for the buffer without benefiting from it: each chunk empties it,
-    and until it refills the live targets go out alone as terminal waypoints — the
-    halting motion the buffer exists to avoid. That is worth one warning.
-    """
-    jogger, _, sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    for i, value in enumerate((1.0, 2.0, 3.0)):
-        _tick(jogger, sessions, i * 10.0)
-        jogger.set_target([value] * 6)
+def test_with_a_live_buffer_the_jogger_still_sends_each_live_target_alone(caplog):
+    """The buffering moved into the session's pipeline (see the LiveBuffer tests in
+    test_waypoint_session.py): the jogger sends every live target as it came, one waypoint,
+    no padding, and a chunk as it came, without clearing or warning about anything."""
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", pipeline=(LiveBuffer(window_ms=30.0),))
 
     with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.jogger"):
-        jogger.set_chunk([[9.0] * 6, [9.0] * 6], dt_ms=10.0)
-        first = [r.getMessage() for r in caplog.records]
-
-        # Refill, then push another chunk: the same advice must not repeat.
-        for i, value in enumerate((4.0, 5.0, 6.0)):
-            _tick(jogger, sessions, 40.0 + i * 10.0)
-            jogger.set_target([value] * 6)
-        jogger.set_chunk([[8.0] * 6, [8.0] * 6], dt_ms=10.0)
-        both = [r.getMessage() for r in caplog.records]
-
-    assert len(first) == 1, first
-    assert "0@ur10e" in first[0]
-    assert both == first, "the warning repeated"
-
-
-def test_a_chunk_only_caller_is_never_warned_about_mixing(caplog):
-    """There is nothing to discard, so there is nothing to say."""
-    jogger, _, sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.jogger"):
-        for i in range(3):
+        for i, value in enumerate((1.0, 2.0, 3.0)):
             _tick(jogger, sessions, i * 10.0)
-            jogger.set_chunk([[float(i)] * 6, [float(i)] * 6], dt_ms=10.0)
+            jogger.set_target([value] * 6)
+        jogger.set_chunk([[9.0] * 6, [9.0] * 6], dt_ms=10.0)
 
-    assert [r.getMessage() for r in caplog.records] == []
+    calls = [call.kwargs for call in sessions[mg].update_chunk.call_args_list]
+    assert [kwargs["steps"] for kwargs in calls] == [
+        [[1.0] * 6],
+        [[2.0] * 6],
+        [[3.0] * 6],
+        [[9.0] * 6, [9.0] * 6],
+    ]
+    assert all(kwargs["dt_ms"] == 0.0 for kwargs in calls[:3])
+    assert all(kwargs["extend_buffer"] is False for kwargs in calls[:3])
+    assert calls[3]["extend_buffer"] is True
+    assert [r for r in caplog.records if r.name == "novapolicy.jogging.jogger"] == []
 
 
 def test_each_arm_in_a_dual_setup_receives_its_own_target():
@@ -335,10 +232,10 @@ def test_each_arm_in_a_dual_setup_receives_its_own_target():
 
 
 def test_a_chunk_handed_to_set_target_is_rejected():
-    """The split exists so a chunk cannot arrive where buffer_window_ms applies.
+    """The split exists so a chunk cannot arrive where a LiveBuffer's live path applies.
 
-    Accepting it there meant buffer_window_ms was silently irrelevant for that
-    push, with nothing to tell the caller.
+    Accepting it there meant the buffer was silently irrelevant for that push,
+    with nothing to tell the caller.
     """
     jogger, _, _ = _build_joint_jogger("0@ur10e")
 
@@ -466,23 +363,22 @@ def test_tcp_jogging_streams_a_chunk_of_future_poses():
     )
 
 
-def test_buffered_tcp_target_sends_a_rolling_window_of_poses():
+def test_with_a_live_buffer_the_tcp_jogger_still_sends_each_pose_alone():
     from nova.types import Pose
 
-    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", buffer_window_ms=30.0)
+    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", pipeline=(LiveBuffer(window_ms=30.0),))
 
     for i, x in enumerate((500, 510, 520)):
         _tick(jogger, {mg: sessions[mg]}, i * 10.0)
         jogger.set_target(Pose(x, 200, 300, 0, 3.14, 0))
 
-    kwargs = sessions[mg].update_chunk.call_args.kwargs
-    assert kwargs["steps"][:3] == [
-        [500, 200, 300, 0, 3.14, 0],
-        [510, 200, 300, 0, 3.14, 0],
-        [520, 200, 300, 0, 3.14, 0],
+    calls = [call.kwargs for call in sessions[mg].update_chunk.call_args_list]
+    assert [kwargs["steps"] for kwargs in calls] == [
+        [[500, 200, 300, 0, 3.14, 0]],
+        [[510, 200, 300, 0, 3.14, 0]],
+        [[520, 200, 300, 0, 3.14, 0]],
     ]
-    assert kwargs["dt_ms"] == pytest.approx(10.0)
-    assert kwargs["extend_buffer"] is False
+    assert all(kwargs["extend_buffer"] is False for kwargs in calls)
 
 
 # ---------------------------------------------------------------------------

@@ -30,7 +30,7 @@ async def main(ctx: nova.ProgramContext):
     async with jog_joints(
         [mg1, mg2],
         start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT},
-        live_buffer=LiveBuffer(window_ms=500),
+        pipeline=[LiveBuffer(window_ms=500)],
     ) as jogger:
         async for _ in jogger:
             t = jogger.elapsed

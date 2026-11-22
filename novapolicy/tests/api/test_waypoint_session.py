@@ -19,6 +19,7 @@ the loop internals should leave these tests intact.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 import itertools
 import logging
@@ -32,12 +33,13 @@ import pytest
 from nova import api
 from nova.types import Pose
 from novapolicy.jogging import jog_tcp
+from novapolicy.jogging.live_buffer import LIVE_LEAD_MS, MAX_LIVE_SAMPLES, LiveBuffer
 from novapolicy.jogging.waypoint_session import MIN_LEAD_MS, WaypointJoggingSession
 from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.types import JoggingNotSupportedError, MotionError, WaypointConfig
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable, Sequence
+    from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
 
 _SESSION = "novapolicy.jogging.waypoint_session"
 
@@ -145,7 +147,7 @@ def _build_session(
     mode: str = "joint",
     config: WaypointConfig | None = None,
     response_delay: float = 0.003,
-    stages: Sequence[object] = (),
+    pipeline: Sequence[object] = (),
 ) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
     server = FakeJoggingServer(
         fault=fault,
@@ -178,7 +180,7 @@ def _build_session(
         tcp="Flange",
         mode=mode,
         stop_conditions=stop_conditions,
-        stages=stages,  # type: ignore[arg-type]
+        pipeline=pipeline,
     )
 
     patches = [
@@ -600,22 +602,22 @@ async def test_a_replaced_chunk_never_runs_its_action_and_stop_cancels_the_rest(
 
 
 class _AddOne:
-    """A stage that adds 1 to joint 0 and counts how often it ran."""
+    """A waypoint module that adds 1 to joint 0 and counts how often it ran."""
 
     def __init__(self) -> None:
         self.calls = 0
 
-    def __call__(self, waypoints, context):
+    def on_waypoints(self, waypoints, context):
         self.calls += 1
         return [[v[0] + 1.0, *v[1:]] for _, v in waypoints]
 
 
 @pytest.mark.asyncio
-async def test_stages_reshape_the_values_but_never_the_timestamps():
-    """A re-sent waypoint is staged from its raw value again, so it gets the same value in
+async def test_waypoint_modules_reshape_the_values_but_never_the_timestamps():
+    """A re-sent waypoint is reshaped from its raw value again, so it gets the same value in
     every request; the drain's final target is what was actually sent."""
     session, server = _build_session(
-        config=WaypointConfig(min_chunk_horizon_ms=0), stages=[_AddOne()]
+        config=WaypointConfig(min_chunk_horizon_ms=0), pipeline=[_AddOne()]
     )
     now = patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
@@ -632,7 +634,7 @@ async def test_stages_reshape_the_values_but_never_the_timestamps():
                 await _wait_until(lambda k=k: len(server.requests) >= 2 + k)
         first, second = (_inner(r).waypoints for r in server.requests[1:3])
         assert [_joints(w)[0] for w in first] == [1.0]
-        assert [_joints(w)[0] for w in second] == [1.0, 2.0]  # re-sent once, not staged twice
+        assert [_joints(w)[0] for w in second] == [1.0, 2.0]  # re-sent once, not reshaped twice
         assert [w.timestamp for w in second] == [1_100, 1_133]  # timestamps untouched
         assert session._last_sent[1][0] == 2.0
     finally:
@@ -642,25 +644,25 @@ async def test_stages_reshape_the_values_but_never_the_timestamps():
             p.stop()
 
 
-def test_each_session_runs_its_own_copy_of_a_stage():
-    stage = _AddOne()
-    left, _ = _build_session(stages=[stage])
-    right, _ = _build_session(stages=[stage])
+def test_each_session_runs_its_own_copy_of_a_module():
+    module = _AddOne()
+    left, _ = _build_session(pipeline=[module])
+    right, _ = _build_session(pipeline=[module])
     try:
-        assert left._stages[0] is not right._stages[0]
-        assert left._stages[0] is not stage
+        assert left._waypoint_modules[0] is not right._waypoint_modules[0]
+        assert left._waypoint_modules[0] is not module
     finally:
         for session in (left, right):
             for p in session._test_patches:  # type: ignore[attr-defined]
                 p.stop()
 
 
-def test_a_stage_may_not_add_or_drop_waypoints():
+def test_a_waypoint_module_may_not_add_or_drop_waypoints():
     class _DropsOne:
-        def __call__(self, waypoints, context):
+        def on_waypoints(self, waypoints, context):
             return [v for _, v in waypoints][1:]
 
-    session, _ = _build_session(stages=[_DropsOne()])
+    session, _ = _build_session(pipeline=[_DropsOne()])
     try:
         pending = PendingChunk(steps=[[0.0] * 6] * 2, dt_ms=40, first_timestamp_ms=5_000)
         with pytest.raises(ValueError, match="returned 1 values for 2 waypoints"):
@@ -668,6 +670,341 @@ def test_a_stage_may_not_add_or_drop_waypoints():
     finally:
         for p in session._test_patches:  # type: ignore[attr-defined]
             p.stop()
+
+
+# ---------------------------------------------------------------------------
+# A LiveBuffer in the pipeline: what the session queues and sends
+# ---------------------------------------------------------------------------
+
+_LIVE_START_MS = 1_000
+_LIVE_TICK_MS = 20
+"""Session time between live targets, i.e. the caller's own step."""
+
+
+@contextlib.contextmanager
+def _live_session(
+    window_ms: float = 500.0, *, mode: str = "joint", config: WaypointConfig | None = None
+) -> Iterator[tuple[WaypointJoggingSession, PropertyMock]]:
+    """A session with ``LiveBuffer(window_ms)`` in its pipeline and a clock the test sets."""
+    session, _ = _build_session(
+        pipeline=[LiveBuffer(window_ms=window_ms)], mode=mode, config=config
+    )
+    clock = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        with clock as now:
+            now.return_value = _LIVE_START_MS
+            yield session, now
+    finally:
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
+def _live_buffer(session: WaypointJoggingSession) -> LiveBuffer:
+    """The session's own copy of the LiveBuffer."""
+    module = session._chunk_modules[0]
+    assert isinstance(module, LiveBuffer)
+    return module
+
+
+def _push_live(
+    session: WaypointJoggingSession,
+    now: PropertyMock,
+    target: list[float],
+    at_ms: int,
+    **kwargs: object,
+) -> PendingChunk:
+    """Queue one live target at session time ``at_ms``, as the jogger sends it (alone, no
+    padding), and return what the session will send."""
+    now.return_value = at_ms
+    kwargs.setdefault("extend_buffer", False)
+    session.update_chunk(steps=[list(target)], dt_ms=0.0, **kwargs)  # type: ignore[arg-type]
+    assert session._pending_request is not None
+    return session._pending_request
+
+
+def _feed_live(
+    session: WaypointJoggingSession,
+    now: PropertyMock,
+    count: int,
+    *,
+    step: float = 0.01,
+    tick_ms: int = _LIVE_TICK_MS,
+    **kwargs: object,
+) -> list[PendingChunk]:
+    """Queue ``count`` live targets ramping by ``step``, one tick apart."""
+    return [
+        _push_live(session, now, [i * step] * 6, _LIVE_START_MS + i * tick_ms, **kwargs)
+        for i in range(count)
+    ]
+
+
+def _horizons(pendings: list[PendingChunk]) -> list[PendingChunk]:
+    return [pending for pending in pendings if len(pending.steps) > 1]
+
+
+def test_a_live_buffer_sends_the_first_target_alone():
+    """One sample cannot define a spacing; waiting for the window to fill would never move."""
+    with _live_session() as (session, now):
+        pending = _push_live(session, now, [0.5] * 6, _LIVE_START_MS)
+        assert pending.steps == [[0.5] * 6]
+        assert pending.first_timestamp_ms is None  # the caller's placement, untouched
+        sent = session._trimmed_request(pending).request
+        assert sent is not None
+        assert [_joints(w) for w in sent.waypoints] == [[0.5] * 6]
+
+
+def test_a_filled_live_buffer_is_replayed_as_a_horizon():
+    with _live_session() as (session, now):
+        last = _feed_live(session, now, 40)[-1]
+        assert len(last.steps) > 1, "a horizon, not a lone terminal waypoint"
+        assert last.dt_ms == pytest.approx(50.0)  # the session's single_step_dt_ms grid
+        assert last.lead is False
+
+
+def test_a_replayed_horizon_is_never_padded_even_when_the_caller_asks():
+    """Holding one pose is not the same as replaying where the target went. The lone target
+    before the buffer can define a spacing passes through unchanged, so it keeps the caller's
+    padding (500 ms of holds on the 50 ms grid)."""
+    with _live_session(window_ms=100.0, config=WaypointConfig(min_chunk_horizon_ms=500.0)) as (
+        session,
+        now,
+    ):
+        pendings = _feed_live(session, now, 40, extend_buffer=True)
+        assert pendings[0].steps == [[0.0] * 6] * 10
+        assert pendings[0].caller_step_count == 1
+        horizons = pendings[1:]
+        assert all(len(pending.steps) > 1 for pending in horizons)
+        for pending in horizons:
+            assert pending.extend_buffer is False
+            assert len(pending.steps) == pending.caller_step_count
+            assert len(pending.steps) * pending.dt_ms < 500.0, "padding would reach 500 ms"
+            assert pending.steps[-1][0] != pending.steps[-2][0], "a hold was appended"
+
+
+def test_nothing_a_live_buffer_replays_is_past_the_newest_target():
+    """The horizon is measured, never guessed: no waypoint beyond the newest target."""
+    with _live_session() as (session, now):
+        for i, pending in enumerate(_feed_live(session, now, 120, tick_ms=10)):
+            newest = i * 0.01
+            assert max(step[0] for step in pending.steps) <= newest + 1e-9, i
+
+
+def test_every_replayed_send_carries_an_absolute_first_timestamp():
+    """Never a "now"-relative or lead placement, also for a caller that asked for the lead."""
+    with _live_session() as (session, now):
+        pendings = [
+            _push_live(session, now, [i * 0.01] * 6, at, lead=True, observed_at_ms=at - 30)
+            for i, at in enumerate(range(_LIVE_START_MS, _LIVE_START_MS + 800, _LIVE_TICK_MS))
+        ]
+        horizons = _horizons(pendings)
+        assert horizons
+        for pending in horizons:
+            assert pending.first_timestamp_ms is not None
+            assert pending.timestamp_offset_steps == 0
+            assert pending.lead is False
+            assert pending.observed_at_ms is None
+        sent = session._trimmed_request(horizons[-1]).request
+        assert sent is not None
+        assert sent.waypoints[0].timestamp == horizons[-1].first_timestamp_ms
+
+
+def test_the_live_buffer_timeline_anchor_is_taken_once():
+    """Re-anchoring later would move already-commanded points."""
+    with _live_session() as (session, now):
+        _push_live(session, now, [0.0] * 6, _LIVE_START_MS)
+        assert _live_buffer(session)._anchor_ms == _LIVE_START_MS
+        _feed_live(session, now, 20)
+        assert _live_buffer(session)._anchor_ms == _LIVE_START_MS
+
+
+def test_the_replay_grid_settles_once_the_window_is_full():
+    """While filling, the spacing is half the span; only a full window gives stable times."""
+    with _live_session() as (session, now):
+        settled = _horizons(_feed_live(session, now, 60)[-20:])
+        assert settled
+        assert all(pending.dt_ms == pytest.approx(50.0) for pending in settled)
+
+
+def test_a_live_target_keeps_its_timestamp_as_the_window_is_resent():
+    """The property the buffer exists for, read off the requests the session sends: a target
+    in several consecutive replays is commanded at one absolute time in all of them."""
+    with _live_session() as (session, now):
+        stamps: dict[float, set[int]] = {}
+        sends: dict[float, int] = {}
+        for i in range(80):
+            at = _LIVE_START_MS + i * _LIVE_TICK_MS
+            pending = _push_live(session, now, [i * 0.01] * 6, at)
+            if len(pending.steps) == 1 or pending.dt_ms != pytest.approx(50.0):
+                continue  # still filling: see the test above
+            sent = session._trimmed_request(pending).request
+            assert sent is not None
+            for waypoint in sent.waypoints:
+                key = round(_joints(waypoint)[0], 9)
+                stamps.setdefault(key, set()).add(waypoint.timestamp)
+                sends[key] = sends.get(key, 0) + 1
+        assert max(sends.values()) > 1, "no target was re-sent, so nothing was checked"
+        moved = {k: v for k, v in stamps.items() if len(v) > 1}
+        assert not moved, f"{len(moved)} targets were commanded at more than one time"
+
+
+def test_a_live_buffer_replays_its_window_from_its_own_timeline():
+    """Each target keeps the moment it arrived; the window is played back ``window_ms`` late
+    plus the lead, from the session clock at the first target."""
+    with _live_session(window_ms=30.0) as (session, now):
+        for k, value in enumerate((1.0, 2.0, 3.0)):
+            pending = _push_live(session, now, [value] * 6, _LIVE_START_MS + 10 * k)
+        assert pending.steps == [[1.0] * 6, [2.0] * 6, [3.0] * 6]
+        assert pending.dt_ms == pytest.approx(10.0)  # measured, not assumed
+        assert pending.first_timestamp_ms == int(_LIVE_START_MS + 30 + LIVE_LEAD_MS)
+
+
+def test_the_replay_leads_the_session_clock():
+    with _live_session() as (session, now):
+        first = _horizons(_feed_live(session, now, 40))[0]
+        assert first.first_timestamp_ms is not None
+        assert first.first_timestamp_ms >= _LIVE_START_MS + LIVE_LEAD_MS
+
+
+def test_a_live_buffer_keeps_sending_and_stays_bounded_on_a_frozen_clock():
+    """Before the session clock runs every target arrives at the same moment: there is no
+    spacing, so each goes out alone, and the cap bounds what is held."""
+    with _live_session(window_ms=30.0) as (session, now):
+        for value in (1.0, 2.0, 3.0):
+            pending = _push_live(session, now, [value] * 6, _LIVE_START_MS)
+            assert pending.steps == [[value] * 6]
+        for _ in range(MAX_LIVE_SAMPLES * 4):
+            pending = _push_live(session, now, [4.0] * 6, _LIVE_START_MS)
+        assert pending.steps == [[4.0] * 6]
+        assert len(_live_buffer(session)._points) <= MAX_LIVE_SAMPLES
+
+
+def test_the_live_window_drops_samples_older_than_window_ms():
+    """Only one sample older than the window is kept, to interpolate the window's start."""
+    with _live_session(window_ms=90.0) as (session, now):
+        for i in range(20):
+            pending = _push_live(session, now, [float(i)] * 6, _LIVE_START_MS + i * 20)
+        # The newest is 380 ms in, so the window starts at 290 ms: 280 ms (14) brackets it.
+        assert [values[0] for _, values in _live_buffer(session)._points] == [
+            float(i) for i in range(14, 20)
+        ]
+        replayed = [step[0] for step in pending.steps]
+        assert replayed[0] >= 14.0, replayed
+        assert replayed[-1] == pytest.approx(19.0)
+        assert replayed == sorted(replayed)
+
+
+def test_the_replayed_window_spans_window_ms():
+    """The window is the horizon the server profiles against; collapsed, the robot creeps."""
+    with _live_session(window_ms=500.0) as (session, now):
+        last = _feed_live(session, now, 120, tick_ms=10)[-1]
+        assert last.dt_ms * (len(last.steps) - 1) == pytest.approx(500.0, abs=60.0)
+
+
+def test_a_live_buffer_replays_tcp_poses():
+    with _live_session(window_ms=30.0, mode="cartesian") as (session, now):
+        poses = [[x, 200.0, 300.0, 0.0, 3.14, 0.0] for x in (500.0, 510.0, 520.0)]
+        for k, pose in enumerate(poses):
+            pending = _push_live(session, now, pose, _LIVE_START_MS + 10 * k)
+        assert pending.steps == poses
+        assert pending.dt_ms == pytest.approx(10.0)
+        sent = session._trimmed_request(pending).request
+        assert sent is not None
+        assert _is_pose_chunk(sent)
+
+
+def test_a_chunk_passes_a_live_buffer_and_clears_it_with_one_warning(caplog):
+    """A chunk carries its own horizon; the held targets are stale once it arrives, which is
+    worth one warning, not one per chunk."""
+    chunk = [[9.0] * 6, [9.0] * 6]
+    with (
+        _live_session(window_ms=30.0) as (session, now),
+        caplog.at_level(logging.WARNING, logger="novapolicy.jogging.live_buffer"),
+    ):
+        for k, value in enumerate((1.0, 2.0, 3.0)):
+            _push_live(session, now, [value] * 6, _LIVE_START_MS + 10 * k)
+        session.update_chunk(steps=chunk, dt_ms=10.0, first_timestamp_ms=5_000)
+        pending = session._pending_request
+        assert pending is not None
+        assert pending.steps[:2] == chunk  # padded by the session as usual, not replayed
+        assert pending.first_timestamp_ms == 5_000
+        assert pending.dt_ms == 10.0
+        assert _live_buffer(session)._points == []
+
+        # The window restarts from the first target after the chunk.
+        pending = _push_live(session, now, [10.0] * 6, _LIVE_START_MS + 30)
+        assert pending.steps == [[10.0] * 6]
+        for k, value in enumerate((11.0, 12.0), start=1):
+            pending = _push_live(session, now, [value] * 6, _LIVE_START_MS + 30 + 10 * k)
+        replayed = [step[0] for step in pending.steps]
+        assert len(replayed) > 1
+        assert all(value >= 10.0 for value in replayed), replayed
+        assert max(replayed) == pytest.approx(12.0)
+
+        session.update_chunk(steps=chunk, dt_ms=10.0, first_timestamp_ms=6_000)
+    warnings = [r for r in caplog.records if r.name == "novapolicy.jogging.live_buffer"]
+    assert len(warnings) == 1, [r.getMessage() for r in warnings]
+
+
+def test_a_chunk_only_caller_is_never_warned_by_a_live_buffer(caplog):
+    """Nothing held, nothing discarded, nothing to say."""
+    with (
+        _live_session(window_ms=30.0) as (session, now),
+        caplog.at_level(logging.WARNING, logger="novapolicy.jogging.live_buffer"),
+    ):
+        for k in range(3):
+            now.return_value = _LIVE_START_MS + 10 * k
+            session.update_chunk(steps=[[float(k)] * 6] * 2, dt_ms=10.0)
+    assert [r for r in caplog.records if r.name == "novapolicy.jogging.live_buffer"] == []
+
+
+def test_a_live_buffer_moves_when_due_to_the_newest_target():
+    """The newest target is the last replayed step; its IO and hooks go with it."""
+
+    def action(name: str):
+        async def run() -> None:
+            return None
+
+        run.__name__ = name
+        return run
+
+    with _live_session() as (session, now):
+        first_action = action("first")
+        pending = _push_live(session, now, [0.0] * 6, _LIVE_START_MS, when_due=(0, first_action))
+        assert pending.when_due == (0, first_action)  # alone: step 0 is the target
+        for i in range(1, 40):
+            newest = action(f"step {i}")
+            pending = _push_live(
+                session, now, [i * 0.01] * 6, _LIVE_START_MS + i * 20, when_due=(0, newest)
+            )
+        assert len(pending.steps) > 1
+        assert pending.when_due == (len(pending.steps) - 1, newest)
+        assert pending.steps[-1][0] == pytest.approx(39 * 0.01)
+        assert pending.caller_step_count == len(pending.steps)
+        assert pending.last_caller_step == len(pending.steps) - 1
+
+
+def test_sessions_given_one_live_buffer_do_not_share_its_points():
+    """Each arm runs its own copy: one arm's targets never reach another arm's horizon."""
+    shared = LiveBuffer(window_ms=100.0)
+    left, _ = _build_session(pipeline=[shared])
+    right, _ = _build_session(pipeline=[shared])
+    clock = patch.object(
+        type(left._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        with clock as now:
+            _feed_live(left, now, 10)
+            assert _live_buffer(left)._points
+            assert _live_buffer(right)._points == []
+            assert shared._points == []
+            assert _live_buffer(left) is not _live_buffer(right)
+            assert _push_live(right, now, [7.0] * 6, _LIVE_START_MS + 500).steps == [[7.0] * 6]
+    finally:
+        for session in (left, right):
+            for p in session._test_patches:  # type: ignore[attr-defined]
+                p.stop()
 
 
 def test_the_lead_left_on_arrival_is_recorded_for_one_step_chunks(caplog):

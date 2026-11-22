@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from novapolicy.jogging.jogger import TcpJogger
-from novapolicy.jogging.live_buffer import LiveBuffer
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
@@ -33,8 +32,6 @@ def _jogger(mode: str = "cartesian") -> tuple[TcpJogger, object, _FakeSession]:
     jogger._sessions = cast("dict[MotionGroup, WaypointJoggingSession]", {mg: session})
     jogger._rerun = None
     jogger._commanded = {}
-    jogger._live_buffer = None
-    jogger._live_buffers = {}
     jogger._timeline_ms = 0.0
     # Drive the session clock directly: elapsed reads the per-tick sample.
     jogger._loop_t0 = 0.0
@@ -150,7 +147,9 @@ def test_joint_mode_tracking_uses_the_joint_logger() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The rolling buffer: what it sends, and that it cannot grow without bound.
+# The live-target push: one waypoint, exactly where the target is. Buffering it into
+# a horizon is the LiveBuffer pipeline module's job, in the session (see the LiveBuffer
+# tests in tests/api/test_waypoint_session.py).
 # ---------------------------------------------------------------------------
 
 
@@ -175,98 +174,39 @@ class _NamedMotionGroup:
     id = "mg"
 
 
-def test_the_rolling_target_buffer_stays_bounded_before_the_timeline_starts() -> None:
-    """The buffered path prunes by age too, against the same pinned clock.
-
-    Its cutoff is ``now - window_ms``, which goes negative while ``elapsed`` is
-    pinned at 0.0, so no sample is ever older than it and the window grows for as
-    long as the session takes to start.
-    """
-    from novapolicy.jogging.live_buffer import MAX_LIVE_SAMPLES
-
-    jogger, _stub, _session = _jogger()
-    mg = cast("MotionGroup", _NamedMotionGroup())
-    jogger._mg_list = [mg]
-    jogger._sessions = cast("dict[MotionGroup, WaypointJoggingSession]", {mg: _PushSession()})
-    jogger._live_buffer = LiveBuffer(window_ms=30.0)
-    jogger._loop_t0 = None  # the timeline is not anchored: elapsed is pinned
-    assert jogger.elapsed == 0.0
-
-    for _ in range(MAX_LIVE_SAMPLES * 4):
-        jogger._set_live_target(mg, [1.0] * 6)
-
-    assert len(jogger._live_buffers[mg]._points) <= MAX_LIVE_SAMPLES
-
-
-def _buffered_jogger(buffer_window_ms: float = 500.0):
-    """A jogger wired to record what the buffered path pushes to its session."""
+def _push_jogger():
+    """A jogger wired to record what the live-target path pushes to its session."""
     jogger, _stub, _session = _jogger()
     mg = cast("MotionGroup", _NamedMotionGroup())
     session = _PushSession()
     jogger._mg_list = [mg]
     jogger._sessions = cast("dict[MotionGroup, WaypointJoggingSession]", {mg: session})
-    jogger._live_buffer = LiveBuffer(window_ms=buffer_window_ms) if buffer_window_ms > 0 else None
     return jogger, mg, session
 
 
-def test_nothing_sent_is_ever_beyond_the_newest_measured_target() -> None:
-    """The whole point of the buffer: the horizon is measured, never guessed.
+def test_a_live_target_is_sent_alone_and_unmodified() -> None:
+    """Exactly one waypoint, exactly where the target is, every time."""
+    jogger, mg, session = _push_jogger()
 
-    A target ramping along x means every commanded x must be one the target has
-    actually reached. Extrapolation of any kind puts a waypoint past the newest
-    sample, so the newest sample is the ceiling the pushes are checked against.
-    """
-    jogger, mg, session = _buffered_jogger()
-    speed = 100.0  # mm/s along x
+    for i in range(3):
+        jogger._tick_ms = i * 10.0
+        jogger._set_live_target(mg, [12.0 + i, 34.0, 56.0, 0.0, 0.0, 0.0])
 
-    for i in range(120):
-        t = i * 0.01
-        jogger._tick_ms = t * 1000.0
-        jogger._set_live_target(mg, [speed * t, 0.0, 0.0, 0.0, 0.0, 0.0])
-
-    assert session.chunks, "the buffer never pushed anything"
-    newest_x = speed * (119 * 0.01)
-    commanded = [step[0] for chunk in session.chunks for step in chunk["steps"]]
-    assert max(commanded) <= newest_x + 1e-9, (max(commanded), newest_x)
-
-
-def test_the_buffered_window_spans_the_buffer_duration() -> None:
-    """``buffer_window_ms`` is the horizon, so the window has to actually cover it.
-
-    The server caps its speed at whatever it can brake to a stop within, so a
-    window that collapsed to a couple of waypoints would make the robot creep.
-    """
-    jogger, mg, session = _buffered_jogger(buffer_window_ms=500.0)
-
-    for i in range(120):
-        t = i * 0.01
-        jogger._tick_ms = t * 1000.0
-        jogger._set_live_target(mg, [100.0 * t, 0.0, 0.0, 0.0, 0.0, 0.0])
-
-    last = session.chunks[-1]
-    span_ms = last["dt_ms"] * (len(last["steps"]) - 1)
-    assert span_ms == pytest.approx(500.0, abs=60.0), span_ms
-
-
-def test_a_disabled_buffer_sends_the_target_alone_and_unmodified() -> None:
-    """``buffer_window_ms=0`` means exactly one waypoint, exactly where the target is."""
-    jogger, mg, session = _buffered_jogger(buffer_window_ms=0.0)
-    jogger._tick_ms = 0.0
-
-    jogger._set_live_target(mg, [12.0, 34.0, 56.0, 0.0, 0.0, 0.0])
-
-    assert len(session.chunks) == 1
-    assert session.chunks[0]["steps"] == [[12.0, 34.0, 56.0, 0.0, 0.0, 0.0]]
-    assert session.chunks[0]["dt_ms"] == 0.0
+    assert [chunk["steps"] for chunk in session.chunks] == [
+        [[12.0 + i, 34.0, 56.0, 0.0, 0.0, 0.0]] for i in range(3)
+    ]
+    assert all(chunk["dt_ms"] == 0.0 for chunk in session.chunks)
+    assert all(chunk["extend_buffer"] is False for chunk in session.chunks)
 
 
 def test_nothing_is_buffered_or_shaped_unless_passed() -> None:
-    """Opt-in modules: no live buffer and no stages by default."""
+    """Opt-in modules: the pipeline is empty by default."""
     import inspect
 
     from novapolicy.jogging.jogger import jog_joints, jog_tcp
 
     for factory in (jog_joints, jog_tcp):
         params = inspect.signature(factory).parameters
-        assert params["live_buffer"].default is None, factory.__name__
-        assert tuple(params["stages"].default) == (), factory.__name__
+        assert tuple(params["pipeline"].default) == (), factory.__name__
+        assert "live_buffer" not in params, factory.__name__
+        assert "stages" not in params, factory.__name__

@@ -128,8 +128,9 @@ and streams them as timestamped action chunks. How well the robot follows those 
 - Do not build trajectory generation, filters, actuator models or controllers into the executor,
   the joggers or the jogging sessions. If the robot does not follow the commanded waypoints
   faithfully, fix or report it on the NOVA side. The only place to shape values on purpose is an
-  opt-in module the caller passes: a pre-send stage (`novapolicy/jogging/stages.py`, values
-  only, never timing) or a `LiveBuffer` for live-target streams; none runs by default.
+  opt-in module in the send pipeline (`novapolicy/jogging/pipeline.py`: chunk modules before
+  `Timestamps()`, values-only waypoint modules after it); none runs by default. New shaping goes
+  there as a module, never into the executor, the joggers or the session.
 - Transport timing is in scope: waypoint timestamps, the lead, loop pacing, and guards that stop
   a run loudly instead of degrading it silently.
 - Light output smoothing is acceptable only if it stays small; prefer none.

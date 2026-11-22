@@ -42,7 +42,7 @@ async def main(ctx: nova.ProgramContext):
     # No EaseIn: the phase warp already starts at zero velocity, and the circle
     # starts at the robot's own pose, so there is nothing to blend from.
     async with jog_tcp(
-        mg, tcp=tcp_name, start_joint_position=START_JOINTS, live_buffer=LiveBuffer(window_ms=500)
+        mg, tcp=tcp_name, start_joint_position=START_JOINTS, pipeline=[LiveBuffer(window_ms=500)]
     ) as jogger:
         start_pose = None
         center_x = 0.0

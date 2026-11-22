@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import copy
 from dataclasses import dataclass
 from enum import StrEnum
 import gc
@@ -31,11 +30,8 @@ from novapolicy.estop import (
 )
 from novapolicy.io import IOStreamManager
 from novapolicy.jogging.clock import ServerMs
-from novapolicy.jogging.live_buffer import (
-    LIVE_LEAD_MS,
-    timeline_timestamp_ms,
-    trajectory_elapsed_ms,
-)
+from novapolicy.jogging.live_buffer import LiveBuffer
+from novapolicy.jogging.pipeline import split_pipeline
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.joint_limits import fetch_joint_limits
 from novapolicy.policy_client import PolicyClient
@@ -56,8 +52,6 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
-    from novapolicy.jogging.live_buffer import LiveBuffer
-    from novapolicy.jogging.stages import WaypointStage
     from novapolicy.joint_limits import JointLimits
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
@@ -144,15 +138,8 @@ class ExecutionResult:
     """Last observed robot state (per motion group). Useful to know where the robot stopped."""
 
 
-def _check_buffered_mode(live_buffer: LiveBuffer | None, schema: PolicySchema) -> None:
-    """Reject a buffered-mode setup before anything moves."""
-    if live_buffer is not None and schema.tcp_action_groups():
-        msg = "live_buffer supports joint targets only; this schema has TCP actions."
-        raise ValueError(msg)
-
-
 def _check_execution_mode(
-    execution: ExecutionMode, policy: PolicyClient, live_buffer: LiveBuffer | None
+    execution: ExecutionMode, policy: PolicyClient, pipeline: Sequence[object]
 ) -> None:
     """Reject a setup that sequential execution would run wrongly, before anything moves.
 
@@ -170,8 +157,8 @@ def _check_execution_mode(
             "ContinuousExecution. For SequentialExecution drop the queue: the policy without "
             "QueuedPolicyClient, or LeRobotPolicyClient(use_async_queue=False)"
         )
-    if live_buffer is not None:
-        raise ValueError("live_buffer requires ContinuousExecution")
+    if any(isinstance(module, LiveBuffer) for module in pipeline):
+        raise ValueError("LiveBuffer requires ContinuousExecution")
 
 
 def resolve_actions(
@@ -213,9 +200,8 @@ class PolicyExecutor:
         execution: ExecutionMode = _DEFAULT_EXECUTION,
         n_action_steps: int | None = None,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
-        live_buffer: LiveBuffer | None = None,
         clamp_to_joint_limits: bool = True,
-        stages: Sequence[WaypointStage] = (),
+        pipeline: Sequence[object] = (),
     ) -> None:
         """Create a policy executor.
 
@@ -261,11 +247,13 @@ class PolicyExecutor:
                 which remains available to asynchronous policy clients.
             start_joint_position: Optional mapping of motion group to joint pose
                 to PTP-move to before starting waypoint jogging.
-            stages: Opt-in pre-send stages that reshape waypoint values right before
-                they go to NOVA, e.g. ``[EaseIn(duration_s=1.0)]``; none by default. Each
-                motion group runs its own copy. See :mod:`novapolicy.jogging.stages`.
+            pipeline: Opt-in modules between the policy's chunk and NOVA, in order, e.g.
+                ``[LiveBuffer(window_ms=80), Timestamps(), EaseIn(duration_s=1.0)]``; none by
+                default. Each motion group runs its own copy. See
+                :mod:`novapolicy.jogging.pipeline`.
         """
-        self._stages = tuple(stages)
+        split_pipeline(pipeline)  # refuse a misordered pipeline before anything moves
+        self._pipeline = tuple(pipeline)
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
 
@@ -291,7 +279,7 @@ class PolicyExecutor:
         self._execution = execution
         self._n_action_steps_cfg = n_action_steps
 
-        _check_execution_mode(execution, self._policy, live_buffer)
+        _check_execution_mode(execution, self._policy, pipeline)
 
         self._sessions: dict[str, WaypointJoggingSession] = {}
         self._cameras = CameraManager(camera_max_age_s)
@@ -301,14 +289,9 @@ class PolicyExecutor:
         self._io_streams = IOStreamManager(self._motion_groups, schema.io_keys_by_controller())
         self._io_tasks: set[asyncio.Task[None]] = set()
         self._policy_timelines: dict[str, _PolicyTimeline] = {}
-        self._live_buffer = live_buffer
         self._observed_at_ms: dict[str, ServerMs | None] = {}
         self._observed_clock_ms: dict[str, ServerMs] = {}
         self._gc_frozen = False
-        _check_buffered_mode(live_buffer, schema)
-        self._live_buffers: dict[str, LiveBuffer] = {}  # a copy per motion group
-        self._buffer_anchor_ms: float | None = None
-        self._buffer_timeline_ms = 0.0
         self._clamp_to_joint_limits = clamp_to_joint_limits
         self._joint_limits: dict[str, JointLimits] = {}
         self._rerun: PolicyRerunLogger | None = None
@@ -468,9 +451,6 @@ class PolicyExecutor:
             self._joint_limits = await fetch_joint_limits(self._motion_groups)
 
         # A fresh episode gets a fresh replay window and timeline anchor.
-        self._live_buffers.clear()
-        self._buffer_anchor_ms = None
-        self._buffer_timeline_ms = 0.0
 
         # Create and start sessions
         for mg in self._motion_groups:
@@ -862,10 +842,7 @@ class PolicyExecutor:
         if self._rerun is not None:
             self._rerun.log_target_tracking(trimmed, robot_states, step)
 
-        # The buffer is its own continuity: a bridge or an endpoint ramp would
-        # hand it several steps for what is one policy target.
-        buffered = self._live_buffer is not None
-        connected = None if buffered else self._connected_motion(trimmed, robot_states)
+        connected = self._connected_motion(trimmed, robot_states)
         if connected is not None:
             return await self._send_connected_policy_chunk(
                 connected,
@@ -876,11 +853,7 @@ class PolicyExecutor:
             )
 
         self._log_policy_action(action, step)
-        if buffered:
-            await self._schema.run_computed_actions(action)
-            self._send(trimmed)
-        else:
-            self._send(self._apply_endpoint_ramp(trimmed), from_observation=True, effects=action)
+        self._send(self._apply_endpoint_ramp(trimmed), from_observation=True, effects=action)
         return None
 
     async def _observe_and_infer(
@@ -1260,10 +1233,6 @@ class PolicyExecutor:
         run at once.
         """
         chunk = self._clamp_chunk(chunk)
-        if self._live_buffer is not None:
-            target_chunks = self._send_buffered(chunk, self._live_buffer)
-            self._schedule_ios(chunk)
-            return target_chunks
 
         place = placement(chunk, execution=self._execution, from_observation=from_observation)
         # A one-step chunk placed ahead is replaced by the next step before it is due: padding
@@ -1408,83 +1377,6 @@ class PolicyExecutor:
             return chunk
         return chunk.model_copy(update={"joints": held})
 
-    def _send_buffered(self, chunk: ActionChunk, live_buffer: LiveBuffer) -> dict[str, int]:
-        """Send each target through the rolling buffer instead of as a chunk.
-
-        The buffered mode for horizon-1 policies, sharing its mechanism with the
-        joggers' live-target path (see :mod:`novapolicy.jogging.live_buffer`).
-        Each policy target is held and replayed the ``live_buffer`` window late as part
-        of a continuous horizon of *measured* targets, so the server always has
-        somewhere to be going next and never plans a decelerate-to-standstill.
-
-        The chunk path instead re-derives each send's anchor from server "now",
-        which lands the same target on a slightly different absolute timestamp in
-        every send; a moving joint's target therefore wobbles while a held
-        joint's does not, which the robot executes as vibration. Here a given
-        target maps to one fixed timestamp however often the window is re-sent.
-
-        The cost is latency: the robot trails the live target by about the
-        window, so the tracking plots show a roughly constant lag. That is the
-        design, not a fault. It also means the mode suits moderate rates and
-        debugging rather than a policy running at its full trained rate, where
-        that lag is a large part of the tracking error.
-        """
-        # The trajectory clock is the SERVER's, taken from the slowest-
-        # acknowledged session so the shared timeline only advances as fast as
-        # the arm furthest behind. Wall time drifts from the jogger session
-        # timer the robot actually executes against, and using it stalls the
-        # motion; see trajectory_elapsed_ms.
-        elapsed = [s.session_elapsed_ms for s in self._sessions.values()]
-        now_ms = min(elapsed) if elapsed else 0.0
-        if self._buffer_anchor_ms is None:
-            self._buffer_anchor_ms = now_ms
-        self._buffer_timeline_ms = trajectory_elapsed_ms(
-            now_ms, self._buffer_anchor_ms, self._buffer_timeline_ms
-        )
-        now = self._buffer_timeline_ms / 1000.0
-
-        if chunk.tcp:
-            msg = "live_buffer supports joint targets only; this chunk carries TCP poses."
-            raise ValueError(msg)
-        target_chunks: dict[str, int] = {}
-        for group_id, steps in chunk.joints.items():
-            session = self._sessions.get(group_id)
-            if session is None:
-                logger.warning("Unknown motion group in chunk: %s", group_id)
-                continue
-            if len(steps) != 1:
-                msg = (
-                    f"live_buffer is for horizon-1 policies; '{group_id}' "
-                    f"returned {len(steps)} steps. A chunk already carries its own "
-                    "horizon, so pass no live_buffer for it."
-                )
-                raise ValueError(msg)
-
-            buffer = self._live_buffers.setdefault(group_id, copy.deepcopy(live_buffer))
-            replay = buffer.push(now, steps[0], step_ms=session.single_step_dt_ms)
-            if replay is None:
-                # Too little history to define a spacing. Send the bare target
-                # rather than wait for the window to fill, which would never
-                # move at all; it is a terminal waypoint, so motion is halting
-                # for the first window of a run.
-                session.update_chunk(steps=list(steps), dt_ms=0.0, extend_buffer=False)
-                target_chunks[group_id] = session.queued_chunk_count
-                continue
-
-            session.update_chunk(
-                steps=replay.steps,
-                dt_ms=replay.step_ms,
-                first_timestamp_ms=ServerMs(
-                    timeline_timestamp_ms(
-                        self._buffer_anchor_ms or 0.0, replay.end_time_s, lead_ms=LIVE_LEAD_MS
-                    )
-                ),
-                extend_buffer=False,
-                action_timestep=chunk.action_timestep,
-            )
-            target_chunks[group_id] = session.queued_chunk_count
-        return target_chunks
-
     def _policy_server_timestamp_ms(
         self,
         chunk: ActionChunk,
@@ -1511,7 +1403,7 @@ class PolicyExecutor:
             tcp=tcp,
             stop_conditions=self._stop_conditions,
             mode=mode,
-            stages=self._stages,
+            pipeline=self._pipeline,
         )
 
     @property

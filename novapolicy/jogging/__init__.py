@@ -9,19 +9,27 @@ This subpackage owns all jogging functionality: the low-level
 
 from novapolicy.jogging.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp
 from novapolicy.jogging.live_buffer import LiveBuffer
+from novapolicy.jogging.pipeline import (
+    ChunkModule,
+    EaseIn,
+    ModuleContext,
+    Timestamps,
+    WaypointModule,
+)
 from novapolicy.jogging.session import JoggingStateTracker
-from novapolicy.jogging.stages import EaseIn, StageContext, WaypointStage
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 
 __all__ = [
+    "ChunkModule",
     "EaseIn",
     "JoggingStateTracker",
     "JointJogger",
     "LiveBuffer",
-    "StageContext",
+    "ModuleContext",
     "TcpJogger",
+    "Timestamps",
     "WaypointJoggingSession",
-    "WaypointStage",
+    "WaypointModule",
     "jog_joints",
     "jog_tcp",
 ]

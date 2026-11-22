@@ -124,7 +124,7 @@ they are due. The padding is not motion anyone waits for. Tests:
 without blocking the loop: policy waypoint zero of what is sent (behind a bridge too). A chunk
 replaced before it is sent runs neither; one pending when the session stops is cancelled; a hook
 that raises ends the run, and none runs once its motion was stopped (stop condition, failure).
-IO without motion, and everything with a `live_buffer`, runs at once. IO is a separate
+IO without motion runs at once. IO is a separate
 write, so it reaches the controller one network delay later; NOVA's action chunks are to carry
 it.
 Tests: `test_io_of_a_continuous_chunk_goes_with_its_first_step`,
@@ -154,21 +154,20 @@ collection while the loop runs and released when the run ends. Test:
 `test_setup_objects_are_frozen_only_while_the_loop_runs`.
 
 **T12 Setups sequential execution would run wrongly are refused at construction:** RTC, a
-timestep queue (`QueuedPolicyClient`, LeRobot's async queue), a `live_buffer`. Tests:
+timestep queue (`QueuedPolicyClient`, LeRobot's async queue), a `LiveBuffer` in the pipeline. Tests:
 `test_rtc_without_overlapping_placement_is_rejected`,
 `test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected`.
 
-**T13 Pre-send stages reshape values, never timing.** Stages passed as `stages=[...]` (to
-`PolicyExecutor`, `jog_joints`, `jog_tcp`; none by default) run in each session after placement,
-on every request: they
-get the waypoints about to be sent as `(timestamp, values)` and return their values, one per
-waypoint, so every contract above holds unchanged. Each session runs its own copy; a re-sent
-waypoint is staged from its raw value again. `EaseIn(duration_s)` blends from where the robot
-stood by each waypoint's timestamp, so overlapping chunks agree.
-Tests: `test_stages_reshape_the_values_but_never_the_timestamps`, `test_each_session_runs_its_own_copy_of_a_stage`,
-`test_a_stage_may_not_add_or_drop_waypoints`, `test_ease_in_gives_a_moment_the_same_value_whenever_it_is_sent`,
-`test_stages_are_handed_to_every_session`. A `LiveBuffer` (opt-in) is not a stage: it sets its own
-time grid, so it turns live targets into chunks with their own timeline (T2) before placement.
+**T13 The send pipeline.** Everything that reaches NOVA passes one ordered list per motion group:
+the common chunk, chunk modules, `Timestamps()` (T1–T3), waypoint modules, the NOVA sender (T3,
+T5, T7). Modules are opt-in, passed as `pipeline=[...]` to `PolicyExecutor`, `jog_joints` and
+`jog_tcp`; none runs by default; each motion group runs its own copy; a misordered list is refused
+at construction. Chunk modules see every chunk when it is queued and may change steps and timing,
+keeping `when_due` on the step its action belongs to: `LiveBuffer(window_ms)` turns live targets
+into a horizon on its own timeline (T2) and moves IO to the newest target. Waypoint modules run at
+every send, on raw values, and return values only, so no timing contract changes:
+`EaseIn(duration_s)` blends from where the robot stood by each waypoint's timestamp.
+Tests: `test_split_pipeline_keeps_each_kind_in_order`, `test_a_chunk_module_after_the_timestamps_is_refused`, `test_a_misordered_pipeline_is_refused_before_anything_moves`, `test_the_pipeline_is_handed_to_every_session`, `test_each_session_runs_its_own_copy_of_a_module`, `test_waypoint_modules_reshape_the_values_but_never_the_timestamps`, `test_a_waypoint_module_may_not_add_or_drop_waypoints`, `test_a_filled_live_buffer_is_replayed_as_a_horizon`, `test_a_live_buffer_moves_when_due_to_the_newest_target`, `test_sessions_given_one_live_buffer_do_not_share_its_points`, `test_ease_in_gives_a_moment_the_same_value_whenever_it_is_sent`.
 
 ## Known gaps
 

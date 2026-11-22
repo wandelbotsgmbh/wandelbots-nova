@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import bisect
 import contextlib
-import copy
 import logging
 import time
 from typing import TYPE_CHECKING, TypeAlias, cast, overload
@@ -43,8 +42,6 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import Pose, RobotState
-    from novapolicy.jogging.live_buffer import LiveBuffer
-    from novapolicy.jogging.stages import WaypointStage
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.types import StopCondition
 
@@ -94,7 +91,6 @@ class _BaseJogger:
         sessions: dict[MotionGroup, WaypointJoggingSession],
         *,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
-        live_buffer: LiveBuffer | None = None,
     ) -> None:
         self._mg_list = mg_list
         self._multi = len(mg_list) > 1
@@ -106,9 +102,6 @@ class _BaseJogger:
         self._ack0_ms: float = 0.0
         self._tick_ms: float | None = None
         self._timeline_ms: float = 0.0
-        self._live_buffer = live_buffer
-        self._live_buffers: dict[MotionGroup, LiveBuffer] = {}  # a copy per motion group
-        self._warned_mixed_target_forms: set[MotionGroup] = set()
         self._commanded: dict[str, dict[int, list[float]]] = {}
 
     @property
@@ -202,8 +195,8 @@ class _BaseJogger:
         where it is going next — that horizon is the server's job, and until the
         API provides it the rolling buffer in :meth:`_set_live_target` stands in.
 
-        This is the path taken without a ``live_buffer``, and while one is still
-        filling. A lone waypoint is a *terminal* target the server decelerates to a
+        Without a ``LiveBuffer`` in the pipeline this goes out as it is; with one, the session
+        turns it into a horizon once the buffer can define a spacing. A lone waypoint is a *terminal* target the server decelerates to a
         standstill at, so motion is halting there. That is the honest cost of never
         guessing.
         """
@@ -273,7 +266,6 @@ class _BaseJogger:
             for mg, steps in chunk.items():
                 self._require_chunk(steps)
                 finals[mg] = self._send_chunk(mg, steps, dt_ms)
-                self._clear_target_buffer(mg)
             return finals
 
         if not isinstance(chunk, list):
@@ -285,7 +277,6 @@ class _BaseJogger:
             raise TypeError(msg)
         mg = self._mg_list[0]
         final = self._send_chunk(mg, chunk, dt_ms)
-        self._clear_target_buffer(mg)
         return {mg: final}
 
     @staticmethod
@@ -312,77 +303,13 @@ class _BaseJogger:
         msg = (
             "set_target takes one live target, not a chunk of future steps. Pass "
             "it to set_chunk(chunk, dt_ms=...) instead — a chunk carries its own "
-            "horizon, so a live_buffer does not apply to it."
+            "horizon, so a LiveBuffer does not apply to it."
         )
         raise TypeError(msg)
 
     def _set_live_target(self, mg: MotionGroup, values: list[float]) -> None:
-        """Send one live target through the rolling buffer, or alone if disabled.
-
-        The server needs a horizon of *future* waypoints or it decelerates, and a
-        live target only ever says where the target is **now**. That horizon
-        belongs to the API; until the API provides it, this buffer stands in
-        without inventing anything: targets are held and replayed the buffer's window
-        late, so every waypoint sent is a real measured target.
-
-        Every sample is commanded at a **constant** delay after the moment it was
-        produced, so a sample always maps to the same absolute time no matter how
-        often the window is re-sent. Re-anchoring the window at "now" instead
-        pushes the same sample further into the future on every push, so the
-        playback start keeps receding and the robot never gets through it.
-        """
-        if self._live_buffer is None:
-            self._validate_and_push(mg, values)
-            return
-
-        self._validate_target_dims(mg, values)
-        session = self._sessions.get(mg)
-        if session is None:
-            return
-
-        buffer = self._live_buffers.setdefault(mg, copy.deepcopy(self._live_buffer))
-        replay = buffer.push(self.elapsed, values, step_ms=session.single_step_dt_ms)
-        if replay is None:
-            # Not enough history yet: keep the robot live with a plain single target rather
-            # than waiting for the window to fill, which would otherwise never move at all.
-            self._validate_and_push(mg, values)
-            return
-
-        anchor = self._timeline_timestamp_ms(mg, replay.end_time_s, LIVE_LEAD_MS)
-        session.update_chunk(
-            steps=replay.steps,
-            dt_ms=replay.step_ms,
-            first_timestamp_ms=(
-                anchor if anchor is not None else session.estimated_server_timestamp_ms
-            ),
-            extend_buffer=False,
-        )
-        self._record_commanded(mg.id, replay.steps, replay.step_ms, anchor)
-        self._log_target(mg.id, replay.steps, replay.step_ms)
-
-    def _clear_target_buffer(self, mg: MotionGroup) -> None:
-        """Forget rolling samples when an explicit chunk replaces live targets.
-
-        A chunk carries its own horizon, so the samples held for the live path are
-        stale the moment one arrives. Dropping them is correct, but it is worth
-        saying out loud: the buffer then has to refill before the live path can
-        build a horizon again, and until it does its targets go out alone as
-        terminal waypoints — the halting motion the buffer exists to avoid. Alternating the two forms on one motion group keeps paying that.
-
-        Nothing is logged for a caller that only ever sends chunks, since there
-        are no samples to discard.
-        """
-        buffer = self._live_buffers.get(mg)
-        discarded = buffer.clear() if buffer is not None else 0
-        if discarded and mg not in self._warned_mixed_target_forms:
-            self._warned_mixed_target_forms.add(mg)
-            logger.warning(
-                "%s received a chunk while %d live target(s) were buffered; the "
-                "buffer is cleared and live targets will be sent alone until it "
-                "refills. Prefer one target form per motion group.",
-                mg.id,
-                discarded,
-            )
+        """Send one live target; a ``LiveBuffer`` in the pipeline turns it into a horizon."""
+        self._validate_and_push(mg, values)
 
     def _validate_target_dims(self, mg: MotionGroup, values: list[float]) -> None:
         expected = self._expected_dims(mg)
@@ -681,8 +608,7 @@ class JointJogger(_BaseJogger):
         config: WaypointConfig | None = None,
         stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
-        stages: Sequence[WaypointStage] = (),
-        live_buffer: LiveBuffer | None = None,
+        pipeline: Sequence[object] = (),
     ) -> None:
         cfg = config or WaypointConfig()
         sessions: dict[MotionGroup, WaypointJoggingSession] = {}
@@ -692,7 +618,7 @@ class JointJogger(_BaseJogger):
                 config=cfg,
                 mode="joint",
                 stop_conditions=stop_conditions,
-                stages=stages,
+                pipeline=pipeline,
             )
         # Normalize start_joint_position to dict[MotionGroup, list[float]]
         home_dict: dict[MotionGroup, list[float]] | None = None
@@ -705,7 +631,6 @@ class JointJogger(_BaseJogger):
             motion_groups,
             sessions,
             start_joint_position=home_dict,
-            live_buffer=live_buffer,
         )
         self._target: dict[MotionGroup, list[float]] | None = None
 
@@ -721,7 +646,7 @@ class JointJogger(_BaseJogger):
     def set_target(self, target: list[float] | dict[MotionGroup, list[float]]) -> None:
         """Set the live joint target — where the robot should be *now*.
 
-        Each target goes out as one waypoint. With a ``live_buffer`` (opt-in), recent
+        Each target goes out as one waypoint. With a ``LiveBuffer`` in the pipeline, recent
         targets are replayed as a continuous waypoint horizon instead, so the server
         always has somewhere to be going next; spacing is measured from the
         trajectory times the samples were produced at.
@@ -761,7 +686,7 @@ class JointJogger(_BaseJogger):
         """Send a chunk of future joint targets.
 
         A chunk already describes where the robot goes next, so it carries its own
-        horizon: a ``live_buffer`` does not apply and costs no latency here. A
+        horizon: a ``LiveBuffer`` passes it unchanged and costs no latency here. A
         chunk shorter than :attr:`WaypointConfig.min_chunk_horizon_ms` is padded by
         repeating its final step, and leading steps whose moment has already passed
         are dropped at send time.
@@ -809,8 +734,7 @@ class TcpJogger(_BaseJogger):
         config: WaypointConfig | None = None,
         stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
-        stages: Sequence[WaypointStage] = (),
-        live_buffer: LiveBuffer | None = None,
+        pipeline: Sequence[object] = (),
     ) -> None:
         cfg = config or WaypointConfig()
         sessions: dict[MotionGroup, WaypointJoggingSession] = {}
@@ -821,7 +745,7 @@ class TcpJogger(_BaseJogger):
                 tcp=tcp,
                 mode="cartesian",
                 stop_conditions=stop_conditions,
-                stages=stages,
+                pipeline=pipeline,
             )
         mg_list = list(motion_groups.keys())
         # Normalize start_joint_position to dict[MotionGroup, list[float]]
@@ -835,7 +759,6 @@ class TcpJogger(_BaseJogger):
             mg_list,
             sessions,
             start_joint_position=home_dict,
-            live_buffer=live_buffer,
         )
         self._target: dict[MotionGroup, Pose | list[float]] | None = None
 
@@ -856,7 +779,7 @@ class TcpJogger(_BaseJogger):
     def set_target(self, target: Pose | dict[MotionGroup, Pose]) -> None:
         """Set the live TCP target — where the TCP should be *now*.
 
-        Each pose goes out as one waypoint. With a ``live_buffer`` (opt-in), recent
+        Each pose goes out as one waypoint. With a ``LiveBuffer`` in the pipeline, recent
         poses are replayed as a continuous waypoint horizon instead, so the server
         always has somewhere to be going next; spacing is measured from the
         trajectory times the samples were produced at.
@@ -901,7 +824,7 @@ class TcpJogger(_BaseJogger):
         """Send a chunk of future TCP targets, each ``[x, y, z, rx, ry, rz]``.
 
         A chunk already describes where the TCP goes next, so it carries its own
-        horizon: a ``live_buffer`` does not apply and costs no latency here. A
+        horizon: a ``LiveBuffer`` passes it unchanged and costs no latency here. A
         chunk shorter than :attr:`WaypointConfig.min_chunk_horizon_ms` is padded by
         repeating its final step, and leading steps whose moment has already passed
         are dropped at send time.
@@ -946,8 +869,7 @@ def jog_joints(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
-    stages: Sequence[WaypointStage] = ...,
-    live_buffer: LiveBuffer | None = ...,
+    pipeline: Sequence[object] = ...,
 ) -> JointJogger:
     pass
 
@@ -959,8 +881,7 @@ def jog_joints(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
-    stages: Sequence[WaypointStage] = ...,
-    live_buffer: LiveBuffer | None = ...,
+    pipeline: Sequence[object] = ...,
 ) -> JointJogger:
     pass
 
@@ -971,8 +892,7 @@ def jog_joints(
     config: WaypointConfig | None = None,
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
-    stages: Sequence[WaypointStage] = (),
-    live_buffer: LiveBuffer | None = None,
+    pipeline: Sequence[object] = (),
 ) -> JointJogger:
     """Create a joint position jogger using server-side waypoint jogging.
 
@@ -984,17 +904,12 @@ def jog_joints(
         start_joint_position: Joint positions to PTP-move to before starting jogging.
             Single list for one robot, or dict mapping each motion group
             to its start_joint_position joints for multi-robot.
-        stages: Opt-in pre-send stages that reshape waypoint values right before they go
-            to NOVA, e.g. ``[EaseIn(duration_s=1.0)]`` to start from a standstill; none by
-            default. See :mod:`novapolicy.jogging.stages`.
-        live_buffer: Opt-in for :meth:`set_target` streams, e.g. ``LiveBuffer(window_ms=500)``.
-            A live target says only where the target is *now*, and each one alone is a
-            terminal waypoint the robot brakes toward. The buffer replays the last
-            ``window_ms`` of targets as a horizon on an even grid, every waypoint a real
-            target, so the robot moves smoothly and trails the target by a little over the
-            window. Measured at a ~90 Hz jogging loop: 0.015 deg rms against the target with
-            500 ms, 0.45 to 0.84 deg without. ``set_chunk`` never uses it: a chunk carries its
-            own horizon, and sending one clears the buffer.
+        pipeline: Opt-in modules between the targets and NOVA, in order; none by default.
+            ``LiveBuffer(window_ms=500)`` replays the last ``window_ms`` of live targets as a
+            horizon on an even grid, so :meth:`set_target` streams move smoothly about the window
+            behind (measured at a ~90 Hz loop: 0.015 deg rms against the target, 0.45 to 0.84
+            deg without); a chunk passes it unchanged and clears it. ``EaseIn(duration_s=1.0)``
+            starts the motion from a standstill. See :mod:`novapolicy.jogging.pipeline`.
 
     Returns:
         A :class:`JointJogger` async context manager.
@@ -1020,8 +935,7 @@ def jog_joints(
         config=config,
         stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,
-        stages=stages,
-        live_buffer=live_buffer,
+        pipeline=pipeline,
     )
 
 
@@ -1033,8 +947,7 @@ def jog_tcp(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
-    stages: Sequence[WaypointStage] = ...,
-    live_buffer: LiveBuffer | None = ...,
+    pipeline: Sequence[object] = ...,
 ) -> TcpJogger:
     pass
 
@@ -1046,8 +959,7 @@ def jog_tcp(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
-    stages: Sequence[WaypointStage] = ...,
-    live_buffer: LiveBuffer | None = ...,
+    pipeline: Sequence[object] = ...,
 ) -> TcpJogger:
     pass
 
@@ -1059,8 +971,7 @@ def jog_tcp(
     config: WaypointConfig | None = None,
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
-    stages: Sequence[WaypointStage] = (),
-    live_buffer: LiveBuffer | None = None,
+    pipeline: Sequence[object] = (),
 ) -> TcpJogger:
     """Create a TCP pose jogger using server-side waypoint jogging.
 
@@ -1074,17 +985,12 @@ def jog_tcp(
         start_joint_position: Joint positions to PTP-move to before starting jogging.
             Single list for one robot, or dict mapping each motion group
             to its start joints for multi-robot.
-        stages: Opt-in pre-send stages that reshape waypoint values right before they go
-            to NOVA, e.g. ``[EaseIn(duration_s=1.0)]`` to start from a standstill; none by
-            default. See :mod:`novapolicy.jogging.stages`.
-        live_buffer: Opt-in for :meth:`~TcpJogger.set_target` streams, e.g. ``LiveBuffer(window_ms=500)``.
-            A live target says only where the target is *now*, and each one alone is a
-            terminal waypoint the robot brakes toward. The buffer replays the last
-            ``window_ms`` of targets as a horizon on an even grid, every waypoint a real
-            target, so the robot moves smoothly and trails the target by a little over the
-            window. Measured at a ~90 Hz jogging loop: 0.015 deg rms against the target with
-            500 ms, 0.45 to 0.84 deg without. ``set_chunk`` never uses it: a chunk carries its
-            own horizon, and sending one clears the buffer.
+        pipeline: Opt-in modules between the targets and NOVA, in order; none by default.
+            ``LiveBuffer(window_ms=500)`` replays the last ``window_ms`` of live targets as a
+            horizon on an even grid, so :meth:`set_target` streams move smoothly about the window
+            behind (measured at a ~90 Hz loop: 0.015 deg rms against the target, 0.45 to 0.84
+            deg without); a chunk passes it unchanged and clears it. ``EaseIn(duration_s=1.0)``
+            starts the motion from a standstill. See :mod:`novapolicy.jogging.pipeline`.
 
     Returns:
         A :class:`TcpJogger` async context manager.
@@ -1106,14 +1012,12 @@ def jog_tcp(
             config=config,
             stop_conditions=stop_conditions,
             start_joint_position=start_joint_position,
-            stages=stages,
-            live_buffer=live_buffer,
+            pipeline=pipeline,
         )
     return TcpJogger(
         {motion_groups: tcp},
         config=config,
         stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,
-        stages=stages,
-        live_buffer=live_buffer,
+        pipeline=pipeline,
     )
