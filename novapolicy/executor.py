@@ -34,7 +34,6 @@ from novapolicy.jogging.live_buffer import LiveBuffer
 from novapolicy.jogging.modules import default_pipeline
 from novapolicy.jogging.pipeline import split_pipeline
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
-from novapolicy.joint_limits import fetch_joint_limits
 from novapolicy.policy_client import PolicyClient
 from novapolicy.types import (
     ActionChunk,
@@ -53,7 +52,6 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
-    from novapolicy.joint_limits import JointLimits
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
     from novapolicy.types import StopCondition
@@ -201,7 +199,6 @@ class PolicyExecutor:
         execution: ExecutionMode = _DEFAULT_EXECUTION,
         n_action_steps: int | None = None,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
-        clamp_to_joint_limits: bool = True,
         pipeline: Sequence[object] | None = None,
     ) -> None:
         """Create a policy executor.
@@ -254,7 +251,7 @@ class PolicyExecutor:
                 Each motion group runs its own copy. See :mod:`novapolicy.jogging.pipeline`.
         """
         if pipeline is None:
-            pipeline = default_pipeline()
+            pipeline = default_pipeline(execution=execution)
         split_pipeline(pipeline)  # refuse a misordered pipeline before anything moves
         self._pipeline = tuple(pipeline)
         self._schema = schema
@@ -295,8 +292,6 @@ class PolicyExecutor:
         self._observed_at_ms: dict[str, ServerMs | None] = {}
         self._observed_clock_ms: dict[str, ServerMs] = {}
         self._gc_frozen = False
-        self._clamp_to_joint_limits = clamp_to_joint_limits
-        self._joint_limits: dict[str, JointLimits] = {}
         self._rerun: PolicyRerunLogger | None = None
         self._logged_first_images = False
         self._reported_missing_motion = False
@@ -450,9 +445,6 @@ class PolicyExecutor:
         Exceptions (MotionError, EmergencyStopError) propagate
         to :meth:`run`.
         """
-        if self._clamp_to_joint_limits and not self._joint_limits:
-            self._joint_limits = await fetch_joint_limits(self._motion_groups)
-
         # A fresh episode gets a fresh replay window and timeline anchor.
 
         # Create and start sessions
@@ -1235,8 +1227,6 @@ class PolicyExecutor:
         bridge. A group with IO but no motion, and computed actions of a chunk without motion,
         run at once.
         """
-        chunk = self._clamp_chunk(chunk)
-
         place = placement(chunk, execution=self._execution, from_observation=from_observation)
         # A one-step chunk placed ahead is replaced by the next step before it is due: padding
         # it with a hold would make the controller brake towards every step.
@@ -1355,30 +1345,6 @@ class PolicyExecutor:
             task = asyncio.create_task(session.write_ios(ios))
             self._io_tasks.add(task)
             task.add_done_callback(self._io_tasks.discard)
-
-    def _clamp_chunk(self, chunk: ActionChunk) -> ActionChunk:
-        """Hold every joint target inside the robot's limits before it is sent.
-
-        NOVA pauses the motion on an out-of-range waypoint, so an unclamped
-        target that a policy only slightly overshoots ends the episode. See
-        :mod:`novapolicy.joint_limits`. TCP targets are left alone: their limits
-        are the robot's workspace, which is not a per-axis bound.
-        """
-        if not self._joint_limits or not chunk.joints:
-            return chunk
-        held: dict[str, list[list[float]]] = {}
-        changed = False
-        for group_id, steps in chunk.joints.items():
-            limits = self._joint_limits.get(group_id)
-            if limits is None:
-                held[group_id] = steps
-                continue
-            clamped = [limits.clamp(step, group_id) for step in steps]
-            changed = changed or clamped != steps
-            held[group_id] = clamped
-        if not changed:
-            return chunk
-        return chunk.model_copy(update={"joints": held})
 
     def _policy_server_timestamp_ms(
         self,

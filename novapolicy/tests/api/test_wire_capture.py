@@ -84,6 +84,7 @@ class _Capture:
         clock = _Clock(START_MS)
         real._clock = clock  # ty: ignore[invalid-assignment]
         real._current_joints = [0.0] * 6
+        real._joint_limits = LIMITS  # what start() reads for a JointClamp
         mg_id = kwargs["motion_group"].id
         self.sessions[mg_id] = real
         proxy = MagicMock()
@@ -210,10 +211,6 @@ async def _run_executor(
     with (
         patch("novapolicy.executor.WaypointJoggingSession", side_effect=capture.make),
         patch("novapolicy.executor.EstopMonitor", return_value=estop),
-        patch(
-            "novapolicy.executor.fetch_joint_limits",
-            AsyncMock(return_value={MG_ID: LIMITS}),
-        ),
         patch("novapolicy.rerun._is_rerun_active", return_value=False),
     ):
         executor = PolicyExecutor(_schema(), policy, timeout_s=5.0, **kwargs)

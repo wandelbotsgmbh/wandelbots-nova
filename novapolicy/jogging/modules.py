@@ -16,6 +16,7 @@ import math
 from typing import TYPE_CHECKING
 
 from novapolicy.jogging.pipeline import Timestamps
+from novapolicy.joint_limits import DEFAULT_MARGIN_RAD
 
 if TYPE_CHECKING:
     from novapolicy.jogging.pipeline import ModuleContext
@@ -55,6 +56,36 @@ class HoldPadding:
         return replace(chunk, steps=[*chunk.steps, *held])
 
 
-def default_pipeline() -> list[object]:
-    """The modules that run when no ``pipeline`` is given, in order."""
-    return [HoldPadding(), Timestamps()]
+@dataclass(frozen=True, slots=True)
+class JointClamp:
+    """Chunk module: hold every joint target inside the robot's position limits.
+
+    NOVA pauses the motion on an out-of-range waypoint, so a target a policy only slightly
+    overshoots would end the run. The session reads the limits from the motion group's
+    description when it starts, ``margin_rad`` inside each bound (see
+    :mod:`novapolicy.joint_limits`), and each joint's first clip is logged once. TCP waypoints
+    pass unchanged: their limit is the workspace, not a per-axis bound. A robot that reports no
+    limits is sent unclamped, with a warning.
+    """
+
+    margin_rad: float = DEFAULT_MARGIN_RAD
+
+    def on_chunk(  # ruff: ignore[no-self-use] (the protocol's method)
+        self, chunk: PendingChunk, context: ModuleContext
+    ) -> PendingChunk:
+        limits = context.joint_limits
+        if limits is None:
+            return chunk
+        clamped = [limits.clamp(step, context.motion_group_id) for step in chunk.steps]
+        return chunk if clamped == chunk.steps else replace(chunk, steps=clamped)
+
+
+def default_pipeline(*, execution: object | None = None) -> list[object]:
+    """The modules that run when no ``pipeline`` is given, in order.
+
+    Without ``execution``: the joggers' list. With the ``PolicyExecutor``'s execution mode: the
+    executor's, which also clamps joint targets to the robot's limits.
+    """
+    if execution is None:
+        return [HoldPadding(), Timestamps()]
+    return [JointClamp(), HoldPadding(), Timestamps()]

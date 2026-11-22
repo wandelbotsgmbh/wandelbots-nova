@@ -1054,7 +1054,7 @@ async def test_io_of_a_continuous_chunk_goes_with_its_first_step(robot: _Robot):
 
 
 def test_the_pipeline_is_handed_to_every_session():
-    """Opt-in modules run in the sessions, in the order given; none by default."""
+    """The sessions run exactly the list given, in order; the executor's defaults without one."""
     from novapolicy import EaseIn
     from novapolicy.jogging.live_buffer import LiveBuffer
     from novapolicy.jogging.pipeline import Timestamps
@@ -1067,7 +1067,8 @@ def test_the_pipeline_is_handed_to_every_session():
         executor._create_session(_mg())
         assert session_cls.call_args.kwargs["pipeline"] == tuple(pipeline)
         PolicyExecutor(_schema(), _hold)._create_session(_mg())
-        assert session_cls.call_args.kwargs["pipeline"] == tuple(default_pipeline())
+        defaults = default_pipeline(execution=SequentialExecution())
+        assert session_cls.call_args.kwargs["pipeline"] == tuple(defaults)
 
 
 def test_a_live_buffer_no_longer_makes_the_executor_refuse_chunks_or_tcp_targets():

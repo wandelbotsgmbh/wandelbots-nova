@@ -24,7 +24,7 @@ from nova.types import Pose, RobotState
 from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.io import IOWriter
 from novapolicy.jogging.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, RoundTrip, ServerMs
-from novapolicy.jogging.modules import default_pipeline
+from novapolicy.jogging.modules import JointClamp, default_pipeline
 from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
 from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
 from novapolicy.jogging.waypoints import (
@@ -33,12 +33,14 @@ from novapolicy.jogging.waypoints import (
     make_timed_waypoints_request,
     step_spacing_ms,
 )
+from novapolicy.joint_limits import fetch_joint_limits
 from novapolicy.types import JoggingNotSupportedError, MotionError, StopContext
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping, Sequence
 
     from nova.cell.motion_group import MotionGroup
+    from novapolicy.joint_limits import JointLimits
     from novapolicy.types import JoggingMode, StopCondition, ValueType, WaypointConfig
 
 logger = logging.getLogger(__name__)
@@ -164,6 +166,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             copy.deepcopy(list(default_pipeline() if pipeline is None else pipeline))
         )
         self._last_sent_value: list[float] = []
+        self._joint_limits: JointLimits | None = None
+        """Read at :meth:`start` when a ``JointClamp`` is in the pipeline."""
         self._config = config
         self._tcp = tcp
         self._mode: JoggingMode = mode
@@ -700,6 +704,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._current_tcp_pose = initial_state.pose
         self._current_tcp_name = initial_state.tcp
         self._num_joints = len(initial_state.joints)
+        clamp = next((m for m in self._chunk_modules if isinstance(m, JointClamp)), None)
+        if clamp is not None and self._mode == "joint" and self._joint_limits is None:
+            limits = await fetch_joint_limits([self._motion_group], margin=clamp.margin_rad)
+            self._joint_limits = limits.get(self.motion_group_id)
 
         self._state_task = asyncio.create_task(
             self._stream_state(), name=f"wp-state-{self.motion_group_id}"
@@ -1247,6 +1255,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             now_ms=self._clock.estimated_server_timestamp_ms,
             position=self._position(),
             step_ms=self._config.single_step_dt_ms,
+            motion_group_id=self.motion_group_id,
+            joint_limits=self._joint_limits,
         )
 
     def _position(self) -> list[float] | None:

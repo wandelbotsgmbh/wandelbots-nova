@@ -1930,3 +1930,31 @@ def test_the_refusal_names_the_rename() -> None:
     session = _bare_session()
     with pytest.raises(TypeError, match="anchor_offset_steps -> timestamp_offset_steps"):
         session.update_chunk(steps=[[0.0] * 6], dt_ms=20.0, nonsense=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("clamp", [True, False])
+async def test_the_session_reads_joint_limits_only_for_a_joint_clamp(clamp: bool):
+    """A JointClamp gets the robot's limits, read once at the start; without one the session
+    makes no extra call."""
+    from novapolicy.jogging.modules import JointClamp
+    from novapolicy.joint_limits import JointLimits
+
+    limits = JointLimits(lower=(-1.0,) * 6, upper=(1.0,) * 6)
+    pipeline = [JointClamp(), *_unpadded()] if clamp else _unpadded()
+    session, server = _build_session(pipeline=pipeline)
+    fetch = AsyncMock(return_value={session.motion_group_id: limits})
+    try:
+        with patch(f"{_SESSION}.fetch_joint_limits", fetch):
+            await session.start()
+            await session.wait_ready()
+        session.update_chunk(steps=[[2.0, -2.0, 0.5, 0.0, 0.0, 0.0]], dt_ms=50.0)
+        await _wait_until(lambda: len(server.requests) >= 2)
+        sent = _joints(_inner(server.requests[1]).waypoints[0])
+        assert fetch.await_count == (1 if clamp else 0)
+        assert sent[:3] == ([1.0, -1.0, 0.5] if clamp else [2.0, -2.0, 0.5])
+    finally:
+        server.stop()
+        await session.stop()
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
