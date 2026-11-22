@@ -10,7 +10,6 @@ import numpy as np
 
 from novapolicy.leapp.pipeline import _DTYPES, LeappPipeline
 from novapolicy.policy_client import PolicyClient, resolve_control_freq
-from novapolicy.types import ActionChunk
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
     from nova.types import RobotState
     from novapolicy.leapp.pipeline import Port
     from novapolicy.schema import PolicySchema
+    from novapolicy.types import ActionChunk
 
 logger = logging.getLogger(__name__)
 
@@ -192,27 +192,12 @@ class LeappPolicyClient(PolicyClient):
             feeds[port.key] = np.asarray(values, dtype=dtype).reshape(port.shape)
         outputs = await asyncio.to_thread(self._pipeline.run, feeds)
         output, action_key = joint_output
-        target = [float(v) for v in np.asarray(outputs[output.key]).reshape(-1)]
-        return ActionChunk(
-            joints=self._split(target, action_key, schema, states),
-            values={
-                key: [[float(v) for v in np.asarray(outputs[port.key]).reshape(-1)]]
-                for key, port in self._computed.items()
+        return schema.decode_actions(
+            {
+                action_key: [np.asarray(outputs[output.key]).reshape(-1)],
+                **{key: [outputs[port.key]] for key, port in self._computed.items()},
             },
             dt_ms=1000.0 / self._control_freq,
+            dof={mg_id: len(state.joints) for mg_id, state in states.items()},
+            source="The LEAPP export",
         )
-
-    @staticmethod
-    def _split(
-        target: list[float], action_key: str, schema: PolicySchema, states: dict[str, RobotState]
-    ) -> dict[str, list[list[float]]]:
-        """The joint target per motion group of the action, in the action's order."""
-        motion_groups = next(mgs for key, mgs in schema.joint_action_keys if key == action_key)
-        joints: dict[str, list[list[float]]] = {}
-        offset = 0
-        for i, mg in enumerate(motion_groups):
-            last = i == len(motion_groups) - 1
-            width = len(target) - offset if last else len(states[mg.id].joints)
-            joints[mg.id] = [target[offset : offset + width]]
-            offset += width
-        return joints

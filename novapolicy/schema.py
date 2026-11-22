@@ -24,6 +24,8 @@ import logging
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
+import numpy as np
+
 from nova.types import Pose
 from novapolicy import poses
 from novapolicy._sdk import get_controller_id
@@ -31,6 +33,7 @@ from novapolicy.chunking import TcpDelta
 from novapolicy.joint_velocities import JointVelocities
 from novapolicy.ops import apply_ops, apply_ops_inverse, reject_forward_only
 from novapolicy.pose_sources import PoseSource
+from novapolicy.types import ActionChunk
 
 _TCP_SUFFIXES = ("x", "y", "z", "rx", "ry", "rz")
 _QUATERNION_SUFFIXES = ("qx", "qy", "qz", "qw")
@@ -39,13 +42,11 @@ _EULER_SUFFIXES = ("e1", "e2", "e3")
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
-    import numpy as np
-
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.cameras import CameraSource
     from novapolicy.ops import ValueOp
-    from novapolicy.types import ActionChunk, ActionMode
+    from novapolicy.types import ActionMode
 
 logger = logging.getLogger(__name__)
 
@@ -1125,11 +1126,76 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
                 extra = await o.fn(obs)
                 obs.update(extra)
 
+    def decode_actions(
+        self,
+        outputs: dict[str, Any],
+        *,
+        dt_ms: float,
+        dof: dict[str, int] | None = None,
+        action_timestep: int = -1,
+        source: str = "The policy",
+    ) -> ActionChunk:
+        """A policy's outputs, by action key, as an :class:`ActionChunk` in the policy's units.
+
+        Each output is an array of shape ``(steps, width)`` (``(width,)`` for one step). A joint
+        key shared by several motion groups carries their joints side by side, in the order the
+        observation concatenated them, so each group takes the next ``dof[group]`` columns (the
+        last one the rest). An IO key takes its first step's value through its mapping: IO fires
+        when the chunk's first step is due (contract T7). ``Action.computed`` keys land in
+        ``values``. A key the outputs lack is skipped; an answer with none of the expected joint
+        or TCP keys, IO or values raises ``ValueError`` naming ``source``.
+        """
+        joints: dict[str, list[list[float]]] = {}
+        for key, groups in self.joint_action_keys:
+            if key not in outputs:
+                continue
+            steps = _steps(outputs[key])
+            width = len(steps[0]) if steps else 0
+            offset = 0
+            for i, mg in enumerate(groups):
+                last = i == len(groups) - 1
+                n = width - offset if last else (dof or {}).get(mg.id)
+                if n is None or offset + n > width:
+                    msg = (
+                        f"{source}: action {key!r} has {width} values per step, which do not "
+                        f"split into the joints of {[g.id for g in groups]} ({dict(dof or {})})"
+                    )
+                    raise ValueError(msg)
+                joints[mg.id] = [step[offset : offset + n] for step in steps]
+                offset += n
+        tcp = {mg.id: _steps(outputs[key]) for key, mg in self.tcp_action_keys if key in outputs}
+        ios: dict[str, dict[str, bool | int | float | str]] = {}
+        for key, mg, io, mapping in self.io_action_keys:
+            if key in outputs:
+                first = np.asarray(outputs[key], dtype=np.float64).reshape(-1)[0]
+                ios.setdefault(mg.id, {})[io] = mapping.to_hardware(float(first))
+        values = {k: _steps(outputs[k]) for k in self.computed_action_keys if k in outputs}
+        if self.motion_action_keys and not (joints or tcp or ios or values):
+            msg = (
+                f"{source} answered with none of the expected actions {self.motion_action_keys}; "
+                f"got {sorted(outputs)}"
+            )
+            raise ValueError(msg)
+        return ActionChunk(
+            joints=joints,
+            tcp=tcp,
+            ios=ios or None,
+            values=values,
+            dt_ms=dt_ms,
+            action_timestep=action_timestep,
+        )
+
     async def run_computed_actions(self, action: ActionChunk) -> None:
         """Fire ``Action.computed`` side effects with the policy's chunk."""
         for a in self._actions:
             if isinstance(a, _ActComputed):
                 await a.fn(action)
+
+
+def _steps(output: object) -> list[list[float]]:
+    """An output as a list of steps: ``(steps, width)``, or ``(width,)`` for one step."""
+    array = np.asarray(output, dtype=np.float64)
+    return (array.reshape(1, -1) if array.ndim <= 1 else array.reshape(len(array), -1)).tolist()
 
 
 def _inverse_tcp_step(step: list[float], entry: _ObsTcp | _ActTcp) -> list[float]:

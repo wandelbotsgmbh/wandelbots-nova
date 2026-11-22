@@ -1045,7 +1045,7 @@ async def test_an_action_this_client_cannot_decode_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_an_answer_without_any_expected_action_raises() -> None:
-    with pytest.raises(TypeError, match="none of the expected actions"):
+    with pytest.raises(ValueError, match="none of the expected actions"):
         await _actions_from(({"other": np.zeros((1, 1, 6), dtype=np.float32)}, {"dt_ms": 33.0}))
 
 

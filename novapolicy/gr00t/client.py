@@ -29,16 +29,15 @@ from novapolicy.gr00t.rtc import (  # ruff: ignore[typing-only-first-party-impor
 from novapolicy.gr00t.transport import Gr00tZmqTransport, require_dict
 from novapolicy.ops import apply_ops
 from novapolicy.policy_client import PolicyClient, resolve_control_freq
-from novapolicy.types import ActionChunk
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from typing import Any
 
-    from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.schema import PolicySchema
+    from novapolicy.types import ActionChunk
 
 _RESPONSE_PAIR_SIZE = 2
 _DEFAULT_LANGUAGE_KEY = "annotation.language.language_instruction"
@@ -311,32 +310,6 @@ class Gr00tPolicyClient(PolicyClient):
                 chunk = chunk.model_copy(update={"seam_backdate_steps": backdate})
         return chunk
 
-    def _split_joint_action(
-        self, key: str, mgs: list[MotionGroup], steps: np.ndarray[Any, np.dtype[np.float32]]
-    ) -> dict[str, list[list[float]]]:
-        """Each motion group's own columns of a ``(horizon, dof)`` action.
-
-        A key shared by several groups carries their joints side by side, in the
-        order the state concatenated them, so each group takes the next
-        ``dof`` columns rather than the first ones.
-        """
-        if len(mgs) == 1 and mgs[0].id not in self._actual_dof:
-            return {mgs[0].id: steps.tolist()}  # nothing observed to size it by
-        split: dict[str, list[list[float]]] = {}
-        offset = 0
-        for mg in mgs:
-            dof = self._actual_dof.get(mg.id)
-            if dof is None or offset + dof > steps.shape[1]:
-                msg = (
-                    f"GR00T action '{key}' has {steps.shape[1]} columns, which do not "
-                    f"split into the joints of {[g.id for g in mgs]} "
-                    f"(joints observed: {[self._actual_dof.get(g.id) for g in mgs]})"
-                )
-                raise TypeError(msg)
-            split[mg.id] = steps[:, offset : offset + dof].tolist()
-            offset += dof
-        return split
-
     async def close(self) -> None:
         """Close the socket and terminate the ZMQ context."""
         await asyncio.to_thread(self._transport.close)
@@ -497,67 +470,20 @@ class Gr00tPolicyClient(PolicyClient):
         action: dict[str, object],
         info: dict[str, object],
     ) -> ActionChunk:
-        """Convert GR00T action arrays → ActionChunk."""
-        joints: dict[str, list[list[float]]] = {}
-        ios: dict[str, dict[str, bool | int | float | str]] = {}
-
-        for key, mgs in schema.joint_action_keys:
-            typed_arr = _action_array(action, key)
-            if typed_arr is None:
-                continue
-            joints.update(self._split_joint_action(key, mgs, typed_arr[0].astype(np.float32)))
-
-        # Decode IO actions
-        for key, mg, hw_key, mapping in schema.io_action_keys:
-            arr = action.get(key)
-            if isinstance(arr, np.ndarray):
-                # GR00T IO arrays are (B, T, 1). Take the first step: IO fires when the
-                # chunk's first step is due (contract T7), so it must carry that step's value.
-                val = (
-                    float(arr.reshape(arr.shape[0], -1)[0, 0])
-                    if arr.ndim > 1
-                    else float(arr.flat[0])
-                )
-                ios.setdefault(mg.id, {})[hw_key] = mapping.to_hardware(val)
-            elif key in action:
-                val = float(cast("Any", action[key]))
-                ios.setdefault(mg.id, {})[hw_key] = mapping.to_hardware(val)
-
-        # Decode TCP actions
-        tcp_targets: dict[str, list[list[float]]] = {}
-        for key, mg in schema.tcp_action_keys:
-            typed_arr = _action_array(action, key)
-            if typed_arr is not None:
-                tcp_targets[mg.id] = typed_arr[0].astype(np.float32).tolist()
-
-        # Outputs for Action.computed hooks (hardware outside NOVA)
-        values: dict[str, list[list[float]]] = {}
-        for key in schema.computed_action_keys:
-            typed_arr = _action_array(action, key)
-            if typed_arr is not None:
-                values[key] = typed_arr[0].astype(np.float32).tolist()
-
-        _require_some_action(schema, action, decoded=bool(joints or tcp_targets or ios or values))
-
+        """Convert GR00T action arrays (``(batch, horizon, dof)``) to an ActionChunk."""
+        outputs: dict[str, object] = {}
+        for key in [*schema.motion_action_keys, *schema.computed_action_keys]:
+            arr = _action_array(action, key)
+            if arr is not None:
+                outputs[key] = arr[0]
+        outputs.update({k: action[k] for k, *_ in schema.io_action_keys if k in action})
         reported = info.get("dt_ms")
-        dt_ms = float(cast("float", reported)) if reported is not None else self._step_ms()
-        return ActionChunk(
-            joints=joints, tcp=tcp_targets, ios=ios or None, values=values, dt_ms=dt_ms
+        return schema.decode_actions(
+            outputs,
+            dt_ms=float(cast("float", reported)) if reported is not None else self._step_ms(),
+            dof=self._actual_dof,
+            source="GR00T",
         )
-
-
-def _require_some_action(schema: PolicySchema, action: dict[str, object], *, decoded: bool) -> None:
-    """Raise when the schema expects motion and the answer decoded to nothing at all.
-
-    An answer with IO actions only (a gripper, say) is a valid one.
-    """
-    expected = schema.motion_action_keys
-    if expected and not decoded:
-        msg = (
-            f"GR00T answered with none of the expected actions {expected}; "
-            f"response keys: {sorted(action)}"
-        )
-        raise TypeError(msg)
 
 
 def _action_array(
