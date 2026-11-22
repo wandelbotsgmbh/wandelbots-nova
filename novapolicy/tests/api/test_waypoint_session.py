@@ -1013,6 +1013,32 @@ def test_a_live_buffer_times_targets_by_when_they_were_produced():
             p.stop()
 
 
+def test_a_live_buffer_times_lead_chunks_by_the_session_clock():
+    """A policy step's observed_at_ms is its state's timestamp, not when it was produced: for a
+    chunk placed by the lead rule the buffer keeps to the session clock."""
+    from novapolicy.jogging.live_buffer import LiveBuffer
+
+    session, _server = _build_session(pipeline=[LiveBuffer(window_ms=30.0)])
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        with now as estimated:
+            estimated.return_value = 5_000  # frozen: lead chunks must not follow observed_at_ms
+            for k in range(8):
+                session.update_chunk(
+                    steps=[[float(k)] * 6],
+                    dt_ms=1000 / 30,
+                    lead=True,
+                    extend_buffer=False,
+                    observed_at_ms=ServerMs(1_000 + 10 * k),
+                )
+        assert len(session._pending_request.steps) == 1  # no spacing on a frozen clock
+    finally:
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
+
+
 def test_sessions_given_one_live_buffer_do_not_share_its_points():
     """Each arm runs its own copy: one arm's targets never reach another arm's horizon."""
     shared = LiveBuffer(window_ms=100.0)

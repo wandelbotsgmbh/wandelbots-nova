@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -164,6 +165,8 @@ class _PushSession(_FakeSession):
         self.mode = mode
         self.chunks: list[dict] = []
 
+    queued_chunk = None  # what the session queued after its chunk modules
+
     def update_chunk(self, **kwargs) -> None:
         self.chunks.append(kwargs)
 
@@ -210,3 +213,39 @@ def test_nothing_is_buffered_or_shaped_unless_passed() -> None:
         assert tuple(params["pipeline"].default) == (), factory.__name__
         assert "live_buffer" not in params, factory.__name__
         assert "stages" not in params, factory.__name__
+
+
+def test_live_targets_carry_the_loop_time_in_exact_grid_steps() -> None:
+    """A LiveBuffer times targets by observed_at_ms on its 10 ms grid: converting the loop time
+    to ms must not land a target 1 ms short (``0.29 * 1000`` truncates to 289), a whole grid
+    step there."""
+    jogger, mg, session = _push_jogger()
+    jogger._loop_t0 = 0.0
+    jogger._ack0_ms = 1000.0
+    for i in range(100):
+        jogger._tick_ms = 1000.0 + i * 10.0
+        jogger._set_live_target(mg, [float(i), 0.0, 0.0, 0.0, 0.0, 0.0])
+    produced = [chunk["observed_at_ms"] for chunk in session.chunks]
+    assert all(b - a == 10 for a, b in pairwise(produced)), produced
+
+
+def test_the_tracking_record_follows_what_the_session_queued() -> None:
+    """With a LiveBuffer the session commands a target about the window later; the tracking
+    record must show that, not the raw target."""
+    from novapolicy.jogging.waypoints import PendingChunk
+
+    jogger, mg, session = _push_jogger()
+
+    class _Rerun:
+        def log_action_chunk(self, chunk: object, step: int) -> None:
+            pass
+
+    jogger._rerun = _Rerun()
+    jogger._loop_t0 = 0.0
+    session.queued_chunk = PendingChunk(
+        steps=[[1.0] * 6, [2.0] * 6], dt_ms=50.0, first_timestamp_ms=2_000
+    )
+    jogger._set_live_target(mg, [9.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    history = jogger._commanded["mg"]
+    assert min(history) == 2_000
+    assert history[2_000][0] == 1.0

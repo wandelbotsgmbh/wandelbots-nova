@@ -222,10 +222,15 @@ class _BaseJogger:
                 observed_at_ms=produced_ms,
                 extend_buffer=False,
             )
-            # Log what was actually commanded, not the raw request: during
-            # ease-in they differ by design, and plotting the raw request makes
-            # the tracking error look far worse than the robot is behaving.
-            self._record_commanded(mg.id, eased, 0.0, anchor)
+            # Log what the session queued, after the pipeline's chunk modules: with a LiveBuffer
+            # the target is commanded about the window later, and plotting the raw target would
+            # show that delay as tracking error. (Waypoint modules such as EaseIn reshape values
+            # at the send and are not reflected here.)
+            queued = session.queued_chunk
+            if queued is not None:
+                self._record_commanded(
+                    mg.id, queued.steps, queued.dt_ms, queued.first_timestamp_ms or anchor
+                )
             self._log_target(mg.id, eased[:1], 0.0)
             return
         self._log_target(mg.id, [values], 0.0)

@@ -514,6 +514,11 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._config.min_chunk_horizon_ms
 
     @property
+    def queued_chunk(self) -> PendingChunk | None:
+        """The chunk waiting to be sent, after the pipeline's chunk modules; ``None`` once sent."""
+        return self._pending_request
+
+    @property
     def failure_reason(self) -> str:
         return self._failure_reason
 
