@@ -4,6 +4,7 @@
    "group": "0@ur10e",
    "now_ms": 10000,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10100,
@@ -196,6 +197,7 @@
    "group": "0@ur10e",
    "now_ms": 10533.0,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10633,
@@ -401,6 +403,7 @@
    "group": "0@ur10e",
    "now_ms": 10000,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10095
@@ -425,6 +428,7 @@
    "group": "0@ur10e",
    "now_ms": 10095.0,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10190
@@ -449,6 +453,7 @@
    "group": "0@ur10e",
    "now_ms": 10190.0,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10285
@@ -473,6 +478,7 @@
    "group": "0@ur10e",
    "now_ms": 10285.0,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10380
@@ -497,6 +503,7 @@
    "group": "0@ur10e",
    "now_ms": 10380.0,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10475
@@ -523,6 +530,7 @@
    "group": "0@ur10e",
    "now_ms": 10000,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10100,
@@ -715,6 +723,7 @@
    "group": "0@ur10e",
    "now_ms": 10400.0,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10500,
@@ -929,6 +938,7 @@
    "group": "0@ur10e",
    "now_ms": 10800.0,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10900,
@@ -1145,6 +1155,7 @@
    "group": "0@ur10e",
    "now_ms": 10000,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10100,
@@ -1277,6 +1288,7 @@
    "group": "0@ur10e",
    "now_ms": 10150.0,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10250,
@@ -1422,6 +1434,7 @@
    "group": "0@ur10e",
    "now_ms": 10000,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10100,
@@ -1593,6 +1606,7 @@
    "group": "0@ur10e",
    "now_ms": 10700.0,
    "lead": true,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10800,
@@ -1730,6 +1744,7 @@
    "group": "0@ur10e",
    "now_ms": 10000,
    "lead": false,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10000,
@@ -2114,6 +2129,7 @@
    "group": "0@ur10e",
    "now_ms": 11000.0,
    "lead": false,
+   "action_timestep": 7,
    "skipped": 1,
    "step_timestamps": [
     10999,
@@ -2295,6 +2311,7 @@
    "group": "0@ur10e",
    "now_ms": 11265.0,
    "lead": false,
+   "action_timestep": 14,
    "skipped": 2,
    "step_timestamps": [
     11232,
@@ -2465,6 +2482,7 @@
    "group": "0@ur10e",
    "now_ms": 11498.0,
    "lead": false,
+   "action_timestep": 21,
    "skipped": 2,
    "step_timestamps": [
     11466,
@@ -2637,6 +2655,7 @@
    "group": "0@ur10e",
    "now_ms": 10000,
    "lead": false,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10100
@@ -2661,6 +2680,7 @@
    "group": "0@ur10e",
    "now_ms": 10100.0,
    "lead": false,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10200
@@ -2685,6 +2705,7 @@
    "group": "0@ur10e",
    "now_ms": 10200.0,
    "lead": false,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10300
@@ -2709,6 +2730,7 @@
    "group": "0@ur10e",
    "now_ms": 10300.0,
    "lead": false,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10400
@@ -2735,6 +2757,7 @@
    "group": "0@ur10e",
    "now_ms": 10000,
    "lead": false,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10100,
@@ -3047,6 +3070,7 @@
    "group": "0@ur10e",
    "now_ms": 10200.0,
    "lead": false,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10300,
@@ -3359,6 +3383,7 @@
    "group": "0@ur10e",
    "now_ms": 10400.0,
    "lead": false,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10500,
@@ -3671,6 +3696,7 @@
    "group": "0@ur10e",
    "now_ms": 10600.0,
    "lead": false,
+   "action_timestep": -1,
    "skipped": 0,
    "step_timestamps": [
     10700,

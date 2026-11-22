@@ -28,7 +28,7 @@ from novapolicy.estop import (
 from novapolicy.io import IOStreamManager
 from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.live_buffer import LiveBuffer
-from novapolicy.jogging.modules import default_pipeline
+from novapolicy.jogging.modules import Bridge, default_pipeline
 from novapolicy.jogging.pipeline import split_pipeline
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.policy_client import PolicyClient
@@ -137,13 +137,23 @@ class ExecutionResult:
 def _check_execution_mode(
     execution: ExecutionMode, policy: PolicyClient, pipeline: Sequence[object]
 ) -> None:
-    """Reject a setup that sequential execution would run wrongly, before anything moves.
+    """Reject a setup the executor would run wrongly, before anything moves.
 
     Sequential execution waits for standstill and observes again, so nothing in it replaces a
     plan while it runs: an RTC seam, a timestep queue (``QueuedPolicyClient``, LeRobot's async
-    queue) or a live-target buffer would be fed timings that never come.
+    queue) or a live-target buffer would be fed timings that never come. In continuous
+    execution a timestep queue anchors its timeline on its first bridged chunk, so its pipeline
+    needs a ``Bridge``.
     """
     if not isinstance(execution, SequentialExecution):
+        if policy.requires_first_waypoint_bridge and not any(
+            isinstance(module, Bridge) for module in pipeline
+        ):
+            raise ValueError(
+                f"{type(policy).__name__} continues its plan from its first bridged chunk: put "
+                "Bridge(always_anchor=True) in the pipeline, or use "
+                "default_pipeline(execution=..., policy=...)"
+            )
         return
     if policy.rtc is not None:
         raise ValueError("RTC requires ContinuousExecution")

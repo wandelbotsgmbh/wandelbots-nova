@@ -142,6 +142,7 @@ class _Capture:
                 "group": mg_id,
                 "now_ms": clock.now_ms,
                 "lead": pending.lead,
+                "action_timestep": pending.action_timestep,
                 "skipped": scheduled.skipped,
                 "step_timestamps": list(scheduled.step_timestamps),
                 "sent": [

@@ -25,7 +25,7 @@ import pytest
 
 from novapolicy.executor import Phase, PolicyExecutor
 from novapolicy.jogging.clock import ServerMs
-from novapolicy.jogging.modules import EndpointRamp, default_pipeline
+from novapolicy.jogging.modules import Bridge, EndpointRamp, default_pipeline
 from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
 from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.ops import Rad2Deg
@@ -1615,3 +1615,13 @@ async def test_the_start_move_keeps_the_cells_collision_setups():
 
     assert mg.plan.await_args.kwargs["motion_group_setup"] is setup
     assert setup.collision_setups == {"cell": collision}
+
+
+def test_a_timestep_queue_without_a_bridge_is_refused_before_anything_moves():
+    """Its timeline is anchored on its first bridged chunk; without a Bridge every chunk would
+    be placed at the send."""
+    policy = _TestPolicy(_hold_action, requires_bridge=True)
+    unbridged = [m for m in default_pipeline() if not isinstance(m, Bridge)]
+    with pytest.raises(ValueError, match="Bridge"):
+        PolicyExecutor(_schema(), policy, execution=ContinuousExecution(), pipeline=unbridged)
+    PolicyExecutor(_schema(), policy, execution=ContinuousExecution())  # the defaults bridge

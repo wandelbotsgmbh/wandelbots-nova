@@ -1201,8 +1201,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     def _filtered(self, stamps: list[int], pending: PendingChunk) -> list[int]:
         """The indices of the steps the pipeline's filters keep, in order."""
         kept = list(range(len(stamps)))
-        if not self._filters:
-            return kept
+        if not self._filters or pending.final:
+            return kept  # the final target is where the robot has to stop
         context = self._module_context()
         for module in self._filters:
             waypoints = [(ServerMs(stamps[i]), pending.steps[i]) for i in kept]

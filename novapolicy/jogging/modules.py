@@ -164,6 +164,7 @@ class Bridge:
             caller_step_count=len(bridge) + len(steps) - 1,
             when_due=when_due,
             start_step=chunk.start_step + shift,
+            action_timestep=-1,  # steps[0] is the measured position, not a policy step
         )
         if chunk.lead and chunk.observed_at_ms is not None:
             # Dated by its observation (continuous execution): the bridge starts now instead.
