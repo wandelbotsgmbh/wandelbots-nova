@@ -210,3 +210,13 @@ Also changed:
 `Gr00tPolicyClient(rtc=...)`, `RTCConfig`, `client.rtc`, `reset_rtc()` and
 `ActionChunk.seam_backdate_steps` are gone. Run GR00T sequentially, or continuously with the
 pipeline's `Smoothing` and `Bridge` modules to connect chunks.
+
+## Diagnostics removed
+
+- **`on_stale`, `OnStale` and `hold_budget_s` are gone:** a stale camera frame or an inference
+  past `inference_timeout_s` always ends the run with `RuntimeError` (the old default, `ABORT`).
+- **No late-acknowledgement guard:** one-step waypoints that keep reaching the controller with
+  less than 67 ms of their lead left no longer stop the run with `MotionError("over budget")`.
+  Size `WaypointConfig.max_expected_latency_ms` for the network.
+- **`WaypointJoggingSession.lead_left_ms`**, the per-session lead summary and the waypoint-tracking
+  log lines are gone.

@@ -38,7 +38,6 @@ from novapolicy.types import (
     ContinuousExecution,
     EmergencyStopError,
     MotionError,
-    OnStale,
     SequentialExecution,
     StopContext,
     WaypointConfig,
@@ -1307,84 +1306,6 @@ async def test_a_stale_camera_aborts_by_default(robot: _Robot):
 
 
 @pytest.mark.asyncio
-async def test_controlled_stop_ends_the_run_and_names_the_stale_input(robot: _Robot):
-    executor = PolicyExecutor(
-        _camera_schema(_StaleCamera()),
-        _hold,
-        timeout_s=1.0,
-        on_stale=OnStale.CONTROLLED_STOP,
-    )
-
-    result = await executor.run()
-
-    assert result.reason.startswith("stale: camera")
-    assert "frame stale" in result.reason
-    assert executor.phase is Phase.COMPLETED
-
-
-@pytest.mark.asyncio
-async def test_controlled_stop_runs_out_the_waypoints_already_accepted(robot: _Robot):
-    """The accepted lookahead is owed to the caller, so it drains before stopping."""
-    executor = PolicyExecutor(
-        _camera_schema(_StaleCamera(fresh_reads=1)),
-        _hold,
-        timeout_s=1.0,
-        on_stale=OnStale.CONTROLLED_STOP,
-    )
-
-    await executor.run()
-
-    assert robot.session.drain.await_count >= 1
-
-
-@pytest.mark.asyncio
-async def test_hold_retries_then_escalates_when_the_budget_runs_out(robot: _Robot):
-    """A camera that never recovers must not hold forever."""
-    camera = _StaleCamera()
-    executor = PolicyExecutor(
-        _camera_schema(camera),
-        _hold,
-        timeout_s=2.0,
-        on_stale=OnStale.HOLD,
-        hold_budget_s=0.15,
-    )
-
-    result = await executor.run()
-
-    assert result.reason.startswith("stale: camera")
-    assert camera.reads > 1, "expected retries before escalating"
-
-
-@pytest.mark.asyncio
-async def test_hold_recovers_when_the_camera_comes_back(robot: _Robot):
-    """A transient stale frame must not end the run."""
-
-    class _FlakyCamera(_StaleCamera):
-        def read(self, max_age_s: float = 5.0):
-            self.reads += 1
-            if self.reads == 2:
-                raise RuntimeError("frame stale (9.9s > 1.0s)")
-            return np.zeros((4, 4, 3), dtype=np.uint8)
-
-    camera = _FlakyCamera()
-    executor = PolicyExecutor(
-        _camera_schema(camera),
-        _hold,
-        timeout_s=0.4,
-        # Continuous mode ticks without waiting for a standstill, so the loop
-        # reaches the recovered frame within the test's deadline.
-        execution=ContinuousExecution(),
-        on_stale=OnStale.HOLD,
-        hold_budget_s=1.0,
-    )
-
-    result = await executor.run()
-
-    assert result.reason == "timeout"
-    assert camera.reads > 2
-
-
-@pytest.mark.asyncio
 async def test_a_per_channel_max_age_overrides_the_executor_default(robot: _Robot):
     """The tolerance is declared per camera; the executor default is the fallback."""
     seen: list[float] = []
@@ -1400,10 +1321,10 @@ async def test_a_per_channel_max_age_overrides_the_executor_default(robot: _Robo
         _hold,
         timeout_s=1.0,
         camera_max_age_s=9.0,
-        on_stale=OnStale.CONTROLLED_STOP,
     )
 
-    await executor.run()
+    with contextlib.suppress(RuntimeError):  # the frame goes stale, or the run times out
+        await executor.run()
 
     assert seen and all(age == 0.25 for age in seen)
 
@@ -1416,31 +1337,10 @@ async def test_an_inference_deadline_ends_the_run(robot: _Robot):
         policy,
         timeout_s=2.0,
         inference_timeout_s=0.1,
-        on_stale=OnStale.CONTROLLED_STOP,
     )
 
-    result = await executor.run()
-
-    assert result.reason.startswith("stale: inference exceeded")
-
-
-@pytest.mark.asyncio
-async def test_hold_is_refused_for_an_inference_deadline(robot: _Robot):
-    """The timed-out call is still in flight, so re-entering the client is unsafe."""
-    policy = _SleepingPolicy(delay_s=5.0)
-    executor = PolicyExecutor(
-        _schema(),
-        policy,
-        timeout_s=2.0,
-        inference_timeout_s=0.1,
-        on_stale=OnStale.HOLD,
-        hold_budget_s=10.0,
-    )
-
-    result = await executor.run()
-
-    assert result.reason.startswith("stale: inference exceeded")
-    assert policy.calls == 1, "the client must not be re-entered while a call is in flight"
+    with pytest.raises(RuntimeError, match="inference exceeded"):
+        await executor.run()
 
 
 @pytest.mark.asyncio
@@ -1474,12 +1374,9 @@ async def test_a_normal_end_drains_before_stopping(robot: _Robot):
     assert robot.session.stop.await_count >= 1
 
 
-@pytest.mark.parametrize(
-    ("field", "value"), [("inference_timeout_s", -1.0), ("hold_budget_s", -1.0)]
-)
-def test_negative_stale_settings_are_rejected(field: str, value: float):
+def test_a_negative_inference_timeout_is_rejected():
     with pytest.raises(ValueError, match="must not be negative"):
-        PolicyExecutor(_schema(), _hold, **{field: value})
+        PolicyExecutor(_schema(), _hold, inference_timeout_s=-1.0)
 
 
 # ---------------------------------------------------------------------------

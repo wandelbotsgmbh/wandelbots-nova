@@ -226,14 +226,12 @@ policy chunk.
 
 ## Stale inputs and how a run ends
 
-A camera can freeze and a policy service can hang. Both mean the same thing to the executor — the
-data this tick needs did not arrive — and what happens next is declared rather than implicit.
-
-Freshness is declared **per channel**; the response is declared **once**. One policy drives the
-whole cell, so holding one arm while aborting another is incoherent.
+A camera can freeze and a policy service can hang. Freshness is declared per channel; a frame
+older than its bound, or an inference past `inference_timeout_s`, ends the run with
+`RuntimeError("Stale policy input ...")`.
 
 ```python
-from novapolicy import Observation, OnStale, PolicyExecutor
+from novapolicy import Observation, PolicyExecutor
 
 schema = PolicySchema(
     observations=[
@@ -246,36 +244,17 @@ schema = PolicySchema(
 executor = PolicyExecutor(
     schema,
     policy,
-    camera_max_age_s=1.0,  # default bound for channels declaring none
+    camera_max_age_s=1.0,  # default bound for channels that declare none
     inference_timeout_s=30.0,  # liveness guard on one get_actions call; 0 disables
-    on_stale=OnStale.CONTROLLED_STOP,
-    hold_budget_s=2.0,  # how long HOLD may retry before escalating
 )
 ```
-
-| `on_stale` | Behaviour |
-| --- | --- |
-| `ABORT` (default) | Raises `RuntimeError`. What the executor did before this was declared. |
-| `CONTROLLED_STOP` | Runs out the waypoints already accepted, then ends with `result.reason == "stale: ..."`. |
-| `HOLD` | Skips the tick and retries; the session holds its last target while the robot decelerates. Escalates to `CONTROLLED_STOP` after `hold_budget_s`. |
-
-`HOLD` applies to **camera staleness only**. An inference that misses its deadline always ends the
-run: the timed-out call is still running on a worker thread, and re-entering the policy client
-while it may still complete would corrupt the policy's timestep sequence.
-
-There is no `zeros` option. It is standard in ROS-side equivalents and suits velocity or effort
-channels, but NOVA streams absolute joint positions — where zero commands the arm to its zero pose.
-
-Under `SequentialExecution` the robot is already at a measured standstill while inference runs, so
-the inference deadline mostly changes the error message. The declared response earns its keep under
-`ContinuousExecution`, where the lookahead is live.
 
 ### Teardown follows the reason
 
 How a run ended decides what happens to motion the controller already accepted:
 
-- **A normal end** — a stop condition, the execution timeout, an external `stop()`, or stale data
-  under `CONTROLLED_STOP` — drains the accepted waypoints before the sessions close. They were owed
+- **A normal end** — a stop condition, the execution timeout or an external `stop()` — drains the
+  accepted waypoints before the sessions close. They were owed
   to the caller.
 - **An error or e-stop** drops them. `session.stop()` cancels immediately, which is the point on a
   failure path.

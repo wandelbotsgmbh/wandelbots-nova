@@ -38,7 +38,6 @@ from novapolicy.types import (
     EmergencyStopError,
     ExecutionMode,
     MotionError,
-    OnStale,
     SequentialExecution,
     StopContext,
     WaypointConfig,
@@ -69,28 +68,6 @@ _DEFAULT_CAMERA_MAX_AGE_S = 1.0
 # hung service, not to police latency. Transports may have tighter deadlines of
 # their own (LeRobot's gRPC calls use 15s).
 _DEFAULT_INFERENCE_TIMEOUT_S = 30.0
-
-# How long OnStale.HOLD may retry before escalating.
-_DEFAULT_HOLD_BUDGET_S = 2.0
-
-# Pause between HOLD retries, so a stale channel cannot spin the loop hot.
-_HOLD_RETRY_PERIOD_S = 0.05
-
-
-class _StaleSignal(Exception):  # ruff: ignore[error-suffix-on-exception-name] - control flow
-    """Base for the two stale-input outcomes that do not raise to the caller."""
-
-    def __init__(self, what: str) -> None:
-        super().__init__(what)
-        self.what = what
-
-
-class _StaleHold(_StaleSignal):
-    """Retry the tick after a pause."""
-
-
-class _StaleStop(_StaleSignal):
-    """End the run normally, running out the waypoints already accepted."""
 
 
 class Phase(StrEnum):
@@ -198,8 +175,6 @@ class PolicyExecutor:
         timeout_s: float = 0,
         camera_max_age_s: float = _DEFAULT_CAMERA_MAX_AGE_S,
         inference_timeout_s: float = _DEFAULT_INFERENCE_TIMEOUT_S,
-        on_stale: OnStale = OnStale.ABORT,
-        hold_budget_s: float = _DEFAULT_HOLD_BUDGET_S,
         motion: WaypointConfig = _DEFAULT_WAYPOINT_CONFIG,
         execution: ExecutionMode = _DEFAULT_EXECUTION,
         n_action_steps: int | None = None,
@@ -218,21 +193,12 @@ class PolicyExecutor:
             camera_max_age_s: Default freshness bound for camera frames, in
                 seconds. A channel can override it with
                 ``Observation.image(..., max_age_s=...)``. Frames older than the
-                bound are stale; see ``on_stale``. Applies to the policy's
+                bound are stale and end the run with ``RuntimeError``. Applies to the policy's
                 frames only — visualization uses a looser bound of its own.
             inference_timeout_s: Deadline for one ``get_actions`` call, in
                 seconds. 0 = no deadline. This is a liveness guard against a
                 hung policy service, applied uniformly whatever the transport's
                 own timeout is; it is not a real-time guarantee.
-            on_stale: What to do when a camera frame or an inference misses its
-                deadline. ``ABORT`` (default) raises, as the executor did before
-                this was declared. ``CONTROLLED_STOP`` runs out the accepted
-                waypoints and ends the run with a ``stale: ...`` reason.
-                ``HOLD`` retries, and applies to camera staleness only — see
-                :class:`OnStale`.
-            hold_budget_s: How long ``HOLD`` may keep retrying before escalating
-                to ``CONTROLLED_STOP``. Measured from the first stale tick, so
-                it does not depend on how fast the loop spins.
             motion: Waypoint jogging configuration. Defaults to WaypointConfig().
             execution: Explicit execution strategy. ``SequentialExecution``
                 completes and settles each chunk before the next inference;
@@ -273,12 +239,7 @@ class PolicyExecutor:
         self._timeout_s = timeout_s
         if inference_timeout_s < 0:
             raise ValueError("inference_timeout_s must not be negative")
-        if hold_budget_s < 0:
-            raise ValueError("hold_budget_s must not be negative")
         self._inference_timeout_s = inference_timeout_s
-        self._on_stale = OnStale(on_stale)
-        self._hold_budget_s = hold_budget_s
-        self._stale_since: float | None = None
         if not isinstance(execution, ExecutionMode):
             raise TypeError("execution must be SequentialExecution or ContinuousExecution")
         self._execution = execution
@@ -379,8 +340,7 @@ class PolicyExecutor:
 
         How the run ended decides what happens to motion already accepted by the
         controller. A run that ended normally — a stop condition, the execution
-        timeout, an external :meth:`stop`, or stale data under
-        ``CONTROLLED_STOP`` — owes the caller the waypoints it accepted, so they
+        timeout or an external :meth:`stop` — owes the caller the waypoints it accepted, so they
         are drained first. A run that ended in an error or an e-stop drops them:
         ``session.stop`` cancels immediately, which is the point.
         """
@@ -549,19 +509,7 @@ class PolicyExecutor:
                 await asyncio.sleep(0.01)  # retry shortly
                 continue
             observation_time = time.monotonic()
-            try:
-                action, start_time = await self._observe_and_infer(robot_states, step, start_time)
-            except _StaleHold:
-                await asyncio.sleep(_HOLD_RETRY_PERIOD_S)
-                continue
-            except _StaleStop as stale:
-                await self._drain_sessions()
-                return _result(
-                    f"stale: {stale.what}",
-                    step,
-                    start_time or time.monotonic(),
-                    last_obs,
-                )
+            action, start_time = await self._observe_and_infer(robot_states, step, start_time)
             if step == 0:
                 tick_start = start_time
             last_obs = robot_states
@@ -806,8 +754,7 @@ class PolicyExecutor:
         the execution timeout.
 
         Raises:
-            _StaleHold: An input missed its deadline and the run should retry.
-            _StaleStop: An input missed its deadline and the run should end.
+            RuntimeError: A camera frame or the inference missed its deadline.
         """
         images = self._read_policy_images()
         self._log_first_image_shapes(images)
@@ -846,9 +793,8 @@ class PolicyExecutor:
         try:
             images = self._cameras.read()
         except RuntimeError as exc:
-            self._on_stale_input(f"camera: {exc}", allow_hold=True)
-            raise  # unreachable: _on_stale_input always raises
-        self._stale_since = None
+            msg = f"Stale policy input (camera: {exc})"
+            raise RuntimeError(msg) from exc
         return images
 
     async def _infer(
@@ -859,60 +805,10 @@ class PolicyExecutor:
         """Query the policy under the executor's inference deadline."""
         try:
             action = await self._get_policy_actions(robot_states, images)
-        except TimeoutError:
-            # The timed-out call is still running on a worker thread, so
-            # retrying would re-enter a client whose previous call may still
-            # complete and advance its timestep. HOLD is refused here; see
-            # OnStale.
-            self._on_stale_input(
-                f"inference exceeded {self._inference_timeout_s:.0f}s", allow_hold=False
-            )
-            raise  # unreachable: _on_stale_input always raises
-        self._stale_since = None
+        except TimeoutError as exc:
+            msg = f"Stale policy input (inference exceeded {self._inference_timeout_s:.0f}s)"
+            raise RuntimeError(msg) from exc
         return action
-
-    def _on_stale_input(self, what: str, *, allow_hold: bool) -> None:
-        """Turn a missed deadline into the declared response. Never returns.
-
-        Args:
-            what: Human-readable description, carried into the result reason.
-            allow_hold: Whether ``HOLD`` is meaningful for this trigger. False
-                for an inference deadline, whose timed-out call is still in
-                flight on a worker thread.
-
-        Raises:
-            RuntimeError: ``on_stale`` is ``ABORT``.
-            _StaleHold: Retry after a pause.
-            _StaleStop: End the run, running out the accepted waypoints.
-        """
-        now = time.monotonic()
-        if self._stale_since is None:
-            self._stale_since = now
-
-        if self._on_stale is OnStale.ABORT:
-            msg = f"Stale policy input ({what})"
-            raise RuntimeError(msg)
-
-        if self._on_stale is OnStale.HOLD:
-            if not allow_hold:
-                logger.warning("Stale policy input (%s) cannot be held through; stopping.", what)
-                raise _StaleStop(what)
-            held_for = now - self._stale_since
-            if held_for < self._hold_budget_s:
-                logger.warning(
-                    "Holding: stale policy input (%s), %.1fs of %.1fs budget used.",
-                    what,
-                    held_for,
-                    self._hold_budget_s,
-                )
-                raise _StaleHold(what)
-            logger.warning(
-                "Stale policy input (%s) outlasted the %.1fs hold budget; stopping.",
-                what,
-                self._hold_budget_s,
-            )
-
-        raise _StaleStop(what)
 
     async def _drain_sessions(self) -> None:
         """Let the waypoints already accepted run out before the sessions stop."""

@@ -1,6 +1,7 @@
 # 0002 A fixed lead, and a loud stop when it is exceeded
 
-Status: accepted, 2026-11-18
+Status: accepted, 2026-11-18. The loud stop (the late-acknowledgement guard) was removed on
+2026-11-23 with the other diagnostics; the fixed lead stands.
 
 **Context.** A waypoint must reach the controller about 67 ms before it is due, plus the
 network round trip. Over a VPN the round trip ranged from 40 to 220 ms.

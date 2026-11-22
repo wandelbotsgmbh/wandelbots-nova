@@ -281,8 +281,8 @@ observation it was computed from (100 ms by default, as MoveIt Servo's `max_expe
 dated by the observation as UMI and Diffusion Policy do), without a braking hold, so the arm
 executes it that much later. Consecutive targets are spaced one policy step apart on a playback
 clock that follows the observations slowly, as a streaming jitter buffer does: dating each target
-by its own observation would pass the state stream's jitter on as speed jumps. If the waypoints keep arriving too late for it, the run stops with a
-`MotionError` ("over budget") instead of degrading. Run the policy on the NOVA instance, where
+by its own observation would pass the state stream's jitter on as speed jumps. Run the policy on
+the NOVA instance, where
 100 ms fits; over a remote network raise the value (250 ms over a 40 to 120 ms VPN, where state
 packets arrive late and in bursts). Train the policy for it as sim-to-real practice does: a
 randomized action delay that covers the value, and its previous action or target in the

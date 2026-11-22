@@ -74,9 +74,8 @@ differenced from consecutive positions. Tests: `test_measured_velocities_are_use
 `test_without_a_measurement_positions_are_finite_differenced`.
 
 **M10 Stale inputs.** A camera frame older than its `max_age_s`, or an inference past
-`inference_timeout_s`, is handled by `on_stale`: stop (default), controlled stop, or hold and
-retry within a budget. Tests: `test_a_stale_camera_aborts_by_default`,
-`test_controlled_stop_ends_the_run_and_names_the_stale_input`, `test_hold_retries_then_escalates_when_the_budget_runs_out`.
+`inference_timeout_s`, ends the run with `RuntimeError`. Tests: `test_a_stale_camera_aborts_by_default`,
+`test_an_inference_deadline_ends_the_run`.
 
 **M11 Step spacing.** `dt_ms` comes from the policy: the server's value where it reports one
 (GR00T), otherwise the client's `control_freq` (30 Hz by default). A chunk with `resolved=True`
@@ -144,10 +143,6 @@ behind, the grid restarts instead of firing catch-up ticks (*restart untested*).
 Tests: `test_sequential_mode_delays_next_inference_until_deadline_and_standstill`,
 `test_sequential_mode_waits_out_the_braking_ramp_after_the_deadline`,
 `test_fixed_rate_makes_up_slow_ticks_instead_of_lowering_the_rate`.
-
-**T9 Loud, not degraded.** Five one-step waypoints in a row that reach the controller with less
-than 67 ms of their lead left stop the run with `MotionError` ("over budget"). Test:
-`test_one_step_waypoints_that_keep_arriving_too_late_stop_the_session`.
 
 **T10 End of a run.** A normal end waits until the session clock passes the last waypoint and
 stops on the last target; an error drops what was accepted. Tests:
