@@ -61,8 +61,8 @@ show this pattern.
 Chunks go to `set_chunk`, live targets to `set_target`. The two are separate
 methods because they take different settings: a chunk needs `dt_ms` (the spacing
 between its steps, required) and gets its horizon from `min_chunk_horizon_ms`,
-while a live target needs no spacing and gets its horizon from
-`buffer_window_ms`. Handing a chunk to `set_target` raises `TypeError` rather
+while a live target needs no spacing and can get a horizon from an opt-in
+`LiveBuffer`. Handing a chunk to `set_target` raises `TypeError` rather
 than silently ignoring the buffer, and vice versa.
 
 For TCP jogging, note the asymmetry: `set_target` takes a `Pose`, while
@@ -135,7 +135,7 @@ Use a curve that is zero in both the first and second derivative at the ends —
 `smootherstep`, `6x⁵ − 15x⁴ + 10x³`. Plain `smoothstep` (`3x² − 2x³`) zeroes the
 velocity but enters and leaves at peak acceleration, which the robot executes as a
 stumble; that is the same defect as a linear ramp, one order up. This is also the
-curve `ease_in_s` uses internally. `jogging_single_tcp.py` shows the phase warp and
+curve `EaseIn` uses. `jogging_single_tcp.py` shows the phase warp and
 `jogging_single_joint_chunked.py` the amplitude envelope.
 
 Rerun state visualization should not be configured faster than the controller
@@ -144,47 +144,38 @@ trajectory fidelity, and approximately 30 Hz is the safe default for live robot
 geometry. The Rerun writes themselves are handed to a worker thread rather than
 paid on the control loop (see [rerun.md](rerun.md)).
 
-## Live targets and the replay buffer (`buffer_window_ms`)
+## Live targets and the replay buffer (`LiveBuffer`)
 
-A live target says only where the target is *now*. A lone waypoint is a
-**terminal** target: with no successor the server plans an
-accelerate/decelerate-to-standstill profile, so a target replaced every tick makes
-the robot stop and restart continuously.
+A live target says only where the target is *now*. By default each one goes out as one
+waypoint, and a lone waypoint is a **terminal** target: with no successor the server plans
+an accelerate/decelerate-to-standstill profile, so a target replaced every tick makes the
+robot brake toward every one of them.
 
-`buffer_window_ms` (default **500**) is a ring buffer of recent live targets. The
-jogger holds the last `buffer_window_ms` of them and replays them as a continuous
-waypoint horizon, so the server always has somewhere to be going next. Nothing in
-that horizon is invented — every waypoint in it is a target that was really
-measured, replayed late rather than extrapolated forward.
+`live_buffer=LiveBuffer(window_ms=500)` (opt-in) holds the last `window_ms` of targets and
+replays them as a continuous waypoint horizon on an even grid
+(`WaypointConfig.single_step_dt_ms`), so the server always has somewhere to be going next.
+Nothing in that horizon is invented: every waypoint is a target that was really measured,
+replayed late rather than extrapolated forward. Measured on a virtual UR10e with a sine
+target set at about 90 Hz: 0.015° rms against the target with 500 ms, 0.45–0.84° and arm
+peaks up to twice the commanded speed without it.
 
-The cost is latency: the robot trails the live target by a little over the window.
-The window has to be a few hundred milliseconds, because the window *is* the
-horizon and the server caps its speed at whatever it can brake to a stop within.
-On the UR10e this was tuned against, a 150 ms window stalled a fifth of all
-samples and 450 ms still stalled occasionally.
-
-`buffer_window_ms=0` disables buffering: each target is sent alone, as measured,
-with the halting motion described above. That is useful for stepping a robot to
-discrete positions, not for tracking a moving one.
+The cost is latency: the robot trails the live target by a little over the window. The
+window has to be a few hundred milliseconds, because the window *is* the horizon and the
+server caps its speed at whatever it can brake to a stop within; on the UR10e a 150 ms
+window stalled a fifth of all samples.
 
 ```python
-async with jog_tcp(mg, tcp="Flange") as jogger:  # 500 ms window by default
+async with jog_tcp(mg, tcp="Flange", live_buffer=LiveBuffer(window_ms=500)) as jogger:
     async for state in jogger:
         jogger.set_target(read_controller_pose())
 ```
 
-`dt_ms` is **ignored** for live targets. Their spacing is not assumed from call
-rate: each sample is stamped with the trajectory time it was produced at, and the
-buffer is resampled onto a uniform grid (`WaypointConfig.single_step_dt_ms`) by
-interpolating at those stamps. Handing the samples over with an averaged `dt`
-instead replays each one at the wrong moment, which time-warps the trajectory.
+Spacing is not assumed from call rate: each sample is stamped with the trajectory time it
+was produced at, and the buffer is resampled onto the grid by interpolating at those stamps.
 
-`buffer_window_ms` applies to `set_target` only. Chunks go to `set_chunk` and
-carry their own horizon, so there is nothing to buffer and no latency to pay
-there — see [Chunked targets](#chunked-targets). Sending a chunk clears the ring
-buffer; alternating the two methods on one motion group means the live targets
-after each chunk go out alone until the buffer refills, and the jogger warns once
-per motion group when that happens.
+The buffer applies to `set_target` only. Chunks go to `set_chunk` and carry their own
+horizon — see [Chunked targets](#chunked-targets). Sending a chunk clears the buffer, and the
+jogger warns once per motion group when that happens.
 
 ## Timing targets (`jogger.elapsed`)
 
@@ -225,23 +216,20 @@ async with jog_joints(mg) as jogger:
         jogger.set_target(target)
 ```
 
-## Ease-in (`ease_in_s`)
+## Ease-in and other pre-send stages (`stages=[...]`)
 
-A time-parameterised target with non-zero velocity at `t=0` (a sinusoid has
-maximum velocity there) makes the robot lunge from a standstill to full speed on
-the first move. Pass `ease_in_s` to `jog_joints`/`jog_tcp` to ramp motion up from
-zero over the first N seconds: each target is blended from the robot's start
-position toward the requested value, and is unchanged after the window. It is
-**off by default** (`ease_in_s=0`).
+A time-parameterised target with non-zero velocity at `t=0` (a sinusoid has maximum velocity
+there) makes the robot lunge from a standstill to full speed on the first move. Pass
+`stages=[EaseIn(duration_s=1.0)]` to `jog_joints`/`jog_tcp` (or `PolicyExecutor`): each
+waypoint is blended from where the robot stood toward its value over the first second, by its
+own timestamp, and is unchanged after. Off by default.
 
-The blend is a smoothstep (`f = e²(3 − 2e)` for `e = min(1, t / ease_in_s)`), not
-a straight ramp. A straight ramp is continuous in position but not in velocity:
-the blend rate drops from full to nothing the instant it completes, and the robot
-executes that step in acceleration as a stumble a few hundred milliseconds later.
-Smoothstep is zero-derivative at both ends, so entry and exit are both gradual.
+The blend is a smootherstep, zero in velocity and acceleration at both ends. A stage reshapes
+the values of the waypoints right before they are sent and never their timing; see
+`novapolicy.jogging.stages` and contract T13 in [contracts.md](contracts.md).
 
 ```python
-async with jog_joints(mg, ease_in_s=1.0) as jogger:  # gentle 1s ramp
+async with jog_joints(mg, stages=[EaseIn(duration_s=1.0)]) as jogger:
     async for _ in jogger:
         ...
 ```

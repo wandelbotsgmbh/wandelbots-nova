@@ -3,7 +3,7 @@
 import math
 
 import nova
-from novapolicy import jog_joints
+from novapolicy import LiveBuffer, jog_joints
 
 HOME = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
 
@@ -22,10 +22,12 @@ async def main(ctx: nova.ProgramContext):
     frequency = 0.5
 
     # set_target sends live targets, which go through the default 500 ms
-    # buffer_window_ms: recent targets are replayed as a waypoint horizon, so the
-    # robot tracks that far behind the wave. Pass buffer_window_ms=0 to send each
-    # target alone, at the cost of halting motion between them.
-    async with jog_joints(mg, start_joint_position=HOME) as jogger:
+    # LiveBuffer: recent targets are replayed as a waypoint horizon, so the robot tracks
+    # the moving target smoothly, about 500 ms behind. Without it each target goes out
+    # alone and the robot brakes toward every one of them.
+    async with jog_joints(
+        mg, start_joint_position=HOME, live_buffer=LiveBuffer(window_ms=500)
+    ) as jogger:
         async for _ in jogger:
             t = jogger.elapsed
             if t >= duration:

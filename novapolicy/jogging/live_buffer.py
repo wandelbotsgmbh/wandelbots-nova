@@ -259,8 +259,8 @@ class LiveBuffer:
             end_time_s=horizon_end_time_s(grid_start_s, self.window_ms),
         )
 
-    def clear(self) -> bool:
-        """Forget the held targets; whether there were any."""
-        had = bool(self._points)
+    def clear(self) -> int:
+        """Forget the held targets; how many there were."""
+        held = len(self._points)
         self._points.clear()
-        return had
+        return held

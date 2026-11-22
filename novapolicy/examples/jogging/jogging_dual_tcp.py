@@ -4,7 +4,7 @@ import math
 
 import nova
 from nova.types import Pose
-from novapolicy import jog_tcp
+from novapolicy import LiveBuffer, jog_tcp
 
 HOME_LEFT = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
 HOME_RIGHT = [-1.169, -2.3911, -1.8675, 0.0, -0.872, -2.094]
@@ -27,9 +27,9 @@ async def main(ctx: nova.ProgramContext):
     frequency = 0.3
 
     # set_target sends live poses, which go through the default 500 ms
-    # buffer_window_ms: recent poses are replayed as a waypoint horizon, so the TCP
-    # tracks that far behind the circle. Pass buffer_window_ms=0 to send each pose
-    # alone, at the cost of halting motion between them.
+    # LiveBuffer: recent poses are replayed as a waypoint horizon, so the TCP tracks the
+    # circle smoothly, about 500 ms behind. Without it each pose goes out alone and the
+    # robot brakes toward every one of them.
     def smootherstep(x: float) -> float:
         """Monotone 0->1 warp with zero velocity *and* zero acceleration at both ends.
 
@@ -43,6 +43,7 @@ async def main(ctx: nova.ProgramContext):
     async with jog_tcp(
         {mg1: tcp1, mg2: tcp2},
         start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT},
+        live_buffer=LiveBuffer(window_ms=500),
     ) as jogger:
         start1 = None
         start2 = None

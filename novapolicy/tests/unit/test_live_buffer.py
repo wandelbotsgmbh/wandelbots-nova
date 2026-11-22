@@ -182,8 +182,8 @@ def test_a_live_buffer_replays_what_it_held_once_it_can_define_a_spacing() -> No
     assert replay is not None
     assert replay.step_ms == pytest.approx(10.0)
     assert replay.steps[-1] == [pytest.approx(11.0)]
-    assert buffer.clear() is True
-    assert buffer.clear() is False
+    assert buffer.clear() > 0
+    assert buffer.clear() == 0
 
 
 def test_a_live_buffer_needs_a_positive_window() -> None:

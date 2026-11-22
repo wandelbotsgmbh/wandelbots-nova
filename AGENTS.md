@@ -125,9 +125,11 @@ declares, calls the policy, converts its actions back to NOVA (units, frames, re
 and streams them as timestamped action chunks. How well the robot follows those waypoints
 (interpolation, smoothing, limits, tracking) is NOVA's job, in its action chunk streaming.
 
-- Do not add trajectory generation, filters, actuator models or controllers to the executor or
-  the jogging sessions. If the robot does not follow the commanded waypoints faithfully, fix or
-  report it on the NOVA side.
+- Do not build trajectory generation, filters, actuator models or controllers into the executor,
+  the joggers or the jogging sessions. If the robot does not follow the commanded waypoints
+  faithfully, fix or report it on the NOVA side. The only place to shape values on purpose is an
+  opt-in module the caller passes: a pre-send stage (`novapolicy/jogging/stages.py`, values
+  only, never timing) or a `LiveBuffer` for live-target streams; none runs by default.
 - Transport timing is in scope: waypoint timestamps, the lead, loop pacing, and guards that stop
   a run loudly instead of degrading it silently.
 - Light output smoothing is acceptable only if it stays small; prefer none.

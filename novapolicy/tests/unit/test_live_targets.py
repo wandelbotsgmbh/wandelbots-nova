@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from itertools import pairwise
 from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from novapolicy.jogging.jogger import TcpJogger
+from novapolicy.jogging.live_buffer import LiveBuffer
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
@@ -33,7 +33,8 @@ def _jogger(mode: str = "cartesian") -> tuple[TcpJogger, object, _FakeSession]:
     jogger._sessions = cast("dict[MotionGroup, WaypointJoggingSession]", {mg: session})
     jogger._rerun = None
     jogger._commanded = {}
-    jogger._target_buffers = {}
+    jogger._live_buffer = None
+    jogger._live_buffers = {}
     jogger._timeline_ms = 0.0
     # Drive the session clock directly: elapsed reads the per-tick sample.
     jogger._loop_t0 = 0.0
@@ -76,72 +77,6 @@ def test_commanded_history_is_not_recorded_without_rerun() -> None:
     jogger._record_commanded("mg", [[1.0, 0.0, 0.0]], 0.0, 1000)
 
     assert jogger._commanded_at("mg", 1000) is None
-
-
-def test_ease_in_releases_without_a_velocity_step() -> None:
-    """The ease blend must be smooth in velocity where it completes.
-
-    A straight ramp reaches full blend rate right up to the moment it finishes
-    and then stops dead; that discontinuity is executed as a stumble.
-    """
-    jogger, mg, _session = _jogger()
-    jogger._ease_in_s = 0.5
-    jogger._ease_baseline = cast("dict[MotionGroup, list[float]]", {mg: [0.0] * 6})
-
-    # Blend one fixed target through the window and read the resulting motion.
-    target = [100.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    positions = []
-    for i in range(60):
-        jogger._tick_ms = i * 10.0
-        positions.append(jogger._ease_steps(mg, [list(target)], 0.0)[0][0])
-
-    velocity = [b - a for a, b in pairwise(positions)]
-    accel = [abs(b - a) for a, b in pairwise(velocity)]
-    # No single step may dominate: a linear ramp dumps the whole blend rate in
-    # one sample at the end, which shows up as one acceleration spike far above
-    # the rest.
-    assert max(accel) < 3 * (sum(accel) / len(accel))
-
-
-def test_ease_in_starts_and_ends_without_an_acceleration_step() -> None:
-    """The blend must be smooth in acceleration too, not just in velocity.
-
-    A plain smoothstep zeroes the blend velocity at both ends but enters and
-    leaves at its *peak* acceleration — the same defect as a linear ramp, one
-    order up. Smootherstep zeroes both derivatives, so the edges of the window
-    sit well below the peak. Measured over the window on the jogger's 10ms grid:
-    smoothstep gives 1.00x peak at both edges, smootherstep 0.19x.
-    """
-    jogger, mg, _session = _jogger()
-    jogger._ease_in_s = 0.5
-    jogger._ease_baseline = cast("dict[MotionGroup, list[float]]", {mg: [0.0] * 6})
-
-    target = [100.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    positions = []
-    for i in range(51):  # exactly the 500ms window, inclusive of both ends
-        jogger._tick_ms = i * 10.0
-        positions.append(jogger._ease_steps(mg, [list(target)], 0.0)[0][0])
-
-    velocity = [b - a for a, b in pairwise(positions)]
-    accel = [abs(b - a) for a, b in pairwise(velocity)]
-    peak = max(accel)
-
-    assert accel[0] < 0.5 * peak, f"entered the window at {accel[0] / peak:.2f}x peak accel"
-    assert accel[-1] < 0.5 * peak, f"left the window at {accel[-1] / peak:.2f}x peak accel"
-
-
-def test_ease_in_spans_the_full_window() -> None:
-    """Easing still starts at the baseline and finishes exactly on the target."""
-    jogger, mg, _session = _jogger()
-    jogger._ease_in_s = 0.5
-    jogger._ease_baseline = cast("dict[MotionGroup, list[float]]", {mg: [0.0] * 6})
-    target = [100.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-
-    jogger._tick_ms = 0.0
-    assert jogger._ease_steps(mg, [list(target)], 0.0)[0][0] == pytest.approx(0.0)
-
-    jogger._tick_ms = 500.0
-    assert jogger._ease_steps(mg, [list(target)], 0.0)[0][0] == pytest.approx(100.0)
 
 
 class _FakeRerun:
@@ -243,7 +178,7 @@ class _NamedMotionGroup:
 def test_the_rolling_target_buffer_stays_bounded_before_the_timeline_starts() -> None:
     """The buffered path prunes by age too, against the same pinned clock.
 
-    Its cutoff is ``now - buffer_window_ms``, which goes negative while ``elapsed`` is
+    Its cutoff is ``now - window_ms``, which goes negative while ``elapsed`` is
     pinned at 0.0, so no sample is ever older than it and the window grows for as
     long as the session takes to start.
     """
@@ -253,16 +188,14 @@ def test_the_rolling_target_buffer_stays_bounded_before_the_timeline_starts() ->
     mg = cast("MotionGroup", _NamedMotionGroup())
     jogger._mg_list = [mg]
     jogger._sessions = cast("dict[MotionGroup, WaypointJoggingSession]", {mg: _PushSession()})
-    jogger._buffer_window_ms = 30.0
-    jogger._ease_in_s = 0.0
-    jogger._ease_baseline = {}
+    jogger._live_buffer = LiveBuffer(window_ms=30.0)
     jogger._loop_t0 = None  # the timeline is not anchored: elapsed is pinned
     assert jogger.elapsed == 0.0
 
     for _ in range(MAX_LIVE_SAMPLES * 4):
         jogger._set_live_target(mg, [1.0] * 6)
 
-    assert len(jogger._target_buffers[mg]) <= MAX_LIVE_SAMPLES
+    assert len(jogger._live_buffers[mg]._points) <= MAX_LIVE_SAMPLES
 
 
 def _buffered_jogger(buffer_window_ms: float = 500.0):
@@ -272,9 +205,7 @@ def _buffered_jogger(buffer_window_ms: float = 500.0):
     session = _PushSession()
     jogger._mg_list = [mg]
     jogger._sessions = cast("dict[MotionGroup, WaypointJoggingSession]", {mg: session})
-    jogger._buffer_window_ms = buffer_window_ms
-    jogger._ease_in_s = 0.0
-    jogger._ease_baseline = {}
+    jogger._live_buffer = LiveBuffer(window_ms=buffer_window_ms) if buffer_window_ms > 0 else None
     return jogger, mg, session
 
 
@@ -329,17 +260,13 @@ def test_a_disabled_buffer_sends_the_target_alone_and_unmodified() -> None:
     assert session.chunks[0]["dt_ms"] == 0.0
 
 
-def test_live_jogging_buffers_by_default() -> None:
-    """The default has to be the buffer, not the bare single target.
-
-    ``buffer_window_ms=0`` sends lone terminal waypoints, which the server decelerates
-    to; it is a deliberate opt-out, not a sensible starting point for tracking a
-    moving target.
-    """
+def test_nothing_is_buffered_or_shaped_unless_passed() -> None:
+    """Opt-in modules: no live buffer and no stages by default."""
     import inspect
 
     from novapolicy.jogging.jogger import jog_joints, jog_tcp
 
     for factory in (jog_joints, jog_tcp):
-        default = inspect.signature(factory).parameters["buffer_window_ms"].default
-        assert default == 500.0, (factory.__name__, default)
+        params = inspect.signature(factory).parameters
+        assert params["live_buffer"].default is None, factory.__name__
+        assert tuple(params["stages"].default) == (), factory.__name__

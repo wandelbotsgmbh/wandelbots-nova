@@ -37,7 +37,7 @@ async def main(ctx: nova.ProgramContext):
         x = min(1.0, max(0.0, x))
         return x**3 * (x * (x * 6 - 15) + 10)
 
-    # No ease_in_s: the phase warp already starts at zero velocity.
+    # No EaseIn: the phase warp already starts at zero velocity.
     async with jog_tcp(mg, tcp=tcp_name, start_joint_position=START_JOINTS) as jogger:
         start_pose = None
         center_x = 0.0
