@@ -630,7 +630,6 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
     ]
     assert first_send.kwargs["first_timestamp_ms"] is None
     assert first_send.kwargs["timestamp_offset_steps"] == 0
-    assert first_send.kwargs["server_dt_ms"] == 10.0
     assert replacement.kwargs["steps"] == [
         [0.75] * 6,
         [1.75] * 6,
@@ -642,7 +641,6 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
     # action timestep.
     assert replacement.kwargs["first_timestamp_ms"] == 30
     assert replacement.kwargs["timestamp_offset_steps"] == 0
-    assert replacement.kwargs["server_dt_ms"] == 10.0
     assert second_replacement.kwargs["first_timestamp_ms"] == 50
     assert third_replacement.kwargs["first_timestamp_ms"] == 70
     policy.synchronize_action_timestep.assert_any_call(3)

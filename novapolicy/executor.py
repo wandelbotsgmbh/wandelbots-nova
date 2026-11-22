@@ -1179,12 +1179,6 @@ class PolicyExecutor:
             and is_single_step(chunk)
             and isinstance(self._execution, ContinuousExecution)
         )
-        server_dt_ms = (
-            chunk.dt_ms
-            if isinstance(self._execution, ContinuousExecution)
-            and self._policy.requires_first_waypoint_bridge
-            else None
-        )
         effects = effects if effects is not None else chunk
         moving = [*chunk.joints, *chunk.tcp]
         target_chunks: dict[str, int] = {}
@@ -1205,7 +1199,6 @@ class PolicyExecutor:
                 timestamp_offset_steps=(
                     0 if server_timestamp_ms is not None else place.timestamp_offset_steps
                 ),
-                server_dt_ms=server_dt_ms,
                 action_timestep=chunk.action_timestep,
                 extend_buffer=hold,
                 lead=place.lead and server_timestamp_ms is None,
@@ -1234,7 +1227,6 @@ class PolicyExecutor:
                 timestamp_offset_steps=(
                     0 if server_timestamp_ms is not None else place.timestamp_offset_steps
                 ),
-                server_dt_ms=server_dt_ms,
                 action_timestep=chunk.action_timestep,
                 extend_buffer=hold,
                 lead=place.lead and server_timestamp_ms is None,

@@ -18,7 +18,7 @@ from nova import api
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from novapolicy.jogging.clock import JoggingTimeClock, ServerMs
+    from novapolicy.jogging.clock import ServerMs
     from novapolicy.types import JoggingMode
 
 
@@ -37,14 +37,13 @@ class PendingChunk:
     """A queued action chunk awaiting send on the next jogging-loop iteration.
 
     Raw steps/timing are stored here; the request is built at yield time so
-    timestamps are computed as late as possible (see :func:`make_waypoints_request`).
+    timestamps are computed as late as possible, at the send.
     """
 
     steps: list[list[float]]
     dt_ms: float
     first_timestamp_ms: ServerMs | None = None
     timestamp_offset_steps: int = 0
-    server_dt_ms: float | None = None
     action_timestep: int = -1
     sequence: int = 0
     caller_step_count: int = 0
@@ -84,16 +83,6 @@ class PendingChunk:
         return max(0, min(count, len(self.steps)) - 1)
 
 
-def step_spacing_ms(effective_dt_ms: float, server_dt_ms: float | None) -> float:
-    """Spacing between consecutive waypoints, in server milliseconds.
-
-    An explicit ``server_dt_ms`` overrides the caller's own step interval;
-    otherwise the caller's interval is used as-is. Server jogger milliseconds are
-    real milliseconds, so no clock-rate scaling is applied.
-    """
-    return server_dt_ms if server_dt_ms is not None else effective_dt_ms
-
-
 def anchor_timestamp_ms(
     first_timestamp_ms: int, timestamp_offset_steps: int, step_dt_ms: float
 ) -> int:
@@ -106,58 +95,6 @@ def anchor_timestamp_ms(
     considers reachable.
     """
     return first_timestamp_ms + int(timestamp_offset_steps * step_dt_ms)
-
-
-def make_waypoints_request(
-    clock: JoggingTimeClock,
-    mode: JoggingMode,
-    *,
-    steps: list[list[float]],
-    effective_dt_ms: float,
-    first_timestamp_ms: int | None = None,
-    timestamp_offset_steps: int = 0,
-    server_dt_ms: float | None = None,
-    delay_until_braking_ms: int | None = None,
-) -> api.models.ActionChunkRequest:
-    """Build the ActionChunkRequest for a chunk at stream-yield time.
-
-    Every waypoint carries an absolute server-time timestamp laid out as
-    ``base + i*dt``. The only decision is where ``base`` (step 0) sits:
-
-    * ``first_timestamp_ms`` set: the exact raw NOVA jogger-session timestamp
-      for step zero on an existing controller timeline.
-    * ``first_timestamp_ms`` omitted: step zero is relative to server "now",
-      resolved here so it cannot go stale while the chunk waits in the queue.
-      "Now" is extrapolated from acknowledged server progress rather than
-      wall-clock, so it tracks the robot's own timer between state samples.
-
-    Spacing is ``server_dt_ms`` when given, otherwise ``effective_dt_ms``
-    unchanged: server jogger milliseconds are real milliseconds, so no
-    clock-rate scaling is applied.
-
-    ``timestamp_offset_steps`` shifts the selected timestamp by whole ``dt``
-    steps: ``+1`` places step zero one interval in the future; a negative value
-    backdates an overlapping seam; ``0`` uses the timestamp exactly.
-
-    ``delay_until_braking_ms`` is sent as is; ``None`` leaves it out (see
-    :attr:`~novapolicy.types.WaypointConfig.delay_until_braking_ms`).
-    """
-    step_dt_ms = step_spacing_ms(effective_dt_ms, server_dt_ms)
-    base_ms = (
-        clock.estimated_server_timestamp_ms if first_timestamp_ms is None else first_timestamp_ms
-    )
-    base_ms = max(0, anchor_timestamp_ms(base_ms, timestamp_offset_steps, step_dt_ms))
-    timestamps = [base_ms + int(i * step_dt_ms) for i in range(len(steps))]
-
-    coordinates = _pose_coordinates(steps) if mode == "cartesian" else _joint_coordinates(steps)
-
-    return ActionChunkRequest(
-        waypoints=[
-            api.models.Waypoint(timestamp=ts, waypoint=coordinate)
-            for ts, coordinate in zip(timestamps, coordinates, strict=True)
-        ],
-        delay_until_braking=delay_until_braking_ms,
-    )
 
 
 def make_timed_waypoints_request(

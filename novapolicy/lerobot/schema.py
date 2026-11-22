@@ -352,21 +352,6 @@ class LeRobotSchema:
         )
 
     @staticmethod
-    def replace_motion_values(
-        action: NDArray[np.float32],
-        chunk: ActionChunk,
-        layout: FlatActionLayout,
-        *,
-        step: int,
-    ) -> NDArray[np.float32]:
-        transformed = action.copy()
-        for group_id, action_slice in layout.joints:
-            transformed[action_slice] = chunk.joints[group_id][step]
-        for group_id, action_slice in layout.tcp:
-            transformed[action_slice] = chunk.tcp[group_id][step]
-        return transformed
-
-    @staticmethod
     def action_to_array(action: object) -> NDArray[np.float32]:
         if hasattr(action, "detach"):
             action = cast("Any", action).detach().cpu().numpy()

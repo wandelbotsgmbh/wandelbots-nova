@@ -287,7 +287,6 @@ class LiveBuffer:
             dt_ms=replay.step_ms,
             first_timestamp_ms=ServerMs(first_ms),
             timestamp_offset_steps=0,
-            server_dt_ms=None,
             lead=False,
             observed_at_ms=None,
             extend_buffer=False,

@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 import logging
 import math
 import time
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 from websockets.exceptions import InvalidStatus
 
@@ -31,7 +31,6 @@ from novapolicy.jogging.waypoints import (
     PendingChunk,
     anchor_timestamp_ms,
     make_timed_waypoints_request,
-    step_spacing_ms,
 )
 from novapolicy.joint_limits import fetch_joint_limits
 from novapolicy.types import JoggingNotSupportedError, MotionError, StopContext
@@ -531,14 +530,12 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         *,
         first_timestamp_ms: ServerMs | None = None,
         timestamp_offset_steps: int = 0,
-        server_dt_ms: float | None = None,
         action_timestep: int = -1,
         extend_buffer: bool = True,
         lead: bool = False,
         observed_at_ms: ServerMs | None = None,
         when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None,
         retained_prefix_steps: int = 0,
-        **legacy: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
 
@@ -546,7 +543,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         (based on mode) with absolute server-time timestamps laid out as
         ``base + i*dt``. The request is sent on the next jogging loop iteration;
         the timestamps are computed at *yield time* (see
-        :func:`make_waypoints_request`).
+        the send).
 
         Args:
             steps: Joint waypoints [rad] or TCP poses [x,y,z,rx,ry,rz] (mm/rad).
@@ -557,9 +554,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             timestamp_offset_steps: Shift the selected timestamp by whole
                 ``dt`` steps. ``+1`` places step zero one interval ahead; a
                 negative value backdates an overlapping seam; ``0`` is exact.
-            server_dt_ms: Explicit waypoint spacing override in server
-                milliseconds. Server milliseconds are real milliseconds, so this
-                only matters when the spacing must differ from ``dt_ms``.
             action_timestep: Absolute policy timestep represented by ``steps[0]``.
                 Logged with the scheduled request in Rerun.
             lead: Date step ``k`` :attr:`single_step_lead_ms` ``+ k * dt_ms`` after
@@ -580,9 +574,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             retained_prefix_steps: Leading steps a queue already sent, which ``Smoothing``
                 keeps exact.
         """
-        if legacy:
-            timestamp_offset_steps = self._resolve_legacy(legacy, timestamp_offset_steps)
-
         if not steps:
             return
 
@@ -591,7 +582,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             dt_ms=dt_ms if dt_ms > 0 else self._config.single_step_dt_ms,
             first_timestamp_ms=first_timestamp_ms,
             timestamp_offset_steps=timestamp_offset_steps,
-            server_dt_ms=server_dt_ms,
             action_timestep=action_timestep,
             caller_step_count=len(steps),
             lead=lead,
@@ -643,42 +633,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             )
 
         # Request is built later at yield time.
-
-    _RENAMED: ClassVar[dict[str, str]] = {"anchor_offset_steps": "timestamp_offset_steps"}
-    """Parameters that were renamed, mapped to their current names."""
-
-    def _resolve_legacy(self, legacy: dict[str, object], timestamp_offset_steps: int) -> int:
-        """Honour a renamed parameter, and refuse one that is merely unknown.
-
-        Swallowing unknown keywords silently drops motion parameters: a caller
-        written against the older name for ``timestamp_offset_steps`` lost its
-        lead entirely, and the only symptom was a robot that crawled. So a
-        renamed parameter still works and says so, and anything unrecognised is
-        an error rather than a quiet behaviour change.
-        """
-        offset = timestamp_offset_steps
-        unknown = sorted(key for key in legacy if key not in self._RENAMED)
-        if unknown:
-            renamed = ", ".join(f"{old} -> {new}" for old, new in self._RENAMED.items())
-            msg = (
-                f"update_chunk() got unexpected keyword argument(s): {', '.join(unknown)}. "
-                f"Renamed parameters still accepted: {renamed}."
-            )
-            raise TypeError(msg)
-        for old, new in self._RENAMED.items():
-            if old not in legacy:
-                continue
-            value = legacy[old]
-            logger.warning(
-                "%s: update_chunk(%s=...) is the old name for %s; passing it on. "
-                "Rename it at the call site.",
-                self.motion_group_id,
-                old,
-                new,
-            )
-            if isinstance(value, (int, float)):
-                offset = int(value)
-        return offset
 
     async def write_ios(self, ios: Mapping[str, ValueType]) -> None:
         """Write IO values (delegated to IOWriter for deduplication)."""
@@ -1140,7 +1094,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             )
         else:
             self._playback = _PlaybackClock()
-        dt_ms = step_spacing_ms(pending.dt_ms, pending.server_dt_ms)
+        dt_ms = pending.dt_ms
         stamps = [int(first_ms + k * dt_ms) for k in range(len(pending.steps))]
         kept = self._filtered(stamps, pending)
         if not kept:
@@ -1187,7 +1141,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
     def _timestamps(self, pending: PendingChunk) -> list[int]:
         """Each step's time on the session clock, for a chunk not placed by the lead rule."""
-        dt_ms = step_spacing_ms(pending.dt_ms, pending.server_dt_ms)
+        dt_ms = pending.dt_ms
         base_ms = pending.first_timestamp_ms
         if base_ms is None or dt_ms <= 0:
             if base_ms is None:

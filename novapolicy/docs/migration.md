@@ -200,3 +200,5 @@ Also changed:
   `connect_action_chunk`, `create_bridge_chunk`, `chunk_duration_s` and their result types. The
   modules (`Smoothing`, `EndpointRamp`, `Bridge`) do the same per motion group; the per-group
   helpers are `novapolicy.chunking.smooth_steps`, `ramp_steps` and `bridge_steps`.
+- **Removed shims:** `update_chunk(anchor_offset_steps=...)` (use `timestamp_offset_steps`),
+  `update_chunk(server_dt_ms=...)` and `make_waypoints_request` (the session stamps chunks itself).
