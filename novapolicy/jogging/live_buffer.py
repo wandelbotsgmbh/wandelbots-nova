@@ -243,7 +243,7 @@ class LiveBuffer:
     timeline (contract T2). Measured on a virtual UR10e at about 90 Hz: 0.015 deg rms against the
     commanded sine, 0.45 to 0.84 deg without it. Not for policy steps: a one-step RL policy at
     30 Hz tracked better on the lead path (path p90 0.3 against 0.6 to 0.7 mm with 80 ms, peaks
-    9 against 13 to 16 mm).
+    9 to 10 against 13 to 16 mm).
 
     A chunk of several steps carries its own horizon: it passes through and clears the buffer.
     """

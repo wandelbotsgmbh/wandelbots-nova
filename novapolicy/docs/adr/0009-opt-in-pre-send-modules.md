@@ -29,9 +29,9 @@ hold padding, queue smoothing) move into modules later, one at a time, each with
 500 ms buffer 0.015° rms against the target; no buffer 0.45–0.84° with peaks up to twice the
 commanded speed; the lead path 2.9°, its waypoints 11 ms apart colliding. `EaseIn(1 s)` cut the
 peak speed in the first second from 85 to 54°/s. One-step RL at 30 Hz: 80 ms buffer module path
-p90 0.6–0.7 mm, peaks 13–16 mm (the old built-in buffer 1.1–1.8 mm, 44 mm); 180 ms lead
-0.3–0.4 mm, 9–10 mm. Re-run on the final code (2026-11-22): jogging and dual-arm numbers
-unchanged.
+p90 0.6–0.7 mm, peaks 13–16 mm (2 runs; the old built-in buffer 1.1–1.8 mm, 44 mm); lead path
+0.3–0.4 mm, 10 mm at 180 ms (2026-11-21), 0.3 mm, 9 mm at the default 100 ms (1 run). Re-run on
+the final code (2026-11-22): jogging and dual-arm numbers unchanged.
 
 **Consequences.** The executor, the joggers and the session shape nothing unless a module is
 passed, and new shaping has one place to go. Jogging scripts that relied on the default buffer
