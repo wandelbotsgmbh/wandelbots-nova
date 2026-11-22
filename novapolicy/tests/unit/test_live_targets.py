@@ -215,15 +215,16 @@ def test_nothing_is_buffered_or_shaped_unless_passed() -> None:
         assert "stages" not in params, factory.__name__
 
 
-def test_live_targets_carry_the_loop_time_in_exact_grid_steps() -> None:
+@pytest.mark.parametrize("ack0_ms", [8.0, 8.6])  # sessions start near 0 ms
+def test_live_targets_carry_the_loop_time_in_exact_grid_steps(ack0_ms: float) -> None:
     """A LiveBuffer times targets by observed_at_ms on its 10 ms grid: converting the loop time
     to ms must not land a target 1 ms short (``0.29 * 1000`` truncates to 289), a whole grid
-    step there."""
+    step there, whether or not the loop's anchor is a whole ms."""
     jogger, mg, session = _push_jogger()
     jogger._loop_t0 = 0.0
-    jogger._ack0_ms = 1000.0
-    for i in range(100):
-        jogger._tick_ms = 1000.0 + i * 10.0
+    jogger._ack0_ms = ack0_ms
+    for i in range(1000):  # 10 s: 2.01 s is the first to truncate from 8 ms
+        jogger._tick_ms = ack0_ms + i * 10.0 + 0.3  # server ticks fall anywhere in a grid step
         jogger._set_live_target(mg, [float(i), 0.0, 0.0, 0.0, 0.0, 0.0])
     produced = [chunk["observed_at_ms"] for chunk in session.chunks]
     assert all(b - a == 10 for a, b in pairwise(produced)), produced
