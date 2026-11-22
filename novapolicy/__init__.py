@@ -23,7 +23,7 @@ from novapolicy.executor import (
     PolicyExecutor,
     resolve_actions,
 )
-from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
+from novapolicy.gr00t import Gr00tPolicyClient
 from novapolicy.jogging import (
     Bridge,
     DropLate,
@@ -145,7 +145,6 @@ __all__ = [
     "PolicySchema",
     "PoseSource",
     "QueuedPolicyClient",
-    "RTCConfig",
     "Rad2Deg",
     "Scale",
     "SequentialExecution",

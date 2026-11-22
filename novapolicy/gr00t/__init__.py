@@ -10,7 +10,6 @@ plus the ``Gr00tMsgSerializer`` and ``Gr00tZmqTransport`` internals.
 """
 
 from novapolicy.gr00t.client import Gr00tPolicyClient
-from novapolicy.gr00t.rtc import RTCConfig
 from novapolicy.gr00t.transport import Gr00tMsgSerializer, Gr00tZmqTransport
 
 GROOT_PROTOCOL_VERSION = "1.7"
@@ -21,5 +20,4 @@ __all__ = [
     "Gr00tMsgSerializer",
     "Gr00tPolicyClient",
     "Gr00tZmqTransport",
-    "RTCConfig",
 ]

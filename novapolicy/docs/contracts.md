@@ -95,11 +95,11 @@ Tests: `test_a_lead_chunk_of_several_steps_is_dated_by_its_observation`,
 
 **T2 Timelines of the policy's own are kept.** Exceptions to T1, each used verbatim:
 an explicit `first_timestamp_ms` (never bridged); a timestep queue's chunk at
-`origin + Δtimestep·dt`; an RTC chunk at "now" minus `seam_backdate_steps·dt`; a continuous
+`origin + Δtimestep·dt`; a continuous
 chunk with a bridge in front at "now".
 Tests: `test_an_explicit_start_time_always_wins`, `test_a_chunk_with_its_own_timestamp_is_not_bridged`,
 `test_async_queue_replacements_preserve_the_initial_policy_timeline`, `test_a_chunk_on_its_own_timeline_is_not_dated_by_the_observation`,
-`test_a_chunk_with_its_own_backdate_is_not_dated_by_the_observation`.
+
 
 **T3 Late steps are dropped, never retimed** (the `DropLate` filter, in every default pipeline). A
 step due within `MIN_LEAD_MS` (20 ms) of now is not sent; the others keep their times, exactly
@@ -108,7 +108,6 @@ A chunk stamped at the send and the final target of a run always pass. Under T1 
 execution nothing is ever late.
 Tests: `test_waypoints_already_in_the_past_are_trimmed_before_sending`,
 `test_a_trimmed_chunk_still_reports_where_each_caller_step_landed`, `test_a_lead_chunk_that_is_late_entirely_is_not_sent_and_not_guarded`.
-Exception: an RTC chunk's backdated head is sent although it is past (*untested*).
 
 **T4 One-step chunks in continuous execution** are spaced one policy step apart by a playback
 clock that follows the observations by at most 10% of a step per step and jumps to them when
@@ -160,10 +159,9 @@ collection while the loop runs and released when the run ends. Test:
 `test_setup_objects_are_frozen_only_while_the_loop_runs`.
 
 **T12 Setups the executor would run wrongly are refused at construction:** under sequential
-execution RTC, a timestep queue (`QueuedPolicyClient`, LeRobot's async queue) and a `LiveBuffer`
+execution a timestep queue (`QueuedPolicyClient`, LeRobot's async queue) and a `LiveBuffer`
 in the pipeline; under continuous execution a timestep queue without a `Bridge`, whose timeline
 is anchored on its first bridged chunk. Tests:
-`test_rtc_without_overlapping_placement_is_rejected`,
 `test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected`,
 `test_a_timestep_queue_without_a_bridge_is_refused_before_anything_moves`.
 

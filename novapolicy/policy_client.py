@@ -72,11 +72,6 @@ class PolicyClient(ABC):
         """
         return None
 
-    @property
-    def rtc(self) -> object | None:
-        """Model-side RTC configuration, or ``None`` when RTC is disabled."""
-        return None
-
 
 DEFAULT_CONTROL_FREQ = 30.0
 """A policy's control frequency in Hz when a client is given none."""

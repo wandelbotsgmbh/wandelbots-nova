@@ -373,7 +373,6 @@ def apply_relative_mode(
         dt_ms=chunk.dt_ms,
         first_timestamp_ms=chunk.first_timestamp_ms,
         action_timestep=chunk.action_timestep,
-        seam_backdate_steps=chunk.seam_backdate_steps,
     )
 
 
@@ -447,8 +446,7 @@ def placement(
 
     * an explicit ``chunk.first_timestamp_ms`` (>=0): used verbatim;
     * in continuous execution a chunk that does not answer the latest observation as returned
-      (``from_observation`` false: a bridge in front), or carries a timestep or a backdate its
-      client computed (RTC): "now", backdated by ``seam_backdate_steps``.
+      (``from_observation`` false) or carries a timestep of its own: "now" at the send.
     """
     if chunk.first_timestamp_ms >= 0:
         return Placement(ServerMs(chunk.first_timestamp_ms), 0)
@@ -456,9 +454,8 @@ def placement(
         return Placement(None, 0, lead=True)
     if (
         from_observation
-        and chunk.seam_backdate_steps == 0
         and chunk.action_timestep < 0
         and (chunk.dt_ms > 0 or is_single_step(chunk))
     ):
         return Placement(None, 0, lead=True)
-    return Placement(None, -chunk.seam_backdate_steps)
+    return Placement(None, 0)

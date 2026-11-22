@@ -89,18 +89,6 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     bridge boundary, then places later lookaheads at the corresponding absolute
     session timestamps instead of re-anchoring each replacement to ``now``."""
 
-    seam_backdate_steps: int = 0
-    """RTC seam backdate, in steps, for connecting overlapping chunks.
-
-    The executor backdates the chunk anchor by ``seam_backdate_steps * dt_ms`` so
-    the step matching the robot's current position lands at "now": the reused head
-    sits in the immediate past (matching what's already executing) and the fresh
-    prediction extends into the future. The client computes this as
-    ``executed_steps - (action_horizon - overlap_steps)`` — the index in the new
-    chunk that corresponds to where the robot currently is. (This equals the RTC
-    frozen-step count only when overlap is unclamped, hence the field name.)
-    0 = no RTC / no backdate."""
-
     retained_prefix_steps: int = 0
     """Leading steps a queue client already published to the controller: smoothing keeps them
     exactly as they were sent (the queue's predecessor and frozen head). ``0`` for any other

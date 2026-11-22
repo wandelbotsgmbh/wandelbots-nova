@@ -204,3 +204,9 @@ Also changed:
   `update_chunk(server_dt_ms=...)` and `make_waypoints_request` (the session stamps chunks itself).
 - **Removed deprecated rate parameters:** `LeRobotPolicyClient(fps=...)` and
   `Gr00tPolicyClient(dt_ms=...)` (pass `control_freq=`), `LeRobotPolicyClient(playback_speed=...)`.
+
+## GR00T real-time chunking (RTC) is removed
+
+`Gr00tPolicyClient(rtc=...)`, `RTCConfig`, `client.rtc`, `reset_rtc()` and
+`ActionChunk.seam_backdate_steps` are gone. Run GR00T sequentially, or continuously with the
+pipeline's `Smoothing` and `Bridge` modules to connect chunks.

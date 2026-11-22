@@ -275,8 +275,7 @@ def _log_text(
 
     lines = [
         f"Step {step} | action_timestep={chunk.action_timestep} | dt_ms={chunk.dt_ms} | "
-        f"first_timestamp_ms={chunk.first_timestamp_ms} | "
-        f"seam_backdate_steps={chunk.seam_backdate_steps}"
+        f"first_timestamp_ms={chunk.first_timestamp_ms}"
     ]
 
     for mg_id, steps in chunk.joints.items():

@@ -19,13 +19,6 @@ import numpy as np
 
 from novapolicy import training_range
 from novapolicy.gr00t.eef import TcpFormat, pose_to_eef
-from novapolicy.gr00t.rtc import (  # ruff: ignore[typing-only-first-party-import]
-    RTCConfig,
-    RTCState,
-    compute_rtc_options,
-    detect_action_horizon,
-    seam_backdate_steps,
-)
 from novapolicy.gr00t.transport import Gr00tZmqTransport, require_dict
 from novapolicy.ops import apply_ops
 from novapolicy.policy_client import PolicyClient, resolve_control_freq
@@ -100,7 +93,6 @@ class Gr00tPolicyClient(PolicyClient):
         api_token: str | None = None,
         control_freq: float | None = None,
         tcp_format: TcpFormat = TcpFormat.ROT6D,
-        rtc: RTCConfig | None = None,
         statistics: str | Path | None = None,
         embodiment: str | None = None,
     ) -> None:
@@ -125,21 +117,8 @@ class Gr00tPolicyClient(PolicyClient):
         self._server_state_keys: set[str] | None = None
         self._language_key = _DEFAULT_LANGUAGE_KEY
 
-        # RTC (Real-Time Chunking) — client-side state
-        self._rtc_config: RTCConfig | None = rtc
-        self._rtc_state = RTCState(
-            latency_queue=__import__("collections").deque(
-                maxlen=rtc.latency_queue_size if rtc else 10
-            )
-        )
-
     async def connect(self, motion_group_ids: list[str]) -> None:  # ruff: ignore[unused-method-argument]
-        """Create the ZMQ REQ socket.
-
-        Called once per episode by the executor.  Resets RTC state so frozen
-        actions from a previous episode never bleed into the next one.
-        """
-        self.reset_rtc()
+        """Create the ZMQ REQ socket; called once per episode by the executor."""
         self._range_checked = False
         await asyncio.to_thread(self._transport.connect)
 
@@ -199,17 +178,6 @@ class Gr00tPolicyClient(PolicyClient):
             )
             raise ValueError(msg)
 
-    @property
-    def rtc(self) -> RTCConfig | None:
-        """RTC configuration. Set to None to disable, RTCConfig to enable."""
-        return self._rtc_config
-
-    @rtc.setter
-    def rtc(self, value: RTCConfig | None) -> None:
-        self._rtc_config = value
-        if value is None:
-            self._rtc_state.reset()
-
     def _ranges_for(self, server_state_keys: set[str]) -> dict[str, list[tuple[float, float]]]:
         """Per state key, the trained ``(min, max)`` of each dimension, from the embodiment
         named in ``embodiment`` or the one whose state keys are exactly the server's."""
@@ -241,10 +209,6 @@ class Gr00tPolicyClient(PolicyClient):
         """The step spacing from ``control_freq``."""
         return self._dt_ms
 
-    def reset_rtc(self) -> None:
-        """Clear RTC state (call on episode/task boundaries)."""
-        self._rtc_state.reset()
-
     async def get_actions(
         self,
         states: dict[str, RobotState],
@@ -253,34 +217,17 @@ class Gr00tPolicyClient(PolicyClient):
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
         """Build GR00T observation from raw states + images, send, decode response."""
-        import time as _time  # ruff: ignore[import-outside-top-level]
-
         groot_obs = await self._build_groot_obs(states, schema, images, io_values)
         if self._state_ranges and not self._range_checked:
             self._range_checked = True
             training_range.check(_bounded_state(groot_obs["state"], self._state_ranges))
 
-        # RTC: compute options (overlap/frozen steps) based on latency
-        # Server stores the previous action internally — we just send timing params
-        options: dict[str, object] | None = None
-        if self._rtc_config is not None and self._rtc_state.action_horizon is not None:
-            latency_estimate = (
-                sum(self._rtc_state.latency_queue) / len(self._rtc_state.latency_queue)
-                if self._rtc_state.latency_queue
-                else 0.0
-            )
-            options = compute_rtc_options(
-                self._rtc_config, self._rtc_state, latency_estimate, self._step_ms()
-            )
-
-        t0 = _time.monotonic()
         response = await asyncio.to_thread(
             self._transport.call,
             "get_action",
-            {"observation": groot_obs, "options": options},
+            {"observation": groot_obs, "options": None},
         )
 
-        inference_latency = _time.monotonic() - t0
         if not isinstance(response, (list, tuple)) or len(response) != _RESPONSE_PAIR_SIZE:
             msg = (
                 "GR00T get_action response must be a 2-tuple of (action, info), "
@@ -291,24 +238,7 @@ class Gr00tPolicyClient(PolicyClient):
         action_raw = require_dict(response[0], name="GR00T action")
         info_raw = require_dict(response[1], name="GR00T info")
 
-        # RTC: update timing state (server stores action internally)
-        if self._rtc_config is not None:
-            import time as _time2  # ruff: ignore[import-outside-top-level]
-
-            if self._rtc_state.action_horizon is None:
-                self._rtc_state.action_horizon = detect_action_horizon(action_raw)
-            self._rtc_state.latency_queue.append(inference_latency)
-            self._rtc_state.last_inference_time = _time2.monotonic()
-
-        chunk = self._decode_action(schema, action_raw, info_raw)
-        # Attach the RTC seam backdate (in steps) so the executor anchors this
-        # chunk's reused head at the robot's current position (see
-        # seam_backdate_steps).
-        if options is not None and self._rtc_state.action_horizon is not None:
-            backdate = seam_backdate_steps(self._rtc_state)
-            if backdate:
-                chunk = chunk.model_copy(update={"seam_backdate_steps": backdate})
-        return chunk
+        return self._decode_action(schema, action_raw, info_raw)
 
     async def close(self) -> None:
         """Close the socket and terminate the ZMQ context."""
@@ -500,7 +430,7 @@ def _action_array(
         return None
     arr = action[key]
     if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM - 1:
-        arr = arr[None]  # (horizon, dof) without the batch axis, as RTC also accepts
+        arr = arr[None]  # (horizon, dof) without the batch axis
     if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
         return cast("np.ndarray[Any, np.dtype[np.float32]]", arr)
     got = f"{type(arr).__name__} {getattr(arr, 'shape', '')}".strip()

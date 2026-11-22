@@ -251,18 +251,16 @@ def test_trim_bounds_each_arm_to_n_and_preserves_a_prefix(steps, n):
 @given(steps=_STEPS, n=st.integers(min_value=1, max_value=30))
 @settings(max_examples=200, deadline=None)
 def test_trim_never_mutates_chunk_metadata(steps, n):
-    """Trimming touches only the step lists; dt/start/ios/seam are unchanged."""
+    """Trimming touches only the step lists; dt/start/ios are unchanged."""
     chunk = ActionChunk(
         joints={"0@ur5e": steps},
         ios={"0@ur5e": {"do[0]": True}},
         dt_ms=33.0,
         first_timestamp_ms=7,
-        seam_backdate_steps=2,
     )
     trimmed = trim_chunk(chunk, n)
     assert trimmed.dt_ms == chunk.dt_ms
     assert trimmed.first_timestamp_ms == chunk.first_timestamp_ms
-    assert trimmed.seam_backdate_steps == chunk.seam_backdate_steps
     assert trimmed.ios == chunk.ios
 
 
@@ -328,15 +326,6 @@ def test_sequential_execution_uses_the_same_lead_rule():
         assert place.first_timestamp_ms is None
 
 
-@given(seam=st.integers(min_value=0, max_value=64))
-def test_continuous_execution_anchors_at_now_backdated_by_the_seam(seam):
-    """Continuous execution resolves now, backdated by the seam steps."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6] * 8}, seam_backdate_steps=seam, dt_ms=33.0)
-    place = placement(chunk, execution=ContinuousExecution())
-    assert place.first_timestamp_ms is None
-    assert place.timestamp_offset_steps == -seam
-
-
 def test_a_chunk_answering_an_observation_is_dated_by_it():
     """One step or many: a continuous chunk from the latest observation is placed by the
     session, a fixed lead after that observation."""
@@ -349,17 +338,15 @@ def test_a_chunk_answering_an_observation_is_dated_by_it():
 
 
 def test_a_chunk_on_its_own_timeline_is_not_dated_by_the_observation():
-    """A policy timestep, a client-computed backdate (RTC) or a spacing-less multi-step chunk
-    keeps the anchor it already has."""
+    """A policy timestep or a spacing-less multi-step chunk keeps the anchor it already has."""
     base = ActionChunk(joints={"0@ur5e": [[0.0] * 6] * 8}, dt_ms=1000 / 30)
     for chunk in (
         base.model_copy(update={"action_timestep": 4}),
-        base.model_copy(update={"seam_backdate_steps": 3}),
         base.model_copy(update={"dt_ms": 0.0}),
     ):
         place = placement(chunk, execution=ContinuousExecution(), from_observation=True)
         assert not place.lead
-        assert place.timestamp_offset_steps == -chunk.seam_backdate_steps
+        assert place.timestamp_offset_steps == 0
 
 
 # compose_tcp_deltas ---------------------------------------------------------

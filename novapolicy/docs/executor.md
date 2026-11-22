@@ -64,7 +64,7 @@ first timestamp onward, the previous chunk's still-buffered targets are discarde
 not teleport — the servo aims from the robot's actual position toward the new targets
 and catches up bounded by the jogger's velocity/acceleration limits (the white line).
 A client must therefore preserve or smooth the retained overlap. This can come
-from an asynchronous action queue or from model-side [Real-Time Chunking](rtc.md).
+from an asynchronous action queue.
 
 ## Configuration
 
@@ -115,8 +115,8 @@ continuous_asap = PolicyExecutor(
 | Mode | Behavior | Use case |
 |---|---|---|
 | `SequentialExecution()` | Wait for exact chunk completion and standstill, bridge to the next prediction, then replan | Settled sequential inference |
-| `ContinuousExecution()` | Replace chunks as fast as inference allows | Asynchronous inference or RTC |
-| `ContinuousExecution(rate_hz=20)` | Replace chunks at a positive fixed rate | Rate-controlled asynchronous inference or RTC |
+| `ContinuousExecution()` | Replace chunks as fast as inference allows | Asynchronous inference |
+| `ContinuousExecution(rate_hz=20)` | Replace chunks at a positive fixed rate | Rate-controlled asynchronous inference |
 
 The mode owns every setting that is meaningful to it. In particular, endpoint ramps belong to
 `SequentialExecution`; a continuously replaced chunk has no final endpoint to brake at.
@@ -417,7 +417,7 @@ offset measured in whole `dt` steps —
 | explicit `first_timestamp_ms >= 0` | that value | `0` (exact) |
 | `SequentialExecution` | the send on the server's clock + `max_expected_latency_ms` | step `k` at `+ k·dt`; nothing is late |
 | `ContinuousExecution`, chunk from the latest observation | the observation time on the server's clock + `max_expected_latency_ms` | step `k` at `+ k·dt`; steps too close to send are dropped |
-| `ContinuousExecution`, chunk with its own timeline (RTC backdate, policy timestep, bridge) | `now` | `-seam_backdate_steps` (backdated) |
+| `ContinuousExecution`, chunk with its own timeline (policy timestep, bridge) | `now` | `0` |
 
 The `now` anchor is resolved at *yield time* (right before the websocket send)
 so it cannot go stale while the chunk waits in the session queue.

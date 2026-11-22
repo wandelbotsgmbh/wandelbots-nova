@@ -99,20 +99,14 @@ class _TestPolicy(CallbackPolicyClient):
         fn: Callable[[object], Awaitable[ActionChunk]],
         *,
         requires_bridge: bool = False,
-        rtc: object | None = None,
     ) -> None:
         super().__init__(fn)
         self._requires_bridge = requires_bridge
-        self._rtc = rtc
         self.synchronize_action_timestep = MagicMock()
 
     @property
     def requires_first_waypoint_bridge(self) -> bool:
         return self._requires_bridge
-
-    @property
-    def rtc(self) -> object | None:
-        return self._rtc
 
 
 _SLOW_SETUP_S = 1.0
@@ -1018,23 +1012,6 @@ async def test_a_queued_client_runs_continuously_on_the_timestep_timeline(robot:
     assert all(399.0 < x < 410.0 for x in xs)  # absolute, resolved once from 400 mm
 
 
-# ---------------------------------------------------------------------------
-# RTC requires overlapping placement
-# ---------------------------------------------------------------------------
-
-
-def test_rtc_without_overlapping_placement_is_rejected():
-    """RTC + wait-for-chunk would silently drop the seam backdate — reject it."""
-    policy = _TestPolicy(_hold_action, rtc=object())
-    with pytest.raises(ValueError, match="RTC"):
-        PolicyExecutor(
-            _schema(),
-            policy,
-            motion=WaypointConfig(),
-            execution=SequentialExecution(),
-        )
-
-
 def test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected():
     """Sequential execution never replaces a running plan, so neither gets its timing."""
     with pytest.raises(ValueError, match="requires ContinuousExecution"):
@@ -1073,17 +1050,6 @@ async def test_a_chunk_with_its_own_timestamp_is_not_bridged(robot: _Robot):
     first_send = robot.session.update_chunk.call_args_list[0].kwargs
     assert first_send["first_timestamp_ms"] == 5_000
     assert first_send["steps"][0] == [3.0] * 6
-
-
-def test_rtc_with_continuous_execution_is_accepted():
-    """RTC and continuous replacement are a valid combination."""
-    policy = _TestPolicy(_hold_action, rtc=object())
-    PolicyExecutor(
-        _schema(),
-        policy,
-        motion=WaypointConfig(),
-        execution=ContinuousExecution(rate_hz=20),
-    )  # no raise
 
 
 @pytest.mark.asyncio
@@ -1204,26 +1170,6 @@ async def test_a_sequential_chunk_is_dated_from_its_send_and_keeps_its_hold(robo
     assert first_send["lead"] is True
     assert first_send["observed_at_ms"] is None  # the send is the reference
     assert first_send["extend_buffer"] is True
-
-
-@pytest.mark.asyncio
-async def test_a_chunk_with_its_own_backdate_is_not_dated_by_the_observation(robot: _Robot):
-    """An RTC chunk carries the backdate its client computed; it keeps the old anchor."""
-    executor: PolicyExecutor
-
-    async def policy(_obs: object) -> ActionChunk:
-        executor.stop()
-        return ActionChunk(joints={MG_ID: [[3.0] * 6] * 8}, dt_ms=1000 / 30, seam_backdate_steps=3)
-
-    executor = PolicyExecutor(
-        _schema(), _callback(policy), timeout_s=1.0, execution=ContinuousExecution()
-    )
-    await executor.run()
-
-    first_send = robot.session.update_chunk.call_args_list[0].kwargs
-    assert first_send["lead"] is False
-    assert first_send["observed_at_ms"] is None
-    assert first_send["timestamp_offset_steps"] == -3
 
 
 # ---------------------------------------------------------------------------

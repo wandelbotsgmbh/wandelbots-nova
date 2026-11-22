@@ -17,12 +17,10 @@ from nova.cell import virtual_controller
 from nova.program import ProgramPreconditions
 from nova.types import MotionSettings
 from novapolicy import (
-    ContinuousExecution,
     Gr00tPolicyClient,
     Observation,
     PolicyExecutor,
     PolicySchema,
-    RTCConfig,
     SequentialExecution,
     WebRTCCameras,
 )
@@ -95,10 +93,6 @@ async def gr00t_dual_arm(ctx: ProgramContext):
         ]
     )
 
-    # Toggle RTC here. RTC (True) connects overlapping chunks via server-side
-    # inpainting + a seam backdate; off (False) just runs plain chunks.
-    use_rtc = False
-
     # dt_ms is deliberately larger than the model's native 66.7 ms step. With a
     # 16-step horizon and ~800 ms inference latency (network + 4-image transport
     # dominate, NOT diffusion), a 66.7 ms step makes each chunk only ~1.07 s long
@@ -111,7 +105,6 @@ async def gr00t_dual_arm(ctx: ProgramContext):
         host=GROOT_HOST,
         port=GROOT_PORT,
         control_freq=1000.0 / 130.0,  # the training data's rate: one step every 130 ms
-        rtc=RTCConfig() if use_rtc else None,
     )
 
     info = await client.get_server_info()
@@ -121,10 +114,9 @@ async def gr00t_dual_arm(ctx: ProgramContext):
         f"horizon={info['action_horizon']}"
     )
 
-    # RTC continuously replaces chunks as fast as inference allows. Without
-    # RTC, execute each chunk to NOVA standstill before observing and inferring
-    # again. n_action_steps limits the executed prediction horizon in both modes.
-    execution = ContinuousExecution() if use_rtc else SequentialExecution()
+    # Execute each chunk to NOVA standstill before observing and inferring again;
+    # n_action_steps limits the executed prediction horizon.
+    execution = SequentialExecution()
     executor = PolicyExecutor(
         schema,
         client,

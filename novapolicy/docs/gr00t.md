@@ -14,7 +14,6 @@ from novapolicy import (
     Observation,
     PolicyExecutor,
     PolicySchema,
-    RTCConfig,
 )
 
 schema = PolicySchema(
@@ -31,7 +30,7 @@ schema = PolicySchema(
     ]
 )
 
-client = Gr00tPolicyClient(host="gpu-server", port=5555, control_freq=15, rtc=RTCConfig())
+client = Gr00tPolicyClient(host="gpu-server", port=5555, control_freq=15)
 
 executor = PolicyExecutor(
     schema,
@@ -179,69 +178,6 @@ asks for it; its `HoldWhileGripping` keeps the arm still while the jaws move.
 - **Sim-to-real:** a policy trained on rendered images reads real camera images less precisely.
   Once a replay confirms the cell, remaining placement errors come from the policy, not from the
   deployment settings.
-
-## Real-Time Chunking (RTC)
-
-RTC reuses the tail of the previous action prediction as a warm start for the
-diffusion denoising process, producing smoother overlapping action chunks.
-See [`rtc.md`](./rtc.md) for the full investigation and design.
-
-### Server-side patch (required)
-
-The GR00T inference server must forward `options` to the model. Apply this
-one-line patch to `gr00t/novapolicy/gr00t_policy.py` in the server's Isaac-GR00T
-checkout:
-
-```diff
--            model_pred = self.model.get_action(**collated_inputs)
-+            model_pred = self.model.get_action(**collated_inputs, options=options)
-```
-
-Alternatively, inject it at container startup via sed (no rebuild needed):
-
-```yaml
-# In the deployment args, before the server starts:
-sed -i 's/model_pred = self.model.get_action(\*\*collated_inputs)/model_pred = self.model.get_action(**collated_inputs, options=options)/' /workspace/gr00t/novapolicy/gr00t_policy.py
-```
-
-### Client-side usage
-
-```python
-from novapolicy import ContinuousExecution, Gr00tPolicyClient, PolicyExecutor, RTCConfig
-
-# Enable RTC
-client = Gr00tPolicyClient(
-    host="gpu-server",
-    port=30555,
-    control_freq=15,
-    rtc=RTCConfig(),  # pass RTCConfig to enable, None (default) to disable
-)
-
-# RTC requires continuously replaced chunks.
-executor = PolicyExecutor(
-    schema,
-    client,
-    execution=ContinuousExecution(rate_hz=20),
-    n_action_steps=8,
-)
-```
-
-RTC can be toggled at runtime:
-
-```python
-client.rtc = None  # disable — next calls use pure diffusion from noise
-client.rtc = RTCConfig()  # re-enable
-client.reset_rtc()  # clear stored action (call on episode/task boundaries)
-```
-
-### RTCConfig parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `denoising_steps` | `8` | Diffusion denoising iterations |
-| `max_overlap_factor` | `0.75` | Max fraction of action horizon to overlap |
-| `ramp_rate` | `3.0` | Exponential blending ramp speed |
-| `systematic_latency_offset` | `0.02` | Fixed latency added to measured inference time (s) |
 
 ## Wire Protocol
 

@@ -140,7 +140,7 @@ def _check_execution_mode(
     """Reject a setup the executor would run wrongly, before anything moves.
 
     Sequential execution waits for standstill and observes again, so nothing in it replaces a
-    plan while it runs: an RTC seam, a timestep queue (``QueuedPolicyClient``, LeRobot's async
+    plan while it runs: a timestep queue (``QueuedPolicyClient``, LeRobot's async
     queue) or a live-target buffer would be fed timings that never come. In continuous
     execution a timestep queue anchors its timeline on its first bridged chunk, so its pipeline
     needs a ``Bridge``.
@@ -155,8 +155,6 @@ def _check_execution_mode(
                 "default_pipeline(execution=..., policy=...)"
             )
         return
-    if policy.rtc is not None:
-        raise ValueError("RTC requires ContinuousExecution")
     if policy.requires_first_waypoint_bridge:
         raise ValueError(
             f"{type(policy).__name__} replaces its plan step by step and requires "
