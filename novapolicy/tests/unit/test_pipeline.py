@@ -8,6 +8,7 @@ import pytest
 
 from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.live_buffer import LiveBuffer
+from novapolicy.jogging.modules import DropLate
 from novapolicy.jogging.pipeline import (
     ChunkModule,
     EaseIn,
@@ -94,24 +95,33 @@ def test_the_module_kinds_are_told_apart_by_their_method():
 
 def test_split_pipeline_keeps_each_kind_in_order():
     first, second, buffer = _ChunkProbe(), _ChunkProbe(), LiveBuffer(window_ms=100.0)
-    ease, probe = EaseIn(duration_s=1.0), _WaypointProbe()
-    chunk_modules, waypoint_modules = split_pipeline([
+    ease, probe, late = EaseIn(duration_s=1.0), _WaypointProbe(), DropLate()
+    chunk_modules, filters, waypoint_modules = split_pipeline([
         first,
         buffer,
         second,
         Timestamps(),
+        late,
         ease,
         probe,
     ])
     assert chunk_modules == [first, buffer, second]
+    assert filters == [late]
     assert waypoint_modules == [ease, probe]
 
 
 def test_timestamps_is_optional_and_an_empty_pipeline_has_no_modules():
     buffer, ease = LiveBuffer(window_ms=100.0), EaseIn(duration_s=1.0)
-    assert split_pipeline([buffer, ease]) == ([buffer], [ease])
-    assert split_pipeline([Timestamps()]) == ([], [])
-    assert split_pipeline([]) == ([], [])
+    assert split_pipeline([buffer, ease]) == ([buffer], [], [ease])
+    assert split_pipeline([Timestamps()]) == ([], [], [])
+    assert split_pipeline([]) == ([], [], [])
+
+
+def test_a_filter_after_a_waypoint_module_or_a_chunk_module_after_a_filter_is_refused():
+    with pytest.raises(ValueError, match="before the waypoint modules"):
+        split_pipeline([EaseIn(duration_s=1.0), DropLate()])
+    with pytest.raises(ValueError, match="before Timestamps"):
+        split_pipeline([DropLate(), LiveBuffer(window_ms=100.0)])
 
 
 def test_a_chunk_module_after_a_waypoint_module_is_refused():

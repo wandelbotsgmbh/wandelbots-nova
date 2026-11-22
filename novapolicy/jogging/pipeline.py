@@ -29,7 +29,7 @@ action belongs to.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -83,21 +83,39 @@ class WaypointModule(Protocol):
         ...
 
 
+@runtime_checkable
+class WaypointFilter(Protocol):
+    """After the timestamps, before the waypoint modules: which waypoints go out."""
+
+    def keep(
+        self, waypoints: list[TimedWaypoint], chunk: PendingChunk, context: ModuleContext
+    ) -> list[TimedWaypoint]:
+        """The waypoints to send: some of ``waypoints``, in order, unchanged. ``chunk`` is the
+        chunk they were stamped from."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class Timestamps:
     """The placement step, as an item of the list (contracts T1 to T3)."""
 
 
-def split_pipeline(
-    pipeline: Sequence[object],
-) -> tuple[list[ChunkModule], list[WaypointModule]]:
-    """The chunk modules and the waypoint modules of ``pipeline``, in order.
+class SplitPipeline(NamedTuple):
+    """A pipeline sorted by kind, each in the order given."""
 
-    Raises ``ValueError`` when a chunk module comes after the timestamps or a waypoint module
-    before them, when ``Timestamps()`` appears twice, or for an item that is neither.
+    chunk_modules: list[ChunkModule]
+    filters: list[WaypointFilter]
+    waypoint_modules: list[WaypointModule]
+
+
+def split_pipeline(pipeline: Sequence[object]) -> SplitPipeline:
+    """The modules of ``pipeline`` by kind, in order.
+
+    Raises ``ValueError`` when the kinds are out of order (chunk modules, ``Timestamps()``,
+    filters, waypoint modules) or ``Timestamps()`` appears twice, and ``TypeError`` for an item
+    that is none of them.
     """
-    chunk_modules: list[ChunkModule] = []
-    waypoint_modules: list[WaypointModule] = []
+    split = SplitPipeline([], [], [])
     stamped = False
     for item in pipeline:
         if isinstance(item, Timestamps):
@@ -105,17 +123,23 @@ def split_pipeline(
                 raise ValueError("Timestamps() appears twice in the pipeline")
             stamped = True
         elif isinstance(item, ChunkModule):
-            if stamped or waypoint_modules:
+            if stamped:
                 msg = f"{type(item).__name__} works on chunks; put it before Timestamps()"
                 raise ValueError(msg)
-            chunk_modules.append(item)
+            split.chunk_modules.append(item)
+        elif isinstance(item, WaypointFilter):
+            if split.waypoint_modules:
+                msg = f"{type(item).__name__} drops waypoints; put it before the waypoint modules"
+                raise ValueError(msg)
+            split.filters.append(item)
+            stamped = True  # the timestamps sit before the first filter
         elif isinstance(item, WaypointModule):
-            waypoint_modules.append(item)
+            split.waypoint_modules.append(item)
             stamped = True  # the timestamps sit before the first waypoint module
         else:
-            msg = f"{type(item).__name__} is not a pipeline module (on_chunk or on_waypoints)"
+            msg = f"{type(item).__name__} is not a pipeline module (on_chunk, keep or on_waypoints)"
             raise TypeError(msg)
-    return chunk_modules, waypoint_modules
+    return split
 
 
 @dataclass

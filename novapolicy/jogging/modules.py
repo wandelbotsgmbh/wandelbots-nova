@@ -22,7 +22,7 @@ from novapolicy.joint_limits import DEFAULT_MARGIN_RAD
 from novapolicy.types import SequentialExecution
 
 if TYPE_CHECKING:
-    from novapolicy.jogging.pipeline import ModuleContext
+    from novapolicy.jogging.pipeline import ModuleContext, TimedWaypoint
     from novapolicy.jogging.waypoints import PendingChunk
 
 
@@ -116,6 +116,34 @@ class EndpointRamp:
         return replace(chunk, steps=steps, caller_step_count=len(steps), when_due=when_due)
 
 
+MIN_LEAD_MS = 20.0
+"""Smallest lead a waypoint may still be sent with. A waypoint closer than this to the robot's
+session time is unreachable, and commanding it makes the server jump to catch up."""
+
+
+@dataclass(frozen=True, slots=True)
+class DropLate:
+    """Filter: drop the waypoints due within ``min_lead_ms`` of now; the rest keep their times.
+
+    A chunk is stamped when it is queued but sent a little later, and the robot is already past
+    a waypoint whose moment has gone: sending it makes the server jump back to it (contract T3,
+    ADR 0004). A chunk stamped at the send itself (no ``first_timestamp_ms`` and not placed
+    ahead) cannot be late and passes whole. When every waypoint is late, nothing is sent and the
+    robot keeps following the previous chunk. Leave this module out only to see late waypoints
+    on the wire.
+    """
+
+    min_lead_ms: float = MIN_LEAD_MS
+
+    def keep(
+        self, waypoints: list[TimedWaypoint], chunk: PendingChunk, context: ModuleContext
+    ) -> list[TimedWaypoint]:
+        if not chunk.lead and chunk.first_timestamp_ms is None:
+            return waypoints
+        earliest_ms = context.now_ms + self.min_lead_ms
+        return [(t, v) for t, v in waypoints if t >= earliest_ms]
+
+
 def default_pipeline(*, execution: object | None = None) -> list[object]:
     """The modules that run when no ``pipeline`` is given, in order.
 
@@ -124,6 +152,6 @@ def default_pipeline(*, execution: object | None = None) -> list[object]:
     execution, eases each chunk in and out.
     """
     if execution is None:
-        return [HoldPadding(), Timestamps()]
+        return [HoldPadding(), Timestamps(), DropLate()]
     ramp = [EndpointRamp()] if isinstance(execution, SequentialExecution) else []
-    return [*ramp, JointClamp(), HoldPadding(), Timestamps()]
+    return [*ramp, JointClamp(), HoldPadding(), Timestamps(), DropLate()]

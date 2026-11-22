@@ -5,7 +5,13 @@ from __future__ import annotations
 import pytest
 
 from novapolicy.jogging.clock import ServerMs
-from novapolicy.jogging.modules import EndpointRamp, HoldPadding, JointClamp, default_pipeline
+from novapolicy.jogging.modules import (
+    DropLate,
+    EndpointRamp,
+    HoldPadding,
+    JointClamp,
+    default_pipeline,
+)
 from novapolicy.jogging.pipeline import ModuleContext, Timestamps, split_pipeline
 from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.joint_limits import JointLimits
@@ -58,7 +64,7 @@ def test_the_defaults_are_valid_pipelines() -> None:
     sequential = default_pipeline(execution=SequentialExecution())
     for pipeline in (jog, continuous, sequential):
         split_pipeline(pipeline)
-        assert isinstance(pipeline[-1], Timestamps)
+        assert [type(m) for m in pipeline[-2:]] == [Timestamps, DropLate]
     assert [type(m) for m in continuous] == [JointClamp, *[type(m) for m in jog]]
     assert [type(m) for m in sequential] == [EndpointRamp, *[type(m) for m in continuous]]
 
@@ -80,3 +86,17 @@ def test_endpoint_ramp_keeps_every_step_and_moves_io_with_its_step() -> None:
     assert ramped.caller_step_count == len(ramped.steps)
     assert ramped.when_due is not None
     assert ramped.steps[ramped.when_due[0]] == [2.0]
+
+
+def test_drop_late_keeps_what_is_still_reachable_and_never_retimes() -> None:
+    chunk = PendingChunk(steps=[[0.0]] * 4, dt_ms=10.0, caller_step_count=4, first_timestamp_ms=0)
+    waypoints = [(ServerMs(t), [float(t)]) for t in (100, 110, 120, 130)]
+    context = ModuleContext(now_ms=ServerMs(85), position=None, step_ms=50.0)  # 105 is the edge
+    assert DropLate(min_lead_ms=20.0).keep(waypoints, chunk, context) == waypoints[1:]
+
+
+def test_drop_late_passes_a_chunk_stamped_at_the_send() -> None:
+    chunk = PendingChunk(steps=[[0.0]] * 2, dt_ms=10.0, caller_step_count=2)
+    waypoints = [(ServerMs(0), [0.0]), (ServerMs(10), [1.0])]
+    context = ModuleContext(now_ms=ServerMs(0), position=None, step_ms=50.0)
+    assert DropLate().keep(waypoints, chunk, context) == waypoints

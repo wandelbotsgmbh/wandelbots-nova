@@ -24,7 +24,7 @@ from nova.types import Pose, RobotState
 from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.io import IOWriter
 from novapolicy.jogging.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, RoundTrip, ServerMs
-from novapolicy.jogging.modules import JointClamp, default_pipeline
+from novapolicy.jogging.modules import MIN_LEAD_MS, JointClamp, default_pipeline
 from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
 from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
 from novapolicy.jogging.waypoints import (
@@ -47,10 +47,6 @@ logger = logging.getLogger(__name__)
 
 _HTTP_NOT_FOUND = 404
 
-# Smallest lead a waypoint may still be sent with. Waypoints closer than this to
-# the robot's current session time are unreachable, and commanding them makes
-# the server jump to catch up.
-MIN_LEAD_MS = 20.0
 
 _LATE_ACKS_LIMIT = 5
 
@@ -162,7 +158,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     ) -> None:
         self._motion_group = motion_group
         # Each session runs its own copy, so two arms never share a module's state.
-        self._chunk_modules, self._waypoint_modules = split_pipeline(
+        self._chunk_modules, self._filters, self._waypoint_modules = split_pipeline(
             copy.deepcopy(list(default_pipeline() if pipeline is None else pipeline))
         )
         self._last_sent_value: list[float] = []
@@ -1142,90 +1138,85 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._playback = _PlaybackClock()
         dt_ms = step_spacing_ms(pending.dt_ms, pending.server_dt_ms)
         stamps = [int(first_ms + k * dt_ms) for k in range(len(pending.steps))]
+        kept = self._filtered(stamps, pending)
+        if not kept:
+            return _ScheduledRequest(request=None, skipped=len(stamps), step_timestamps=stamps)
+        sent = [(stamps[i], list(pending.steps[i])) for i in kept]
         earliest_ms = now_ms + MIN_LEAD_MS
-        skip = sum(t < earliest_ms for t in stamps)
-        if skip == len(stamps):
-            return _ScheduledRequest(request=None, skipped=skip, step_timestamps=stamps)
-        sent = [
-            (t, list(step)) for t, step in zip(stamps[skip:], pending.steps[skip:], strict=True)
-        ]
         self._lead_window = [
             (t, step) for t, step in self._lead_window if earliest_ms <= t < sent[0][0]
         ] + sent
         request = self._request(self._lead_window, pending)
-        return _ScheduledRequest(request=request, skipped=skip, step_timestamps=stamps)
+        return _ScheduledRequest(request=request, skipped=kept[0], step_timestamps=stamps)
 
     def _trimmed_request(self, pending: PendingChunk) -> _ScheduledRequest:
-        """Build the request, dropping waypoints whose moment has already passed.
+        """Stamp the chunk (the pipeline's ``Timestamps()``), run the filters, build the request.
 
-        A chunk is timestamped when the caller builds it, but it is sent a little
-        later. That delay eats into the lead, and once step zero lands at or
-        behind the robot's current position the server has to jump to catch the
-        trajectory — heavy velocity ripple that gets worse the longer a chunk
-        waited, reaching several times the commanded speed for a slow caller.
+        Every step gets its time on the caller's timeline: ``first_timestamp_ms`` shifted by
+        ``timestamp_offset_steps``, or, without one, the session's "now" at the send, so nothing
+        can be stale yet. A final target is moved up to the earliest reachable moment instead,
+        because the robot has to come back and stop on it. The filters (``DropLate`` by default)
+        then decide which waypoints go out; they never retime one.
 
-        Trimming keeps the absolute time-to-position mapping exactly as the
-        caller defined it and simply starts at the first waypoint the robot can
-        still reach, which is what a fixed-timeline stream does by construction.
-
-        The returned record always carries a timestamp for *every* step the
-        caller passed, whether it was sent, trimmed or dropped, so callers can
-        still ask where any of their own steps landed.
+        The returned record always carries a timestamp for *every* step the caller passed,
+        whether it was sent or filtered out, so callers can still ask where any of their own
+        steps landed; ``skipped`` counts the steps before the first one sent.
         """
-        steps = pending.steps
-        dt_ms = step_spacing_ms(pending.dt_ms, pending.server_dt_ms)
-        base_ms = pending.first_timestamp_ms
         if pending.lead:
             return self._lead_request(pending)
         self._lead_window = []
         self._playback = _PlaybackClock()
-
-        if base_ms is None or dt_ms <= 0:
-            # No caller-supplied anchor to measure the lead against: "now" is
-            # resolved here, at send time, so nothing can be stale yet.
-            if base_ms is None:
-                base_ms = self._clock.estimated_server_timestamp_ms
-            first_ms = max(0, anchor_timestamp_ms(base_ms, pending.timestamp_offset_steps, dt_ms))
-            stamps = [first_ms + int(i * dt_ms) for i in range(len(steps))]
-            request = self._request(list(zip(stamps, steps, strict=True)), pending)
-            return _ScheduledRequest(request=request, skipped=0, step_timestamps=stamps)
-
-        anchor_ms = max(0, anchor_timestamp_ms(base_ms, pending.timestamp_offset_steps, dt_ms))
-        earliest_ms = self._clock.estimated_server_timestamp_ms + MIN_LEAD_MS
-        if pending.final:
-            # The robot may already be past the final target's time, keeping its
-            # velocity; it still has to go back and stop there.
-            anchor_ms = max(anchor_ms, math.ceil(earliest_ms))
-        skip = max(0, math.ceil((earliest_ms - anchor_ms) / dt_ms))
-
-        if skip >= len(steps):
-            # The whole chunk is in the past; the caller's next target will
-            # supersede it. Sending it would only make the robot lurch.
+        stamps = self._timestamps(pending)
+        kept = self._filtered(stamps, pending)
+        if not kept:
+            # The whole chunk is in the past; the caller's next target will supersede it.
+            # Sending it would only make the robot lurch.
             logger.debug(
                 "%s dropping chunk %d: all %d waypoints are in the past",
                 self.motion_group_id,
                 pending.sequence,
-                len(steps),
+                len(stamps),
             )
-            return _ScheduledRequest(
-                request=None,
-                skipped=len(steps),
-                step_timestamps=[anchor_ms + int(i * dt_ms) for i in range(len(steps))],
-            )
+            return _ScheduledRequest(request=None, skipped=len(stamps), step_timestamps=stamps)
+        request = self._request([(stamps[i], pending.steps[i]) for i in kept], pending)
+        return _ScheduledRequest(request=request, skipped=kept[0], step_timestamps=stamps)
 
-        # Dropped steps keep the timestamps they were going to be sent with, so
-        # the caller's step numbering still indexes this list directly.
-        first_ms = anchor_ms + int(skip * dt_ms)
-        sent = [(first_ms + int(i * dt_ms), step) for i, step in enumerate(steps[skip:])]
-        request = self._request(sent, pending)
-        return _ScheduledRequest(
-            request=request,
-            skipped=skip,
-            step_timestamps=[
-                *(anchor_ms + int(i * dt_ms) for i in range(skip)),
-                *(t for t, _ in sent),
-            ],
-        )
+    def _timestamps(self, pending: PendingChunk) -> list[int]:
+        """Each step's time on the session clock, for a chunk not placed by the lead rule."""
+        dt_ms = step_spacing_ms(pending.dt_ms, pending.server_dt_ms)
+        base_ms = pending.first_timestamp_ms
+        if base_ms is None or dt_ms <= 0:
+            if base_ms is None:
+                base_ms = self._clock.estimated_server_timestamp_ms
+            first_ms = max(0, anchor_timestamp_ms(base_ms, pending.timestamp_offset_steps, dt_ms))
+            return [first_ms + int(i * dt_ms) for i in range(len(pending.steps))]
+        anchor_ms = max(0, anchor_timestamp_ms(base_ms, pending.timestamp_offset_steps, dt_ms))
+        if pending.final:
+            # The robot may already be past the final target's time, keeping its velocity; it
+            # still has to go back and stop there.
+            earliest_ms = self._clock.estimated_server_timestamp_ms + MIN_LEAD_MS
+            anchor_ms = max(anchor_ms, math.ceil(earliest_ms))
+        return [anchor_ms + int(i * dt_ms) for i in range(len(pending.steps))]
+
+    def _filtered(self, stamps: list[int], pending: PendingChunk) -> list[int]:
+        """The indices of the steps the pipeline's filters keep, in order."""
+        kept = list(range(len(stamps)))
+        if not self._filters:
+            return kept
+        context = self._module_context()
+        for module in self._filters:
+            waypoints = [(ServerMs(stamps[i]), pending.steps[i]) for i in kept]
+            result = module.keep(waypoints, pending, context)
+            by_time = {stamps[i]: i for i in kept}
+            narrowed = [by_time.get(t) for t, _ in result]
+            if None in narrowed or narrowed != sorted(set(narrowed)):  # type: ignore[type-var]
+                msg = (
+                    f"{type(module).__name__} must keep some of the waypoints it got, in order, "
+                    "with their timestamps"
+                )
+                raise ValueError(msg)
+            kept = [i for i in narrowed if i is not None]
+        return kept
 
     def _request(
         self, timed: list[tuple[int, list[float]]], pending: PendingChunk
