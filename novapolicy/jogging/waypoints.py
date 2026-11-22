@@ -50,8 +50,7 @@ class PendingChunk:
     caller_step_count: int = 0
     """How many leading entries of ``steps`` the caller actually asked for.
 
-    ``steps`` may have been padded to fill ``min_chunk_horizon_ms`` by repeating its
-    final target. That padding is a braking horizon for the server, not motion
+    ``steps`` may have been padded (``HoldPadding``) by repeating its final target. That padding is a braking horizon for the server, not motion
     the caller requested, so anything waiting for the commanded motion to finish
     has to stop at this many steps rather than at the end of ``steps``.
 
@@ -67,14 +66,14 @@ class PendingChunk:
     """When the state the chunk was computed from was measured, on the session clock; for a live
     target, when it was produced (the jogger's loop time), which a ``LiveBuffer`` times it by."""
     extend_buffer: bool = True
-    """Pad the chunk with holds up to the buffer horizon. A chunk module that sets its own
-    horizon (``LiveBuffer``) turns it off."""
-    """Pad the chunk with its last target up to ``min_chunk_horizon_ms`` after the chunk modules
-    ran (contract T6)."""
+    """Let ``HoldPadding`` pad the chunk with its last target (contract T6). A chunk module that
+    sets its own horizon (``LiveBuffer``) turns it off."""
     when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None
     """``(step, action)``: run ``action`` when the caller's ``step`` is due, see
     :meth:`~novapolicy.jogging.waypoint_session.WaypointJoggingSession.update_chunk`."""
-    """Server timestamp of the state the chunk was computed from (a lead chunk)."""
+    start_step: int = 0
+    """Index of the caller's first step in ``steps``: a chunk module that puts steps in front of
+    it (``Bridge``) or moves it (``EndpointRamp``) keeps this on it."""
 
     @property
     def last_caller_step(self) -> int:

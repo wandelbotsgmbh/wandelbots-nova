@@ -125,6 +125,8 @@ class _Capture:
             proxy.queued_chunk_count = real.queued_chunk_count
             pending = real._pending_request
             assert pending is not None
+            # What a real session reports until its loop sends the chunk, at the next await.
+            proxy.queued_chunk = pending
             real._pending_request = None
             scheduled = real._trimmed_request(pending)
             request = scheduled.request

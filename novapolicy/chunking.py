@@ -470,6 +470,21 @@ def _unwrap_chunk_rotations(chunk: ActionChunk, states: dict[str, Any]) -> Actio
     return chunk.model_copy(update={"tcp": tcp}) if chunk.tcp else chunk
 
 
+def bridge_steps(
+    current: list[float],
+    steps: list[list[float]],
+    *,
+    tcp: bool = False,
+    always_anchor: bool = False,
+) -> list[list[float]]:
+    """One motion group's bridge from ``current`` to ``steps[0]`` (see
+    :func:`create_bridge_chunk`); empty when none is needed. TCP steps are unwrapped against
+    ``current`` first, and the bridge ends on the unwrapped first step."""
+    if tcp and steps:
+        steps = unwrap_tcp_rotations(steps, current[3:6])
+    return _interpolated_bridge(list(current), steps, tcp=tcp, always_anchor=always_anchor)
+
+
 def _interpolated_bridge(
     current: list[float],
     policy_steps: list[list[float]],

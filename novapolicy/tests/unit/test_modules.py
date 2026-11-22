@@ -6,6 +6,7 @@ import pytest
 
 from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.modules import (
+    Bridge,
     DropLate,
     EndpointRamp,
     HoldPadding,
@@ -66,7 +67,15 @@ def test_the_defaults_are_valid_pipelines() -> None:
         split_pipeline(pipeline)
         assert [type(m) for m in pipeline[-2:]] == [Timestamps, DropLate]
     assert [type(m) for m in continuous] == [JointClamp, *[type(m) for m in jog]]
-    assert [type(m) for m in sequential] == [EndpointRamp, *[type(m) for m in continuous]]
+    assert [type(m) for m in sequential] == [Bridge, EndpointRamp, *[type(m) for m in continuous]]
+
+
+def test_a_queue_policy_gets_an_anchored_bridge_in_continuous_execution() -> None:
+    class _Queue:
+        requires_first_waypoint_bridge = True
+
+    pipeline = default_pipeline(execution=ContinuousExecution(), policy=_Queue())
+    assert pipeline[0] == Bridge(always_anchor=True)
 
 
 def test_endpoint_ramp_validates_interpolation_steps() -> None:
@@ -100,3 +109,35 @@ def test_drop_late_passes_a_chunk_stamped_at_the_send() -> None:
     waypoints = [(ServerMs(0), [0.0]), (ServerMs(10), [1.0])]
     context = ModuleContext(now_ms=ServerMs(0), position=None, step_ms=50.0)
     assert DropLate().keep(waypoints, chunk, context) == waypoints
+
+
+def _at(position: list[float]) -> ModuleContext:
+    return ModuleContext(now_ms=ServerMs(0), position=position, step_ms=50.0)
+
+
+def test_bridge_connects_the_robot_to_the_first_step_at_the_chunks_spacing() -> None:
+    chunk = _chunk([[3.0], [4.0], [5.0]], dt_ms=10.0)
+    bridged = Bridge().on_chunk(chunk, _at([0.0]))
+    assert bridged.steps == [[0.0], [1.0], [2.0], [3.0], [4.0], [5.0]]
+    assert bridged.start_step == 3
+    assert bridged.caller_step_count == 6
+
+
+def test_bridge_leaves_a_chunk_on_its_own_timeline_or_one_the_robot_is_at() -> None:
+    timed = PendingChunk(
+        steps=[[3.0], [4.0]], dt_ms=10.0, caller_step_count=2, first_timestamp_ms=ServerMs(500)
+    )
+    assert Bridge().on_chunk(timed, _at([0.0])) is timed
+    near = _chunk([[0.5], [1.0]], dt_ms=10.0)
+    assert Bridge().on_chunk(near, _at([0.0])) is near
+    assert Bridge(always_anchor=True).on_chunk(near, _at([0.0])).steps[0] == [0.0]
+
+
+def test_a_bridged_chunk_dated_by_its_observation_is_dated_at_the_send_instead() -> None:
+    observed = PendingChunk(
+        steps=[[3.0], [4.0]], dt_ms=10.0, caller_step_count=2, lead=True, observed_at_ms=ServerMs(7)
+    )
+    bridged = Bridge().on_chunk(observed, _at([0.0]))
+    assert (bridged.lead, bridged.observed_at_ms, bridged.first_timestamp_ms) == (False, None, None)
+    at_send = PendingChunk(steps=[[3.0], [4.0]], dt_ms=10.0, caller_step_count=2, lead=True)
+    assert Bridge().on_chunk(at_send, _at([0.0])).lead is True  # sequential keeps its placement

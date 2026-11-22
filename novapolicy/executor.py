@@ -15,7 +15,6 @@ from nova.actions import jnt
 from novapolicy.cameras.manager import CameraManager
 from novapolicy.chunking import (
     apply_relative_mode,
-    connect_action_chunk,
     is_single_step,
     placement,
     trim_chunk,
@@ -50,7 +49,6 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
-    from novapolicy.chunking import ConnectedActionChunk
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
     from novapolicy.types import StopCondition
@@ -250,7 +248,7 @@ class PolicyExecutor:
                 Each motion group runs its own copy. See :mod:`novapolicy.jogging.pipeline`.
         """
         if pipeline is None:
-            pipeline = default_pipeline(execution=execution)
+            pipeline = default_pipeline(execution=execution, policy=policy)
         split_pipeline(pipeline)  # refuse a misordered pipeline before anything moves
         self._pipeline = tuple(pipeline)
         self._schema = schema
@@ -660,94 +658,63 @@ class PolicyExecutor:
         if replaceable_timesteps:
             self._policy.synchronize_action_timestep(max(replaceable_timesteps))
 
-    def _connected_motion(
-        self,
-        chunk: ActionChunk,
-        robot_states: dict[str, RobotState],
-    ) -> ConnectedActionChunk | None:
-        if chunk.first_timestamp_ms >= 0:
-            return None  # the policy set its own timeline; a bridge would discard it
-        continuous_bridge = self._policy.requires_first_waypoint_bridge
-        needs_continuous_bridge = continuous_bridge and (
-            chunk.action_timestep < 0 or not self._policy_timelines
-        )
-        if isinstance(self._execution, ContinuousExecution) and not needs_continuous_bridge:
-            return None
-        # Anchor on where the robot is now, not on where it was when the
-        # observation was taken. A bridge's first waypoint is a measured-state
-        # hold, and `robot_states` is one inference old by the time it is sent -
-        # in continuous execution a median 0.37 deg of travel and up to 2.9 deg,
-        # which anchoring on it commands the arm back through. At a settled
-        # standstill the two are the same to 0.004 deg, so this costs sequential
-        # execution nothing.
-        return connect_action_chunk(
-            chunk,
-            self._observe() or robot_states,
-            always_anchor=continuous_bridge,
-        )
+    def _bridges_in_queue(self) -> dict[str, list[list[float]]]:
+        """Each session's bridge in the chunk just queued: its steps up to the policy's first."""
+        bridges: dict[str, list[list[float]]] = {}
+        for group_id, session in self._sessions.items():
+            queued = session.queued_chunk
+            if queued is not None and queued.start_step > 0:
+                bridges[group_id] = queued.steps[: queued.start_step + 1]
+        return bridges
 
-    async def _send_connected_policy_chunk(
+    async def _anchor_policy_timeline(
         self,
-        connected: ConnectedActionChunk,
         action: ActionChunk,
+        bridges: dict[str, list[list[float]]],
+        target_chunks: dict[str, int],
         *,
         step: int,
         start_time: float,
         last_obs: dict[str, Any] | None,
     ) -> ExecutionResult | None:
-        """Send continuous bridge+policy motion and defer side effects to its boundary."""
-        bridge_steps = {
-            group_id: len(steps)
-            for group_id, steps in (
-                *connected.bridge.joints.items(),
-                *connected.bridge.tcp.items(),
-            )
-        }
+        """A timestep queue continues from its first bridged chunk: remember when the policy's
+        first step of it is due, per motion group, as the queue's timeline."""
+        start_steps = {group_id: len(steps) - 1 for group_id, steps in bridges.items()}
         logger.info(
             "Policy chunk=%d uses continuous bridge steps=%s policy_start_steps=%s",
             step + 1,
-            bridge_steps,
-            connected.policy_start_steps,
+            {group_id: len(steps) for group_id, steps in bridges.items()},
+            start_steps,
         )
-        if self._rerun is not None:
-            self._rerun.log_bridge_chunk(connected.bridge, step)
-        self._log_policy_action(action, step)
-        target_chunks = self._send(
-            connected.motion, effects=action, start_steps=connected.policy_start_steps
-        )
-        if isinstance(self._execution, ContinuousExecution) and action.action_timestep >= 0:
-            # A timestep queue continues from policy waypoint zero's timestamp: wait until the
-            # session has sent the chunk and dated it (a few ms), not until it is due.
-            while any(
-                self._sessions[group_id].scheduled_chunk_count < target
-                for group_id, target in target_chunks.items()
-            ):
-                termination = self._termination_result(step, start_time, last_obs)
-                if termination is not None:
-                    return termination
-                if self._stop_event.is_set():
-                    return _result("stopped", step, start_time, last_obs)
-                check_sessions(self._sessions)
-                await asyncio.sleep(0.001)
-            for group_id, policy_start_step in connected.policy_start_steps.items():
-                session = self._sessions.get(group_id)
-                if session is None:
-                    continue
-                # Asked for by this queue's own step index: the session drops
-                # leading waypoints whose moment has passed, so indexing the sent
-                # request shifts this origin by however many it dropped — on every
-                # chunk, compounding.
-                policy_start_ms = session.scheduled_timestamp_for_step(policy_start_step)
-                if policy_start_ms is None:
-                    continue
-                # Policy waypoint zero already has an exact timestamp on NOVA's
-                # jogger timer. Preserve it as the immutable queue origin.
-                self._policy_timelines[group_id] = _PolicyTimeline(
-                    action_timestep=action.action_timestep,
-                    policy_dt_ms=action.dt_ms,
-                    server_timestamp_ms=float(policy_start_ms),
-                )
-            logger.info("Policy action timeline initialized: %s", self._policy_timelines)
+        # Wait until the session has sent the chunk and dated it (a few ms), not until it is due.
+        while any(
+            self._sessions[group_id].scheduled_chunk_count < target
+            for group_id, target in target_chunks.items()
+        ):
+            termination = self._termination_result(step, start_time, last_obs)
+            if termination is not None:
+                return termination
+            if self._stop_event.is_set():
+                return _result("stopped", step, start_time, last_obs)
+            check_sessions(self._sessions)
+            await asyncio.sleep(0.001)
+        for group_id, policy_start_step in start_steps.items():
+            # Asked for by this queue's own step index: the session drops leading waypoints
+            # whose moment has passed, so indexing the sent request shifts this origin by
+            # however many it dropped — on every chunk, compounding.
+            policy_start_ms = self._sessions[group_id].scheduled_timestamp_for_step(
+                policy_start_step
+            )
+            if policy_start_ms is None:
+                continue
+            # Policy waypoint zero already has an exact timestamp on NOVA's jogger timer.
+            # Preserve it as the immutable queue origin.
+            self._policy_timelines[group_id] = _PolicyTimeline(
+                action_timestep=action.action_timestep,
+                policy_dt_ms=action.dt_ms,
+                server_timestamp_ms=float(policy_start_ms),
+            )
+        logger.info("Policy action timeline initialized: %s", self._policy_timelines)
         return None
 
     def _log_policy_action(self, action: ActionChunk, step: int) -> None:
@@ -795,18 +762,27 @@ class PolicyExecutor:
         if self._rerun is not None:
             self._rerun.log_target_tracking(trimmed, robot_states, step)
 
-        connected = self._connected_motion(trimmed, robot_states)
-        if connected is not None:
-            return await self._send_connected_policy_chunk(
-                connected,
-                action,
-                step=step,
-                start_time=start_time,
-                last_obs=last_obs,
-            )
-
         self._log_policy_action(action, step)
-        self._send(trimmed, from_observation=True, effects=action)
+        target_chunks = self._send(trimmed, from_observation=True, effects=action)
+        # The sessions' Bridge module, if any, put a bridge in front of the policy's steps.
+        bridges = self._bridges_in_queue()
+        if bridges and self._rerun is not None:
+            self._rerun.log_bridge_chunk(
+                ActionChunk(
+                    joints={g: b for g, b in bridges.items() if g in trimmed.joints},
+                    tcp={g: b for g, b in bridges.items() if g in trimmed.tcp},
+                    dt_ms=trimmed.dt_ms,
+                ),
+                step,
+            )
+        if (
+            bridges
+            and isinstance(self._execution, ContinuousExecution)
+            and action.action_timestep >= 0
+        ):
+            return await self._anchor_policy_timeline(
+                action, bridges, target_chunks, step=step, start_time=start_time, last_obs=last_obs
+            )
         return None
 
     async def _observe_and_infer(

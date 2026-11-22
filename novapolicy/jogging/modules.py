@@ -113,7 +113,62 @@ class EndpointRamp:
         when_due = chunk.when_due
         if when_due is not None:
             when_due = (indices[min(when_due[0], len(indices) - 1)], when_due[1])
-        return replace(chunk, steps=steps, caller_step_count=len(steps), when_due=when_due)
+        return replace(
+            chunk,
+            steps=steps,
+            caller_step_count=len(steps),
+            when_due=when_due,
+            start_step=indices[min(chunk.start_step, len(indices) - 1)],
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Bridge:
+    """Chunk module: move from where the robot is to the policy's first step at the chunk's
+    own spacing, instead of jumping there in one step.
+
+    The bridge starts with a hold on the measured position, so sending the request does not use
+    up the first interval, and ends exactly on the policy's first step; it is subdivided as far
+    as the chunk's largest step needs (contract T4). With ``always_anchor`` the hold is
+    prepended even when no subdivision is needed, which gives a continuously refreshed queue one
+    full step before its first target. A chunk on a timeline of its own (``first_timestamp_ms``)
+    is not bridged, and neither is one the robot is already at. A bridged chunk starts where
+    the robot is now, so in continuous execution it is dated at the send rather than by its
+    observation. IO stays with the policy's first step. TCP rotations are unwrapped against the
+    measured pose first, so no interval crosses a sign flip.
+    """
+
+    always_anchor: bool = False
+
+    def on_chunk(self, chunk: PendingChunk, context: ModuleContext) -> PendingChunk:
+        if chunk.first_timestamp_ms is not None or context.position is None:
+            return chunk
+        tcp = context.mode == "cartesian"
+        steps = (
+            chunking.unwrap_tcp_rotations(chunk.steps, context.position[3:6])
+            if tcp
+            else chunk.steps
+        )
+        bridge = chunking.bridge_steps(
+            context.position, steps, tcp=tcp, always_anchor=self.always_anchor
+        )
+        if not bridge:
+            return chunk
+        shift = len(bridge) - 1
+        when_due = chunk.when_due
+        if when_due is not None:
+            when_due = (when_due[0] + shift, when_due[1])
+        bridged = replace(
+            chunk,
+            steps=[*bridge, *steps[1:]],
+            caller_step_count=len(bridge) + len(steps) - 1,
+            when_due=when_due,
+            start_step=chunk.start_step + shift,
+        )
+        if chunk.lead and chunk.observed_at_ms is not None:
+            # Dated by its observation (continuous execution): the bridge starts now instead.
+            bridged = replace(bridged, lead=False, observed_at_ms=None, timestamp_offset_steps=0)
+        return bridged
 
 
 MIN_LEAD_MS = 20.0
@@ -144,14 +199,24 @@ class DropLate:
         return [(t, v) for t, v in waypoints if t >= earliest_ms]
 
 
-def default_pipeline(*, execution: object | None = None) -> list[object]:
+def default_pipeline(
+    *, execution: object | None = None, policy: object | None = None
+) -> list[object]:
     """The modules that run when no ``pipeline`` is given, in order.
 
-    Without ``execution``: the joggers' list. With the ``PolicyExecutor``'s execution mode: the
-    executor's, which also clamps joint targets to the robot's limits and, in sequential
-    execution, eases each chunk in and out.
+    Without ``execution``: the joggers' list. With the ``PolicyExecutor``'s execution mode and
+    policy: the executor's, which also clamps joint targets to the robot's limits and bridges
+    from where the robot is to the policy's first step; in sequential execution it bridges
+    every chunk and eases each in and out, in continuous execution it bridges only for a policy
+    that asks for it (a timestep queue, :attr:`PolicyClient.requires_first_waypoint_bridge`),
+    with a measured-state hold in front.
     """
     if execution is None:
         return [HoldPadding(), Timestamps(), DropLate()]
-    ramp = [EndpointRamp()] if isinstance(execution, SequentialExecution) else []
-    return [*ramp, JointClamp(), HoldPadding(), Timestamps(), DropLate()]
+    if isinstance(execution, SequentialExecution):
+        front: list[object] = [Bridge(), EndpointRamp()]
+    elif getattr(policy, "requires_first_waypoint_bridge", False):
+        front = [Bridge(always_anchor=True)]
+    else:
+        front = []
+    return [*front, JointClamp(), HoldPadding(), Timestamps(), DropLate()]

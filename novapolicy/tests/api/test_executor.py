@@ -24,7 +24,10 @@ import numpy as np
 import pytest
 
 from novapolicy.executor import Phase, PolicyExecutor
-from novapolicy.jogging.modules import default_pipeline
+from novapolicy.jogging.clock import ServerMs
+from novapolicy.jogging.modules import EndpointRamp, default_pipeline
+from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
+from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.ops import Rad2Deg
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.queued_client import QueuedPolicyClient
@@ -169,6 +172,7 @@ def _fake_session() -> MagicMock:
     session.is_at_standstill = False
     session.standstill_ms = 0.0
     session.queued_chunk_count = 0
+    session.queued_chunk = None  # no Bridge module in front
     session.scheduled_chunk_count = 0
     session.scheduled_until_server_ms = 0
     session.scheduled_waypoint_timestamps = ()
@@ -201,6 +205,43 @@ def _fake_session() -> MagicMock:
     state.pose = state.tcp = None
     session.current_state = state
     return session
+
+
+def _without_ramp() -> list[object]:
+    """The sequential default pipeline without its endpoint ramp."""
+    return [
+        m
+        for m in default_pipeline(execution=SequentialExecution())
+        if not isinstance(m, EndpointRamp)
+    ]
+
+
+def _after_chunk_modules(
+    executor: PolicyExecutor, kwargs: dict[str, Any], *, position: list[float] | None = None
+) -> PendingChunk:
+    """What the session's chunk modules make of what the executor handed it, from a robot
+    standing at ``position`` (all zeros by default)."""
+    steps = kwargs["steps"]
+    chunk = PendingChunk(
+        steps=[list(s) for s in steps],
+        dt_ms=kwargs["dt_ms"],
+        first_timestamp_ms=kwargs.get("first_timestamp_ms"),
+        timestamp_offset_steps=kwargs.get("timestamp_offset_steps", 0),
+        caller_step_count=len(steps),
+        lead=kwargs.get("lead", False),
+        observed_at_ms=kwargs.get("observed_at_ms"),
+        extend_buffer=kwargs.get("extend_buffer", True),
+        when_due=kwargs.get("when_due"),
+    )
+    context = ModuleContext(
+        now_ms=ServerMs(0),
+        position=[0.0] * len(steps[0]) if position is None else position,
+        step_ms=50.0,
+        motion_group_id=MG_ID,
+    )
+    for module in split_pipeline(executor._pipeline).chunk_modules:
+        chunk = module.on_chunk(chunk, context)
+    return chunk
 
 
 @dataclass
@@ -399,20 +440,18 @@ async def test_bridge_and_policy_are_sent_as_one_continuous_chunk(robot: _Robot)
         _callback(policy),
         timeout_s=1.0,
         execution=SequentialExecution(),
+        pipeline=_without_ramp(),
     )
 
     await executor.run()
 
+    # The executor hands over the policy's steps; the session's Bridge connects them.
     first_send = robot.session.update_chunk.call_args_list[0].kwargs
-    assert first_send["steps"] == [
-        [0.0] * 6,
-        [1.0] * 6,
-        [2.0] * 6,
-        [3.0] * 6,
-        [4.0] * 6,
-        [5.0] * 6,
-    ]
+    assert first_send["steps"] == [[3.0] * 6, [4.0] * 6, [5.0] * 6]
     assert first_send["dt_ms"] == 10.0
+    bridged = _after_chunk_modules(executor, first_send)
+    assert bridged.start_step == 3
+    assert [s[0] for s in bridged.steps[: bridged.start_step + 1]] == [0.0, 1.0, 2.0, 3.0]
 
 
 @pytest.mark.asyncio
@@ -492,7 +531,9 @@ async def test_continuous_async_queue_policy_requests_a_measured_state_bridge(ro
     await executor.run()
 
     first_send = robot.session.update_chunk.call_args_list[0].kwargs
-    assert first_send["steps"] == [
+    assert first_send["steps"] == [[0.5] * 6, [1.5] * 6, [2.5] * 6]
+    # The session's Bridge puts a measured-state hold in front.
+    assert _after_chunk_modules(executor, first_send).steps[:4] == [
         [0.0] * 6,
         [0.5] * 6,
         [1.5] * 6,
@@ -534,10 +575,13 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
             action_timestep=6,
         )
 
-    def acknowledge_chunk(*_args: object, **kwargs: object) -> None:
+    def acknowledge_chunk(*_args: object, **kwargs: Any) -> None:
         robot.session.queued_chunk_count += 1
         robot.session.scheduled_chunk_count = robot.session.queued_chunk_count
-        count = len(kwargs["steps"])
+        # What the session queues after its chunk modules (the Bridge, on the first chunk).
+        queued = _after_chunk_modules(executor, kwargs)
+        robot.session.queued_chunk = queued
+        count = queued.caller_step_count
         base = kwargs["first_timestamp_ms"] or 0
         robot.session.scheduled_waypoint_timestamps = tuple(
             base + index * 10 for index in range(count)
@@ -562,7 +606,8 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
     )
     # A timestep queue places chunks on its own timeline, never by the observation.
     assert all(call.kwargs["lead"] is False for call in robot.session.update_chunk.call_args_list)
-    assert first_send.kwargs["steps"] == [
+    assert first_send.kwargs["steps"] == [[0.5] * 6, [1.5] * 6, [2.5] * 6]
+    assert _after_chunk_modules(executor, first_send.kwargs).steps[:4] == [
         [0.0] * 6,
         [0.5] * 6,
         [1.5] * 6,
@@ -617,10 +662,14 @@ async def test_a_bridged_chunk_hands_its_io_and_computed_action_to_the_policys_f
 
     robot.session.write_ios.assert_not_awaited()  # not at send
     assert not computed_fired.is_set()
-    # Combined steps are [current, 1, 2, policy[0], policy[1], policy[2]]: policy waypoint zero
-    # is index 3. The session's EndpointRamp moves it with its step (to 5).
-    step, run = robot.session.update_chunk.call_args_list[0].kwargs["when_due"]
-    assert step == 3
+    # The executor hands the IO to the policy's first step; the session's Bridge puts
+    # [current, 1, 2] in front (index 3) and its EndpointRamp moves it with its step (to 5).
+    first_send = robot.session.update_chunk.call_args_list[0].kwargs
+    step, run = first_send["when_due"]
+    assert step == 0
+    queued = _after_chunk_modules(executor, first_send)
+    assert queued.when_due is not None
+    assert queued.when_due[0] == queued.start_step == 5
     await run()
     robot.session.write_ios.assert_awaited_once_with({"digital_out[0]": True})
     assert computed_fired.is_set()
