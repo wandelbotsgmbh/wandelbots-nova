@@ -39,6 +39,7 @@ from nats.errors import NoRespondersError
 import numpy as np
 
 from nats import connect as nats_connect
+from novapolicy.joint_velocities import JointVelocities
 from novapolicy.nats.protocol import (
     CloseRequest,
     CloseResponse,
@@ -79,7 +80,6 @@ PROPRIO_BLOCKS = 3
 """Each proprio field is joint positions ++ joint velocities ++ last action,
 each ``dof`` wide, all in radians / rad·s⁻¹."""
 
-_MIN_DT_S = 1e-4
 """Below this the finite difference is numerically meaningless — report zero
 velocity rather than amplify observation noise into a huge spike."""
 
@@ -173,8 +173,8 @@ class NatsPolicyClient(PolicyClient):
         self._prefix = subject_prefix
         self._timeout_s = request_timeout_s
         self._connect_timeout_s = connect_timeout_s
-        self._velocity_source = velocities
-        self._fallback_warned = False
+        # Measured velocities where the source has them, finite differences otherwise.
+        self._velocities = JointVelocities([], measured=velocities)
 
         self._nc: Any = None
         self._info: PolicyInfo | None = None
@@ -186,8 +186,6 @@ class NatsPolicyClient(PolicyClient):
         # --- episode state, per motion group (reset in _begin_episode) ---
         self._step = 0
         self._t0 = 0.0
-        self._prev_joints: dict[str, NDArray[np.float32]] = {}
-        self._prev_t: dict[str, float] = {}
         self._last_action: dict[str, NDArray[np.float32]] = {}
 
     @property
@@ -225,8 +223,7 @@ class NatsPolicyClient(PolicyClient):
             max_reconnect_attempts=-1,
         )
 
-        if self._velocity_source is not None:
-            await self._velocity_source.start()
+        await self._velocities.start()
 
         info_body = await self._request(
             info_subject(self._policy_id, self._prefix),
@@ -337,9 +334,6 @@ class NatsPolicyClient(PolicyClient):
         )
         response = PredictResponse.from_wire(body)
 
-        for motion_group_id, joints in joints_by_group.items():
-            self._prev_joints[motion_group_id] = joints
-            self._prev_t[motion_group_id] = now
         self._step += 1
 
         return self._to_chunk(response)
@@ -349,8 +343,7 @@ class NatsPolicyClient(PolicyClient):
 
         Safe to call twice.
         """
-        if self._velocity_source is not None:
-            await self._velocity_source.stop()
+        await self._velocities.stop()
         if self._nc is None:
             return
         try:
@@ -405,8 +398,6 @@ class NatsPolicyClient(PolicyClient):
         self._session_id = uuid.uuid4().hex
         self._step = 0
         self._t0 = time.monotonic()
-        self._prev_joints = {}
-        self._prev_t = {}
         self._last_action = {}
 
         body = await self._request(
@@ -426,54 +417,6 @@ class NatsPolicyClient(PolicyClient):
         self._bind_blocks(self._motion_group_ids)
         logger.info("Policy session %s open on %s", self._session_id, self._motion_group_ids)
 
-    def _velocities(
-        self, block: _Block, joints: NDArray[np.float32], now: float
-    ) -> NDArray[np.float32]:
-        """Measured velocities where available, finite-differenced otherwise.
-
-        The measurement is the source of truth. Finite differencing at the
-        request cadence measured twice the true magnitude, three times the
-        sample-to-sample noise, and individual errors up to 4.8 rad/s on a
-        7-dof arm, which a residual policy turns into large erratic residuals.
-        See :mod:`novapolicy.state_stream`.
-        """
-        measured = self._measured_velocities(block, joints)
-        if measured is not None:
-            return measured
-        prev_joints = self._prev_joints.get(block.motion_group_id)
-        prev_t = self._prev_t.get(block.motion_group_id)
-        if prev_joints is None or prev_t is None:
-            return np.zeros_like(joints)
-        dt = now - prev_t
-        if dt <= _MIN_DT_S:
-            return np.zeros_like(joints)
-        return (joints - prev_joints) / dt
-
-    def _measured_velocities(
-        self, block: _Block, joints: NDArray[np.float32]
-    ) -> NDArray[np.float32] | None:
-        """Measured velocities for one block, or ``None`` to fall back.
-
-        A width mismatch falls back rather than raising: the joint count is
-        already checked against the policy's declared dof in
-        :meth:`_build_proprio`, and a velocity source that disagrees is a
-        misconfigured source, not a reason to stop a moving robot.
-        """
-        if self._velocity_source is None:
-            return None
-        values = self._velocity_source.velocities(block.motion_group_id)
-        if values is None or len(values) != joints.size:
-            if not self._fallback_warned:
-                self._fallback_warned = True
-                logger.warning(
-                    "No measured velocities for '%s'%s; finite-differencing instead, "
-                    "which is noisier than the policy was trained on",
-                    block.motion_group_id,
-                    "" if values is None else f" (width {len(values)} != {joints.size})",
-                )
-            return None
-        return np.asarray(values, dtype=np.float32)
-
     def _build_proprio(
         self, block: _Block, joints: NDArray[np.float32], now: float
     ) -> NDArray[np.float32]:
@@ -487,7 +430,9 @@ class NatsPolicyClient(PolicyClient):
                 code="dof_mismatch",
             )
 
-        velocities = self._velocities(block, joints, now)
+        velocities = np.asarray(
+            self._velocities.read(block.motion_group_id, joints.tolist(), now), dtype=np.float32
+        )
         # First step: "last action" is the pose we are already in, i.e. hold.
         last_action = self._last_action.get(block.motion_group_id, joints)
         proprio = np.concatenate([joints, velocities, last_action]).astype(np.float32)
