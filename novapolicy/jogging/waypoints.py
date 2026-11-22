@@ -45,6 +45,7 @@ class PendingChunk:
     first_timestamp_ms: ServerMs | None = None
     timestamp_offset_steps: int = 0
     action_timestep: int = -1
+    """The policy timestep of the caller's first step (``steps[start_step]``); ``-1`` without."""
     sequence: int = 0
     caller_step_count: int = 0
     """How many leading entries of ``steps`` the caller actually asked for.

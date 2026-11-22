@@ -112,6 +112,7 @@ class _Capture:
             proxy.last_server_timestamp_ms = int(clock.now_ms)
             proxy.estimated_server_timestamp_ms = clock.now_ms
             proxy.current_state_server_ms = int(clock.now_ms) - 5
+            proxy.executing_action_timestep = real.executing_action_timestep
             state = MagicMock()
             state.joints = tuple(real._current_joints or [0.0] * 6)
             state.pose = state.tcp = None
@@ -154,6 +155,9 @@ class _Capture:
                 "io_due": due,
             })
             step_timestamps[:] = scheduled.step_timestamps
+            real._record_timesteps(
+                pending, scheduled.step_timestamps, scheduled.skipped
+            )  # as the loop does
             proxy.scheduled_chunk_count = pending.sequence
             if scheduled.step_timestamps:
                 proxy.scheduled_until_server_ms = scheduled.step_timestamps[

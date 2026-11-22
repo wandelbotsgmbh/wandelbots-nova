@@ -142,7 +142,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     The server computes the motion profile and handles IK (for TCP mode).
     """
 
-    def __init__(
+    def __init__(  # ruff: ignore[too-many-statements]
         self,
         motion_group: MotionGroup,
         config: WaypointConfig,
@@ -206,6 +206,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._scheduled_until_server_ms = 0
         self._scheduled_waypoint_timestamps: list[int] = []
         self._scheduled_step_timestamps: list[int] = []
+        self._scheduled_start: tuple[int, ServerMs, float] | None = None
+        """Policy timestep at the caller's first step, its time and the step spacing."""
         self._last_sent: tuple[int, list[float]] | None = None
         """Timestamp and target of the last waypoint sent, for :meth:`_queue_final_target`."""
         self._scheduled_action_timestep = -1
@@ -426,6 +428,16 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     def scheduled_action_timestep(self) -> int:
         """Policy timestep represented by the latest scheduled request."""
         return self._scheduled_action_timestep
+
+    @property
+    def executing_action_timestep(self) -> int:
+        """The policy timestep due now, from the latest scheduled chunk that carried timesteps;
+        ``-1`` before one. A timestep queue is told this, so it replaces only the steps after."""
+        if self._scheduled_start is None:
+            return -1
+        timestep, start_ms, dt_ms = self._scheduled_start
+        elapsed_ms = max(0.0, self._clock.last_server_timestamp_ms - start_ms)
+        return timestep + int(elapsed_ms // dt_ms) if dt_ms > 0 else timestep
 
     @property
     def scheduled_at_server_ms(self) -> ServerMs:
@@ -924,14 +936,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             # The caller's own last step, not the padded tail — see
             # :attr:`scheduled_until_server_ms`.
             self._scheduled_until_server_ms = trimmed.step_timestamps[pending.last_caller_step]
-            # Trimming moves step zero forward, so the timestep this reports has
-            # to move with it — it names the policy step ``steps[0]`` came from.
-            # ``-1`` means "no timestep", and stays that way.
-            self._scheduled_action_timestep = (
-                pending.action_timestep + trimmed.skipped
-                if pending.action_timestep >= 0
-                else pending.action_timestep
-            )
+            self._record_timesteps(pending, trimmed.step_timestamps, trimmed.skipped)
             self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
             # What was actually sent, after the stages: the drain stops on this.
             self._last_sent = (request.waypoints[-1].timestamp, list(self._last_sent_value))
@@ -987,8 +992,17 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._scheduled_chunk_count = pending.sequence
         self._scheduled_step_timestamps = list(step_timestamps)
         self._scheduled_waypoint_timestamps = []
-        self._scheduled_action_timestep = pending.action_timestep
+        self._record_timesteps(pending, step_timestamps, 0)
         self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
+
+    def _record_timesteps(self, pending: PendingChunk, stamps: list[int], skipped: int) -> None:
+        """Note which policy timestep the sent request starts with (``-1`` for a bridge's
+        steps or a chunk without timesteps) and when the policy's first step is due."""
+        timestep, start = pending.action_timestep, pending.start_step
+        sent_first = timestep + skipped - start if timestep >= 0 and skipped >= start else -1
+        self._scheduled_action_timestep = sent_first
+        if timestep >= 0 and start < len(stamps):
+            self._scheduled_start = (timestep, ServerMs(stamps[start]), pending.dt_ms)
 
     def _lead_request(self, pending: PendingChunk) -> _ScheduledRequest:
         """A chunk placed by the lead rule, with the waypoints still queued before it.
@@ -1131,6 +1145,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             motion_group_id=self.motion_group_id,
             mode=self._mode,
             joint_limits=self._joint_limits,
+            scheduled_start=None if self._scheduled_start is None else self._scheduled_start[:2],
         )
 
     def _position(self) -> list[float] | None:

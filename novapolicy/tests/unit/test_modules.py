@@ -12,7 +12,9 @@ from novapolicy.jogging.modules import (
     HoldPadding,
     JointClamp,
     Smoothing,
+    TimestepTimeline,
     default_pipeline,
+    timestep_queue_modules,
 )
 from novapolicy.jogging.pipeline import ModuleContext, Timestamps, split_pipeline
 from novapolicy.jogging.waypoints import PendingChunk
@@ -73,10 +75,11 @@ def test_the_defaults_are_valid_pipelines() -> None:
 
 def test_a_queue_policy_gets_an_anchored_bridge_in_continuous_execution() -> None:
     class _Queue:
-        requires_first_waypoint_bridge = True
+        default_modules = timestep_queue_modules()
 
     pipeline = default_pipeline(execution=ContinuousExecution(), policy=_Queue())
-    assert pipeline[:2] == [Smoothing(), Bridge(always_anchor=True)]
+    assert [type(m) for m in pipeline[:3]] == [Smoothing, TimestepTimeline, Bridge]
+    assert pipeline[2] == Bridge(always_anchor=True)
 
 
 def test_endpoint_ramp_validates_interpolation_steps() -> None:
@@ -173,3 +176,21 @@ def test_a_step_rate_comes_from_the_caller_else_the_policy_else_30_hz(caplog) ->
     assert any("got no control_freq" in r.message for r in caplog.records)
     with pytest.raises(ValueError, match="positive"):
         resolve_control_freq(0, owner="p")
+
+
+def test_a_timestep_timeline_places_later_chunks_on_the_first_ones_grid() -> None:
+    """Until a chunk with timesteps was sent, chunks pass (and get bridged); after that, the
+    chunk starting at timestep t is due origin + (t - t0) * dt."""
+    module = TimestepTimeline()
+    first = PendingChunk(steps=[[0.0]] * 3, dt_ms=10.0, caller_step_count=3, action_timestep=0)
+    assert module.on_chunk(first, _context()) is first
+    sent = ModuleContext(
+        now_ms=ServerMs(0), position=None, step_ms=50.0, scheduled_start=(0, ServerMs(1_010))
+    )
+    later = PendingChunk(
+        steps=[[0.0]] * 3, dt_ms=10.0, caller_step_count=3, action_timestep=4, lead=True
+    )
+    placed = module.on_chunk(later, sent)
+    assert (placed.first_timestamp_ms, placed.lead) == (1_050, False)
+    plain = PendingChunk(steps=[[0.0]], dt_ms=10.0, caller_step_count=1)
+    assert module.on_chunk(plain, sent) is plain

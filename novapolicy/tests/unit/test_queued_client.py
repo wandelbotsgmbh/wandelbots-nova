@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from novapolicy.jogging.modules import TimestepTimeline
 from novapolicy.policy_client import PolicyClient
 from novapolicy.queued_client import QueuedPolicyClient
 from novapolicy.schema import Action, Observation, PolicySchema
@@ -51,7 +52,7 @@ def _setup(chunks: list[list[list[float]]], **kwargs: object):
 @pytest.mark.asyncio
 async def test_the_first_chunk_is_resolved_and_placed_at_timestep_zero():
     client, schema, states, mg = _setup([[[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]] * 4])
-    assert client.requires_first_waypoint_bridge
+    assert any(isinstance(m, TimestepTimeline) for m in client.default_modules)
     chunk = await client.get_actions(states, schema)
     assert chunk.resolved
     assert chunk.action_timestep == 0

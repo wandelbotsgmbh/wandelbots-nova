@@ -25,6 +25,7 @@ import numpy as np
 from novapolicy.action_queue import TimestampedActionQueue
 from novapolicy.chunking import unwrap_tcp_rotations
 from novapolicy.executor import resolve_actions
+from novapolicy.jogging.modules import timestep_queue_modules
 from novapolicy.policy_client import PolicyClient
 from novapolicy.types import ActionChunk
 
@@ -62,8 +63,8 @@ class QueuedPolicyClient(PolicyClient):
         return self._policy
 
     @property
-    def requires_first_waypoint_bridge(self) -> bool:
-        return True  # chunks carry absolute timesteps; only the first one is bridged
+    def default_modules(self) -> list[object]:
+        return timestep_queue_modules()  # chunks carry policy timesteps
 
     def synchronize_action_timestep(self, timestep: int) -> None:
         self._replaceable = timestep

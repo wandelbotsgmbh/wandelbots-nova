@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from lerobot.async_inference.helpers import RemotePolicyConfig
 
 from novapolicy.action_queue import AsyncQueueAggregation
+from novapolicy.jogging.modules import timestep_queue_modules
 from novapolicy.lerobot.action_queue import LeRobotAsyncActionQueue
 from novapolicy.lerobot.config import try_load_execution_settings
 from novapolicy.lerobot.schema import LeRobotSchema, check_observation_range
@@ -153,9 +154,9 @@ class LeRobotPolicyClient(PolicyClient):
         return self._dt_ms
 
     @property
-    def requires_first_waypoint_bridge(self) -> bool:
-        """Whether continuous execution needs one measured-state bridge."""
-        return self._async_queue is not None
+    def default_modules(self) -> list[object]:
+        """The async queue's timeline, smoothing and first bridge; none without the queue."""
+        return timestep_queue_modules() if self._async_queue is not None else []
 
     def synchronize_action_timestep(self, timestep: int) -> None:
         """Drop queue actions whose NOVA execution timestamps have elapsed."""

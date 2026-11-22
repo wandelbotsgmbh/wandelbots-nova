@@ -220,3 +220,16 @@ pipeline's `Smoothing` and `Bridge` modules to connect chunks.
   Size `WaypointConfig.max_expected_latency_ms` for the network.
 - **`WaypointJoggingSession.lead_left_ms`**, the per-session lead summary and the waypoint-tracking
   log lines are gone.
+
+## A policy brings its own modules; the executor keeps no queue timeline
+
+- **`PolicyClient.requires_first_waypoint_bridge` is replaced by `PolicyClient.default_modules`**,
+  the send-pipeline modules the policy needs in front in continuous execution. A timestep queue
+  returns `timestep_queue_modules()`: `Smoothing`, `TimestepTimeline`, `Bridge(always_anchor=True)`.
+  A custom queue client overrides `default_modules` instead of the flag.
+- **The queue's timeline is the `TimestepTimeline` module** in each session, and the executor tells
+  the policy which step is executing from `WaypointJoggingSession.executing_action_timestep`. An
+  explicit pipeline for a queue policy must contain a `TimestepTimeline` (refused otherwise); a
+  `Bridge` is no longer required.
+- **`PendingChunk.action_timestep`** names the timestep of the caller's first step
+  (`steps[start_step]`), also behind a bridge.

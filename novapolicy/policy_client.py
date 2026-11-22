@@ -59,9 +59,11 @@ class PolicyClient(ABC):
         """Synchronize an asynchronous queue to the controller timestep."""
 
     @property
-    def requires_first_waypoint_bridge(self) -> bool:
-        """Whether continuous execution needs one measured-state bridge."""
-        return False
+    def default_modules(self) -> list[object]:
+        """Send-pipeline modules this policy needs in front in continuous execution, which the
+        executor's default pipeline starts with: a timestep queue returns
+        :func:`~novapolicy.jogging.modules.timestep_queue_modules`. None by default."""
+        return []
 
     @property
     def n_action_steps(self) -> int | None:

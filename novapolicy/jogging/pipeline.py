@@ -65,6 +65,9 @@ class ModuleContext:
     joint_limits: JointLimits | None = None
     """The robot's joint position limits, read at the session's start when a ``JointClamp`` is
     in the pipeline; ``None`` otherwise, for TCP waypoints, or when the robot reports none."""
+    scheduled_start: tuple[int, ServerMs] | None = None
+    """For the latest chunk sent that carried policy timesteps: the timestep of its policy's first
+    step and when that step is due. ``None`` before one."""
 
 
 @runtime_checkable

@@ -25,7 +25,12 @@ import pytest
 
 from novapolicy.executor import Phase, PolicyExecutor
 from novapolicy.jogging.clock import ServerMs
-from novapolicy.jogging.modules import Bridge, EndpointRamp, Smoothing, default_pipeline
+from novapolicy.jogging.modules import (
+    EndpointRamp,
+    Smoothing,
+    default_pipeline,
+    timestep_queue_modules,
+)
 from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
 from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.ops import Rad2Deg
@@ -104,8 +109,8 @@ class _TestPolicy(CallbackPolicyClient):
         self.synchronize_action_timestep = MagicMock()
 
     @property
-    def requires_first_waypoint_bridge(self) -> bool:
-        return self._requires_bridge
+    def default_modules(self) -> list[object]:
+        return timestep_queue_modules() if self._requires_bridge else []
 
 
 _SLOW_SETUP_S = 1.0
@@ -166,6 +171,7 @@ def _fake_session() -> MagicMock:
     session.standstill_ms = 0.0
     session.queued_chunk_count = 0
     session.queued_chunk = None  # no Bridge module in front
+    session.executing_action_timestep = -1
     session.scheduled_chunk_count = 0
     session.scheduled_until_server_ms = 0
     session.scheduled_waypoint_timestamps = ()
@@ -204,7 +210,7 @@ def _unsmoothed_queue_defaults() -> list[object]:
     """A timestep queue's continuous default pipeline without smoothing."""
 
     class _Queue:
-        requires_first_waypoint_bridge = True
+        default_modules = timestep_queue_modules()
 
     return [
         m
@@ -223,7 +229,11 @@ def _without_ramp() -> list[object]:
 
 
 def _after_chunk_modules(
-    executor: PolicyExecutor, kwargs: dict[str, Any], *, position: list[float] | None = None
+    executor: PolicyExecutor,
+    kwargs: dict[str, Any],
+    *,
+    position: list[float] | None = None,
+    scheduled_start: tuple[int, ServerMs] | None = None,
 ) -> PendingChunk:
     """What the session's chunk modules make of what the executor handed it, from a robot
     standing at ``position`` (all zeros by default)."""
@@ -238,12 +248,14 @@ def _after_chunk_modules(
         observed_at_ms=kwargs.get("observed_at_ms"),
         extend_buffer=kwargs.get("extend_buffer", True),
         when_due=kwargs.get("when_due"),
+        action_timestep=kwargs.get("action_timestep", -1),
     )
     context = ModuleContext(
         now_ms=ServerMs(0),
         position=[0.0] * len(steps[0]) if position is None else position,
         step_ms=50.0,
         motion_group_id=MG_ID,
+        scheduled_start=scheduled_start,
     )
     for module in split_pipeline(executor._pipeline).chunk_modules:
         chunk = module.on_chunk(chunk, context)
@@ -582,19 +594,29 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
             action_timestep=6,
         )
 
+    queued_chunks: list[PendingChunk] = []
+    started: list[tuple[int, ServerMs]] = []  # what the session reports once a chunk is sent
+
     def acknowledge_chunk(*_args: object, **kwargs: Any) -> None:
         robot.session.queued_chunk_count += 1
         robot.session.scheduled_chunk_count = robot.session.queued_chunk_count
-        # What the session queues after its chunk modules (the Bridge, on the first chunk).
-        queued = _after_chunk_modules(executor, kwargs)
-        robot.session.queued_chunk = queued
-        count = queued.caller_step_count
-        base = kwargs["first_timestamp_ms"] or 0
-        robot.session.scheduled_waypoint_timestamps = tuple(
-            base + index * 10 for index in range(count)
+        # What the session queues after its chunk modules: the Bridge in front of the first
+        # chunk, the TimestepTimeline placing the later ones.
+        queued = _after_chunk_modules(
+            executor, kwargs, scheduled_start=started[0] if started else None
         )
-        robot.session.scheduled_until_server_ms = robot.session.scheduled_waypoint_timestamps[-1]
-        robot.session.last_server_timestamp_ms = robot.session.scheduled_until_server_ms
+        queued_chunks.append(queued)
+        robot.session.queued_chunk = queued
+        base = queued.first_timestamp_ms or 0
+        stamps = [base + index * 10 for index in range(queued.caller_step_count)]
+        robot.session.scheduled_waypoint_timestamps = tuple(stamps)
+        robot.session.scheduled_until_server_ms = stamps[-1]
+        robot.session.last_server_timestamp_ms = stamps[-1]
+        start_ms = stamps[queued.start_step]
+        started.append((queued.action_timestep, ServerMs(start_ms)))
+        robot.session.executing_action_timestep = (
+            queued.action_timestep + (stamps[-1] - start_ms) // 10
+        )
         robot.session.session_elapsed_ms = 100_000  # must not affect controller-timer placement
 
     policy = _TestPolicy(get_actions, requires_bridge=True)
@@ -609,13 +631,11 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
 
     await executor.run()
 
-    first_send, replacement, second_replacement, third_replacement = (
-        robot.session.update_chunk.call_args_list
-    )
+    first_send, replacement, *_ = robot.session.update_chunk.call_args_list
     # A timestep queue places chunks on its own timeline, never by the observation.
     assert all(call.kwargs["lead"] is False for call in robot.session.update_chunk.call_args_list)
     assert first_send.kwargs["steps"] == [[0.5] * 6, [1.5] * 6, [2.5] * 6]
-    assert _after_chunk_modules(executor, first_send.kwargs).steps[:4] == [
+    assert queued_chunks[0].steps[:4] == [
         [0.0] * 6,
         [0.5] * 6,
         [1.5] * 6,
@@ -628,14 +648,12 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         [1.75] * 6,
         [2.75] * 6,
     ]
-    # Policy action zero is index one in [measured state, action 0, ...], so
-    # its exact controller timestamp is 10 ms. Every replacement stays on the
-    # immutable policy grid; client elapsed time may not move the same absolute
-    # action timestep.
-    assert replacement.kwargs["first_timestamp_ms"] == 30
-    assert replacement.kwargs["timestamp_offset_steps"] == 0
-    assert second_replacement.kwargs["first_timestamp_ms"] == 50
-    assert third_replacement.kwargs["first_timestamp_ms"] == 70
+    # Policy action zero is index one in [measured state, action 0, ...], so its exact
+    # controller timestamp is 10 ms. Every replacement stays on that immutable policy grid
+    # (the session's TimestepTimeline places it); client elapsed time may not move the same
+    # absolute action timestep.
+    assert replacement.kwargs["first_timestamp_ms"] is None  # the executor hands it over
+    assert [q.first_timestamp_ms for q in queued_chunks[1:]] == [30, 50, 70]
     policy.synchronize_action_timestep.assert_any_call(3)
 
 
@@ -1102,8 +1120,10 @@ def test_a_live_buffer_no_longer_makes_the_executor_refuse_chunks_or_tcp_targets
     )
     session = MagicMock(motion_group_id=MG_ID, queued_chunk_count=0)
     executor._sessions = {MG_ID: session}
-    executor._send(ActionChunk(joints={MG_ID: [[0.0] * 6, [0.1] * 6]}, dt_ms=20.0))
-    executor._send(ActionChunk(joints={}, tcp={MG_ID: [[500.0, 0.0, 300.0, 0.0, 3.14, 0.0]]}))
+    chunk = ActionChunk(joints={MG_ID: [[0.0] * 6, [0.1] * 6]}, dt_ms=20.0)
+    executor._send(chunk, chunk)
+    tcp_chunk = ActionChunk(joints={}, tcp={MG_ID: [[500.0, 0.0, 300.0, 0.0, 3.14, 0.0]]})
+    executor._send(tcp_chunk, tcp_chunk)
     sent = [call.kwargs["steps"] for call in session.update_chunk.call_args_list]
     assert sent == [[[0.0] * 6, [0.1] * 6], [[500.0, 0.0, 300.0, 0.0, 3.14, 0.0]]]
 
@@ -1473,11 +1493,11 @@ async def test_the_start_move_keeps_the_cells_collision_setups():
     assert setup.collision_setups == {"cell": collision}
 
 
-def test_a_timestep_queue_without_a_bridge_is_refused_before_anything_moves():
-    """Its timeline is anchored on its first bridged chunk; without a Bridge every chunk would
-    be placed at the send."""
+def test_a_timestep_queue_without_its_timeline_is_refused_before_anything_moves():
+    """Without its TimestepTimeline every chunk of a queue would restart at the send."""
     policy = _TestPolicy(_hold_action, requires_bridge=True)
-    unbridged = [m for m in default_pipeline() if not isinstance(m, Bridge)]
-    with pytest.raises(ValueError, match="Bridge"):
-        PolicyExecutor(_schema(), policy, execution=ContinuousExecution(), pipeline=unbridged)
-    PolicyExecutor(_schema(), policy, execution=ContinuousExecution())  # the defaults bridge
+    with pytest.raises(ValueError, match="TimestepTimeline"):
+        PolicyExecutor(
+            _schema(), policy, execution=ContinuousExecution(), pipeline=default_pipeline()
+        )
+    PolicyExecutor(_schema(), policy, execution=ContinuousExecution())  # its defaults have it

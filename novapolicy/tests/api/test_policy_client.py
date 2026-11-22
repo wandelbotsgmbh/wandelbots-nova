@@ -47,7 +47,7 @@ async def test_callback_client_uses_explicit_no_op_capabilities() -> None:
     client.synchronize_action_timestep(4)
     await client.close()
 
-    assert client.requires_first_waypoint_bridge is False
+    assert client.default_modules == []
 
 
 @pytest.mark.asyncio

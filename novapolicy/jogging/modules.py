@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 # The module, not its names: chunking imports this package, so it may still be loading here.
 from novapolicy import chunking
+from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.pipeline import Timestamps
 from novapolicy.joint_limits import DEFAULT_MARGIN_RAD
 from novapolicy.types import SequentialExecution
@@ -207,12 +208,43 @@ class Bridge:
             caller_step_count=len(bridge) + len(steps) - 1,
             when_due=when_due,
             start_step=chunk.start_step + shift,
-            action_timestep=-1,  # steps[0] is the measured position, not a policy step
         )
         if chunk.lead and chunk.observed_at_ms is not None:
             # Dated by its observation (continuous execution): the bridge starts now instead.
             bridged = replace(bridged, lead=False, observed_at_ms=None, timestamp_offset_steps=0)
         return bridged
+
+
+@dataclass
+class TimestepTimeline:
+    """Chunk module: keep a timestep queue's chunks on one timeline.
+
+    A queue client (``QueuedPolicyClient``, LeRobot's async queue) numbers its plan's steps by
+    policy timestep. Its first chunk is placed like any other (and bridged); once it is sent,
+    the time its policy step ``t0`` is due becomes the origin, and every later chunk starting at
+    timestep ``t`` is placed at ``origin + (t - t0) * dt``, so a replacement continues the motion
+    already running instead of starting again at "now" (contract T2). A chunk without timesteps
+    passes unchanged. Put it before the ``Bridge``: a chunk on the timeline is not bridged.
+    """
+
+    _origin: tuple[int, int] | None = field(default=None, init=False, repr=False)
+
+    def on_chunk(self, chunk: PendingChunk, context: ModuleContext) -> PendingChunk:
+        if chunk.action_timestep < 0:
+            return chunk
+        if self._origin is None and context.scheduled_start is not None:
+            self._origin = context.scheduled_start
+        if self._origin is None:
+            return chunk  # the first chunk: once sent, it sets the origin
+        timestep, origin_ms = self._origin
+        first_ms = int(origin_ms + (chunk.action_timestep - timestep) * chunk.dt_ms)
+        return replace(
+            chunk,
+            first_timestamp_ms=ServerMs(first_ms),
+            timestamp_offset_steps=0,
+            lead=False,
+            observed_at_ms=None,
+        )
 
 
 MIN_LEAD_MS = 20.0
@@ -243,6 +275,12 @@ class DropLate:
         return [(t, v) for t, v in waypoints if t >= earliest_ms]
 
 
+def timestep_queue_modules() -> list[object]:
+    """What a timestep queue needs in front: smoothing of its merged plan, its timeline, and a
+    measured-state bridge for its first chunk."""
+    return [Smoothing(), TimestepTimeline(), Bridge(always_anchor=True)]
+
+
 def default_pipeline(
     *, execution: object | None = None, policy: object | None = None
 ) -> list[object]:
@@ -251,16 +289,14 @@ def default_pipeline(
     Without ``execution``: the joggers' list. With the ``PolicyExecutor``'s execution mode and
     policy: the executor's, which also clamps joint targets to the robot's limits and bridges
     from where the robot is to the policy's first step; in sequential execution it bridges
-    every chunk and eases each in and out, in continuous execution it smooths and bridges only
-    for a policy that asks for it (a timestep queue,
-    :attr:`PolicyClient.requires_first_waypoint_bridge`), with a measured-state hold in front.
+    every chunk and eases each in and out; in continuous execution the policy's own
+    :attr:`~novapolicy.PolicyClient.default_modules` come first (a timestep queue's timeline,
+    smoothing and bridge).
     """
     if execution is None:
         return [HoldPadding(), Timestamps(), DropLate()]
     if isinstance(execution, SequentialExecution):
         front: list[object] = [Bridge(), EndpointRamp()]
-    elif getattr(policy, "requires_first_waypoint_bridge", False):
-        front = [Smoothing(), Bridge(always_anchor=True)]
     else:
-        front = []
+        front = list(getattr(policy, "default_modules", []))
     return [*front, JointClamp(), HoldPadding(), Timestamps(), DropLate()]
