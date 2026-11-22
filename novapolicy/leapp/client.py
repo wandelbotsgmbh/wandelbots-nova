@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from novapolicy.leapp.pipeline import _DTYPES, LeappPipeline
-from novapolicy.policy_client import DEFAULT_CONTROL_FREQ, PolicyClient
+from novapolicy.policy_client import PolicyClient, resolve_control_freq
 from novapolicy.types import ActionChunk
 
 if TYPE_CHECKING:
@@ -64,23 +64,9 @@ class LeappPolicyClient(PolicyClient):
         control_freq: float | None = None,
     ) -> None:
         self._pipeline = LeappPipeline(pipeline)
-        exported = self._pipeline.frequency
-        if control_freq is not None and exported is not None and control_freq != exported:
-            logger.warning(
-                "control_freq=%s differs from the %s Hz the export was trained at",
-                control_freq,
-                exported,
-            )
-        self._control_freq = float(control_freq or exported or DEFAULT_CONTROL_FREQ)
-        if control_freq is None and exported is None:
-            logger.warning(
-                "%s records no frequency; using %s Hz. Pass control_freq= to set it",
-                pipeline,
-                self._control_freq,
-            )
-        if self._control_freq <= 0:
-            msg = f"control_freq must be positive, got {self._control_freq}"
-            raise ValueError(msg)
+        self._control_freq = resolve_control_freq(
+            control_freq, owner=f"LeappPolicyClient({pipeline})", recorded=self._pipeline.frequency
+        )
         self._feeds: dict[str, str] = {}  # export input key -> observation key
         self._target: tuple[Port, str] | None = None  # joint output -> joint action key
         self._computed: dict[str, Port] = {}  # Action.computed key -> export output

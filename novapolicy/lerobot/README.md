@@ -273,18 +273,13 @@ Pass that value as `control_freq`, the name every novapolicy client uses:
 control_freq = 15  # the dataset's fps; ActionChunk.dt_ms = 1000 / 15
 ```
 
-`fps=` still works but warns; it is the deprecated name of `control_freq`. The default is 30.
+The default is 30 Hz, with a warning.
 
 This is separate from the LeRobot server's optional `--fps` CLI flag. The server flag is used by
 LeRobot when it creates `TimedAction` timestamps; `LeRobotPolicyClient` does not use those
 timestamps. It decodes the returned action tensors into NOVA `ActionChunk`s and sets the chunk
 `dt_ms` from this client-side `control_freq`. `PolicyExecutor` then uses that `dt_ms` when scheduling the
 returned chunk.
-
-### `playback_speed` (deprecated)
-
-`playback_speed` scaled `dt_ms = 1000 / (control_freq * playback_speed)`, which plays the policy at a rate it
-was not trained at. It still works but warns; pass the dataset's `fps` as `control_freq` instead.
 
 ### Checkpoint execution settings
 

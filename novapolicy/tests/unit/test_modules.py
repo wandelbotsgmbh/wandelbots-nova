@@ -162,3 +162,14 @@ def test_smoothing_keeps_the_steps_it_already_sent_exact() -> None:
     )
     resent = module.on_chunk(replacement, _context()).steps
     assert resent[:2] == sent[1:3]
+
+
+def test_a_step_rate_comes_from_the_caller_else_the_policy_else_30_hz(caplog) -> None:
+    from novapolicy.policy_client import resolve_control_freq
+
+    assert resolve_control_freq(20, owner="p") == 20.0
+    assert resolve_control_freq(None, owner="p", recorded=50) == 50.0
+    assert resolve_control_freq(None, owner="p") == 30.0
+    assert any("got no control_freq" in r.message for r in caplog.records)
+    with pytest.raises(ValueError, match="positive"):
+        resolve_control_freq(0, owner="p")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -13,6 +14,9 @@ if TYPE_CHECKING:
     from nova.types import RobotState
     from novapolicy.schema import PolicySchema
     from novapolicy.types import ActionChunk
+
+
+logger = logging.getLogger(__name__)
 
 
 class PolicyClient(ABC):
@@ -76,6 +80,37 @@ class PolicyClient(ABC):
 
 DEFAULT_CONTROL_FREQ = 30.0
 """A policy's control frequency in Hz when a client is given none."""
+
+
+def resolve_control_freq(
+    control_freq: float | None, *, owner: str, recorded: float | None = None
+) -> float:
+    """A policy's control frequency in Hz, the rate of its steps.
+
+    ``control_freq`` is the training data's frame rate; ``recorded`` a rate the policy itself
+    states (an export's frequency), used when none is passed and warned about when it differs.
+    Without either the rate is :data:`DEFAULT_CONTROL_FREQ`, with a warning: a policy played at a
+    rate it was not trained at moves too fast or too slow.
+    """
+    if control_freq is not None and recorded is not None and control_freq != recorded:
+        logger.warning(
+            "%s: control_freq=%s differs from the %s Hz the policy records",
+            owner,
+            control_freq,
+            recorded,
+        )
+    rate = control_freq if control_freq is not None else recorded
+    if rate is None:
+        rate = DEFAULT_CONTROL_FREQ
+        logger.warning(
+            "%s got no control_freq; playing actions at %s Hz. Pass the training data's frame "
+            "rate: a policy recorded at 15 fps would run twice as fast",
+            owner,
+            rate,
+        )
+    if rate <= 0:
+        raise ValueError(f"control_freq must be positive, got {rate}")
+    return float(rate)
 
 
 class CallbackPolicyClient(PolicyClient):

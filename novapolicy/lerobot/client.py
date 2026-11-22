@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, cast
-import warnings
 
 from lerobot.async_inference.helpers import RemotePolicyConfig
 
@@ -14,7 +13,7 @@ from novapolicy.lerobot.action_queue import LeRobotAsyncActionQueue
 from novapolicy.lerobot.config import try_load_execution_settings
 from novapolicy.lerobot.schema import LeRobotSchema, check_observation_range
 from novapolicy.lerobot.transport import LeRobotGrpcTransport
-from novapolicy.policy_client import DEFAULT_CONTROL_FREQ, PolicyClient
+from novapolicy.policy_client import PolicyClient, resolve_control_freq
 from novapolicy.poses import ROTATION_VECTOR
 
 if TYPE_CHECKING:
@@ -71,8 +70,6 @@ class LeRobotPolicyClient(PolicyClient):
             checkpoints and ignored by the others.
         control_freq: The policy's step rate in Hz, the rate actions are played at: the dataset's
             frame rate (``fps`` in its ``meta/info.json``). Default 30 Hz.
-        fps: Deprecated name of ``control_freq``.
-        playback_speed: Deprecated.
         device: Torch device used by the inference server.
         timeout_s: Deadline for individual gRPC calls.
         use_async_queue: Use timestamp-aligned asynchronous inference.
@@ -102,39 +99,12 @@ class LeRobotPolicyClient(PolicyClient):
         policy_type: str | None = None,
         task: str | None = None,
         control_freq: float | None = None,
-        fps: float | None = None,
-        playback_speed: float | None = None,
         device: str = "cpu",
         timeout_s: float = 15.0,
         use_async_queue: bool = False,
         async_queue_aggregation: AsyncQueueAggregation = AsyncQueueAggregation.AVERAGE,
         async_queue_refill_threshold: float = _DEFAULT_ASYNC_QUEUE_REFILL_THRESHOLD,
     ) -> None:
-        if fps is not None:
-            warnings.warn(
-                "LeRobotPolicyClient(fps=...) is deprecated; pass the same value as control_freq=",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            control_freq = fps if control_freq is None else control_freq
-        if control_freq is None:
-            control_freq = DEFAULT_CONTROL_FREQ
-            logger.warning(
-                "LeRobotPolicyClient got no control_freq; playing actions at %s Hz. Pass the "
-                "dataset's fps (meta/info.json): a policy recorded at 15 fps would run twice as fast",
-                control_freq,
-            )
-        if control_freq <= 0:
-            raise ValueError(f"control_freq must be positive, got {control_freq}")
-        if playback_speed is not None:
-            warnings.warn(
-                "LeRobotPolicyClient(playback_speed=...) is deprecated; it plays the policy "
-                "at a rate it was not trained at",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if playback_speed <= 0:
-                raise ValueError(f"playback_speed must be positive, got {playback_speed}")
         if actions_per_chunk is not None and actions_per_chunk <= 0:
             raise ValueError(f"actions_per_chunk must be positive, got {actions_per_chunk}")
         if n_action_steps is not None and n_action_steps <= 0:
@@ -160,7 +130,7 @@ class LeRobotPolicyClient(PolicyClient):
         self._actions_per_chunk = actions_per_chunk or 0
         self._n_action_steps = n_action_steps
         self._device = device
-        self._dt_ms = 1000.0 / (control_freq * (playback_speed or 1.0))
+        self._dt_ms = 1000.0 / resolve_control_freq(control_freq, owner="LeRobotPolicyClient")
         self._transport = LeRobotGrpcTransport(server_address, timeout_s=timeout_s)
         self._lerobot_schema = LeRobotSchema(dt_ms=self._dt_ms)
         self._async_queue = (

@@ -161,45 +161,10 @@ def _tcp_schema(mg: MagicMock) -> PolicySchema:
     )
 
 
-def test_playback_speed_still_scales_timing_but_is_deprecated() -> None:
-    with pytest.warns(DeprecationWarning, match="playback_speed"):
-        client = LeRobotPolicyClient(
-            "127.0.0.1:8080",
-            "model",
-            policy_type="act",
-            control_freq=15,
-            playback_speed=0.75,
-            actions_per_chunk=11,
-        )
-
-    assert client.dt_ms == pytest.approx(1000.0 / 15.0 / 0.75)
-
-
-def test_fps_still_works_but_is_deprecated_in_favour_of_control_freq() -> None:
-    with pytest.warns(DeprecationWarning, match="control_freq="):
-        client = LeRobotPolicyClient(
-            "127.0.0.1:8080", "model", policy_type="act", fps=15, actions_per_chunk=11
-        )
-    assert client.dt_ms == pytest.approx(1000.0 / 15.0)
-
-
 def test_control_freq_defaults_to_30_hz_and_says_so(caplog) -> None:
     client = LeRobotPolicyClient("127.0.0.1:8080", "model", policy_type="act", actions_per_chunk=11)
     assert client.dt_ms == pytest.approx(1000.0 / 30.0)
     assert any("got no control_freq" in r.message for r in caplog.records)
-
-
-@pytest.mark.filterwarnings("ignore::DeprecationWarning")
-def test_playback_speed_must_be_positive() -> None:
-    with pytest.raises(ValueError, match="playback_speed must be positive"):
-        LeRobotPolicyClient(
-            "127.0.0.1:8080",
-            "model",
-            policy_type="act",
-            control_freq=15,
-            playback_speed=0.0,
-            actions_per_chunk=11,
-        )
 
 
 @pytest.mark.parametrize("threshold", [0.0, 1.1])

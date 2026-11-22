@@ -14,7 +14,6 @@ import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
-import warnings
 
 import numpy as np
 
@@ -29,7 +28,7 @@ from novapolicy.gr00t.rtc import (  # ruff: ignore[typing-only-first-party-impor
 )
 from novapolicy.gr00t.transport import Gr00tZmqTransport, require_dict
 from novapolicy.ops import apply_ops
-from novapolicy.policy_client import DEFAULT_CONTROL_FREQ, PolicyClient
+from novapolicy.policy_client import PolicyClient, resolve_control_freq
 from novapolicy.types import ActionChunk
 
 logger = logging.getLogger(__name__)
@@ -80,8 +79,6 @@ class Gr00tPolicyClient(PolicyClient):
         controller's servo rate): the training data's frame rate (``fps`` in the
         dataset's ``meta/info.json``), or a reinforcement-learning policy's control frequency. Default 30 Hz;
         GR00T servers do not report it. A ``dt_ms`` in a server's action info still wins.
-    dt_ms:
-        Deprecated: pass ``control_freq``.
     tcp_format:
         TCP pose representation format sent to the server, unless the
         ``Observation.tcp`` declares an ``orientation_type``.
@@ -103,7 +100,6 @@ class Gr00tPolicyClient(PolicyClient):
         timeout_ms: int = 15000,
         api_token: str | None = None,
         control_freq: float | None = None,
-        dt_ms: float | None = None,
         tcp_format: TcpFormat = TcpFormat.ROT6D,
         rtc: RTCConfig | None = None,
         statistics: str | Path | None = None,
@@ -115,7 +111,7 @@ class Gr00tPolicyClient(PolicyClient):
             timeout_ms=timeout_ms,
             api_token=api_token,
         )
-        self._dt_ms = _step_spacing_ms(control_freq, dt_ms)
+        self._dt_ms = 1000.0 / resolve_control_freq(control_freq, owner="Gr00tPolicyClient")
         self._tcp_format = tcp_format
         # The checkpoint's statistics.json, to hold the first observation against
         self._statistics: dict[str, Any] = (
@@ -593,22 +589,6 @@ def _action_array(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _step_spacing_ms(control_freq: float | None, dt_ms: float | None) -> float:
-    if dt_ms is not None:
-        warnings.warn(
-            "Gr00tPolicyClient(dt_ms=...) is deprecated; pass control_freq=",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        if control_freq is None:
-            control_freq = 1000.0 / dt_ms
-    if control_freq is None:
-        control_freq = DEFAULT_CONTROL_FREQ
-    if control_freq <= 0:
-        raise ValueError(f"control_freq must be positive, got {control_freq}")
-    return 1000.0 / control_freq
 
 
 def _bounded_state(
