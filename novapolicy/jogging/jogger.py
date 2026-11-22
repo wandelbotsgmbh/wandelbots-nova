@@ -207,8 +207,10 @@ class _BaseJogger:
             anchor = self._anchor_for_now(mg, LIVE_LEAD_MS)
             # When the target was produced, on the loop's one timeline shared by every arm: a
             # LiveBuffer in the pipeline times targets by it, so the arms stay on one grid.
+            # Rounded apart: the loop time is on a 10 ms grid, and truncating the sum would put
+            # some targets 1 ms early, a whole grid step on the buffer's own grid.
             produced_ms = (
-                ServerMs(int(self._ack0_ms + self.elapsed * 1000.0))
+                ServerMs(round(self._ack0_ms) + round(self.elapsed * 1000.0))
                 if self._loop_t0 is not None
                 else None
             )
