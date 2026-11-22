@@ -8,7 +8,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from novapolicy.action_queue import TimestampedActionQueue
-from novapolicy.chunking import smooth_action_chunk
 from novapolicy.lerobot.schema import FlatActionLayout
 
 if TYPE_CHECKING:
@@ -32,7 +31,6 @@ class LeRobotAsyncActionQueue:
         *,
         aggregation: AsyncQueueAggregation,
         refill_threshold: float,
-        smoothing: bool,
     ) -> None:
         self._transport = transport
         self._schema = schema
@@ -41,7 +39,6 @@ class LeRobotAsyncActionQueue:
             frozen_steps=_ASYNC_FROZEN_QUEUE_STEPS,
         )
         self._refill_threshold = refill_threshold
-        self._smoothing = smoothing
         self._pending_request: asyncio.Task[list[Any]] | None = None
 
     def reset(self) -> None:
@@ -108,30 +105,9 @@ class LeRobotAsyncActionQueue:
                 layout,
                 action_timestep=action_timestep,
                 io_action_array=current_action,
-            )
-            if self._smoothing:
-                action_chunk = smooth_action_chunk(
-                    action_chunk,
-                    retained_prefix_steps=retained_prefix_steps,
-                )
-                preview = [
-                    (
-                        entry_timestep,
-                        self._schema.replace_motion_values(
-                            action,
-                            action_chunk,
-                            layout,
-                            step=index,
-                        ),
-                    )
-                    for index, (entry_timestep, action) in enumerate(preview)
-                ]
-                action_chunk = self._schema.decode_arrays(
-                    [action for _timestep, action in preview],
-                    layout,
-                    action_timestep=action_timestep,
-                    io_action_array=current_action,
-                )
+            ).model_copy(update={"retained_prefix_steps": retained_prefix_steps})
+            # Smoothing is the session's (the executor's default pipeline), after the targets
+            # are resolved to NOVA units; the steps already sent stay exact there.
             self._queue.publish(preview)
             return action_chunk
 

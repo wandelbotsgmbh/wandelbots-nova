@@ -82,12 +82,10 @@ class LeRobotPolicyClient(PolicyClient):
             lower peak path curvature than LeRobot's own weighted average.
         async_queue_refill_threshold: Remaining queue fraction that starts an
             asynchronous refill.
-        async_queue_smoothing: Smooth only the replaceable lookahead after
-            aggregation while retaining the active prefix exactly. On by
-            default: it removes the waypoint-scale kinks aggregation seams
-            leave, at the cost of rounding intended corners by about two
-            waypoints - pass ``False`` for tasks that need sharp contact
-            transitions.
+
+        The async queue's plan is smoothed by the executor's default pipeline
+        (:class:`~novapolicy.jogging.modules.Smoothing`, in NOVA units); leave that module
+        out for tasks that need sharp contact transitions.
 
     Note:
         LeRobot's protocol uses pickle and must only be used on trusted networks.
@@ -111,7 +109,6 @@ class LeRobotPolicyClient(PolicyClient):
         use_async_queue: bool = False,
         async_queue_aggregation: AsyncQueueAggregation = AsyncQueueAggregation.AVERAGE,
         async_queue_refill_threshold: float = _DEFAULT_ASYNC_QUEUE_REFILL_THRESHOLD,
-        async_queue_smoothing: bool = True,
     ) -> None:
         if fps is not None:
             warnings.warn(
@@ -172,7 +169,6 @@ class LeRobotPolicyClient(PolicyClient):
                 self._lerobot_schema,
                 aggregation=async_queue_aggregation,
                 refill_threshold=async_queue_refill_threshold,
-                smoothing=async_queue_smoothing,
             )
             if use_async_queue
             else None

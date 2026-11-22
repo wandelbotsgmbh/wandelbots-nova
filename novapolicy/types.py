@@ -101,6 +101,11 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
     frozen-step count only when overlap is unclamped, hence the field name.)
     0 = no RTC / no backdate."""
 
+    retained_prefix_steps: int = 0
+    """Leading steps a queue client already published to the controller: smoothing keeps them
+    exactly as they were sent (the queue's predecessor and frozen head). ``0`` for any other
+    chunk."""
+
     resolved: bool = False
     """The targets are already in NOVA units and absolute (the schema's operators and
     relative modes applied), as :class:`~novapolicy.queued_client.QueuedPolicyClient`

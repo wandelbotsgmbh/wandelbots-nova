@@ -25,7 +25,7 @@ import pytest
 
 from novapolicy.executor import Phase, PolicyExecutor
 from novapolicy.jogging.clock import ServerMs
-from novapolicy.jogging.modules import Bridge, EndpointRamp, default_pipeline
+from novapolicy.jogging.modules import Bridge, EndpointRamp, Smoothing, default_pipeline
 from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
 from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.ops import Rad2Deg
@@ -205,6 +205,19 @@ def _fake_session() -> MagicMock:
     state.pose = state.tcp = None
     session.current_state = state
     return session
+
+
+def _unsmoothed_queue_defaults() -> list[object]:
+    """A timestep queue's continuous default pipeline without smoothing."""
+
+    class _Queue:
+        requires_first_waypoint_bridge = True
+
+    return [
+        m
+        for m in default_pipeline(execution=ContinuousExecution(), policy=_Queue())
+        if not isinstance(m, Smoothing)
+    ]
 
 
 def _without_ramp() -> list[object]:
@@ -527,6 +540,7 @@ async def test_continuous_async_queue_policy_requests_a_measured_state_bridge(ro
         policy,
         timeout_s=1.0,
         execution=ContinuousExecution(rate_hz=20),
+        pipeline=_unsmoothed_queue_defaults(),
     )
     await executor.run()
 
@@ -597,6 +611,7 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         policy,
         timeout_s=1.0,
         execution=ContinuousExecution(rate_hz=100),
+        pipeline=_unsmoothed_queue_defaults(),
     )
 
     await executor.run()

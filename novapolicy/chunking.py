@@ -73,15 +73,13 @@ def trim_chunk(chunk: ActionChunk, n: int) -> ActionChunk:
     )
     trimmed_tcp = {mg_id: steps[:n] for mg_id, steps in chunk.tcp.items()} if chunk.tcp else {}
 
-    return ActionChunk(
-        joints=trimmed_joints,
-        tcp=trimmed_tcp,
-        ios=chunk.ios,
-        values={key: rows[:n] for key, rows in chunk.values.items()},
-        dt_ms=chunk.dt_ms,
-        first_timestamp_ms=chunk.first_timestamp_ms,
-        action_timestep=chunk.action_timestep,
-        seam_backdate_steps=chunk.seam_backdate_steps,
+    return chunk.model_copy(
+        update={
+            "joints": trimmed_joints,
+            "tcp": trimmed_tcp,
+            "values": {key: rows[:n] for key, rows in chunk.values.items()},
+            "retained_prefix_steps": min(chunk.retained_prefix_steps, n),
+        }
     )
 
 
@@ -135,6 +133,18 @@ def smooth_action_chunk(
         action_timestep=chunk.action_timestep,
         seam_backdate_steps=chunk.seam_backdate_steps,
     )
+
+
+def smooth_steps(
+    steps: list[list[float]], *, passes: int = 2, retained_prefix_steps: int = 0
+) -> list[list[float]]:
+    """One motion group's steps through ``passes`` of ``[1, 2, 1] / 4`` (see
+    :func:`smooth_action_chunk`), the first ``retained_prefix_steps`` kept exactly."""
+    if passes < 0 or retained_prefix_steps < 0:
+        raise ValueError("passes and retained_prefix_steps must be non-negative")
+    if passes == 0:
+        return steps
+    return _smooth_steps(steps, passes=passes, retained_prefix_steps=retained_prefix_steps)
 
 
 def _smooth_steps(

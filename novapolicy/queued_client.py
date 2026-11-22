@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from novapolicy.action_queue import TimestampedActionQueue
-from novapolicy.chunking import smooth_action_chunk, unwrap_tcp_rotations
+from novapolicy.chunking import unwrap_tcp_rotations
 from novapolicy.executor import resolve_actions
 from novapolicy.policy_client import PolicyClient
 from novapolicy.types import ActionChunk
@@ -43,15 +43,15 @@ class QueuedPolicyClient(PolicyClient):
     Args:
         policy: The wrapped client.
         margin_steps: Steps kept frozen beyond those that executed during inference.
-        smoothing_passes: ``[1, 2, 1] / 4`` passes over the merged plan; 0 disables.
+
+    The merged plan is returned as it is; the executor's default pipeline smooths it in the
+    session (:class:`~novapolicy.jogging.modules.Smoothing`), keeping the
+    ``retained_prefix_steps`` this client reports exact.
     """
 
-    def __init__(
-        self, policy: PolicyClient, *, margin_steps: int = 2, smoothing_passes: int = 2
-    ) -> None:
+    def __init__(self, policy: PolicyClient, *, margin_steps: int = 2) -> None:
         self._policy = policy
         self._margin_steps = margin_steps
-        self._smoothing_passes = smoothing_passes
         self._queue = TimestampedActionQueue()
         self._replaceable = 0
         self._layout: list[tuple[str, str, int]] = []  # (kind, group id, width)
@@ -117,12 +117,8 @@ class QueuedPolicyClient(PolicyClient):
             retained = 1 + min(frozen, len(plan) - 1)
         values = self._merge_values(chunk.values, first, frozen, [ts for ts, _v in plan])
         merged = self._unflatten([v for _ts, v in plan], chunk, plan[0][0]).model_copy(
-            update={"values": values}
+            update={"values": values, "retained_prefix_steps": retained}
         )
-        if self._smoothing_passes > 0:
-            merged = smooth_action_chunk(
-                merged, passes=self._smoothing_passes, retained_prefix_steps=retained
-            ).model_copy(update={"resolved": True})  # the filter rebuilds the chunk
         self._queue.publish(zip([ts for ts, _v in plan], self._flatten(merged, None), strict=True))
         return merged
 

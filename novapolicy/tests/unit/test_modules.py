@@ -11,6 +11,7 @@ from novapolicy.jogging.modules import (
     EndpointRamp,
     HoldPadding,
     JointClamp,
+    Smoothing,
     default_pipeline,
 )
 from novapolicy.jogging.pipeline import ModuleContext, Timestamps, split_pipeline
@@ -75,7 +76,7 @@ def test_a_queue_policy_gets_an_anchored_bridge_in_continuous_execution() -> Non
         requires_first_waypoint_bridge = True
 
     pipeline = default_pipeline(execution=ContinuousExecution(), policy=_Queue())
-    assert pipeline[0] == Bridge(always_anchor=True)
+    assert pipeline[:2] == [Smoothing(), Bridge(always_anchor=True)]
 
 
 def test_endpoint_ramp_validates_interpolation_steps() -> None:
@@ -141,3 +142,23 @@ def test_a_bridged_chunk_dated_by_its_observation_is_dated_at_the_send_instead()
     assert (bridged.lead, bridged.observed_at_ms, bridged.first_timestamp_ms) == (False, None, None)
     at_send = PendingChunk(steps=[[3.0], [4.0]], dt_ms=10.0, caller_step_count=2, lead=True)
     assert Bridge().on_chunk(at_send, _at([0.0])).lead is True  # sequential keeps its placement
+
+
+def test_smoothing_keeps_the_steps_it_already_sent_exact() -> None:
+    """A replacement starts with the queue's predecessor and frozen head: they keep the values
+    sent for their timesteps; the rest is filtered."""
+    module = Smoothing(passes=2)
+    first = PendingChunk(
+        steps=[[0.0], [4.0], [0.0], [4.0]], dt_ms=10.0, caller_step_count=4, action_timestep=0
+    )
+    sent = module.on_chunk(first, _context()).steps
+    assert sent != first.steps
+    replacement = PendingChunk(
+        steps=[[9.0], [9.0], [9.0], [9.0]],  # unsmoothed values for timesteps 1..4
+        dt_ms=10.0,
+        caller_step_count=4,
+        action_timestep=1,
+        retained_prefix_steps=2,
+    )
+    resent = module.on_chunk(replacement, _context()).steps
+    assert resent[:2] == sent[1:3]

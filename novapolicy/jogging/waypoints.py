@@ -71,6 +71,8 @@ class PendingChunk:
     when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None
     """``(step, action)``: run ``action`` when the caller's ``step`` is due, see
     :meth:`~novapolicy.jogging.waypoint_session.WaypointJoggingSession.update_chunk`."""
+    retained_prefix_steps: int = 0
+    """Leading steps already sent in an earlier chunk, which ``Smoothing`` keeps exact."""
     start_step: int = 0
     """Index of the caller's first step in ``steps``: a chunk module that puts steps in front of
     it (``Bridge``) or moves it (``EndpointRamp``) keeps this on it."""

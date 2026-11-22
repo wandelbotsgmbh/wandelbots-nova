@@ -11,7 +11,7 @@ See :mod:`novapolicy.jogging.pipeline` for the order and the contract of each mo
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import math
 from typing import TYPE_CHECKING
 
@@ -122,6 +122,49 @@ class EndpointRamp:
         )
 
 
+@dataclass
+class Smoothing:
+    """Chunk module: smooth a plan's motion with ``passes`` of the filter ``[1, 2, 1] / 4``.
+
+    Two passes equal ``[1, 4, 6, 4, 1] / 16`` away from the ends, which removes the
+    waypoint-scale kinks where a queue blends overlapping predictions, at the cost of rounding
+    intended corners by about two steps. Steps a queue client already sent
+    (``retained_prefix_steps``: its predecessor and frozen head) keep exactly the values this
+    module sent for their timesteps, so a replacement continues the motion already running. Joint
+    and TCP values are filtered component by component; IO, timing and values for computed
+    actions are untouched. Chunks shorter than three steps pass unchanged. Put it first: the
+    bridge has to end on the smoothed first step.
+    """
+
+    passes: int = 2
+    _sent: dict[int, list[float]] = field(default_factory=dict, init=False, repr=False)
+    """The values last sent, by policy timestep."""
+
+    def __post_init__(self) -> None:
+        if self.passes < 0:
+            raise ValueError("Smoothing needs a non-negative number of passes")
+
+    def on_chunk(
+        self,
+        chunk: PendingChunk,
+        context: ModuleContext,  # ruff: ignore[unused-method-argument] (the protocol's)
+    ) -> PendingChunk:
+        if self.passes == 0:
+            return chunk
+        retained = min(chunk.retained_prefix_steps, len(chunk.steps))
+        first = chunk.action_timestep
+        steps = [list(step) for step in chunk.steps]
+        if first >= 0:
+            for i in range(retained):
+                sent = self._sent.get(first + i)
+                if sent is not None and len(sent) == len(steps[i]):
+                    steps[i] = list(sent)
+        smoothed = chunking.smooth_steps(steps, passes=self.passes, retained_prefix_steps=retained)
+        if first >= 0:
+            self._sent = {first + i: step for i, step in enumerate(smoothed)}
+        return replace(chunk, steps=smoothed)
+
+
 @dataclass(frozen=True, slots=True)
 class Bridge:
     """Chunk module: move from where the robot is to the policy's first step at the chunk's
@@ -208,16 +251,16 @@ def default_pipeline(
     Without ``execution``: the joggers' list. With the ``PolicyExecutor``'s execution mode and
     policy: the executor's, which also clamps joint targets to the robot's limits and bridges
     from where the robot is to the policy's first step; in sequential execution it bridges
-    every chunk and eases each in and out, in continuous execution it bridges only for a policy
-    that asks for it (a timestep queue, :attr:`PolicyClient.requires_first_waypoint_bridge`),
-    with a measured-state hold in front.
+    every chunk and eases each in and out, in continuous execution it smooths and bridges only
+    for a policy that asks for it (a timestep queue,
+    :attr:`PolicyClient.requires_first_waypoint_bridge`), with a measured-state hold in front.
     """
     if execution is None:
         return [HoldPadding(), Timestamps(), DropLate()]
     if isinstance(execution, SequentialExecution):
         front: list[object] = [Bridge(), EndpointRamp()]
     elif getattr(policy, "requires_first_waypoint_bridge", False):
-        front = [Bridge(always_anchor=True)]
+        front = [Smoothing(), Bridge(always_anchor=True)]
     else:
         front = []
     return [*front, JointClamp(), HoldPadding(), Timestamps(), DropLate()]

@@ -1213,6 +1213,7 @@ class PolicyExecutor:
                 when_due=self._effects_when_due(
                     effects, group_id, (start_steps or {}).get(group_id, 0), moving
                 ),
+                retained_prefix_steps=chunk.retained_prefix_steps,
             )
             target_chunks[group_id] = session.queued_chunk_count
 
@@ -1241,6 +1242,7 @@ class PolicyExecutor:
                 when_due=self._effects_when_due(
                     effects, group_id, (start_steps or {}).get(group_id, 0), moving
                 ),
+                retained_prefix_steps=chunk.retained_prefix_steps,
             )
             target_chunks[group_id] = session.queued_chunk_count
         self._schedule_ios(effects, skip=set(moving))

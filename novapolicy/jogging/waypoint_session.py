@@ -537,6 +537,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         lead: bool = False,
         observed_at_ms: ServerMs | None = None,
         when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None,
+        retained_prefix_steps: int = 0,
         **legacy: object,
     ) -> None:
         """Queue a new action chunk as waypoints.
@@ -576,6 +577,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 replaced before it is sent (its motion never runs), and not when the session
                 stopped, failed or hit a stop condition before it was due. Actions of one
                 session run one after another. An exception fails the session.
+            retained_prefix_steps: Leading steps a queue already sent, which ``Smoothing``
+                keeps exact.
         """
         if legacy:
             timestamp_offset_steps = self._resolve_legacy(legacy, timestamp_offset_steps)
@@ -595,6 +598,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             observed_at_ms=observed_at_ms,
             when_due=when_due,
             extend_buffer=extend_buffer,
+            retained_prefix_steps=retained_prefix_steps,
         )
         # Chunk modules see every chunk, before the session keeps only the newest one.
         for module in self._chunk_modules:

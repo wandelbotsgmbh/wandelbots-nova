@@ -45,7 +45,7 @@ def _setup(chunks: list[list[list[float]]], **kwargs: object):
     inner = _Chunks([ActionChunk(tcp={mg.id: c}, dt_ms=DT) for c in chunks])
     pose = SimpleNamespace(position=START[:3], orientation=START[3:])
     states = {mg.id: SimpleNamespace(joints=[0.0] * 6, pose=pose)}
-    return QueuedPolicyClient(inner, smoothing_passes=0, **kwargs), schema, states, mg.id
+    return QueuedPolicyClient(inner, **kwargs), schema, states, mg.id
 
 
 @pytest.mark.asyncio
@@ -132,9 +132,7 @@ async def test_the_first_chunk_s_rotation_vectors_are_unwrapped():
         observations=[Observation.tcp("tcp_pose", source=mg, tcp="flange")],
         actions=[Action.tcp("eef", target=mg)],
     )
-    client = QueuedPolicyClient(
-        _Chunks([ActionChunk(tcp={mg.id: flip}, dt_ms=DT)]), smoothing_passes=0
-    )
+    client = QueuedPolicyClient(_Chunks([ActionChunk(tcp={mg.id: flip}, dt_ms=DT)]))
     pose = SimpleNamespace(position=START[:3], orientation=START[3:])
     chunk = await client.get_actions({mg.id: SimpleNamespace(joints=[0.0] * 6, pose=pose)}, schema)
     assert chunk.tcp[mg.id][1][3] == pytest.approx(2.0 * math.pi - 3.1)

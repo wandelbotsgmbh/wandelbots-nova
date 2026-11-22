@@ -7,6 +7,8 @@ from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import json
+import math
+from pathlib import Path
 import pickle
 import threading
 from types import SimpleNamespace
@@ -16,6 +18,10 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from novapolicy.jogging.clock import ServerMs
+from novapolicy.jogging.modules import Smoothing
+from novapolicy.jogging.pipeline import ModuleContext
+from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.poses import QUATERNION
 from novapolicy.schema import BoolMapping, Observation, PolicySchema
 
@@ -353,9 +359,6 @@ async def test_async_queue_refills_and_blends_overlapping_timesteps(
         actions_per_chunk=8,
         use_async_queue=True,
         async_queue_refill_threshold=1.0,
-        # This test checks refill and blend bookkeeping; smoothing (on by
-        # default) would filter the exact values the assertions read.
-        async_queue_smoothing=False,
     )
 
     await client.connect([mg.id])
@@ -399,7 +402,7 @@ async def test_async_queue_refills_and_blends_overlapping_timesteps(
 
 
 @pytest.mark.asyncio
-async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
+async def test_async_queue_leaves_smoothing_to_the_session_and_reports_its_frozen_head(
     fake_lerobot: _FakeLeRobot,
 ) -> None:
     mg = _mg()
@@ -411,7 +414,6 @@ async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
         policy_type="act",
         actions_per_chunk=3,
         use_async_queue=True,
-        async_queue_smoothing=True,
         control_freq=15.0,
     )
     await client.connect([mg.id])
@@ -426,8 +428,19 @@ async def test_async_queue_applies_action_chunk_smoothing_after_aggregation(
         io_values={"digital_out[0]": False},
     )
 
-    assert [step[0] for step in chunk.joints[mg.id]] == pytest.approx([1.25, 1.5, 1.25])
+    # The plan as aggregated; the session's Smoothing module filters it.
+    assert [step[0] for step in chunk.joints[mg.id]] == pytest.approx([0.0, 4.0, 0.0])
+    assert chunk.retained_prefix_steps == 0  # nothing published yet
     assert chunk.ios == {mg.id: {"digital_out[0]": True}}
+    pending = PendingChunk(
+        steps=chunk.joints[mg.id],
+        dt_ms=chunk.dt_ms,
+        caller_step_count=3,
+        action_timestep=chunk.action_timestep,
+    )
+    context = ModuleContext(now_ms=ServerMs(0), position=None, step_ms=50.0)
+    smoothed = Smoothing().on_chunk(pending, context).steps
+    assert [step[0] for step in smoothed] == pytest.approx([1.25, 1.5, 1.25])
 
     await client.close()
 
@@ -1033,3 +1046,89 @@ async def test_the_async_queue_refuses_tcp_actions_it_cannot_average() -> None:
         await queued.validate_schema(schema)
     plain = LeRobotPolicyClient("127.0.0.1:8080", "model", policy_type="act", actions_per_chunk=8)
     await plain.validate_schema(schema)
+
+
+class _DriftingLeRobotService(_RecordingLeRobotService):
+    """Ten steps of a sine per request, each request offset a little more, so blending, the
+    frozen head and smoothing all change what is sent."""
+
+    def GetActions(self, _request: object, context: Any) -> Any:  # ruff: ignore[invalid-function-name]
+        self.get_actions_calls += 1
+        start = self.observations[-1].timestep
+        bias = 0.05 * self.get_actions_calls
+        actions = [
+            TimedAction(
+                timestamp=0.0,
+                timestep=start + i,
+                action=torch.tensor(
+                    [math.sin(0.4 * (start + i)) + bias + 0.1 * j for j in range(6)] + [1.0],
+                    dtype=torch.float32,
+                ),
+            )
+            for i in range(10)
+        ]
+        return services_pb2.Actions(data=pickle.dumps(actions))
+
+
+@pytest.mark.asyncio
+async def test_the_async_queue_smoothed_in_the_session_sends_what_it_sent_before() -> None:
+    """The async queue's plan through the session's Smoothing module matches what the queue
+    sent when it smoothed itself (recorded in data/lerobot_async_queue_golden.json before the
+    move), to the float32 rounding the queue stored its smoothed values in."""
+    pool = ThreadPoolExecutor(max_workers=4)
+    server = grpc.server(pool)
+    services_pb2_grpc.add_AsyncInferenceServicer_to_server(_DriftingLeRobotService(), server)
+    port = server.add_insecure_port("127.0.0.1:0")
+    server.start()
+    mg = _mg()
+    client = LeRobotPolicyClient(
+        f"127.0.0.1:{port}",
+        "model",
+        policy_type="act",
+        control_freq=15,
+        actions_per_chunk=10,
+        use_async_queue=True,
+        async_queue_refill_threshold=0.7,
+    )
+    smoothing = Smoothing()
+    context = ModuleContext(now_ms=ServerMs(0), position=None, step_ms=50.0)
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    sent: list[dict[str, Any]] = []
+    try:
+        await client.connect([mg.id])
+        for tick in range(40):
+            client.synchronize_action_timestep(tick)
+            chunk = await client.get_actions(
+                {mg.id: _state((0.01 * tick,) * 6)},
+                _schema(mg),
+                images={"cam_scene_1": image},
+                io_values={"digital_out[0]": False},
+            )
+            steps = chunk.joints.get(mg.id)
+            if steps:
+                pending = PendingChunk(
+                    steps=steps,
+                    dt_ms=chunk.dt_ms,
+                    caller_step_count=len(steps),
+                    action_timestep=chunk.action_timestep,
+                    retained_prefix_steps=chunk.retained_prefix_steps,
+                )
+                steps = smoothing.on_chunk(pending, context).steps
+            sent.append({"action_timestep": chunk.action_timestep, "joints": steps or None})
+            refill = client._async_queue._pending_request  # each refill lands before the next
+            if refill is not None:
+                await asyncio.wait({refill})
+    finally:
+        await client.close()
+        server.stop(0).wait(timeout=2.0)
+        pool.shutdown(wait=True)
+
+    golden = json.loads(
+        (Path(__file__).parent / "data/lerobot_async_queue_golden.json").read_text()
+    )
+    assert [r["action_timestep"] for r in sent] == [r["action_timestep"] for r in golden]
+    for now, before in zip(sent, golden, strict=True):
+        if before["joints"] is None:
+            assert now["joints"] is None
+            continue
+        assert np.allclose(now["joints"], before["joints"], atol=2e-6, rtol=0)
