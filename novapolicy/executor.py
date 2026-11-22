@@ -54,7 +54,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_ASYNC_SEAM_STEPS = 4
 _ASYNC_REPLACEMENT_LEAD_STEPS = 1
 _DEFAULT_WAYPOINT_CONFIG = WaypointConfig()
 _DEFAULT_EXECUTION = SequentialExecution()
@@ -561,31 +560,9 @@ class PolicyExecutor:
         return bridges
 
     def _log_policy_action(self, action: ActionChunk, step: int) -> None:
-        """Log a full policy prediction including its retained queue seam."""
-        if self._rerun is None:
-            return
-        if action.action_timestep > 0:
-            seam = ActionChunk(
-                joints={
-                    group_id: steps[:_ASYNC_SEAM_STEPS]
-                    for group_id, steps in action.joints.items()
-                    if len(steps) >= _ASYNC_SEAM_STEPS
-                },
-                tcp={
-                    group_id: steps[:_ASYNC_SEAM_STEPS]
-                    for group_id, steps in action.tcp.items()
-                    if len(steps) >= _ASYNC_SEAM_STEPS
-                },
-                dt_ms=action.dt_ms,
-                action_timestep=action.action_timestep,
-            )
-            if seam.joints or seam.tcp:
-                self._rerun.log_bridge_chunk(seam, step)
-        self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
-
-    # -------------------------------------------------------------------------
-    # Stale data
-    # -------------------------------------------------------------------------
+        """Log the policy's full prediction."""
+        if self._rerun is not None:
+            self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
 
     async def _send_policy_action(
         self,

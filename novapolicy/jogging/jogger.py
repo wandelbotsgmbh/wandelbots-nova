@@ -43,7 +43,10 @@ if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
     from nova.types import Pose, RobotState
     from novapolicy.rerun import PolicyRerunLogger
-    from novapolicy.types import StopCondition
+    from novapolicy.types import JoggingMode, StopCondition
+
+    _Target: TypeAlias = list[float] | Pose
+    """A live target: joint positions, or a TCP pose."""
 
 logger = logging.getLogger(__name__)
 
@@ -83,19 +86,39 @@ _COMMAND_HISTORY_MS = 1000
 
 
 class _BaseJogger:
-    """Shared logic for joint and TCP joggers."""
+    """Shared logic for joint and TCP joggers: one session per motion group, live targets and
+    chunks. A subclass names its mode and how a target becomes waypoint values."""
+
+    _MODE: JoggingMode = "joint"
+    _TARGET = "list[float]"
 
     def __init__(
         self,
-        mg_list: list[MotionGroup],
-        sessions: dict[MotionGroup, WaypointJoggingSession],
+        motion_groups: dict[MotionGroup, str],
         *,
-        start_joint_position: dict[MotionGroup, list[float]] | None = None,
+        config: WaypointConfig | None = None,
+        stop_conditions: list[StopCondition] | None = None,
+        start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
+        pipeline: Sequence[object] | None = None,
     ) -> None:
-        self._mg_list = mg_list
-        self._multi = len(mg_list) > 1
-        self._sessions = sessions
+        cfg = config or WaypointConfig()
+        self._mg_list = list(motion_groups)
+        self._multi = len(self._mg_list) > 1
+        self._sessions = {
+            mg: WaypointJoggingSession(
+                motion_group=mg,
+                config=cfg,
+                tcp=tcp,
+                mode=self._MODE,
+                stop_conditions=stop_conditions,
+                pipeline=pipeline,
+            )
+            for mg, tcp in motion_groups.items()
+        }
+        if start_joint_position is not None and not isinstance(start_joint_position, dict):
+            start_joint_position = {self._mg_list[0]: start_joint_position}
         self._start_joint_position = start_joint_position
+        self._target: dict[MotionGroup, _Target] | None = None
         self._estop: EstopMonitor | None = None
         self._rerun: PolicyRerunLogger | None = None
         self._loop_t0: float | None = None
@@ -603,17 +626,84 @@ class _BaseJogger:
             yield s
             await asyncio.sleep(0.01)
 
+    @property
+    def target(self) -> _Target | dict[MotionGroup, _Target] | None:
+        """Current target (read-only): one value for one motion group, else a dict. Use
+        :meth:`set_target` or :meth:`set_chunk` to update."""
+        if self._target is None:
+            return None
+        return self._target if self._multi else self._target.get(self._mg_list[0])
 
-# ---------------------------------------------------------------------------
-# Joint jogger
-# ---------------------------------------------------------------------------
+    def _values(self, target: object) -> list[float]:
+        """A live target as waypoint values; ``TypeError`` for anything else."""
+        if not isinstance(target, list):
+            msg = f"Expected {self._TARGET} per motion group, got {type(target)}"
+            raise TypeError(msg)
+        return target
+
+    def set_target(self, target: _Target | dict[MotionGroup, _Target]) -> None:
+        """Set the live target — where the robot should be *now*: joint positions for
+        :func:`jog_joints`, a ``Pose`` for :func:`jog_tcp`; a dict per motion group for several.
+
+        Each target goes out as one waypoint. With a ``LiveBuffer`` in the pipeline, recent
+        targets are replayed as a continuous waypoint horizon instead, so the server always has
+        somewhere to be going next; spacing is measured from the trajectory times the samples
+        were produced at.
+
+        Raises:
+            TypeError: If given a chunk of future steps (use :meth:`set_chunk`), a value of the
+                wrong kind, or one value for several motion groups.
+        """
+        if isinstance(target, dict):
+            targets = target
+        else:
+            self._reject_chunk(target)
+            try:
+                self._values(target)
+            except TypeError:
+                msg = f"Expected {self._TARGET} or dict[MotionGroup, {self._TARGET}], got {type(target)}"
+                raise TypeError(msg) from None
+            if self._multi:
+                msg = f"For multiple motion groups, pass a dict[MotionGroup, {self._TARGET}]"
+                raise TypeError(msg)
+            targets = {self._mg_list[0]: target}
+        for mg, value in targets.items():
+            self._reject_chunk(value)
+            self._set_live_target(mg, self._values(value))
+        self._target = {**(self._target or {}), **targets} if isinstance(target, dict) else targets
+
+    def set_chunk(
+        self,
+        chunk: list[list[float]] | dict[MotionGroup, list[list[float]]],
+        *,
+        dt_ms: float,
+    ) -> None:
+        """Send a chunk of future targets: joint positions, or TCP poses as raw
+        ``[x, y, z, rx, ry, rz]`` in mm and rad; a dict per motion group for several.
+
+        A chunk already describes where the robot goes next, so it carries its own horizon: a
+        ``LiveBuffer`` passes it unchanged and clears its window. A chunk shorter than
+        ``HoldPadding.min_horizon_ms`` is padded by repeating its final step, and leading steps
+        whose moment has already passed are dropped at send time.
+
+        Args:
+            chunk: The future steps.
+            dt_ms: Spacing between consecutive steps, in milliseconds. Required.
+
+        Raises:
+            TypeError: If given a single target. Use :meth:`set_target`.
+            ValueError: If ``dt_ms`` is not positive.
+        """
+        finals = self._dispatch_chunk(chunk, dt_ms)
+        # A dict updates only the groups it names; a bare chunk replaces outright.
+        kept: dict[MotionGroup, _Target] = (
+            dict(self._target or {}) if isinstance(chunk, dict) else {}
+        )
+        self._target = {**kept, **finals}
 
 
 class JointJogger(_BaseJogger):
-    """joint position jogger.
-
-    Do not instantiate directly — use :func:`jog_joints`.
-    """
+    """Joint position jogger. Do not instantiate directly — use :func:`jog_joints`."""
 
     def __init__(
         self,
@@ -624,247 +714,36 @@ class JointJogger(_BaseJogger):
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
         pipeline: Sequence[object] | None = None,
     ) -> None:
-        cfg = config or WaypointConfig()
-        sessions: dict[MotionGroup, WaypointJoggingSession] = {}
-        for mg in motion_groups:
-            sessions[mg] = WaypointJoggingSession(
-                motion_group=mg,
-                config=cfg,
-                mode="joint",
-                stop_conditions=stop_conditions,
-                pipeline=pipeline,
-            )
-        # Normalize start_joint_position to dict[MotionGroup, list[float]]
-        home_dict: dict[MotionGroup, list[float]] | None = None
-        if start_joint_position is not None:
-            if isinstance(start_joint_position, dict):
-                home_dict = start_joint_position
-            else:
-                home_dict = {motion_groups[0]: start_joint_position}
         super().__init__(
-            motion_groups,
-            sessions,
-            start_joint_position=home_dict,
+            dict.fromkeys(motion_groups, ""),
+            config=config,
+            stop_conditions=stop_conditions,
+            start_joint_position=start_joint_position,
+            pipeline=pipeline,
         )
-        self._target: dict[MotionGroup, list[float]] | None = None
-
-    @property
-    def target(self) -> dict[MotionGroup, list[float]] | list[float] | None:
-        """Current target (read-only). Use :meth:`set_target` to update."""
-        if self._target is None:
-            return None
-        if not self._multi:
-            return self._target.get(self._mg_list[0])
-        return self._target
-
-    def set_target(self, target: list[float] | dict[MotionGroup, list[float]]) -> None:
-        """Set the live joint target — where the robot should be *now*.
-
-        Each target goes out as one waypoint. With a ``LiveBuffer`` in the pipeline, recent
-        targets are replayed as a continuous waypoint horizon instead, so the server
-        always has somewhere to be going next; spacing is measured from the
-        trajectory times the samples were produced at.
-
-        Args:
-            target: Joint positions to track — ``list[float]`` for one motion
-                group, or ``dict[MotionGroup, list[float]]`` for several.
-
-        Raises:
-            TypeError: If given a chunk of future steps. Use :meth:`set_chunk`.
-        """
-        if isinstance(target, dict):
-            self._target = self._target or {}
-            for mg, value in target.items():
-                self._reject_chunk(value)
-                self._set_live_target(mg, value)
-                self._target[mg] = value
-            return
-
-        self._reject_chunk(target)
-        if not isinstance(target, list):
-            msg = f"Expected list[float] or dict[MotionGroup, list[float]], got {type(target)}"
-            raise TypeError(msg)
-        if self._multi:
-            msg = "For multiple motion groups, pass a dict[MotionGroup, list[float]]"
-            raise TypeError(msg)
-        mg = self._mg_list[0]
-        self._set_live_target(mg, target)
-        self._target = {mg: target}
-
-    def set_chunk(
-        self,
-        chunk: list[list[float]] | dict[MotionGroup, list[list[float]]],
-        *,
-        dt_ms: float,
-    ) -> None:
-        """Send a chunk of future joint targets.
-
-        A chunk already describes where the robot goes next, so it carries its own
-        horizon: a ``LiveBuffer`` passes it unchanged and costs no latency here. A
-        chunk shorter than ``HoldPadding.min_horizon_ms`` is padded by
-        repeating its final step, and leading steps whose moment has already passed
-        are dropped at send time.
-
-        Sending a chunk clears the live ring buffer, so alternating this with
-        :meth:`set_target` on one motion group leaves the live targets after each
-        chunk to go out alone until the buffer refills.
-
-        Args:
-            chunk: Future joint positions — ``list[list[float]]`` for one motion
-                group, or ``dict[MotionGroup, list[list[float]]]`` for several.
-            dt_ms: Spacing between consecutive steps, in milliseconds. Required.
-
-        Raises:
-            TypeError: If given a single target. Use :meth:`set_target`.
-            ValueError: If ``dt_ms`` is not positive.
-        """
-        finals = self._dispatch_chunk(chunk, dt_ms)
-        # A dict updates only the groups it names; a bare chunk replaces outright,
-        # matching set_target.
-        merged = dict(self._target or {}) if isinstance(chunk, dict) else {}
-        merged.update(finals)
-        self._target = merged
 
     async def __aenter__(self) -> JointJogger:
         await super().__aenter__()
         return self
 
 
-# ---------------------------------------------------------------------------
-# TCP jogger
-# ---------------------------------------------------------------------------
-
-
 class TcpJogger(_BaseJogger):
-    """TCP pose jogger via server-side waypoint jogging.
+    """TCP pose jogger. Do not instantiate directly — use :func:`jog_tcp`."""
 
-    Do not instantiate directly — use :func:`jog_tcp`.
-    """
-
-    def __init__(
-        self,
-        motion_groups: dict[MotionGroup, str],
-        *,
-        config: WaypointConfig | None = None,
-        stop_conditions: list[StopCondition] | None = None,
-        start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
-        pipeline: Sequence[object] | None = None,
-    ) -> None:
-        cfg = config or WaypointConfig()
-        sessions: dict[MotionGroup, WaypointJoggingSession] = {}
-        for mg, tcp in motion_groups.items():
-            sessions[mg] = WaypointJoggingSession(
-                motion_group=mg,
-                config=cfg,
-                tcp=tcp,
-                mode="cartesian",
-                stop_conditions=stop_conditions,
-                pipeline=pipeline,
-            )
-        mg_list = list(motion_groups.keys())
-        # Normalize start_joint_position to dict[MotionGroup, list[float]]
-        home_dict: dict[MotionGroup, list[float]] | None = None
-        if start_joint_position is not None:
-            if isinstance(start_joint_position, dict):
-                home_dict = start_joint_position
-            else:
-                home_dict = {mg_list[0]: start_joint_position}
-        super().__init__(
-            mg_list,
-            sessions,
-            start_joint_position=home_dict,
-        )
-        self._target: dict[MotionGroup, Pose | list[float]] | None = None
+    _MODE: JoggingMode = "cartesian"
+    _TARGET = "Pose"
 
     def _expected_dims(self, mg: MotionGroup) -> int | None:  # ruff: ignore[unused-method-argument, no-self-use]
         return _CARTESIAN_DIMS
 
-    @property
-    def target(
-        self,
-    ) -> dict[MotionGroup, Pose | list[float]] | Pose | list[float] | None:
-        """Current target (read-only). Use :meth:`set_target` to update."""
-        if self._target is None:
-            return None
-        if not self._multi:
-            return self._target.get(self._mg_list[0])
-        return self._target
-
-    def set_target(self, target: Pose | dict[MotionGroup, Pose]) -> None:
-        """Set the live TCP target — where the TCP should be *now*.
-
-        Each pose goes out as one waypoint. With a ``LiveBuffer`` in the pipeline, recent
-        poses are replayed as a continuous waypoint horizon instead, so the server
-        always has somewhere to be going next; spacing is measured from the
-        trajectory times the samples were produced at.
-
-        Args:
-            target: TCP pose to track — a ``Pose`` for one motion group, or
-                ``dict[MotionGroup, Pose]`` for several.
-
-        Raises:
-            TypeError: If given a chunk of future steps. Use :meth:`set_chunk`.
-        """
+    def _values(self, target: object) -> list[float]:
         from nova.types import Pose  # ruff: ignore[import-outside-top-level]
-
-        if isinstance(target, dict):
-            self._target = self._target or {}
-            for mg, value in target.items():
-                if not isinstance(value, Pose):
-                    self._reject_chunk(value)
-                    msg = f"Expected Pose per motion group, got {type(value)}"
-                    raise TypeError(msg)
-                self._set_live_target(mg, list(value.position) + list(value.orientation))
-                self._target[mg] = value
-            return
 
         if not isinstance(target, Pose):
             self._reject_chunk(target)
-            msg = f"Expected Pose or dict[MotionGroup, Pose], got {type(target)}"
+            msg = f"Expected Pose per motion group, got {type(target)}"
             raise TypeError(msg)
-        if self._multi:
-            msg = "For multiple motion groups, pass a dict[MotionGroup, Pose]"
-            raise TypeError(msg)
-        mg = self._mg_list[0]
-        self._set_live_target(mg, list(target.position) + list(target.orientation))
-        self._target = {mg: target}
-
-    def set_chunk(
-        self,
-        chunk: list[list[float]] | dict[MotionGroup, list[list[float]]],
-        *,
-        dt_ms: float,
-    ) -> None:
-        """Send a chunk of future TCP targets, each ``[x, y, z, rx, ry, rz]``.
-
-        A chunk already describes where the TCP goes next, so it carries its own
-        horizon: a ``LiveBuffer`` passes it unchanged and costs no latency here. A
-        chunk shorter than ``HoldPadding.min_horizon_ms`` is padded by
-        repeating its final step, and leading steps whose moment has already passed
-        are dropped at send time.
-
-        Sending a chunk clears the live ring buffer, so alternating this with
-        :meth:`set_target` on one motion group leaves the live poses after each
-        chunk to go out alone until the buffer refills.
-
-        Args:
-            chunk: Future TCP poses in mm and rad — ``list[list[float]]`` for one
-                motion group, or ``dict[MotionGroup, list[list[float]]]`` for
-                several. Note these are raw 6-vectors, not ``Pose`` objects.
-            dt_ms: Spacing between consecutive steps, in milliseconds. Required.
-
-        Raises:
-            TypeError: If given a single pose. Use :meth:`set_target`.
-            ValueError: If ``dt_ms`` is not positive.
-        """
-        finals = self._dispatch_chunk(chunk, dt_ms)
-        # A dict updates only the groups it names; a bare chunk replaces outright,
-        # matching set_target. Annotated because ``_target`` also holds live Poses.
-        merged: dict[MotionGroup, Pose | list[float]] = (
-            dict(self._target or {}) if isinstance(chunk, dict) else {}
-        )
-        merged.update(finals)
-        self._target = merged
+        return [*target.position, *target.orientation]
 
     async def __aenter__(self) -> TcpJogger:
         await super().__aenter__()
