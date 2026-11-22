@@ -131,9 +131,7 @@ and IO or computed actions remain aligned with policy waypoint zero.
 In continuous execution only a timestep queue (`QueuedPolicyClient`, LeRobot's async queue) is
 bridged (`Bridge(always_anchor=True)`), and only until its timeline exists: its later chunks carry
 an `action_timestep` and continue on that timeline without re-anchoring to the measured state. A
-queue's pipeline must contain a `Bridge`; the executor refuses one without at construction. The
-same bridge is available as functions: `novapolicy.connect_action_chunk(...)` and
-`novapolicy.create_bridge_chunk(...)`.
+queue's pipeline must contain a `Bridge`; the executor refuses one without at construction.
 
 ### Sequential endpoint ramps
 
@@ -184,8 +182,7 @@ initial lookahead and preserve continuity across replacement seams.
 A timestep queue's plan is smoothed by the `Smoothing` module in its default pipeline: a temporal
 `[1, 2, 1] / 4` filter on joint and TCP target sequences. Two passes, the default, are equivalent
 to `[1, 4, 6, 4, 1] / 16` away from chunk boundaries. The steps the queue already sent
-(`ActionChunk.retained_prefix_steps`) keep exactly the values sent for their timesteps. The same
-filter is available as `novapolicy.smooth_action_chunk(...)`. TCP position and rotation-vector components are filtered independently;
+(`ActionChunk.retained_prefix_steps`) keep exactly the values sent for their timesteps. TCP position and rotation-vector components are filtered independently;
 IO actions, timing, and action-timestep metadata remain unchanged. Unlike endpoint interpolation,
 smoothing does not add waypoints or change chunk duration.
 

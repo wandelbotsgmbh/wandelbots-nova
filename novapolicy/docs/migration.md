@@ -196,3 +196,7 @@ Also changed:
 - **`ModuleContext`** gains `motion_group_id`, `mode` and `joint_limits`; **`PendingChunk`** gains
   `start_step` and `retained_prefix_steps`. A chunk module that puts steps in front of the policy's
   first step keeps `start_step` and `when_due` on it.
+- **The chunk-level shaping functions are gone:** `smooth_action_chunk`, `interpolate_action_chunk_ramps`,
+  `connect_action_chunk`, `create_bridge_chunk`, `chunk_duration_s` and their result types. The
+  modules (`Smoothing`, `EndpointRamp`, `Bridge`) do the same per motion group; the per-group
+  helpers are `novapolicy.chunking.smooth_steps`, `ramp_steps` and `bridge_steps`.

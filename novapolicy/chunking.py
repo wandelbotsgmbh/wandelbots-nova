@@ -42,13 +42,6 @@ def _max_steps(chunk: ActionChunk) -> int:
     )
 
 
-def chunk_duration_s(chunk: ActionChunk) -> float:
-    """Compute how long a chunk takes to execute (seconds)."""
-    if chunk.dt_ms <= 0:
-        return 0.0
-    return _max_steps(chunk) * chunk.dt_ms / 1000.0
-
-
 def trim_chunk(chunk: ActionChunk, n: int) -> ActionChunk:
     """Trim an action chunk to its first ``n`` steps (receding horizon).
 
@@ -80,58 +73,6 @@ def trim_chunk(chunk: ActionChunk, n: int) -> ActionChunk:
             "values": {key: rows[:n] for key, rows in chunk.values.items()},
             "retained_prefix_steps": min(chunk.retained_prefix_steps, n),
         }
-    )
-
-
-def smooth_action_chunk(
-    chunk: ActionChunk,
-    *,
-    passes: int = 2,
-    retained_prefix_steps: int = 0,
-) -> ActionChunk:
-    """Smooth motion lookaheads without changing active or discrete actions.
-
-    Each pass applies the temporal filter ``[1, 2, 1] / 4`` with replicated
-    boundary values. Two passes are equivalent to ``[1, 4, 6, 4, 1] / 16``
-    away from chunk boundaries. ``retained_prefix_steps`` restores an already
-    active prefix after filtering so trajectory replacements remain exact.
-
-    Joint and TCP sequences are filtered independently. TCP position and
-    rotation-vector components are treated component-wise. IO actions, timing,
-    and action-timestep metadata are preserved.
-    """
-    if passes < 0:
-        raise ValueError("passes must be non-negative")
-    if retained_prefix_steps < 0:
-        raise ValueError("retained_prefix_steps must be non-negative")
-    if passes == 0 or (not chunk.joints and not chunk.tcp):
-        return chunk
-
-    joints = {
-        group_id: _smooth_steps(
-            steps,
-            passes=passes,
-            retained_prefix_steps=retained_prefix_steps,
-        )
-        for group_id, steps in chunk.joints.items()
-    }
-    tcp = {
-        group_id: _smooth_steps(
-            steps,
-            passes=passes,
-            retained_prefix_steps=retained_prefix_steps,
-        )
-        for group_id, steps in chunk.tcp.items()
-    }
-    return ActionChunk(
-        joints=joints,
-        tcp=tcp,
-        ios=chunk.ios,
-        values=chunk.values,
-        dt_ms=chunk.dt_ms,
-        first_timestamp_ms=chunk.first_timestamp_ms,
-        action_timestep=chunk.action_timestep,
-        seam_backdate_steps=chunk.seam_backdate_steps,
     )
 
 
@@ -172,68 +113,6 @@ def _smooth_steps(
     prefix_length = min(retained_prefix_steps, len(smoothed))
     smoothed[:prefix_length] = original[:prefix_length]
     return smoothed
-
-
-@dataclass(frozen=True, slots=True)
-class InterpolatedActionChunk:
-    """Motion with eased endpoint intervals and remapped original indices."""
-
-    motion: ActionChunk
-    original_step_indices: dict[str, tuple[int, ...]]
-    """Motion group id → new index for every original waypoint index."""
-
-
-def interpolate_action_chunk_ramps(
-    chunk: ActionChunk,
-    *,
-    accelerate: bool = True,
-    brake: bool = True,
-    interpolation_steps: int = 3,
-) -> InterpolatedActionChunk:
-    """Ease into and out of a chunk by subdividing its endpoint intervals.
-
-    The first interval uses quadratic ease-in, while the final interval uses
-    quadratic ease-out. If both refer to the same interval, smoothstep is used.
-    Every original waypoint remains in the result and ``dt_ms`` is unchanged;
-    the added points therefore allocate real time for acceleration and braking.
-    """
-    if interpolation_steps < _MIN_RAMP_STEPS:
-        raise ValueError("interpolation_steps must be at least 2")
-
-    joints: dict[str, list[list[float]]] = {}
-    tcp: dict[str, list[list[float]]] = {}
-    original_step_indices: dict[str, tuple[int, ...]] = {}
-
-    for group_id, steps in chunk.joints.items():
-        interpolated, indices = _interpolate_endpoint_intervals(
-            steps,
-            accelerate=accelerate,
-            brake=brake,
-            interpolation_steps=interpolation_steps,
-        )
-        joints[group_id] = interpolated
-        original_step_indices[group_id] = indices
-
-    for group_id, steps in chunk.tcp.items():
-        interpolated, indices = _interpolate_endpoint_intervals(
-            unwrap_tcp_rotations(steps, steps[0][3:6]) if steps else steps,
-            accelerate=accelerate,
-            brake=brake,
-            interpolation_steps=interpolation_steps,
-        )
-        tcp[group_id] = interpolated
-        original_step_indices[group_id] = indices
-
-    motion = ActionChunk(
-        joints=joints,
-        tcp=tcp,
-        ios=chunk.ios,
-        dt_ms=chunk.dt_ms,
-        first_timestamp_ms=chunk.first_timestamp_ms,
-        action_timestep=chunk.action_timestep,
-        seam_backdate_steps=chunk.seam_backdate_steps,
-    )
-    return InterpolatedActionChunk(motion=motion, original_step_indices=original_step_indices)
 
 
 def ramp_steps(
@@ -302,129 +181,6 @@ def _ramp_fractions(
     return fractions
 
 
-@dataclass(frozen=True, slots=True)
-class ConnectedActionChunk:
-    """Continuous bridge + policy motion and policy-boundary indices."""
-
-    motion: ActionChunk
-    bridge: ActionChunk
-    policy_start_steps: dict[str, int]
-    """Motion group id → index of policy waypoint zero in ``motion``."""
-
-
-def connect_action_chunk(
-    chunk: ActionChunk,
-    states: dict[str, Any],
-    *,
-    always_anchor: bool = False,
-) -> ConnectedActionChunk | None:
-    """Prepend same-spacing bridges without stopping at policy waypoint zero.
-
-    The returned motion contains no IO actions. ``policy_start_steps`` marks
-    the exact waypoint where callers should fire the original chunk's IO and
-    computed actions. Returns ``None`` when no motion group needs a bridge.
-    """
-    chunk = _unwrap_chunk_rotations(chunk, states)
-    bridge = create_bridge_chunk(chunk, states, always_anchor=always_anchor)
-    if bridge is None:
-        return None
-
-    connected_joints: dict[str, list[list[float]]] = {}
-    connected_tcp: dict[str, list[list[float]]] = {}
-    policy_start_steps: dict[str, int] = {}
-
-    for group_id, policy_steps in chunk.joints.items():
-        bridge_steps = bridge.joints.get(group_id)
-        if bridge_steps:
-            policy_start_steps[group_id] = len(bridge_steps) - 1
-            connected_joints[group_id] = [*bridge_steps, *policy_steps[1:]]
-        else:
-            policy_start_steps[group_id] = 0
-            connected_joints[group_id] = policy_steps
-
-    for group_id, policy_steps in chunk.tcp.items():
-        bridge_steps = bridge.tcp.get(group_id)
-        if bridge_steps:
-            policy_start_steps[group_id] = len(bridge_steps) - 1
-            connected_tcp[group_id] = [*bridge_steps, *policy_steps[1:]]
-        else:
-            policy_start_steps[group_id] = 0
-            connected_tcp[group_id] = policy_steps
-
-    motion = ActionChunk(
-        joints=connected_joints,
-        tcp=connected_tcp,
-        dt_ms=chunk.dt_ms,
-    )
-    return ConnectedActionChunk(
-        motion=motion,
-        bridge=bridge,
-        policy_start_steps=policy_start_steps,
-    )
-
-
-def create_bridge_chunk(
-    chunk: ActionChunk,
-    states: dict[str, Any],
-    *,
-    always_anchor: bool = False,
-) -> ActionChunk | None:
-    """Create an interpolated chunk from current state to policy step zero.
-
-    A bridge is needed only when reaching the first policy target in one
-    ``dt_ms`` interval would exceed the largest spatial interval already
-    present in that policy chunk. Its first waypoint holds the observed current
-    state, so request transport cannot consume the first movement interval.
-    Bridge waypoints use the same ``dt_ms`` and end exactly at policy step zero.
-    The returned chunk has no IO actions. Use :func:`connect_action_chunk` to
-    prepend it to policy motion without stopping at the boundary.
-
-    With ``always_anchor=True``, a measured-state hold is always prepended. If
-    the gap needs no interpolation, the bridge is exactly ``[current, first]``.
-    This gives continuously refreshed queues one full ``dt_ms`` interval before
-    the first movement target instead of scheduling that target immediately.
-
-    Joint spacing is measured as Euclidean distance in joint space. TCP
-    spacing treats translation and rotation-vector distance separately so
-    millimetres and radians are never mixed. If a chunk has fewer than two
-    policy steps, it provides no spacing reference and no bridge is created.
-    """
-    bridge_joints: dict[str, list[list[float]]] = {}
-    bridge_tcp: dict[str, list[list[float]]] = {}
-
-    for group_id, steps in chunk.joints.items():
-        state = states.get(group_id)
-        if state is None or not steps or not hasattr(state, "joints"):
-            continue
-        bridge = _interpolated_bridge(
-            list(state.joints),
-            steps,
-            tcp=False,
-            always_anchor=always_anchor,
-        )
-        if bridge:
-            bridge_joints[group_id] = bridge
-
-    for group_id, steps in chunk.tcp.items():
-        state = states.get(group_id)
-        pose = getattr(state, "pose", None) if state is not None else None
-        if pose is None or not steps:
-            continue
-        current = [*pose.position, *pose.orientation]
-        bridge = _interpolated_bridge(
-            current,
-            unwrap_tcp_rotations(steps, current[3:6]),
-            tcp=True,
-            always_anchor=always_anchor,
-        )
-        if bridge:
-            bridge_tcp[group_id] = bridge
-
-    if not bridge_joints and not bridge_tcp:
-        return None
-    return ActionChunk(joints=bridge_joints, tcp=bridge_tcp, dt_ms=chunk.dt_ms)
-
-
 _TCP_WIDTH = 6
 """Values of a NOVA TCP pose: [x, y, z, rx, ry, rz]."""
 
@@ -466,18 +222,6 @@ def _equivalent_rotvec_near(rotvec: list[float], reference: list[float]) -> list
     projection = sum(a * r for a, r in zip(axis, reference, strict=True))
     turns = round((projection - angle) / (2.0 * math.pi))
     return [a * (angle + 2.0 * math.pi * turns) for a in axis]
-
-
-def _unwrap_chunk_rotations(chunk: ActionChunk, states: dict[str, Any]) -> ActionChunk:
-    """Unwrap each TCP group's rotations against its measured pose."""
-    tcp: dict[str, list[list[float]]] = {}
-    for group_id, steps in chunk.tcp.items():
-        state = states.get(group_id)
-        pose = getattr(state, "pose", None) if state is not None else None
-        tcp[group_id] = (
-            unwrap_tcp_rotations(steps, list(pose.orientation)) if pose and steps else steps
-        )
-    return chunk.model_copy(update={"tcp": tcp}) if chunk.tcp else chunk
 
 
 def bridge_steps(

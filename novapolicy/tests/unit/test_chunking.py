@@ -19,13 +19,11 @@ from scipy.spatial.transform import Rotation
 from novapolicy.chunking import (
     TcpDelta,
     apply_relative_mode,
-    chunk_duration_s,
+    bridge_steps,
     compose_tcp_deltas,
-    connect_action_chunk,
-    create_bridge_chunk,
-    interpolate_action_chunk_ramps,
     placement,
-    smooth_action_chunk,
+    ramp_steps,
+    smooth_steps,
     trim_chunk,
     unwrap_tcp_rotations,
 )
@@ -36,20 +34,6 @@ from novapolicy.types import ActionChunk, ContinuousExecution, SequentialExecuti
 _J = st.floats(min_value=-10.0, max_value=10.0, allow_nan=False, allow_infinity=False)
 _STEP = st.lists(_J, min_size=6, max_size=6)
 _STEPS = st.lists(_STEP, min_size=0, max_size=20)
-
-# ---------------------------------------------------------------------------
-# chunk_duration_s — how long a chunk takes to play out
-# ---------------------------------------------------------------------------
-
-
-def test_duration_uses_the_longest_arm():
-    """With uneven arms, duration follows the one with the most steps."""
-    chunk = ActionChunk(
-        joints={"0@ur5e": [[0.0] * 6] * 2, "0@ur10e": [[0.0] * 6] * 5},
-        dt_ms=10.0,
-    )
-    assert chunk_duration_s(chunk) == 0.05
-
 
 # ---------------------------------------------------------------------------
 # trim_chunk — receding horizon: keep only the first n steps
@@ -76,36 +60,12 @@ def test_trim_shorter_than_n_is_left_alone(caplog):
 # ---------------------------------------------------------------------------
 
 
-def test_smoothing_filters_joint_and_tcp_motion_and_preserves_discrete_actions_and_metadata():
-    chunk = ActionChunk(
-        joints={"0@ur5e": [[0.0], [4.0], [0.0]]},
-        tcp={"0@ur5e": [[0.0] * 6, [4.0] * 6, [0.0] * 6]},
-        ios={"0@ur5e": {"digital_out[0]": True}},
-        dt_ms=50.0,
-        first_timestamp_ms=100,
-        action_timestep=7,
-        seam_backdate_steps=2,
-    )
-
-    smoothed = smooth_action_chunk(chunk, retained_prefix_steps=1)
-
-    assert [step[0] for step in smoothed.joints["0@ur5e"]] == pytest.approx([0.0, 1.5, 1.25])
-    assert [step[0] for step in smoothed.tcp["0@ur5e"]] == pytest.approx([0.0, 1.5, 1.25])
-    assert chunk.joints["0@ur5e"] == [[0.0], [4.0], [0.0]]
-    assert chunk.tcp["0@ur5e"] == [[0.0] * 6, [4.0] * 6, [0.0] * 6]
-    assert smoothed.ios == chunk.ios
-    assert smoothed.dt_ms == 50.0
-    assert smoothed.first_timestamp_ms == 100
-    assert smoothed.action_timestep == 7
-    assert smoothed.seam_backdate_steps == 2
-
-
-def test_smoothing_supports_tcp_only_chunks():
-    chunk = ActionChunk(tcp={"0@ur5e": [[0.0] * 6, [4.0] * 6, [0.0] * 6]})
-
-    smoothed = smooth_action_chunk(chunk, passes=1)
-
-    assert [step[0] for step in smoothed.tcp["0@ur5e"]] == pytest.approx([1.0, 2.0, 1.0])
+def test_smoothing_filters_motion_and_keeps_the_retained_prefix():
+    steps = [[0.0] * 6, [4.0] * 6, [0.0] * 6]
+    smoothed = smooth_steps(steps, retained_prefix_steps=1)
+    assert [step[0] for step in smoothed] == pytest.approx([0.0, 1.5, 1.25])
+    assert steps == [[0.0] * 6, [4.0] * 6, [0.0] * 6]  # not mutated
+    assert [step[0] for step in smooth_steps(steps, passes=1)] == pytest.approx([1.0, 2.0, 1.0])
 
 
 @pytest.mark.parametrize(
@@ -114,23 +74,17 @@ def test_smoothing_supports_tcp_only_chunks():
 )
 def test_smoothing_rejects_negative_configuration(kwargs, message):
     with pytest.raises(ValueError, match=message):
-        smooth_action_chunk(ActionChunk(), **kwargs)
+        smooth_steps([[0.0]], **kwargs)
 
 
 # ---------------------------------------------------------------------------
-# interpolate_action_chunk_ramps — allocate time for acceleration and braking
+# ramp_steps — allocate time for acceleration and braking
 # ---------------------------------------------------------------------------
 
 
 def test_endpoint_ramps_preserve_original_waypoints_and_remap_indices():
-    chunk = ActionChunk(
-        joints={"0@ur5e": [[0.0], [1.0], [2.0], [3.0]]},
-        dt_ms=50.0,
-    )
-
-    interpolated = interpolate_action_chunk_ramps(chunk, interpolation_steps=3)
-
-    assert [step[0] for step in interpolated.motion.joints["0@ur5e"]] == pytest.approx([
+    steps, indices = ramp_steps([[0.0], [1.0], [2.0], [3.0]], interpolation_steps=3)
+    assert [step[0] for step in steps] == pytest.approx([
         0.0,
         1 / 9,
         4 / 9,
@@ -140,162 +94,82 @@ def test_endpoint_ramps_preserve_original_waypoints_and_remap_indices():
         26 / 9,
         3.0,
     ])
-    assert interpolated.original_step_indices["0@ur5e"] == (0, 3, 4, 7)
-    assert interpolated.motion.dt_ms == 50.0
+    assert indices == (0, 3, 4, 7)
 
 
 def test_single_interval_uses_smoothstep_when_accelerating_and_braking():
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0], [1.0]]}, dt_ms=50.0)
-
-    interpolated = interpolate_action_chunk_ramps(chunk, interpolation_steps=4)
-
-    assert [step[0] for step in interpolated.motion.joints["0@ur5e"]] == pytest.approx([
-        0.0,
-        0.15625,
-        0.5,
-        0.84375,
-        1.0,
-    ])
-    assert interpolated.original_step_indices["0@ur5e"] == (0, 4)
+    steps, indices = ramp_steps([[0.0], [1.0]], interpolation_steps=4)
+    assert [step[0] for step in steps] == pytest.approx([0.0, 0.15625, 0.5, 0.84375, 1.0])
+    assert indices == (0, 4)
 
 
 def test_ramp_interpolation_steps_must_be_at_least_two():
     with pytest.raises(ValueError, match="at least 2"):
-        interpolate_action_chunk_ramps(ActionChunk(), interpolation_steps=1)
+        ramp_steps([], interpolation_steps=1)
 
 
 # ---------------------------------------------------------------------------
-# create_bridge_chunk — connect current state to policy step zero
+# bridge_steps — connect the measured position to the first policy step
 # ---------------------------------------------------------------------------
 
 
 def test_bridge_uses_policy_spacing_and_ends_at_first_joint_waypoint():
-    state = SimpleNamespace(joints=[0.0, 0.0])
-    chunk = ActionChunk(
-        joints={"0@ur5e": [[3.0, 0.0], [4.0, 0.0], [5.0, 0.0]]},
-        ios={"0@ur5e": {"do[0]": True}},
-        dt_ms=50.0,
-    )
-
-    bridge = create_bridge_chunk(chunk, {"0@ur5e": state})
-
-    assert bridge is not None
-    assert bridge.joints["0@ur5e"] == [
-        [0.0, 0.0],
-        [1.0, 0.0],
-        [2.0, 0.0],
-        [3.0, 0.0],
-    ]
-    assert bridge.dt_ms == 50.0
-    assert bridge.ios is None
-
-
-def test_connected_chunk_has_no_duplicate_policy_boundary_or_ios():
-    state = SimpleNamespace(joints=[0.0, 0.0])
-    chunk = ActionChunk(
-        joints={"0@ur5e": [[3.0, 0.0], [4.0, 0.0], [5.0, 0.0]]},
-        ios={"0@ur5e": {"do[0]": True}},
-        dt_ms=50.0,
-    )
-
-    connected = connect_action_chunk(chunk, {"0@ur5e": state})
-
-    assert connected is not None
-    assert connected.motion.joints["0@ur5e"] == [
-        [0.0, 0.0],
-        [1.0, 0.0],
-        [2.0, 0.0],
-        [3.0, 0.0],
-        [4.0, 0.0],
-        [5.0, 0.0],
-    ]
-    assert connected.policy_start_steps == {"0@ur5e": 3}
-    assert connected.motion.ios is None
-    assert connected.motion.dt_ms == 50.0
+    bridge = bridge_steps([0.0, 0.0], [[3.0, 0.0], [4.0, 0.0], [5.0, 0.0]])
+    assert bridge == [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]]
 
 
 def test_bridge_is_omitted_when_first_waypoint_is_within_normal_spacing():
-    state = SimpleNamespace(joints=[0.0, 0.0])
-    chunk = ActionChunk(joints={"0@ur5e": [[0.5, 0.0], [1.5, 0.0]]}, dt_ms=50.0)
-
-    assert create_bridge_chunk(chunk, {"0@ur5e": state}) is None
+    assert bridge_steps([0.0, 0.0], [[0.5, 0.0], [1.5, 0.0]]) == []
 
 
 def test_always_anchored_bridge_holds_current_state_before_a_near_waypoint():
-    state = SimpleNamespace(joints=[0.0, 0.0])
-    chunk = ActionChunk(joints={"0@ur5e": [[0.5, 0.0], [1.5, 0.0]]}, dt_ms=50.0)
-
-    connected = connect_action_chunk(
-        chunk,
-        {"0@ur5e": state},
-        always_anchor=True,
-    )
-
-    assert connected is not None
-    assert connected.bridge.joints["0@ur5e"] == [[0.0, 0.0], [0.5, 0.0]]
-    assert connected.motion.joints["0@ur5e"] == [
-        [0.0, 0.0],
-        [0.5, 0.0],
-        [1.5, 0.0],
-    ]
-    assert connected.policy_start_steps == {"0@ur5e": 1}
+    bridge = bridge_steps([0.0, 0.0], [[0.5, 0.0], [1.5, 0.0]], always_anchor=True)
+    assert bridge == [[0.0, 0.0], [0.5, 0.0]]
 
 
 def test_bridge_supports_tcp_translation_without_mixing_rotation_units():
-    pose = SimpleNamespace(position=[0.0, 0.0, 0.0], orientation=[0.0, 0.0, 0.0])
-    state = SimpleNamespace(pose=pose)
-    chunk = ActionChunk(
-        tcp={
-            "0@ur5e": [
-                [30.0, 0.0, 0.0, 0.3, 0.0, 0.0],
-                [40.0, 0.0, 0.0, 0.4, 0.0, 0.0],
-            ]
-        },
-        dt_ms=20.0,
+    bridge = bridge_steps(
+        [0.0] * 6,
+        [[30.0, 0.0, 0.0, 0.3, 0.0, 0.0], [40.0, 0.0, 0.0, 0.4, 0.0, 0.0]],
+        tcp=True,
     )
-
-    bridge = create_bridge_chunk(chunk, {"0@ur5e": state})
-
-    assert bridge is not None
     expected = [
         [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         [10.0, 0.0, 0.0, 0.1, 0.0, 0.0],
         [20.0, 0.0, 0.0, 0.2, 0.0, 0.0],
         [30.0, 0.0, 0.0, 0.3, 0.0, 0.0],
     ]
-    for actual_step, expected_step in zip(bridge.tcp["0@ur5e"], expected, strict=True):
+    for actual_step, expected_step in zip(bridge, expected, strict=True):
         assert actual_step == pytest.approx(expected_step)
 
 
-def _tool_down_flip() -> tuple[SimpleNamespace, ActionChunk]:
+def _tool_down_flip() -> tuple[list[float], list[list[float]]]:
     """Tool pointing down: measured just under pi about +y, policy just over it.
 
     The policy steps are written the way a rotation library returns them, as
     angles under pi about -y. They differ from the measured orientation by under
     a degree, but component-wise they are about 2 pi apart.
     """
-    pose = SimpleNamespace(position=[0.0, 0.0, 0.0], orientation=[0.0, math.pi - 0.002, 0.0])
-    chunk = ActionChunk(
-        tcp={
-            "0@ur10e": [
-                [1.0, 0.0, 0.0, 0.0, -(math.pi - 0.004), 0.0],
-                [2.0, 0.0, 0.0, 0.0, -(math.pi - 0.006), 0.0],
-                [3.0, 0.0, 0.0, 0.0, -(math.pi - 0.008), 0.0],
-            ]
-        },
-        dt_ms=100.0,
-    )
-    return SimpleNamespace(pose=pose), chunk
+    current = [0.0, 0.0, 0.0, 0.0, math.pi - 0.002, 0.0]
+    steps = [
+        [1.0, 0.0, 0.0, 0.0, -(math.pi - 0.004), 0.0],
+        [2.0, 0.0, 0.0, 0.0, -(math.pi - 0.006), 0.0],
+        [3.0, 0.0, 0.0, 0.0, -(math.pi - 0.008), 0.0],
+    ]
+    return current, steps
 
 
 def test_bridge_does_not_swing_the_wrist_across_a_rotation_vector_flip():
     """Regression: a sign flip near pi once bridged through the identity in 573 steps."""
-    state, chunk = _tool_down_flip()
+    from novapolicy.jogging.clock import ServerMs
+    from novapolicy.jogging.modules import Bridge
+    from novapolicy.jogging.pipeline import ModuleContext
+    from novapolicy.jogging.waypoints import PendingChunk
 
-    connected = connect_action_chunk(chunk, {"0@ur10e": state}, always_anchor=True)
-
-    assert connected is not None
-    steps = connected.motion.tcp["0@ur10e"]
+    current, policy = _tool_down_flip()
+    chunk = PendingChunk(steps=policy, dt_ms=100.0, caller_step_count=3)
+    context = ModuleContext(now_ms=ServerMs(0), position=current, step_ms=50.0, mode="cartesian")
+    steps = Bridge(always_anchor=True).on_chunk(chunk, context).steps
     assert len(steps) < 10  # a short bridge, not the 573 steps of the incident
     for step in steps:
         # Every waypoint stays a near-half-turn about y: no pass through the identity.
@@ -323,24 +197,14 @@ def test_the_identity_after_unwrapped_steps_stays_a_full_turn():
 
 
 def test_endpoint_ramps_do_not_interpolate_across_a_rotation_vector_flip():
-    _, chunk = _tool_down_flip()
-    flipped = chunk.model_copy(
-        update={
-            "tcp": {"0@ur10e": [[0.0, 0.0, 0.0, 0.0, math.pi - 0.002, 0.0], *chunk.tcp["0@ur10e"]]}
-        }
-    )
-
-    ramped = interpolate_action_chunk_ramps(flipped).motion.tcp["0@ur10e"]
-
+    current, policy = _tool_down_flip()
+    ramped, _ = ramp_steps([current, *policy], tcp=True)
     for step in ramped:
         assert math.hypot(*step[3:6]) == pytest.approx(math.pi, abs=0.01)
 
 
 def test_bridge_requires_at_least_two_policy_waypoints_for_spacing():
-    state = SimpleNamespace(joints=[0.0])
-    chunk = ActionChunk(joints={"0@ur5e": [[10.0]]}, dt_ms=50.0)
-
-    assert create_bridge_chunk(chunk, {"0@ur5e": state}) is None
+    assert bridge_steps([0.0], [[10.0]]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -368,25 +232,6 @@ def test_relative_tcp_offsets_from_current_pose():
 # Property-based invariants — these generalise the known-answer examples above
 # over whole equivalence classes of chunks rather than single fixtures.
 # ===========================================================================
-
-
-# chunk_duration_s ----------------------------------------------------------
-
-
-@given(n_steps=st.integers(min_value=0, max_value=64), dt_ms=st.floats(0.1, 1000.0))
-@settings(max_examples=200, deadline=None)
-def test_duration_is_always_steps_times_dt(n_steps, dt_ms):
-    """For any positive dt, duration is exactly n_steps * dt / 1000."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6] * n_steps}, dt_ms=dt_ms)
-    assert chunk_duration_s(chunk) == n_steps * dt_ms / 1000.0
-
-
-@given(n_steps=st.integers(min_value=1, max_value=64), dt_ms=st.floats(-1000.0, 0.0))
-@settings(max_examples=100, deadline=None)
-def test_duration_is_zero_whenever_dt_is_unset(n_steps, dt_ms):
-    """A non-positive dt means 'no timeline' regardless of step count."""
-    chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6] * n_steps}, dt_ms=dt_ms)
-    assert chunk_duration_s(chunk) == 0.0
 
 
 # trim_chunk ----------------------------------------------------------------
@@ -568,12 +413,11 @@ def test_tcp_deltas_stay_continuous_near_a_half_turn():
     assert np.abs(np.diff(rotvecs, axis=0)).max() < 0.1  # no sign flip between steps
 
 
-def test_computed_action_values_survive_trimming_smoothing_and_relative_targets():
+def test_computed_action_values_survive_trimming_and_relative_targets():
     """Values for Action.computed hooks travel with the chunk through every rebuild."""
     rows = [[float(i)] for i in range(6)]
     chunk = ActionChunk(tcp={"mg": [[0.0] * 6] * 6}, values={"gripper": rows}, dt_ms=33.0)
     assert trim_chunk(chunk, 4).values == {"gripper": rows[:4]}
-    assert smooth_action_chunk(chunk).values == {"gripper": rows}
     pose = SimpleNamespace(position=[1.0, 2.0, 3.0], orientation=[0.0, 0.0, 0.0])
     resolved = apply_relative_mode(chunk, {"mg": SimpleNamespace(joints=[], pose=pose)}, ["mg"])
     assert resolved.values == {"gripper": rows}
