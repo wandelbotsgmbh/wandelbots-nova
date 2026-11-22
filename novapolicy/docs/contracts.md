@@ -164,10 +164,12 @@ T5, T7). Modules are opt-in, passed as `pipeline=[...]` to `PolicyExecutor`, `jo
 `jog_tcp`; none runs by default; each motion group runs its own copy; a misordered list is refused
 at construction. Chunk modules see every chunk when it is queued and may change steps and timing,
 keeping `when_due` on the step its action belongs to: `LiveBuffer(window_ms)` turns live targets
-into a horizon on its own timeline (T2) and moves IO to the newest target. Waypoint modules run at
+into a horizon on its own timeline (T2) and moves IO to the newest target; it times each target
+by `observed_at_ms`, which for a live target means when it was produced (the jogger's loop time,
+shared by all arms), and a lead chunk by the session clock. Waypoint modules run at
 every send, on raw values, and return values only, so no timing contract changes:
 `EaseIn(duration_s)` blends from where the robot stood by each waypoint's timestamp.
-Tests: `test_split_pipeline_keeps_each_kind_in_order`, `test_a_chunk_module_after_the_timestamps_is_refused`, `test_a_misordered_pipeline_is_refused_before_anything_moves`, `test_the_pipeline_is_handed_to_every_session`, `test_each_session_runs_its_own_copy_of_a_module`, `test_waypoint_modules_reshape_the_values_but_never_the_timestamps`, `test_a_waypoint_module_may_not_add_or_drop_waypoints`, `test_a_filled_live_buffer_is_replayed_as_a_horizon`, `test_a_live_buffer_moves_when_due_to_the_newest_target`, `test_sessions_given_one_live_buffer_do_not_share_its_points`, `test_ease_in_gives_a_moment_the_same_value_whenever_it_is_sent`.
+Tests: `test_split_pipeline_keeps_each_kind_in_order`, `test_a_chunk_module_after_the_timestamps_is_refused`, `test_a_misordered_pipeline_is_refused_before_anything_moves`, `test_the_pipeline_is_handed_to_every_session`, `test_each_session_runs_its_own_copy_of_a_module`, `test_waypoint_modules_reshape_the_values_but_never_the_timestamps`, `test_a_waypoint_module_may_not_add_or_drop_waypoints`, `test_a_filled_live_buffer_is_replayed_as_a_horizon`, `test_a_live_buffer_moves_when_due_to_the_newest_target`, `test_sessions_given_one_live_buffer_do_not_share_its_points`, `test_a_live_buffer_times_targets_by_when_they_were_produced`, `test_a_live_buffer_times_lead_chunks_by_the_session_clock`, `test_live_targets_carry_the_loop_time_in_exact_grid_steps`, `test_ease_in_gives_a_moment_the_same_value_whenever_it_is_sent`.
 
 ## Known gaps
 

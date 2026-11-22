@@ -133,3 +133,13 @@ commanded speed. Pass `pipeline=[LiveBuffer(window_ms=500)]` to keep the old beh
 live-target examples do. For a one-step policy in `PolicyExecutor` the buffer measured worse than
 the default lead path (`docs/adr/0009`). `EaseIn` now blends by each waypoint's timestamp with a
 smootherstep. With a buffer, a chunk's IO goes with its newest target instead of at once.
+
+Also changed with the buffer in `PolicyExecutor`:
+
+- **Multi-step and TCP chunks are accepted.** The old buffered mode refused them; the module
+  passes a multi-step chunk through unchanged (and clears its window, warning once), so it is
+  placed by T1–T3 like any other chunk.
+- **A lone target before the window fills keeps the caller's padding**: it is sent as the caller
+  queued it, with hold padding to the buffer horizon, until the buffer has two points to replay.
+- **It needs `ContinuousExecution`**: a `LiveBuffer` under sequential execution is refused at
+  construction.

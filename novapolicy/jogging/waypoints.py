@@ -64,7 +64,11 @@ class PendingChunk:
     """Placed by the lead rule: step ``k`` due ``max_expected_latency_ms + k * dt`` after
     ``observed_at_ms``, or after the send when that is ``None``."""
     observed_at_ms: ServerMs | None = None
+    """When the state the chunk was computed from was measured, on the session clock; for a live
+    target, when it was produced (the jogger's loop time), which a ``LiveBuffer`` times it by."""
     extend_buffer: bool = True
+    """Pad the chunk with holds up to the buffer horizon. A chunk module that sets its own
+    horizon (``LiveBuffer``) turns it off."""
     """Pad the chunk with its last target up to ``min_chunk_horizon_ms`` after the chunk modules
     ran (contract T6)."""
     when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None

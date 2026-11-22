@@ -568,7 +568,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 execution); ``first_timestamp_ms`` and ``timestamp_offset_steps`` are then
                 not used.
             observed_at_ms: Server timestamp of the state the chunk was computed from
-                (:attr:`current_state_server_ms` at observation time).
+                (:attr:`current_state_server_ms` at observation time). For a live target it
+                is when the target was produced: the joggers pass their loop time, one
+                timeline for all arms, and a ``LiveBuffer`` times targets by it (a ``lead``
+                chunk keeps the session clock there).
             when_due: ``(step, action)``. ``action`` runs when the caller's ``step`` is due on
                 the server's clock, for the chunk's IO and computed actions. It runs at once
                 when that step was already past (a dropped chunk), never when the chunk is
