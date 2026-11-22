@@ -57,9 +57,12 @@ inference), not to the live state or the previous target. Joint deltas accumulat
 after resolution; IO and metadata are kept. Tests: `test_trim_bounds_each_arm_to_n_and_preserves_a_prefix`,
 `test_the_policys_declared_horizon_is_used_when_none_is_given`.
 
-**M7 Joint limits.** Joint targets are held inside NOVA's limits minus 2° before they are sent,
-bridges included; the first clip per joint is logged. Tests: `test_a_target_below_the_bound_is_held_at_it`,
-`test_the_first_clip_per_joint_is_reported`; the executor's use of it is *untested*.
+**M7 Joint limits.** With `JointClamp` in the pipeline (the executor's default), joint targets are
+held inside NOVA's limits minus 2° before they are sent, bridges included; the first clip per
+joint is logged. Tests: `test_a_target_below_the_bound_is_held_at_it`,
+`test_the_first_clip_per_joint_is_reported`, `test_joint_clamp_holds_targets_inside_the_limits`,
+`test_the_session_reads_joint_limits_only_for_a_joint_clamp`; the wire capture's
+`out_of_limits` scenario.
 
 **M8 IO values** in `ActionChunk.ios` are in hardware units and written once per change. A
 client that receives IO for every step of a chunk takes the first step's, since IO fires when
@@ -98,9 +101,11 @@ Tests: `test_an_explicit_start_time_always_wins`, `test_a_chunk_with_its_own_tim
 `test_async_queue_replacements_preserve_the_initial_policy_timeline`, `test_a_chunk_on_its_own_timeline_is_not_dated_by_the_observation`,
 `test_a_chunk_with_its_own_backdate_is_not_dated_by_the_observation`.
 
-**T3 Late steps are dropped, never retimed.** A step due within `MIN_LEAD_MS` (20 ms) of now is
-not sent; the others keep their times, and every step's time is still reported. A chunk late
-entirely is not sent. Under T1 in sequential execution nothing is ever late.
+**T3 Late steps are dropped, never retimed** (the `DropLate` filter, in every default pipeline). A
+step due within `MIN_LEAD_MS` (20 ms) of now is not sent; the others keep their times, exactly
+`anchor + int(k·dt)`, and every step's time is still reported. A chunk late entirely is not sent.
+A chunk stamped at the send and the final target of a run always pass. Under T1 in sequential
+execution nothing is ever late.
 Tests: `test_waypoints_already_in_the_past_are_trimmed_before_sending`,
 `test_a_trimmed_chunk_still_reports_where_each_caller_step_landed`, `test_a_lead_chunk_that_is_late_entirely_is_not_sent_and_not_guarded`.
 Exception: an RTC chunk's backdated head is sent although it is past (*untested*).
@@ -114,9 +119,10 @@ more than 100 ms off. This is the one bounded retiming. Test:
 yet. Tests: `test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due`,
 `test_a_lead_chunk_resends_the_earlier_waypoints_due_before_it`.
 
-**T6 End of a chunk.** A chunk is extended with its last target up to `min_chunk_horizon_ms`
-(500 ms), except one-step chunks in continuous execution, which the next step replaces before
-they are due. The padding is not motion anyone waits for. Tests:
+**T6 End of a chunk.** `HoldPadding(min_horizon_ms=500)` (in every default pipeline) extends a
+chunk with its last target up to the horizon, except one-step chunks in continuous execution,
+which the next step replaces before they are due, and live targets. The padding is not motion
+anyone waits for. Tests: `test_hold_padding_holds_the_last_target_up_to_the_horizon`,
 `test_a_short_chunk_holds_its_final_target_to_fill_the_buffer`,
 `test_the_padded_tail_of_a_short_chunk_is_not_motion_anyone_waits_for`.
 
@@ -153,23 +159,38 @@ stops on the last target; an error drops what was accepted. Tests:
 collection while the loop runs and released when the run ends. Test:
 `test_setup_objects_are_frozen_only_while_the_loop_runs`.
 
-**T12 Setups sequential execution would run wrongly are refused at construction:** RTC, a
-timestep queue (`QueuedPolicyClient`, LeRobot's async queue), a `LiveBuffer` in the pipeline. Tests:
+**T12 Setups the executor would run wrongly are refused at construction:** under sequential
+execution RTC, a timestep queue (`QueuedPolicyClient`, LeRobot's async queue) and a `LiveBuffer`
+in the pipeline; under continuous execution a timestep queue without a `Bridge`, whose timeline
+is anchored on its first bridged chunk. Tests:
 `test_rtc_without_overlapping_placement_is_rejected`,
-`test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected`.
+`test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected`,
+`test_a_timestep_queue_without_a_bridge_is_refused_before_anything_moves`.
 
 **T13 The send pipeline.** Everything that reaches NOVA passes one ordered list per motion group:
-the common chunk, chunk modules, `Timestamps()` (T1–T3), waypoint modules, the NOVA sender (T3,
-T5, T7). Modules are opt-in, passed as `pipeline=[...]` to `PolicyExecutor`, `jog_joints` and
-`jog_tcp`; none runs by default; each motion group runs its own copy; a misordered list is refused
-at construction. Chunk modules see every chunk when it is queued and may change steps and timing,
-keeping `when_due` on the step its action belongs to: `LiveBuffer(window_ms)` turns live targets
-into a horizon on its own timeline (T2) and moves IO to the newest target; it times each target
-by `observed_at_ms`, which for a live target means when it was produced (the jogger's loop time,
-shared by all arms), and a lead chunk by the session clock. Waypoint modules run at
-every send, on raw values, and return values only, so no timing contract changes:
-`EaseIn(duration_s)` blends from where the robot stood by each waypoint's timestamp.
-Tests: `test_split_pipeline_keeps_each_kind_in_order`, `test_a_chunk_module_after_the_timestamps_is_refused`, `test_a_misordered_pipeline_is_refused_before_anything_moves`, `test_the_pipeline_is_handed_to_every_session`, `test_each_session_runs_its_own_copy_of_a_module`, `test_waypoint_modules_reshape_the_values_but_never_the_timestamps`, `test_a_waypoint_module_may_not_add_or_drop_waypoints`, `test_a_filled_live_buffer_is_replayed_as_a_horizon`, `test_a_live_buffer_moves_when_due_to_the_newest_target`, `test_sessions_given_one_live_buffer_do_not_share_its_points`, `test_a_live_buffer_times_targets_by_when_they_were_produced`, `test_a_live_buffer_times_lead_chunks_by_the_session_clock`, `test_live_targets_carry_the_loop_time_in_exact_grid_steps`, `test_ease_in_gives_a_moment_the_same_value_whenever_it_is_sent`.
+the common chunk, chunk modules, `Timestamps()` (T1, T2), filters (T3), waypoint modules, the
+sender (T5, T7). The list is exactly what runs: `pipeline=None` on `PolicyExecutor`, `jog_joints`,
+`jog_tcp` and the session runs `default_pipeline()`, and an explicit list replaces it. Each motion
+group runs its own copy; a misordered list is refused at construction.
+
+| Default | Joggers | Executor, sequential | Executor, continuous | Executor, continuous, timestep queue |
+| --- | --- | --- | --- | --- |
+| Modules | `HoldPadding`, `Timestamps`, `DropLate` | `Bridge`, `EndpointRamp`, `JointClamp`, then the joggers' | `JointClamp`, then the joggers' | `Smoothing`, `Bridge(always_anchor=True)`, `JointClamp`, then the joggers' |
+
+Chunk modules see every chunk when it is queued and may change steps and timing, keeping
+`when_due` and `start_step` on the steps they belong to. `Smoothing(passes)` filters a queue's
+plan and keeps the steps it already sent exact (`retained_prefix_steps`). `Bridge(always_anchor)`
+connects the measured position to the first step, dates a bridged chunk at the send in continuous execution and leaves chunks on their own timeline alone. `EndpointRamp` eases
+each chunk in and out. `JointClamp` holds joint targets inside the limits the session reads at its
+start. `LiveBuffer(window_ms)` turns live targets into a horizon on its own timeline (T2) and moves
+IO to the newest target; it times each target by `observed_at_ms`, which for a live target means
+when it was produced (the jogger's loop time, shared by all arms), and a lead chunk by the session
+clock. `JointClamp` is M7, `HoldPadding` T6. Filters drop waypoints without retiming them (`DropLate`, T3).
+Waypoint modules run at every send, on raw values, and return values only, so no timing contract
+changes: `EaseIn(duration_s)` blends from where the robot stood by each waypoint's timestamp.
+What reaches NOVA per scenario is pinned by `test_what_reaches_nova_is_unchanged`; LeRobot's async
+queue by `test_the_async_queue_smoothed_in_the_session_sends_what_it_sent_before`.
+Tests: `test_split_pipeline_keeps_each_kind_in_order`, `test_a_filter_after_a_waypoint_module_or_a_chunk_module_after_a_filter_is_refused`, `test_a_chunk_module_after_the_timestamps_is_refused`, `test_a_misordered_pipeline_is_refused_before_anything_moves`, `test_the_pipeline_is_handed_to_every_session`, `test_each_session_runs_its_own_copy_of_a_module`, `test_the_defaults_are_valid_pipelines`, `test_smoothing_keeps_the_steps_it_already_sent_exact`, `test_bridge_connects_the_robot_to_the_first_step_at_the_chunks_spacing`, `test_a_bridged_chunk_dated_by_its_observation_is_dated_at_the_send_instead`, `test_endpoint_ramp_keeps_every_step_and_moves_io_with_its_step`, `test_joint_clamp_holds_targets_inside_the_limits`, `test_the_session_reads_joint_limits_only_for_a_joint_clamp`, `test_drop_late_keeps_what_is_still_reachable_and_never_retimes`, `test_waypoint_modules_reshape_the_values_but_never_the_timestamps`, `test_a_waypoint_module_may_not_add_or_drop_waypoints`, `test_a_filled_live_buffer_is_replayed_as_a_horizon`, `test_a_live_buffer_moves_when_due_to_the_newest_target`, `test_sessions_given_one_live_buffer_do_not_share_its_points`, `test_a_live_buffer_times_targets_by_when_they_were_produced`, `test_a_live_buffer_times_lead_chunks_by_the_session_clock`, `test_live_targets_carry_the_loop_time_in_exact_grid_steps`, `test_ease_in_gives_a_moment_the_same_value_whenever_it_is_sent`.
 
 ## Known gaps
 

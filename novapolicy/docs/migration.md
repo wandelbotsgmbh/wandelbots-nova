@@ -117,19 +117,19 @@ that toggles a gripper inside a chunk now has it follow the first step of each c
 ## Buffering and ease-in are pipeline modules
 
 `buffer_window_ms` (on `PolicyExecutor`, `jog_joints`, `jog_tcp`) and `ease_in_s` (on the
-joggers) are gone. Both are opt-in modules of the send pipeline now, passed as `pipeline=[...]`,
-and none runs by default:
+joggers) are gone. Both are modules of the send pipeline now, neither in the defaults; add them
+by extending `default_pipeline()` (see the next section):
 
 | Before | Now |
 | --- | --- |
-| `jog_joints(mg)` (500 ms buffer for `set_target`) | `jog_joints(mg, pipeline=[LiveBuffer(window_ms=500)])` |
+| `jog_joints(mg)` (500 ms buffer for `set_target`) | `jog_joints(mg, pipeline=[LiveBuffer(window_ms=500), *default_pipeline()])` |
 | `jog_joints(mg, buffer_window_ms=0)` | `jog_joints(mg)` |
-| `jog_joints(mg, ease_in_s=1.0)` | `jog_joints(mg, pipeline=[EaseIn(duration_s=1.0)])` |
-| `PolicyExecutor(..., buffer_window_ms=80)` | `PolicyExecutor(..., pipeline=[LiveBuffer(window_ms=80)])` |
+| `jog_joints(mg, ease_in_s=1.0)` | `jog_joints(mg, pipeline=[*default_pipeline(), EaseIn(duration_s=1.0)])` |
+| `PolicyExecutor(..., buffer_window_ms=80)` | `PolicyExecutor(..., pipeline=[LiveBuffer(window_ms=80), *default_pipeline(execution=..., policy=...)])` |
 
 **A jogging script that relied on the default buffer now sends each live target alone:** measured
 at a ~90 Hz loop, 0.45–0.84° from the target instead of 0.015°, with arm peaks up to twice the
-commanded speed. Pass `pipeline=[LiveBuffer(window_ms=500)]` to keep the old behaviour; the shipped
+commanded speed. Add `LiveBuffer(window_ms=500)` in front of the defaults to keep the old behaviour; the shipped
 live-target examples do. For a one-step policy in `PolicyExecutor` the buffer measured worse than
 the default lead path (`docs/adr/0009`). `EaseIn` now blends by each waypoint's timestamp with a
 smootherstep. With a buffer, a chunk's IO goes with its newest target instead of at once.
@@ -143,3 +143,56 @@ Also changed with the buffer in `PolicyExecutor`:
   queued it, with hold padding to the buffer horizon, until the buffer has two points to replay.
 - **It needs `ContinuousExecution`**: a `LiveBuffer` under sequential execution is refused at
   construction.
+
+## The built-ins are pipeline modules, and an explicit pipeline is the whole list
+
+Smoothing, the bridge, the endpoint ramp, the joint clamp, hold padding and dropping late
+waypoints are modules of the send pipeline now (ADR 0010). `pipeline=None` (the default) runs
+`default_pipeline()`, which does what the built-ins did; **an explicit list is exactly what runs**.
+A `pipeline=[LiveBuffer(...)]` or `pipeline=[EaseIn(...)]` from the previous release now runs only
+that module: no padding and no dropping of late waypoints, and in `PolicyExecutor` no clamp and
+no bridge. Extend the defaults instead. For `PolicyExecutor`, pass the same execution and policy:
+
+```python
+pipeline = [*default_pipeline(execution=execution, policy=policy), EaseIn(duration_s=1.0)]
+PolicyExecutor(schema, policy, execution=execution, pipeline=pipeline)
+```
+
+| Before | Now |
+| --- | --- |
+| `WaypointConfig(min_chunk_horizon_ms=300)` | `HoldPadding(min_horizon_ms=300)` in place of `HoldPadding()` |
+| `WaypointConfig(min_chunk_horizon_ms=0)` | the defaults without `HoldPadding` |
+| `PolicyExecutor(..., clamp_to_joint_limits=False)` | the defaults without `JointClamp` |
+| `SequentialExecution(endpoint_ramp=EndpointRamp(interpolation_steps=4))` | `EndpointRamp(interpolation_steps=4)` in place of `EndpointRamp()` |
+| `SequentialExecution(endpoint_ramp=None)` | the defaults without `EndpointRamp` |
+| `QueuedPolicyClient(policy, smoothing_passes=1)` | `Smoothing(passes=1)` in place of `Smoothing()` |
+| `QueuedPolicyClient(policy, smoothing_passes=0)` | the defaults without `Smoothing` |
+| `LeRobotPolicyClient(..., async_queue_smoothing=False)` | the defaults without `Smoothing` |
+
+For example, a sequential run without the ramp:
+
+```python
+execution = SequentialExecution()
+pipeline = [
+    m
+    for m in default_pipeline(execution=execution, policy=policy)
+    if not isinstance(m, EndpointRamp)
+]
+```
+
+Also changed:
+
+- **A timestep queue without a `Bridge` is refused.** In continuous execution a
+  `QueuedPolicyClient` or LeRobot's async queue anchors its timeline on its first bridged chunk;
+  an explicit pipeline without `Bridge(always_anchor=True)` raises at construction.
+- **The queue clients return their plan unsmoothed**, with `ActionChunk.retained_prefix_steps`
+  set; the session smooths it. Rerun's action plot and pre-send stop conditions see the
+  unsmoothed plan. LeRobot's plan is now smoothed after its targets are resolved to NOVA units:
+  the same for absolute joints with unit scaling, different for relative actions and rotation
+  conversions.
+- **Dropped waypoints keep their exact times.** A chunk that loses its late steps no longer
+  rebases the rest on the first kept one, so some waypoints of a timestep queue move by up to
+  1 ms onto `anchor + int(k * dt)`, and so does the queue's timeline origin.
+- **`ModuleContext`** gains `motion_group_id`, `mode` and `joint_limits`; **`PendingChunk`** gains
+  `start_step` and `retained_prefix_steps`. A chunk module that puts steps in front of the policy's
+  first step keeps `start_step` and `when_due` on it.

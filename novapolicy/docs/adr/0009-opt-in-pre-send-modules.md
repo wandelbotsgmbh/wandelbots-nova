@@ -1,6 +1,7 @@
 # 0009 One send pipeline of opt-in modules
 
-Status: accepted, 2026-11-22
+Status: accepted, 2026-11-22. The "opt-in, none by default" part is superseded by 0010: the
+built-ins are modules too, and `pipeline=None` runs the defaults.
 
 **Context.** Shaping what is sent lived in three places: the executor's buffered mode
 (`buffer_window_ms`), the jogger's live buffer (on by default for `set_target`) and the jogger's

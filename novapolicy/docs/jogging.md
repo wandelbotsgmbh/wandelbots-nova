@@ -60,9 +60,8 @@ show this pattern.
 
 Chunks go to `set_chunk`, live targets to `set_target`. The two are separate
 methods because they take different settings: a chunk needs `dt_ms` (the spacing
-between its steps, required) and gets its horizon from `min_chunk_horizon_ms`,
-while a live target needs no spacing and can get a horizon from an opt-in
-`LiveBuffer`. Handing a chunk to `set_target` raises `TypeError` rather
+between its steps, required) and gets its horizon from `HoldPadding`, while a live
+target needs no spacing and can get a horizon from a `LiveBuffer`. Handing a chunk to `set_target` raises `TypeError` rather
 than silently ignoring the buffer, and vice versa.
 
 For TCP jogging, note the asymmetry: `set_target` takes a `Pose`, while
@@ -80,19 +79,19 @@ points to new absolute times, and the robot executes each such shift as a lurch.
 
 ### Short chunks are padded
 
-A chunk shorter than `WaypointConfig.min_chunk_horizon_ms` (default **500**) is
-extended by repeating its final target, so the server has a horizon it can brake
-within. The padding is sent but is not treated as commanded motion: it is excluded
-from `scheduled_until_server_ms`, so anything waiting for the chunk to finish ends
-at your last step rather than sitting at it for the rest of the window. Set the
-config value to `0` to disable padding — a chunk whose last step is not a genuine
-stopping point will then get a decelerate-to-standstill profile at its end.
+A chunk shorter than `HoldPadding.min_horizon_ms` (default **500**, in the default
+pipeline) is extended by repeating its final target, so the server has a horizon it can
+brake within. The padding is sent but is not treated as commanded motion: it is excluded
+from `scheduled_until_server_ms`, so anything waiting for the chunk to finish ends at your
+last step rather than sitting at it for the rest of the window. Leave `HoldPadding` out of
+the pipeline to disable padding: a chunk whose last step is not a genuine stopping point
+then gets a decelerate-to-standstill profile at its end.
 
 With `WaypointConfig.delay_until_braking_ms` set (NOVA 26.8.0-112 or newer), the
 server keeps the robot's velocity that long after a chunk's last waypoint before it
 brakes, and every new chunk restarts the countdown. Short chunks streamed at the
 policy rate, down to a single waypoint, then run as one motion without padding:
-set `min_chunk_horizon_ms=0` with it, because a padded chunk ends in a hold. About
+leave `HoldPadding` out with it, because a padded chunk ends in a hold. About
 200 ms covered 100-150 ms network stalls in teleoperation. Draining the session
 sends the last target once more without the delay, so the robot stops on it
 instead of running past it.
@@ -151,7 +150,7 @@ waypoint, and a lone waypoint is a **terminal** target: with no successor the se
 an accelerate/decelerate-to-standstill profile, so a target replaced every tick makes the
 robot brake toward every one of them.
 
-`pipeline=[LiveBuffer(window_ms=500)]` (opt-in) holds the last `window_ms` of targets and
+`LiveBuffer(window_ms=500)` in front of the defaults holds the last `window_ms` of targets and
 replays them as a continuous waypoint horizon on an even grid
 (`WaypointConfig.single_step_dt_ms`), so the server always has somewhere to be going next.
 Nothing in that horizon is invented: every waypoint is a target that was really measured,
@@ -165,7 +164,8 @@ server caps its speed at whatever it can brake to a stop within; on the UR10e a 
 window stalled a fifth of all samples.
 
 ```python
-async with jog_tcp(mg, tcp="Flange", pipeline=[LiveBuffer(window_ms=500)]) as jogger:
+pipeline = [LiveBuffer(window_ms=500), *default_pipeline()]
+async with jog_tcp(mg, tcp="Flange", pipeline=pipeline) as jogger:
     async for state in jogger:
         jogger.set_target(read_controller_pose())
 ```
@@ -218,20 +218,25 @@ async with jog_joints(mg) as jogger:
 
 ## The send pipeline (`pipeline=[...]`)
 
-What `set_target` and `set_chunk` produce reaches NOVA through one ordered list of opt-in modules,
-the same one `PolicyExecutor` uses:
+What `set_target` and `set_chunk` produce reaches NOVA through one ordered list of modules, the
+same kind `PolicyExecutor` uses. Without `pipeline=` the joggers run `default_pipeline()`:
+`HoldPadding()` (pads chunks), `Timestamps()`, `DropLate()` (drops waypoints whose moment has
+passed). An explicit list is exactly what runs, so extend the defaults to add a module:
 
 ```python
+from novapolicy import EaseIn, LiveBuffer, default_pipeline
+
 async with jog_joints(
-    mg, pipeline=[LiveBuffer(window_ms=500), Timestamps(), EaseIn(duration_s=1.0)]
+    mg, pipeline=[LiveBuffer(window_ms=500), *default_pipeline(), EaseIn(duration_s=1.0)]
 ) as jogger:
     ...
 ```
 
-Modules before `Timestamps()` work on chunks (`LiveBuffer`); modules after it get the timed
-waypoints and may change their values only (`EaseIn`). `Timestamps()` may be left out; it then
-sits after the last chunk module. Each motion group runs its own copy. See
-`novapolicy.jogging.pipeline` and contract T13 in [contracts.md](contracts.md).
+Modules before `Timestamps()` work on chunks (`LiveBuffer`, `HoldPadding`); filters after it
+choose which timed waypoints go out without retiming them (`DropLate`); waypoint modules last may
+change the values only (`EaseIn`). `Timestamps()` may be left out; it then sits after the last
+chunk module. Each motion group runs its own copy. See `novapolicy.jogging.pipeline`,
+`novapolicy.jogging.modules` and contract T13 in [contracts.md](contracts.md).
 
 A time-parameterised target with non-zero velocity at `t=0` (a sinusoid has maximum velocity
 there) makes the robot lunge from a standstill. `EaseIn(duration_s=1.0)` blends each waypoint from

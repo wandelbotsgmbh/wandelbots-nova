@@ -9,10 +9,23 @@ API (`jog_joints` / `jog_tcp`), see [jogging.md](jogging.md).
 ```mermaid
 flowchart LR
     Policy["Policy"] -->|"action chunk\n(positions + dt_ms)"| Executor
-    Executor -->|"trimmed chunk"| Session["WaypointJoggingSession"]
+    Executor -->|"resolved, trimmed chunk\nper motion group"| Session["WaypointJoggingSession\n(send pipeline)"]
     Session -->|"ActionChunkRequest\n(JOINTS or POSE waypoints)"| NOVA["NOVA Action Chunk Streaming API"]
     NOVA -->|"state stream\n(jogger_session_timestamp_ms)"| Session
 ```
+
+The executor maps (contracts M1–M11) and places (T1, T2); everything that shapes what is sent
+runs in each session's send pipeline, one ordered list of modules (contract T13, ADR 0010). With
+`pipeline=None` the executor runs `default_pipeline(execution=..., policy=...)`:
+
+| Execution | Default pipeline |
+| --- | --- |
+| `SequentialExecution` | `Bridge`, `EndpointRamp`, `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
+| `ContinuousExecution` | `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
+| `ContinuousExecution`, timestep queue | `Smoothing`, `Bridge(always_anchor=True)`, `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
+
+An explicit `pipeline` is exactly what runs: extend or edit the default list rather than starting
+from an empty one.
 
 ## Execution Loop
 
@@ -110,37 +123,45 @@ The mode owns every setting that is meaningful to it. In particular, endpoint ra
 
 ### Bridging a distant first waypoint
 
-When a policy's first waypoint is far from the robot, sequential execution automatically connects
-the current state to the predicted motion. The bridge and policy chunk are sent as one continuous
-request, so NOVA does not stop at the boundary and IO or computed actions remain aligned with policy
-waypoint zero.
+When a policy's first waypoint is far from the robot, the `Bridge` module (in the sequential
+default pipeline) connects the measured position to the predicted motion in the session. The
+bridge and policy chunk are sent as one continuous request, so NOVA does not stop at the boundary
+and IO or computed actions remain aligned with policy waypoint zero.
 
 In continuous execution only a timestep queue (`QueuedPolicyClient`, LeRobot's async queue) is
-bridged, and only until its timeline exists: its later chunks carry an `action_timestep` and
-continue on that timeline without re-anchoring to the measured state. The same behavior is available
-through `novapolicy.connect_action_chunk(...)` and `novapolicy.create_bridge_chunk(...)`.
+bridged (`Bridge(always_anchor=True)`), and only until its timeline exists: its later chunks carry
+an `action_timestep` and continue on that timeline without re-anchoring to the measured state. A
+queue's pipeline must contain a `Bridge`; the executor refuses one without at construction. The
+same bridge is available as functions: `novapolicy.connect_action_chunk(...)` and
+`novapolicy.create_bridge_chunk(...)`.
 
 ### Sequential endpoint ramps
 
 A settled executor intentionally lets every submitted waypoint request end, so every request starts
-and finishes at zero velocity. `SequentialExecution` replaces the first and final waypoint
-intervals with three same-`dt_ms` intervals by default. Customize or disable this mode-owned setting:
+and finishes at zero velocity. The sequential default pipeline's `EndpointRamp()` replaces the
+first and final waypoint intervals with three same-`dt_ms` intervals. Customize or disable it by
+editing the default list (an explicit `pipeline` is exactly what runs):
 
 ```python
-from novapolicy import EndpointRamp, PolicyExecutor, SequentialExecution
+from novapolicy import EndpointRamp, PolicyExecutor, SequentialExecution, default_pipeline
+
+execution = SequentialExecution()
+defaults = default_pipeline(execution=execution, policy=policy)
 
 custom = PolicyExecutor(
     schema,
     policy,
-    execution=SequentialExecution(
-        endpoint_ramp=EndpointRamp(interpolation_steps=4),
-    ),
+    execution=execution,
+    pipeline=[
+        EndpointRamp(interpolation_steps=4) if isinstance(m, EndpointRamp) else m for m in defaults
+    ],
 )
 
 disabled = PolicyExecutor(
     schema,
     policy,
-    execution=SequentialExecution(endpoint_ramp=None),
+    execution=execution,
+    pipeline=[m for m in defaults if not isinstance(m, EndpointRamp)],
 )
 ```
 
@@ -160,10 +181,11 @@ initial lookahead and preserve continuity across replacement seams.
 
 ### Mutable lookahead smoothing
 
-`novapolicy.smooth_action_chunk(...)` applies a reusable temporal `[1, 2, 1] / 4` filter to joint
-and TCP target sequences. Two passes, the default, are equivalent to `[1, 4, 6, 4, 1] / 16` away
-from chunk boundaries. Use `retained_prefix_steps` to restore the portion of a replacement that
-NOVA is already executing. TCP position and rotation-vector components are filtered independently;
+A timestep queue's plan is smoothed by the `Smoothing` module in its default pipeline: a temporal
+`[1, 2, 1] / 4` filter on joint and TCP target sequences. Two passes, the default, are equivalent
+to `[1, 4, 6, 4, 1] / 16` away from chunk boundaries. The steps the queue already sent
+(`ActionChunk.retained_prefix_steps`) keep exactly the values sent for their timesteps. The same
+filter is available as `novapolicy.smooth_action_chunk(...)`. TCP position and rotation-vector components are filtered independently;
 IO actions, timing, and action-timestep metadata remain unchanged. Unlike endpoint interpolation,
 smoothing does not add waypoints or change chunk duration.
 
@@ -173,7 +195,7 @@ request endpoint rather than trying to guess which prediction will be the episod
 Higher rates give smoother overlapping but require faster inference.
 The server requires continuous waypoint updates — if the buffer empties
 (no new chunk arrives before the previous one finishes), the robot pauses.
-Chunks shorter than `WaypointConfig.min_chunk_horizon_ms` (except one-step chunks in
+Chunks shorter than `HoldPadding.min_horizon_ms` (500 ms; except one-step chunks in
 continuous execution, which the next step replaces) are padded by repeating
 their final target so the server always has a horizon it can brake within. That
 padding is excluded from `scheduled_until_server_ms`, so waits for a chunk to

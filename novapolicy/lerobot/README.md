@@ -191,7 +191,6 @@ policy = LeRobotPolicyClient(
     device="cuda",
     use_async_queue=True,
     async_queue_aggregation=AsyncQueueAggregation.AVERAGE,
-    async_queue_smoothing=True,
 )
 executor = PolicyExecutor(
     schema,
@@ -424,7 +423,6 @@ policy = LeRobotPolicyClient(
     use_async_queue=True,
     async_queue_aggregation=AsyncQueueAggregation.WEIGHTED_AVERAGE,
     async_queue_refill_threshold=0.75,
-    async_queue_smoothing=False,
 )
 ```
 
@@ -437,11 +435,20 @@ Aggregation is applied only when an old and a new action target the same future 
 
 The client defaults to `AVERAGE`: physical UR3 plug-task runs and a simulated UR10e
 pick-and-place both measured lower peak path curvature with it than with LeRobot's
-weighted average, which stays available as `WEIGHTED_AVERAGE`. ``async_queue_smoothing``
-is also on by default; it applies the generic ``novapolicy.smooth_action_chunk(...)``
-transform to the outgoing aggregated lookahead. The four-point active prefix is restored
-unchanged after filtering, and IO action values are never filtered. Disable it for tasks
-that need sharp contact transitions.
+weighted average, which stays available as `WEIGHTED_AVERAGE`. The aggregated lookahead is
+smoothed by the executor's default pipeline (`Smoothing`, two passes of `[1, 2, 1] / 4`) after
+its targets are resolved to NOVA units; the four-point active prefix keeps the values already
+sent, and IO action values are never filtered. For tasks that need sharp contact transitions,
+pass the defaults without it:
+
+```python
+from novapolicy import ContinuousExecution, Smoothing, default_pipeline
+
+execution = ContinuousExecution(rate_hz=FPS)
+pipeline = [
+    m for m in default_pipeline(execution=execution, policy=policy) if not isinstance(m, Smoothing)
+]
+```
 
 The client normally consumes one action each policy control tick, requests a refill when 75% of the
 previous chunk remains by default, and merges overlapping actions using the selected enum mode.

@@ -15,4 +15,5 @@ UR10e, with the client inside the NOVA cluster unless a record says otherwise.
 | [0006](0006-absolute-tick-grid.md) | The control loop ticks on an absolute grid |
 | [0007](0007-freeze-setup-objects.md) | Setup objects are frozen out of garbage collection |
 | [0008](0008-typed-session-clock.md) | Session-clock timestamps are typed |
-| [0009](0009-opt-in-pre-send-modules.md) | One send pipeline of opt-in modules |
+| [0009](0009-opt-in-pre-send-modules.md) | One send pipeline of opt-in modules (defaults superseded by 0010) |
+| [0010](0010-built-ins-are-modules.md) | The built-ins are pipeline modules, and the list is everything |

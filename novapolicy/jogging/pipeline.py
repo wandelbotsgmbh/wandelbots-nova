@@ -1,29 +1,33 @@
-"""The send pipeline: opt-in modules between the policy's chunk and NOVA.
+"""The send pipeline: the modules between the policy's chunk and NOVA.
 
 Everything that reaches NOVA passes one ordered list, per motion group::
 
-    common chunk  ->  [chunk modules]  ->  Timestamps()  ->  [waypoint modules]  ->  NOVA sender
+    common chunk -> [chunk modules] -> Timestamps() -> [filters] -> [waypoint modules] -> sender
 
 * **Common chunk.** What a policy, a jogger target or a replay produced, already mapped to NOVA
   (joints in rad or TCP poses in mm and rad, one motion group): a
   :class:`~novapolicy.jogging.waypoints.PendingChunk`.
 * **Chunk modules** (``on_chunk``) run when the chunk is queued, on every chunk, before the session
-  keeps only the newest one. They may change steps and timing, e.g. :class:`LiveBuffer` turns a
-  live target into a horizon on its own timeline.
-* **Timestamps()** is the placement step (contracts T1 to T3): each step gets its time on the
+  keeps only the newest one. They may change steps and timing: ``Smoothing``, ``Bridge``,
+  ``EndpointRamp``, ``JointClamp``, ``LiveBuffer``, ``HoldPadding``.
+* **Timestamps()** is the placement step (contracts T1 and T2): each step gets its time on the
   session clock. It is in every pipeline; list it to say where, or it goes after the last chunk
   module.
-* **Waypoint modules** (``on_waypoints``) run at the send, on every request, after the timestamps:
+* **Filters** (``keep``) run at the send and decide which waypoints go out; they never retime one:
+  ``DropLate`` (T3). The final target of a run passes them all.
+* **Waypoint modules** (``on_waypoints``) run at the send, on every request, after the filters:
   they get ``(timestamp, values)`` and return the values, so they cannot touch timing. A re-sent
-  waypoint reaches them with its raw value again, so they must give a timestamp the same result.
-  e.g. :class:`EaseIn`.
-* **The NOVA sender** is always last: trimming, the rolling window, IO at the policy's first step,
-  the request (T3, T5, T7).
+  waypoint reaches them with its raw value again, so they must give a timestamp the same result:
+  ``EaseIn``.
+* **The sender** is always last: the rolling window, IO at the policy's first step, the request
+  (T5, T7).
 
-Contract for every module: none runs unless passed (``PolicyExecutor``, ``jog_joints`` and
-``jog_tcp`` take ``pipeline=[...]``); each motion group runs its own copy, so arms never share
-state; a chunk module that adds or removes steps keeps ``when_due`` pointing at the step its
-action belongs to.
+The list is exactly what runs: ``pipeline=None`` (the default on ``PolicyExecutor``, ``jog_joints``,
+``jog_tcp`` and the session) runs :func:`~novapolicy.jogging.modules.default_pipeline`, and an
+explicit list replaces it, so extend the defaults to add a module, e.g.
+``[LiveBuffer(window_ms=500), *default_pipeline()]``. Each motion group runs its own copy, so arms
+never share state; a misordered list is refused at construction; a chunk module that adds or
+removes steps keeps ``when_due`` and ``start_step`` on the steps they belong to.
 """
 
 from __future__ import annotations
