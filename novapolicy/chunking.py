@@ -226,6 +226,21 @@ def interpolate_action_chunk_ramps(
     return InterpolatedActionChunk(motion=motion, original_step_indices=original_step_indices)
 
 
+def ramp_steps(
+    steps: list[list[float]], *, interpolation_steps: int = 3, tcp: bool = False
+) -> tuple[list[list[float]], tuple[int, ...]]:
+    """One motion group's steps eased in and out (see :func:`interpolate_action_chunk_ramps`),
+    and the new index of every original step. TCP poses have their rotation vectors unwrapped
+    first, so no interval interpolates across a sign flip."""
+    if interpolation_steps < _MIN_RAMP_STEPS:
+        raise ValueError("interpolation_steps must be at least 2")
+    if tcp and steps:
+        steps = unwrap_tcp_rotations(steps, steps[0][3:6])
+    return _interpolate_endpoint_intervals(
+        steps, accelerate=True, brake=True, interpolation_steps=interpolation_steps
+    )
+
+
 def _interpolate_endpoint_intervals(
     steps: list[list[float]],
     *,

@@ -34,7 +34,6 @@ from novapolicy.types import (
     ActionMode,
     ContinuousExecution,
     EmergencyStopError,
-    EndpointRamp,
     MotionError,
     OnStale,
     SequentialExecution,
@@ -399,7 +398,7 @@ async def test_bridge_and_policy_are_sent_as_one_continuous_chunk(robot: _Robot)
         _schema(),
         _callback(policy),
         timeout_s=1.0,
-        execution=SequentialExecution(endpoint_ramp=None),
+        execution=SequentialExecution(),
     )
 
     await executor.run()
@@ -618,18 +617,13 @@ async def test_a_bridged_chunk_hands_its_io_and_computed_action_to_the_policys_f
 
     robot.session.write_ios.assert_not_awaited()  # not at send
     assert not computed_fired.is_set()
-    # Combined steps are [current, 1, 2, policy[0], policy[1], policy[2]]; acceleration
-    # interpolation remaps policy waypoint zero from index 3 to 5.
+    # Combined steps are [current, 1, 2, policy[0], policy[1], policy[2]]: policy waypoint zero
+    # is index 3. The session's EndpointRamp moves it with its step (to 5).
     step, run = robot.session.update_chunk.call_args_list[0].kwargs["when_due"]
-    assert step == 5
+    assert step == 3
     await run()
     robot.session.write_ios.assert_awaited_once_with({"digital_out[0]": True})
     assert computed_fired.is_set()
-
-
-def test_endpoint_ramp_validates_interpolation_steps() -> None:
-    with pytest.raises(ValueError, match="interpolation_steps must be at least 2"):
-        EndpointRamp(interpolation_steps=1)
 
 
 @pytest.mark.asyncio
@@ -1195,7 +1189,7 @@ async def _first_sent_steps(policy: PolicyClient, robot: _Robot, **kwargs) -> li
         _schema(),
         policy,
         timeout_s=0.2,
-        execution=SequentialExecution(endpoint_ramp=None),
+        execution=SequentialExecution(),
         **kwargs,
     )
     await executor.run()
@@ -1506,7 +1500,7 @@ async def test_units_are_inverted_before_relative_deltas_resolve(robot: _Robot):
         schema,
         _callback(policy),
         timeout_s=0.2,
-        execution=SequentialExecution(endpoint_ramp=None),
+        execution=SequentialExecution(),
     )
     await executor.run()
 
@@ -1527,7 +1521,7 @@ async def test_absolute_targets_reach_the_robot_in_nova_units(robot: _Robot):
         schema,
         _callback(policy),
         timeout_s=0.2,
-        execution=SequentialExecution(endpoint_ramp=None),
+        execution=SequentialExecution(),
     )
     await executor.run()
 

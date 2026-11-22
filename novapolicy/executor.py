@@ -14,10 +14,8 @@ from typing import TYPE_CHECKING, Any
 from nova.actions import jnt
 from novapolicy.cameras.manager import CameraManager
 from novapolicy.chunking import (
-    ConnectedActionChunk,
     apply_relative_mode,
     connect_action_chunk,
-    interpolate_action_chunk_ramps,
     is_single_step,
     placement,
     trim_chunk,
@@ -52,6 +50,7 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
+    from novapolicy.chunking import ConnectedActionChunk
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
     from novapolicy.types import StopCondition
@@ -681,51 +680,10 @@ class PolicyExecutor:
         # which anchoring on it commands the arm back through. At a settled
         # standstill the two are the same to 0.004 deg, so this costs sequential
         # execution nothing.
-        connected = connect_action_chunk(
+        return connect_action_chunk(
             chunk,
             self._observe() or robot_states,
             always_anchor=continuous_bridge,
-        )
-        if connected is None:
-            return None
-        return self._apply_connected_endpoint_ramp(connected)
-
-    def _apply_endpoint_ramp(self, chunk: ActionChunk) -> ActionChunk:
-        ramp = (
-            self._execution.endpoint_ramp
-            if isinstance(self._execution, SequentialExecution)
-            else None
-        )
-        if ramp is None:
-            return chunk
-        return interpolate_action_chunk_ramps(
-            chunk,
-            interpolation_steps=ramp.interpolation_steps,
-        ).motion
-
-    def _apply_connected_endpoint_ramp(
-        self,
-        connected: ConnectedActionChunk,
-    ) -> ConnectedActionChunk:
-        ramp = (
-            self._execution.endpoint_ramp
-            if isinstance(self._execution, SequentialExecution)
-            else None
-        )
-        if ramp is None:
-            return connected
-        interpolated = interpolate_action_chunk_ramps(
-            connected.motion,
-            interpolation_steps=ramp.interpolation_steps,
-        )
-        policy_start_steps = {
-            group_id: interpolated.original_step_indices[group_id][policy_start_step]
-            for group_id, policy_start_step in connected.policy_start_steps.items()
-        }
-        return ConnectedActionChunk(
-            motion=interpolated.motion,
-            bridge=connected.bridge,
-            policy_start_steps=policy_start_steps,
         )
 
     async def _send_connected_policy_chunk(
@@ -848,7 +806,7 @@ class PolicyExecutor:
             )
 
         self._log_policy_action(action, step)
-        self._send(self._apply_endpoint_ramp(trimmed), from_observation=True, effects=action)
+        self._send(trimmed, from_observation=True, effects=action)
         return None
 
     async def _observe_and_infer(

@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from novapolicy.jogging.clock import ServerMs
     from novapolicy.jogging.waypoints import PendingChunk
     from novapolicy.joint_limits import JointLimits
+    from novapolicy.types import JoggingMode
 
 TimedWaypoint = tuple["ServerMs", list[float]]
 """A waypoint about to be sent: its time on the session clock and its values."""
@@ -55,6 +56,8 @@ class ModuleContext:
     """The session's grid for steps without their own spacing (``single_step_dt_ms``)."""
     motion_group_id: str = ""
     """The motion group the session drives."""
+    mode: JoggingMode = "joint"
+    """What the waypoints are: joint positions, or TCP poses (``"cartesian"``)."""
     joint_limits: JointLimits | None = None
     """The robot's joint position limits, read at the session's start when a ``JointClamp`` is
     in the pipeline; ``None`` otherwise, for TCP waypoints, or when the robot reports none."""

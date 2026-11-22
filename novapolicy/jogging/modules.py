@@ -15,8 +15,11 @@ from dataclasses import dataclass, replace
 import math
 from typing import TYPE_CHECKING
 
+# The module, not its names: chunking imports this package, so it may still be loading here.
+from novapolicy import chunking
 from novapolicy.jogging.pipeline import Timestamps
 from novapolicy.joint_limits import DEFAULT_MARGIN_RAD
+from novapolicy.types import SequentialExecution
 
 if TYPE_CHECKING:
     from novapolicy.jogging.pipeline import ModuleContext
@@ -80,12 +83,47 @@ class JointClamp:
         return chunk if clamped == chunk.steps else replace(chunk, steps=clamped)
 
 
+@dataclass(frozen=True, slots=True)
+class EndpointRamp:
+    """Chunk module: ease into and out of each chunk by subdividing its first and last interval.
+
+    The first interval gets a quadratic ease-in and the last a quadratic ease-out (a
+    smoothstep when they are the same), each split into ``interpolation_steps`` intervals of
+    the chunk's own spacing, so the added points give the robot real time to accelerate and
+    brake. Every original step is kept; IO due at a step stays with it. Meant for sequential
+    execution, where each chunk starts and ends at rest; in the executor's default pipeline
+    only there.
+    """
+
+    interpolation_steps: int = 3
+    """Intervals replacing each endpoint interval. Must be at least two."""
+
+    def __post_init__(self) -> None:
+        if self.interpolation_steps < 2:  # ruff: ignore[magic-value-comparison] (one interval is no ramp)
+            raise ValueError("interpolation_steps must be at least 2")
+
+    def on_chunk(self, chunk: PendingChunk, context: ModuleContext) -> PendingChunk:
+        steps, indices = chunking.ramp_steps(
+            chunk.steps,
+            interpolation_steps=self.interpolation_steps,
+            tcp=context.mode == "cartesian",
+        )
+        if len(steps) == len(chunk.steps):
+            return chunk
+        when_due = chunk.when_due
+        if when_due is not None:
+            when_due = (indices[min(when_due[0], len(indices) - 1)], when_due[1])
+        return replace(chunk, steps=steps, caller_step_count=len(steps), when_due=when_due)
+
+
 def default_pipeline(*, execution: object | None = None) -> list[object]:
     """The modules that run when no ``pipeline`` is given, in order.
 
     Without ``execution``: the joggers' list. With the ``PolicyExecutor``'s execution mode: the
-    executor's, which also clamps joint targets to the robot's limits.
+    executor's, which also clamps joint targets to the robot's limits and, in sequential
+    execution, eases each chunk in and out.
     """
     if execution is None:
         return [HoldPadding(), Timestamps()]
-    return [JointClamp(), HoldPadding(), Timestamps()]
+    ramp = [EndpointRamp()] if isinstance(execution, SequentialExecution) else []
+    return [*ramp, JointClamp(), HoldPadding(), Timestamps()]

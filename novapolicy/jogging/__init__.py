@@ -9,7 +9,12 @@ This subpackage owns all jogging functionality: the low-level
 
 from novapolicy.jogging.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp
 from novapolicy.jogging.live_buffer import LiveBuffer
-from novapolicy.jogging.modules import HoldPadding, default_pipeline
+from novapolicy.jogging.modules import (
+    EndpointRamp,
+    HoldPadding,
+    JointClamp,
+    default_pipeline,
+)
 from novapolicy.jogging.pipeline import (
     ChunkModule,
     EaseIn,
@@ -23,8 +28,10 @@ from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 __all__ = [
     "ChunkModule",
     "EaseIn",
+    "EndpointRamp",
     "HoldPadding",
     "JoggingStateTracker",
+    "JointClamp",
     "JointJogger",
     "LiveBuffer",
     "ModuleContext",

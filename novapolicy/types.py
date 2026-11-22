@@ -22,8 +22,6 @@ ValueType = int | str | bool | float | Pose
 ActionMode = Literal["absolute", "relative"]
 JoggingMode = Literal["joint", "cartesian"]
 
-_MIN_ENDPOINT_RAMP_STEPS = 2
-
 
 class ActionChunk(pydantic.BaseModel, frozen=True):
     """Action chunk streamed to a waypoint jogging session.
@@ -110,23 +108,12 @@ class ActionChunk(pydantic.BaseModel, frozen=True):
 
 
 @dataclass(frozen=True, slots=True)
-class EndpointRamp:
-    """Endpoint interpolation applied to each settled sequential chunk."""
-
-    interpolation_steps: int = 3
-    """Intervals replacing each endpoint interval. Must be at least two."""
-
-    def __post_init__(self) -> None:
-        if self.interpolation_steps < _MIN_ENDPOINT_RAMP_STEPS:
-            raise ValueError("interpolation_steps must be at least 2")
-
-
-@dataclass(frozen=True, slots=True)
 class SequentialExecution:
-    """Execute one complete chunk, reach standstill, then infer again."""
+    """Execute one complete chunk, reach standstill, then infer again.
 
-    endpoint_ramp: EndpointRamp | None = EndpointRamp()
-    """Per-chunk acceleration/braking interpolation, or ``None`` to disable."""
+    The executor's default pipeline eases each chunk in and out here
+    (:class:`~novapolicy.jogging.modules.EndpointRamp`).
+    """
 
 
 @dataclass(frozen=True, slots=True)

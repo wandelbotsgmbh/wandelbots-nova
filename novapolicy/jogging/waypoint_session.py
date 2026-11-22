@@ -1256,6 +1256,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             position=self._position(),
             step_ms=self._config.single_step_dt_ms,
             motion_group_id=self.motion_group_id,
+            mode=self._mode,
             joint_limits=self._joint_limits,
         )
 

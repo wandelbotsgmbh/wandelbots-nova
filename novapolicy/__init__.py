@@ -34,7 +34,9 @@ from novapolicy.executor import (
 from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
 from novapolicy.jogging import (
     EaseIn,
+    EndpointRamp,
     HoldPadding,
+    JointClamp,
     JointJogger,
     LiveBuffer,
     TcpJogger,
@@ -60,7 +62,6 @@ from novapolicy.types import (
     ActionMode,
     ContinuousExecution,
     EmergencyStopError,
-    EndpointRamp,
     ExecutionMode,
     JoggingMode,
     JoggingNotSupportedError,
@@ -130,6 +131,7 @@ __all__ = [
     "HoldPadding",
     "InterpolatedActionChunk",
     "JoggingNotSupportedError",
+    "JointClamp",
     "JointJogger",
     "LeRobotPolicyClient",
     "LeappPolicyClient",
