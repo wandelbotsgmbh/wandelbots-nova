@@ -56,7 +56,7 @@ def test_trim_shorter_than_n_is_left_alone(caplog):
 
 
 # ---------------------------------------------------------------------------
-# smooth_action_chunk — filter mutable motion lookaheads
+# smooth_steps — filter mutable motion lookaheads
 # ---------------------------------------------------------------------------
 
 

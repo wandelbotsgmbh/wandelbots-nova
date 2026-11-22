@@ -169,10 +169,8 @@ The interpolation behaves as follows:
 - the final interval uses quadratic ease-out (decreasing displacement),
 - a single interval uses smoothstep so both endpoint velocities approach zero.
 
-All original waypoints remain in the request. The generic
-`novapolicy.interpolate_action_chunk_ramps(...)` helper returns both the interpolated motion and an
-original-index → interpolated-index mapping. The executor uses that mapping to keep deferred IO and
-computed actions aligned with policy waypoint zero after a bridge. Each added point retains the
+All original waypoints remain in the request, and IO and computed actions stay with policy
+waypoint zero. Each added point retains the
 original `dt_ms`, intentionally increasing request duration. Continuous execution does not expose
 this setting because every chunk tail is provisional. Its policy client must provide a coherent
 initial lookahead and preserve continuity across replacement seams.

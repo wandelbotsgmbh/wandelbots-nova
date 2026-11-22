@@ -79,8 +79,9 @@ def trim_chunk(chunk: ActionChunk, n: int) -> ActionChunk:
 def smooth_steps(
     steps: list[list[float]], *, passes: int = 2, retained_prefix_steps: int = 0
 ) -> list[list[float]]:
-    """One motion group's steps through ``passes`` of ``[1, 2, 1] / 4`` (see
-    :func:`smooth_action_chunk`), the first ``retained_prefix_steps`` kept exactly."""
+    """One motion group's steps through ``passes`` of the filter ``[1, 2, 1] / 4`` with replicated
+    ends (two passes equal ``[1, 4, 6, 4, 1] / 16`` inside), the first ``retained_prefix_steps``
+    kept exactly. Fewer than three steps pass unchanged."""
     if passes < 0 or retained_prefix_steps < 0:
         raise ValueError("passes and retained_prefix_steps must be non-negative")
     if passes == 0:
@@ -118,9 +119,12 @@ def _smooth_steps(
 def ramp_steps(
     steps: list[list[float]], *, interpolation_steps: int = 3, tcp: bool = False
 ) -> tuple[list[list[float]], tuple[int, ...]]:
-    """One motion group's steps eased in and out (see :func:`interpolate_action_chunk_ramps`),
-    and the new index of every original step. TCP poses have their rotation vectors unwrapped
-    first, so no interval interpolates across a sign flip."""
+    """One motion group's steps eased in and out, and the new index of every original step.
+
+    The first interval is split into ``interpolation_steps`` with a quadratic ease-in, the last
+    with a quadratic ease-out (a smoothstep when they are the same interval); every original step
+    is kept. TCP poses have their rotation vectors unwrapped first, so no interval interpolates
+    across a sign flip."""
     if interpolation_steps < _MIN_RAMP_STEPS:
         raise ValueError("interpolation_steps must be at least 2")
     if tcp and steps:
@@ -231,9 +235,11 @@ def bridge_steps(
     tcp: bool = False,
     always_anchor: bool = False,
 ) -> list[list[float]]:
-    """One motion group's bridge from ``current`` to ``steps[0]`` (see
-    :func:`create_bridge_chunk`); empty when none is needed. TCP steps are unwrapped against
-    ``current`` first, and the bridge ends on the unwrapped first step."""
+    """One motion group's bridge from ``current`` to ``steps[0]``: a hold on ``current``, then
+    steps at the policy's own spacing up to its first step; empty when one step of the policy's
+    largest spacing reaches it. ``always_anchor`` keeps ``[current, steps[0]]`` even then. Joint
+    spacing is Euclidean in joint space; TCP spacing compares translation and rotation separately,
+    after unwrapping the rotations against ``current``. Needs two policy steps for a spacing."""
     if tcp and steps:
         steps = unwrap_tcp_rotations(steps, current[3:6])
     return _interpolated_bridge(list(current), steps, tcp=tcp, always_anchor=always_anchor)
