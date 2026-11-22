@@ -1455,24 +1455,6 @@ async def test_absolute_targets_reach_the_robot_in_nova_units(robot: _Robot):
 
 
 @pytest.mark.asyncio
-async def test_a_policy_answer_without_motion_is_logged_once(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    async def no_motion(_obs: object) -> ActionChunk:
-        return ActionChunk()
-
-    executor = PolicyExecutor(_schema(), _callback(no_motion), timeout_s=1.0)
-
-    with caplog.at_level("ERROR", logger="novapolicy.executor"):
-        for _ in range(3):
-            await executor._get_policy_actions({}, None)
-
-    errors = [r for r in caplog.records if "no motion for any motion group" in r.getMessage()]
-    assert len(errors) == 1
-    assert "arm" in errors[0].getMessage()
-
-
-@pytest.mark.asyncio
 async def test_the_start_move_keeps_the_cells_collision_setups():
     """Regression: the start move used to clear the collision setups and plan without them."""
     mg = MagicMock()

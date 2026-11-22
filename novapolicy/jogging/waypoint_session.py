@@ -94,12 +94,6 @@ class _ScheduledRequest:
     """Timestamp per *caller* step, including any trimmed or dropped ones."""
 
 
-# Joint gap (deg) between a chunk's first step and the robot's current position
-# above which we treat it as a genuine discontinuity worth a WARNING (smaller
-# gaps are normal continuous-replacement lag and are logged at DEBUG).
-_DISCONTINUITY_WARN_DEG = 10.0
-
-
 @dataclass
 class _PlaybackClock:
     """Due times for one-step waypoints, spaced like a streaming jitter buffer plays out."""
@@ -547,7 +541,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         # Chunk modules see every chunk, before the session keeps only the newest one.
         for module in self._chunk_modules:
             chunk = module.on_chunk(chunk, self._module_context())
-        buffered_steps = chunk.steps
 
         # Store raw chunk data. Timestamps are computed in _jogging_loop
         # immediately before yielding to the server, avoiding drift from any
@@ -555,38 +548,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._queued_chunk_count += 1
         self._pending_request = replace(chunk, sequence=self._queued_chunk_count)
         self._pending_request_event.set()
-
-        # Compare current robot position vs chunk first step (joint mode only).
-        # Skipped for backdated overlapping chunks: there the robot always
-        # lags the freshest prediction's step 0 by a few degrees, which is
-        # expected and not worth reporting. For exact/ahead chunks a large
-        # first-step gap is a genuine discontinuity worth a WARNING.
-        if (
-            timestamp_offset_steps >= 0
-            and self._mode == "joint"
-            and self._current_joints is not None
-            and len(buffered_steps) > 0
-        ):
-            delta = [
-                abs(buffered_steps[0][j] - self._current_joints[j])
-                for j in range(min(3, len(buffered_steps[0])))
-            ]
-            max_delta = max(delta) * 57.3
-            log = logger.warning if max_delta > _DISCONTINUITY_WARN_DEG else logger.debug
-            log(
-                "%s: chunk first step is %.1f deg from current position "
-                "(current=[%.4f,%.4f,%.4f] chunk_first=[%.4f,%.4f,%.4f])",
-                self.motion_group_id,
-                max_delta,
-                self._current_joints[0],
-                self._current_joints[1],
-                self._current_joints[2],
-                buffered_steps[0][0],
-                buffered_steps[0][1],
-                buffered_steps[0][2],
-            )
-
-        # Request is built later at yield time.
 
     async def write_ios(self, ios: Mapping[str, ValueType]) -> None:
         """Write IO values (delegated to IOWriter for deduplication)."""

@@ -248,7 +248,6 @@ class PolicyExecutor:
         self._gc_frozen = False
         self._rerun: PolicyRerunLogger | None = None
         self._logged_first_images = False
-        self._reported_missing_motion = False
 
         self.status = ExecutorStatus()
         self.result: ExecutionResult | None = None
@@ -289,7 +288,6 @@ class PolicyExecutor:
         """
         self._stop_event.clear()
         self.result = None
-        self._reported_missing_motion = False  # once per run, not per executor
         self.status = ExecutorStatus(phase=Phase.CONNECTING, message="Connecting...")
         try:
             await self._run_episode()
@@ -495,17 +493,10 @@ class PolicyExecutor:
             if not robot_states:
                 await asyncio.sleep(0.01)  # retry shortly
                 continue
-            observation_time = time.monotonic()
             action, start_time = await self._observe_and_infer(robot_states, step, start_time)
             if step == 0:
                 tick_start = start_time
             last_obs = robot_states
-            self._log_observation_to_first_waypoint(
-                action,
-                robot_states,
-                step=step + 1,
-                observation_time=observation_time,
-            )
             termination = await self._send_policy_action(
                 action,
                 robot_states,
@@ -546,31 +537,12 @@ class PolicyExecutor:
                 images,
                 self._all_io_values or None,
             )
-        self._report_missing_motion(action)
         # Units first: a relative target is a delta in the policy's units, and
         # adding a degree-space delta to a radian state is exactly the error the
         # operators exist to prevent.
         if action.resolved:
             return action
         return resolve_actions(self._schema, action, robot_states)
-
-    def _report_missing_motion(self, action: ActionChunk) -> None:
-        """Log once when the policy's answer moves none of the expected motion groups.
-
-        A client that cannot decode its server's reply hands back an empty chunk,
-        which otherwise only shows as a robot that never moves until the timeout.
-        """
-        if action.joints or action.tcp or action.ios or self._reported_missing_motion:
-            return
-        expected = self._schema.motion_action_keys
-        if not expected:
-            return
-        self._reported_missing_motion = True
-        logger.error(
-            "The policy returned no motion for any motion group (expected %s). "
-            "Check that the policy client decodes its server's reply.",
-            ", ".join(expected),
-        )
 
     def _synchronize_policy_action_timestep(self) -> None:
         """Tell a timestep queue which of its steps it may still replace: the one after the step
@@ -870,51 +842,6 @@ class PolicyExecutor:
                 )
         return result
 
-    def _log_observation_to_first_waypoint(
-        self,
-        chunk: ActionChunk,
-        robot_states: dict[str, RobotState],
-        *,
-        step: int,
-        observation_time: float,
-    ) -> None:
-        """Log the exact observation, live pre-send state, and first joint target."""
-        inference_ms = (time.monotonic() - observation_time) * 1000.0
-        for group_id, steps in chunk.joints.items():
-            observed_state = robot_states.get(group_id)
-            session = self._sessions.get(group_id)
-            live_state = session.current_state if session is not None else None
-            if observed_state is None or live_state is None or not steps:
-                continue
-
-            observed = list(observed_state.joints)
-            live = list(live_state.joints)
-            first = steps[0]
-            if len(observed) != len(live) or len(observed) != len(first):
-                continue
-
-            observed_to_first_deg = [
-                abs(target - state) * 57.2958 for state, target in zip(observed, first, strict=True)
-            ]
-            observed_to_live_deg = [
-                abs(current - state) * 57.2958
-                for state, current in zip(observed, live, strict=True)
-            ]
-            logger.info(
-                "%s policy chunk=%d observation-to-first max=%.2fdeg per_joint=%s "
-                "observation-to-presend max=%.3fdeg inference=%.1fms "
-                "observation=%s presend=%s first=%s",
-                group_id,
-                step,
-                max(observed_to_first_deg, default=0.0),
-                _format_values(observed_to_first_deg, digits=2),
-                max(observed_to_live_deg, default=0.0),
-                inference_ms,
-                _format_values(observed),
-                _format_values(live),
-                _format_values(first),
-            )
-
     def _check_stop_conditions_pre_send(
         self, chunk: ActionChunk, robot_states: dict[str, RobotState]
     ) -> str | None:
@@ -1096,10 +1023,6 @@ class PolicyExecutor:
                 self.result.steps,
                 self.result.duration_s,
             )
-
-
-def _format_values(values: list[float], *, digits: int = 4) -> str:
-    return "[" + ",".join(f"{value:.{digits}f}" for value in values) + "]"
 
 
 def _result(
