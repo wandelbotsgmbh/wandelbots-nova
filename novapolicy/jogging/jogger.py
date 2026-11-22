@@ -253,8 +253,7 @@ class _BaseJogger:
                     anchor if anchor is not None else session.estimated_server_timestamp_ms
                 ),
                 # Stated rather than left to the default: a chunk is the one form
-                # that gets min_chunk_horizon_ms padding, and this is where that
-                # is decided.
+                # HoldPadding pads, and this is where that is decided.
                 extend_buffer=True,
             )
             self._record_commanded(mg.id, eased, dt_ms, anchor)
@@ -623,7 +622,7 @@ class JointJogger(_BaseJogger):
         config: WaypointConfig | None = None,
         stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
-        pipeline: Sequence[object] = (),
+        pipeline: Sequence[object] | None = None,
     ) -> None:
         cfg = config or WaypointConfig()
         sessions: dict[MotionGroup, WaypointJoggingSession] = {}
@@ -702,7 +701,7 @@ class JointJogger(_BaseJogger):
 
         A chunk already describes where the robot goes next, so it carries its own
         horizon: a ``LiveBuffer`` passes it unchanged and costs no latency here. A
-        chunk shorter than :attr:`WaypointConfig.min_chunk_horizon_ms` is padded by
+        chunk shorter than ``HoldPadding.min_horizon_ms`` is padded by
         repeating its final step, and leading steps whose moment has already passed
         are dropped at send time.
 
@@ -749,7 +748,7 @@ class TcpJogger(_BaseJogger):
         config: WaypointConfig | None = None,
         stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
-        pipeline: Sequence[object] = (),
+        pipeline: Sequence[object] | None = None,
     ) -> None:
         cfg = config or WaypointConfig()
         sessions: dict[MotionGroup, WaypointJoggingSession] = {}
@@ -840,7 +839,7 @@ class TcpJogger(_BaseJogger):
 
         A chunk already describes where the TCP goes next, so it carries its own
         horizon: a ``LiveBuffer`` passes it unchanged and costs no latency here. A
-        chunk shorter than :attr:`WaypointConfig.min_chunk_horizon_ms` is padded by
+        chunk shorter than ``HoldPadding.min_horizon_ms`` is padded by
         repeating its final step, and leading steps whose moment has already passed
         are dropped at send time.
 
@@ -884,7 +883,7 @@ def jog_joints(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
-    pipeline: Sequence[object] = ...,
+    pipeline: Sequence[object] | None = ...,
 ) -> JointJogger:
     pass
 
@@ -896,7 +895,7 @@ def jog_joints(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
-    pipeline: Sequence[object] = ...,
+    pipeline: Sequence[object] | None = ...,
 ) -> JointJogger:
     pass
 
@@ -907,7 +906,7 @@ def jog_joints(
     config: WaypointConfig | None = None,
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
-    pipeline: Sequence[object] = (),
+    pipeline: Sequence[object] | None = None,
 ) -> JointJogger:
     """Create a joint position jogger using server-side waypoint jogging.
 
@@ -919,11 +918,13 @@ def jog_joints(
         start_joint_position: Joint positions to PTP-move to before starting jogging.
             Single list for one robot, or dict mapping each motion group
             to its start_joint_position joints for multi-robot.
-        pipeline: Opt-in modules between the targets and NOVA, in order; none by default.
-            ``LiveBuffer(window_ms=500)`` replays the last ``window_ms`` of live targets as a
-            horizon on an even grid, so :meth:`set_target` streams move smoothly about the window
-            behind (measured at a ~90 Hz loop: 0.015 deg rms against the target, 0.45 to 0.84
-            deg without); a chunk passes it unchanged and clears it. ``EaseIn(duration_s=1.0)``
+        pipeline: The modules between the targets and NOVA, in order, exactly as given;
+            ``None`` runs :func:`~novapolicy.jogging.modules.default_pipeline`. To add one,
+            extend that list: ``[LiveBuffer(window_ms=500), *default_pipeline()]`` replays the
+            last ``window_ms`` of live targets as a horizon on an even grid, so
+            :meth:`set_target` streams move smoothly about the window behind (measured at a
+            ~90 Hz loop: 0.015 deg rms against the target, 0.45 to 0.84 deg without); a chunk
+            passes it unchanged and clears it. ``[*default_pipeline(), EaseIn(duration_s=1.0)]``
             starts the motion from a standstill. See :mod:`novapolicy.jogging.pipeline`.
 
     Returns:
@@ -962,7 +963,7 @@ def jog_tcp(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
-    pipeline: Sequence[object] = ...,
+    pipeline: Sequence[object] | None = ...,
 ) -> TcpJogger:
     pass
 
@@ -974,7 +975,7 @@ def jog_tcp(
     config: WaypointConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
-    pipeline: Sequence[object] = ...,
+    pipeline: Sequence[object] | None = ...,
 ) -> TcpJogger:
     pass
 
@@ -986,7 +987,7 @@ def jog_tcp(
     config: WaypointConfig | None = None,
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
-    pipeline: Sequence[object] = (),
+    pipeline: Sequence[object] | None = None,
 ) -> TcpJogger:
     """Create a TCP pose jogger using server-side waypoint jogging.
 
@@ -1000,11 +1001,13 @@ def jog_tcp(
         start_joint_position: Joint positions to PTP-move to before starting jogging.
             Single list for one robot, or dict mapping each motion group
             to its start joints for multi-robot.
-        pipeline: Opt-in modules between the targets and NOVA, in order; none by default.
-            ``LiveBuffer(window_ms=500)`` replays the last ``window_ms`` of live targets as a
-            horizon on an even grid, so :meth:`set_target` streams move smoothly about the window
-            behind (measured at a ~90 Hz loop: 0.015 deg rms against the target, 0.45 to 0.84
-            deg without); a chunk passes it unchanged and clears it. ``EaseIn(duration_s=1.0)``
+        pipeline: The modules between the targets and NOVA, in order, exactly as given;
+            ``None`` runs :func:`~novapolicy.jogging.modules.default_pipeline`. To add one,
+            extend that list: ``[LiveBuffer(window_ms=500), *default_pipeline()]`` replays the
+            last ``window_ms`` of live targets as a horizon on an even grid, so
+            :meth:`set_target` streams move smoothly about the window behind (measured at a
+            ~90 Hz loop: 0.015 deg rms against the target, 0.45 to 0.84 deg without); a chunk
+            passes it unchanged and clears it. ``[*default_pipeline(), EaseIn(duration_s=1.0)]``
             starts the motion from a standstill. See :mod:`novapolicy.jogging.pipeline`.
 
     Returns:

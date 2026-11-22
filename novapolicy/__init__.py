@@ -34,10 +34,12 @@ from novapolicy.executor import (
 from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
 from novapolicy.jogging import (
     EaseIn,
+    HoldPadding,
     JointJogger,
     LiveBuffer,
     TcpJogger,
     Timestamps,
+    default_pipeline,
     jog_joints,
     jog_tcp,
 )
@@ -125,6 +127,7 @@ __all__ = [
     "ExecutionResult",
     "ExecutorStatus",
     "Gr00tPolicyClient",
+    "HoldPadding",
     "InterpolatedActionChunk",
     "JoggingNotSupportedError",
     "JointJogger",
@@ -158,6 +161,7 @@ __all__ = [
     "WebRTCCameras",
     "connect_action_chunk",
     "create_bridge_chunk",
+    "default_pipeline",
     "interpolate_action_chunk_ramps",
     "jog_joints",
     "jog_tcp",

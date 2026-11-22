@@ -255,11 +255,17 @@ def test_a_zero_step_spacing_is_rejected_at_construction():
         _ = WaypointConfig(single_step_dt_ms=0.0)
     with pytest.raises(ValueError, match="single_step_dt_ms"):
         _ = WaypointConfig(single_step_dt_ms=-10.0)
-    with pytest.raises(ValueError, match="min_chunk_horizon_ms"):
-        _ = WaypointConfig(min_chunk_horizon_ms=-1.0)
 
-    # Zero is documented as "no automatic extension", so it must stay legal.
-    assert WaypointConfig(min_chunk_horizon_ms=0.0).min_chunk_horizon_ms == 0.0
+
+def test_hold_padding_refuses_a_negative_horizon_and_allows_zero() -> None:
+    """Zero means no padding, so it must stay legal."""
+    import pytest
+
+    from novapolicy.jogging.modules import HoldPadding
+
+    with pytest.raises(ValueError, match="min_horizon_ms"):
+        _ = HoldPadding(min_horizon_ms=-1.0)
+    assert HoldPadding(min_horizon_ms=0.0).min_horizon_ms == 0.0
 
 
 # ---------------------------------------------------------------------------

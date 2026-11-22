@@ -4,7 +4,7 @@ import math
 
 import nova
 from nova.types import Pose
-from novapolicy import LiveBuffer, jog_tcp
+from novapolicy import LiveBuffer, default_pipeline, jog_tcp
 
 HOME_LEFT = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
 HOME_RIGHT = [-1.169, -2.3911, -1.8675, 0.0, -0.872, -2.094]
@@ -43,7 +43,7 @@ async def main(ctx: nova.ProgramContext):
     async with jog_tcp(
         {mg1: tcp1, mg2: tcp2},
         start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT},
-        pipeline=[LiveBuffer(window_ms=500)],
+        pipeline=[LiveBuffer(window_ms=500), *default_pipeline()],
     ) as jogger:
         start1 = None
         start2 = None

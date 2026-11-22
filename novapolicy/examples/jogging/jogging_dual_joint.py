@@ -3,7 +3,7 @@
 import math
 
 import nova
-from novapolicy import LiveBuffer, jog_joints
+from novapolicy import LiveBuffer, default_pipeline, jog_joints
 
 HOME_LEFT = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
 HOME_RIGHT = [-1.169, -2.3911, -1.8675, 0.0, -0.872, -2.094]
@@ -30,7 +30,7 @@ async def main(ctx: nova.ProgramContext):
     async with jog_joints(
         [mg1, mg2],
         start_joint_position={mg1: HOME_LEFT, mg2: HOME_RIGHT},
-        pipeline=[LiveBuffer(window_ms=500)],
+        pipeline=[LiveBuffer(window_ms=500), *default_pipeline()],
     ) as jogger:
         async for _ in jogger:
             t = jogger.elapsed

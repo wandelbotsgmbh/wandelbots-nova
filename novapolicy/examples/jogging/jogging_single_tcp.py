@@ -11,7 +11,7 @@ import math
 
 import nova
 from nova.types import Pose
-from novapolicy import LiveBuffer, jog_tcp
+from novapolicy import LiveBuffer, default_pipeline, jog_tcp
 
 START_JOINTS = [0.9484, -2.128, 2.2734, -1.7487, -1.5773, 2.552]
 
@@ -42,7 +42,10 @@ async def main(ctx: nova.ProgramContext):
     # No EaseIn: the phase warp already starts at zero velocity, and the circle
     # starts at the robot's own pose, so there is nothing to blend from.
     async with jog_tcp(
-        mg, tcp=tcp_name, start_joint_position=START_JOINTS, pipeline=[LiveBuffer(window_ms=500)]
+        mg,
+        tcp=tcp_name,
+        start_joint_position=START_JOINTS,
+        pipeline=[LiveBuffer(window_ms=500), *default_pipeline()],
     ) as jogger:
         start_pose = None
         center_x = 0.0

@@ -21,7 +21,6 @@ class _FakeSession:
     def __init__(self, mode: str = "cartesian") -> None:
         self.mode = mode
         self.single_step_dt_ms = 50.0
-        self.min_chunk_horizon_ms = 500.0
 
 
 def _jogger(mode: str = "cartesian") -> tuple[TcpJogger, object, _FakeSession]:
@@ -202,15 +201,17 @@ def test_a_live_target_is_sent_alone_and_unmodified() -> None:
     assert all(chunk["extend_buffer"] is False for chunk in session.chunks)
 
 
-def test_nothing_is_buffered_or_shaped_unless_passed() -> None:
-    """Opt-in modules: the pipeline is empty by default."""
+def test_nothing_is_buffered_or_eased_unless_passed() -> None:
+    """The default pipeline holds only the built-ins: no LiveBuffer, no EaseIn."""
     import inspect
 
+    from novapolicy.jogging import EaseIn, LiveBuffer, default_pipeline
     from novapolicy.jogging.jogger import jog_joints, jog_tcp
 
+    assert not any(isinstance(m, (LiveBuffer, EaseIn)) for m in default_pipeline())
     for factory in (jog_joints, jog_tcp):
         params = inspect.signature(factory).parameters
-        assert tuple(params["pipeline"].default) == (), factory.__name__
+        assert params["pipeline"].default is None, factory.__name__
         assert "live_buffer" not in params, factory.__name__
         assert "stages" not in params, factory.__name__
 

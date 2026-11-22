@@ -7,8 +7,8 @@ fails during connect rather than as unexpected motion.
 
 The policy this was written against is **horizon-1**: one joint target per
 predict, at a 20 ms control period. A lone waypoint is a *terminal* target the
-server brakes to a standstill on, so the session tops each chunk up to
-``WaypointConfig.min_chunk_horizon_ms`` by holding its final target — that
+server brakes to a standstill on, so ``HoldPadding`` tops each chunk up to
+``min_horizon_ms`` by holding its final target — that
 padding is the braking horizon, not commanded motion. ``--min-chunk-horizon-ms``
 exposes it because the safe horizon is a property of the controller.
 
@@ -46,12 +46,13 @@ from nova import Nova, NovaConfig
 from novapolicy import (
     ContinuousExecution,
     EmergencyStopError,
+    HoldPadding,
     MotionError,
     Observation,
     PolicyExecutor,
     PolicySchema,
     SequentialExecution,
-    WaypointConfig,
+    default_pipeline,
 )
 from novapolicy.nats import NatsPolicyClient
 
@@ -88,7 +89,12 @@ async def run(args: argparse.Namespace) -> None:
             # that is the single target it predicted.
             n_action_steps=0,
             timeout_s=args.duration,
-            motion=WaypointConfig(min_chunk_horizon_ms=args.min_chunk_horizon_ms),
+            pipeline=[
+                HoldPadding(min_horizon_ms=args.min_chunk_horizon_ms)
+                if isinstance(module, HoldPadding)
+                else module
+                for module in default_pipeline()
+            ],
         )
 
         print(f"Running '{args.policy_id}' on {left.id} + {right.id} for {args.duration}s...")
@@ -130,7 +136,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-chunk-horizon-ms",
         type=float,
-        default=WaypointConfig().min_chunk_horizon_ms,
+        default=HoldPadding().min_horizon_ms,
         help="Braking horizon a short chunk is padded to; 0 disables the padding",
     )
     parser.add_argument(

@@ -24,6 +24,7 @@ import numpy as np
 import pytest
 
 from novapolicy.executor import Phase, PolicyExecutor
+from novapolicy.jogging.modules import default_pipeline
 from novapolicy.ops import Rad2Deg
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.queued_client import QueuedPolicyClient
@@ -1066,7 +1067,7 @@ def test_the_pipeline_is_handed_to_every_session():
         executor._create_session(_mg())
         assert session_cls.call_args.kwargs["pipeline"] == tuple(pipeline)
         PolicyExecutor(_schema(), _hold)._create_session(_mg())
-        assert session_cls.call_args.kwargs["pipeline"] == ()
+        assert session_cls.call_args.kwargs["pipeline"] == tuple(default_pipeline())
 
 
 def test_a_live_buffer_no_longer_makes_the_executor_refuse_chunks_or_tcp_targets():

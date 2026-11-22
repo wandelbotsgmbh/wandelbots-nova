@@ -80,7 +80,6 @@ def _fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
     session.estimated_server_timestamp_ms = 0
     session.session_elapsed_ms = 0.0
     session.single_step_dt_ms = 50.0
-    session.min_chunk_horizon_ms = 200.0
     session.current_state = MagicMock(joints=(0.0,) * num_joints)
     session.update_chunk = MagicMock()
     session.start = AsyncMock()

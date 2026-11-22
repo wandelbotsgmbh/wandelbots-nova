@@ -3,7 +3,7 @@
 import math
 
 import nova
-from novapolicy import LiveBuffer, jog_joints
+from novapolicy import LiveBuffer, default_pipeline, jog_joints
 
 HOME = [1.169, -0.733, 1.745, -3.054, 0.872, 2.094]
 
@@ -26,7 +26,7 @@ async def main(ctx: nova.ProgramContext):
     # the moving target smoothly, about 500 ms behind. Without it each target goes out
     # alone and the robot brakes toward every one of them.
     async with jog_joints(
-        mg, start_joint_position=HOME, pipeline=[LiveBuffer(window_ms=500)]
+        mg, start_joint_position=HOME, pipeline=[LiveBuffer(window_ms=500), *default_pipeline()]
     ) as jogger:
         async for _ in jogger:
             t = jogger.elapsed

@@ -31,6 +31,7 @@ from novapolicy.estop import (
 from novapolicy.io import IOStreamManager
 from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.live_buffer import LiveBuffer
+from novapolicy.jogging.modules import default_pipeline
 from novapolicy.jogging.pipeline import split_pipeline
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.joint_limits import fetch_joint_limits
@@ -201,7 +202,7 @@ class PolicyExecutor:
         n_action_steps: int | None = None,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
         clamp_to_joint_limits: bool = True,
-        pipeline: Sequence[object] = (),
+        pipeline: Sequence[object] | None = None,
     ) -> None:
         """Create a policy executor.
 
@@ -247,11 +248,13 @@ class PolicyExecutor:
                 which remains available to asynchronous policy clients.
             start_joint_position: Optional mapping of motion group to joint pose
                 to PTP-move to before starting waypoint jogging.
-            pipeline: Opt-in modules between the policy's chunk and NOVA, in order, e.g.
-                ``[LiveBuffer(window_ms=80), Timestamps(), EaseIn(duration_s=1.0)]``; none by
-                default. Each motion group runs its own copy. See
-                :mod:`novapolicy.jogging.pipeline`.
+            pipeline: The modules between the policy's chunk and NOVA, in order, exactly as
+                given; ``None`` runs :func:`~novapolicy.jogging.modules.default_pipeline`. To
+                add one, extend that list, e.g. ``[*default_pipeline(), EaseIn(duration_s=1.0)]``.
+                Each motion group runs its own copy. See :mod:`novapolicy.jogging.pipeline`.
         """
+        if pipeline is None:
+            pipeline = default_pipeline()
         split_pipeline(pipeline)  # refuse a misordered pipeline before anything moves
         self._pipeline = tuple(pipeline)
         self._schema = schema
@@ -279,7 +282,7 @@ class PolicyExecutor:
         self._execution = execution
         self._n_action_steps_cfg = n_action_steps
 
-        _check_execution_mode(execution, self._policy, pipeline)
+        _check_execution_mode(execution, self._policy, self._pipeline)
 
         self._sessions: dict[str, WaypointJoggingSession] = {}
         self._cameras = CameraManager(camera_max_age_s)

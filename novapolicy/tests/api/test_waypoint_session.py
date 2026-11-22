@@ -35,6 +35,7 @@ from nova.types import Pose
 from novapolicy.jogging import jog_tcp
 from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.live_buffer import LIVE_LEAD_MS, MAX_LIVE_SAMPLES, LiveBuffer
+from novapolicy.jogging.modules import HoldPadding, default_pipeline
 from novapolicy.jogging.waypoint_session import MIN_LEAD_MS, WaypointJoggingSession
 from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.types import JoggingNotSupportedError, MotionError, WaypointConfig
@@ -43,6 +44,18 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
 
 _SESSION = "novapolicy.jogging.waypoint_session"
+
+
+def _unpadded() -> list[object]:
+    """The default pipeline without hold padding."""
+    return [m for m in default_pipeline() if not isinstance(m, HoldPadding)]
+
+
+def _padded(min_horizon_ms: float) -> list[object]:
+    """The default pipeline with hold padding up to ``min_horizon_ms``."""
+    return [
+        HoldPadding(min_horizon_ms) if isinstance(m, HoldPadding) else m for m in default_pipeline()
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +161,7 @@ def _build_session(
     mode: str = "joint",
     config: WaypointConfig | None = None,
     response_delay: float = 0.003,
-    pipeline: Sequence[object] = (),
+    pipeline: Sequence[object] | None = None,
 ) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
     server = FakeJoggingServer(
         fault=fault,
@@ -261,7 +274,7 @@ async def test_it_initializes_the_jogging_session_before_any_waypoints():
 @pytest.mark.asyncio
 async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
     """update_chunk(step) reaches the server as a joint-flavoured ActionChunkRequest."""
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     try:
         await session.start()
         await session.wait_ready()
@@ -292,7 +305,7 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
 @pytest.mark.asyncio
 async def test_a_lead_chunk_goes_ahead_of_now_by_the_configured_latency():
     """A one-step chunk is stamped at send time: server now plus max_expected_latency_ms."""
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     now = patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
     )
@@ -316,7 +329,7 @@ async def test_a_lead_chunk_goes_ahead_of_now_by_the_configured_latency():
 @pytest.mark.asyncio
 async def test_a_lead_chunk_is_due_a_fixed_time_after_its_observation():
     """Stamped from the observation, not the send: position and time stay consistent."""
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     now = patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
     )
@@ -342,7 +355,7 @@ async def test_a_lead_chunk_is_due_a_fixed_time_after_its_observation():
 @pytest.mark.asyncio
 async def test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due():
     """A rolling window: a new chunk would otherwise delete the waypoints queued before it."""
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     now = patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
     )
@@ -379,7 +392,7 @@ async def test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due():
 async def test_a_lead_chunk_of_several_steps_is_dated_by_its_observation():
     """Step k is due the lead plus k steps after the observation; steps already too close to
     send are dropped and the rest keep their times; earlier waypoints not yet due are resent."""
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     now = patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
     )
@@ -417,7 +430,7 @@ async def test_a_lead_chunk_of_several_steps_is_dated_by_its_observation():
 @pytest.mark.asyncio
 async def test_a_lead_chunk_dated_from_the_send_keeps_every_step():
     """Without an observation the send is the reference, so nothing is ever late."""
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     now = patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
     )
@@ -439,7 +452,7 @@ async def test_a_lead_chunk_dated_from_the_send_keeps_every_step():
 
 @pytest.mark.asyncio
 async def test_a_lead_chunk_resends_the_earlier_waypoints_due_before_it():
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     now = patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
     )
@@ -471,7 +484,7 @@ async def test_a_lead_chunk_resends_the_earlier_waypoints_due_before_it():
 
 def test_a_lead_chunk_that_is_late_entirely_is_not_sent_and_not_guarded():
     """Whole chunk in the past: nothing to send. Multi-step chunks never count as late."""
-    session, _server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, _server = _build_session(pipeline=_unpadded())
     now = patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
     )
@@ -571,7 +584,7 @@ async def test_a_chunk_action_is_skipped_when_the_motion_stopped_before_it_was_d
 async def test_a_replaced_chunk_never_runs_its_action_and_stop_cancels_the_rest():
     """The replaced chunk's motion never ran, so neither does its action; one not yet due when
     the session stops belongs to a stopped motion."""
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     ran: list[str] = []
 
     def action(name: str):
@@ -617,9 +630,7 @@ class _AddOne:
 async def test_waypoint_modules_reshape_the_values_but_never_the_timestamps():
     """A re-sent waypoint is reshaped from its raw value again, so it gets the same value in
     every request; the drain's final target is what was actually sent."""
-    session, server = _build_session(
-        config=WaypointConfig(min_chunk_horizon_ms=0), pipeline=[_AddOne()]
-    )
+    session, server = _build_session(pipeline=[_AddOne()])
     now = patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
     )
@@ -688,7 +699,7 @@ def _live_session(
 ) -> Iterator[tuple[WaypointJoggingSession, PropertyMock]]:
     """A session with ``LiveBuffer(window_ms)`` in its pipeline and a clock the test sets."""
     session, _ = _build_session(
-        pipeline=[LiveBuffer(window_ms=window_ms)], mode=mode, config=config
+        pipeline=[LiveBuffer(window_ms=window_ms), *default_pipeline()], mode=mode, config=config
     )
     clock = patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
@@ -768,7 +779,7 @@ def test_a_replayed_horizon_is_never_padded_even_when_the_caller_asks():
     """Holding one pose is not the same as replaying where the target went. The lone target
     before the buffer can define a spacing passes through unchanged, so it keeps the caller's
     padding (500 ms of holds on the 50 ms grid)."""
-    with _live_session(window_ms=100.0, config=WaypointConfig(min_chunk_horizon_ms=500.0)) as (
+    with _live_session(window_ms=100.0) as (
         session,
         now,
     ):
@@ -1125,7 +1136,7 @@ def test_one_step_waypoints_that_keep_arriving_too_late_stop_the_session():
 @pytest.mark.asyncio
 async def test_the_configured_delay_until_braking_goes_out_with_every_chunk():
     session, server = _build_session(
-        config=WaypointConfig(min_chunk_horizon_ms=0, delay_until_braking_ms=200)
+        config=WaypointConfig(delay_until_braking_ms=200), pipeline=_unpadded()
     )
     try:
         await session.start()
@@ -1143,7 +1154,7 @@ async def test_the_configured_delay_until_braking_goes_out_with_every_chunk():
 
 @pytest.mark.asyncio
 async def test_a_short_chunk_holds_its_final_target_to_fill_the_buffer():
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=100.0))
+    session, server = _build_session(pipeline=_padded(100.0))
     target = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
     try:
         await session.start()
@@ -1172,7 +1183,7 @@ async def test_waypoints_already_in_the_past_are_trimmed_before_sending():
     The absolute time-to-position mapping of the surviving waypoints is
     unchanged, so trimming never distorts the trajectory.
     """
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     try:
         await session.start()
         await session.wait_ready()
@@ -1206,7 +1217,7 @@ async def test_a_trimmed_chunk_reports_the_timestep_it_actually_starts_at():
     caller's step zero. Reporting the untrimmed timestep misattributes every
     plotted and logged waypoint to a step the robot never received.
     """
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     try:
         await session.start()
         await session.wait_ready()
@@ -1236,7 +1247,7 @@ async def test_a_trimmed_chunk_still_reports_where_each_caller_step_landed():
     indexing the *sent* request shifts that origin by however many were dropped,
     on every chunk, compounding.
     """
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     try:
         await session.start()
         await session.wait_ready()
@@ -1267,12 +1278,12 @@ async def test_a_trimmed_chunk_still_reports_where_each_caller_step_landed():
 async def test_the_padded_tail_of_a_short_chunk_is_not_motion_anyone_waits_for():
     """``scheduled_until_server_ms`` ends at the caller's last step.
 
-    A short chunk is padded to ``min_chunk_horizon_ms`` by repeating its final target,
+    A short chunk is padded to ``HoldPadding.min_horizon_ms`` by repeating its final target,
     which gives the server room to brake. Treating that hold as commanded motion
     makes every caller waiting for the chunk to finish sit at the final target
     for the rest of the buffer first — at a 500ms buffer, most of the wait.
     """
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=200.0))
+    session, server = _build_session(pipeline=_padded(200.0))
     target = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
     try:
         await session.start()
@@ -1299,7 +1310,7 @@ async def test_the_padded_tail_of_a_short_chunk_is_not_motion_anyone_waits_for()
 @pytest.mark.asyncio
 async def test_a_fully_elapsed_chunk_is_dropped_instead_of_sent():
     """A chunk whose every waypoint has passed is not worth sending at all."""
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     try:
         await session.start()
         await session.wait_ready()
@@ -1327,7 +1338,7 @@ async def test_a_fully_elapsed_chunk_is_dropped_instead_of_sent():
 @pytest.mark.asyncio
 async def test_live_updates_are_sent_without_waiting_for_the_next_response():
     session, server = _build_session(
-        config=WaypointConfig(min_chunk_horizon_ms=0),
+        pipeline=_unpadded(),
         response_delay=0.2,
     )
     first = [0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -1676,7 +1687,7 @@ async def test_overlapping_joint_chunks_share_one_absolute_timeline():
 @pytest.mark.asyncio
 async def test_drain_waits_until_the_server_clock_reaches_the_last_waypoint():
     """ "Finished" is the server clock passing the last timestamp that was sent."""
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     try:
         await session.start()
         await session.wait_ready()
@@ -1705,7 +1716,7 @@ def _chunk_requests(server: FakeJoggingServer) -> list[object]:
 async def test_drain_stops_on_the_last_target_instead_of_keeping_the_velocity():
     """With a delay until braking the robot would run on past the last target."""
     session, server = _build_session(
-        config=WaypointConfig(min_chunk_horizon_ms=0, delay_until_braking_ms=200)
+        config=WaypointConfig(delay_until_braking_ms=200), pipeline=_unpadded()
     )
     try:
         await session.start()
@@ -1729,7 +1740,7 @@ async def test_drain_stops_on_the_last_target_instead_of_keeping_the_velocity():
 async def test_a_final_target_already_passed_is_still_sent_to_stop_on():
     """A robot keeping its velocity past the last target has to come back to it."""
     session, server = _build_session(
-        config=WaypointConfig(min_chunk_horizon_ms=0, delay_until_braking_ms=200)
+        config=WaypointConfig(delay_until_braking_ms=200), pipeline=_unpadded()
     )
     try:
         await session.start()
@@ -1752,7 +1763,7 @@ async def test_a_final_target_already_passed_is_still_sent_to_stop_on():
 
 @pytest.mark.asyncio
 async def test_without_a_delay_until_braking_drain_sends_nothing_more():
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     try:
         await session.start()
         await session.wait_ready()
@@ -1778,7 +1789,7 @@ async def test_drain_waits_for_acknowledgement_not_for_extrapolation():
     may not even have started it, and the stop that follows would truncate
     exactly the motion the drain exists to protect.
     """
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     try:
         await session.start()
         await session.wait_ready()
@@ -1808,7 +1819,7 @@ async def test_drain_waits_for_acknowledgement_not_for_extrapolation():
 @pytest.mark.asyncio
 async def test_drain_gives_up_when_a_stop_condition_fires_mid_drain():
     """A stop condition wants the robot stopped, not the rest of the path run."""
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     try:
         await session.start()
         await session.wait_ready()
@@ -1849,7 +1860,7 @@ async def test_drain_waits_for_a_chunk_that_is_still_only_queued():
     later. Reading the schedule once at entry would finish the drain before that
     chunk ever went out, and ``stop`` would then cancel it mid-flight.
     """
-    session, server = _build_session(config=WaypointConfig(min_chunk_horizon_ms=0))
+    session, server = _build_session(pipeline=_unpadded())
     try:
         await session.start()
         await session.wait_ready()

@@ -24,6 +24,7 @@ from nova.types import Pose, RobotState
 from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.io import IOWriter
 from novapolicy.jogging.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, RoundTrip, ServerMs
+from novapolicy.jogging.modules import default_pipeline
 from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
 from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
 from novapolicy.jogging.waypoints import (
@@ -155,11 +156,13 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         tcp: str = "",
         mode: JoggingMode = "joint",
         stop_conditions: list[StopCondition] | None = None,
-        pipeline: Sequence[object] = (),
+        pipeline: Sequence[object] | None = None,
     ) -> None:
         self._motion_group = motion_group
         # Each session runs its own copy, so two arms never share a module's state.
-        self._chunk_modules, self._waypoint_modules = split_pipeline(copy.deepcopy(list(pipeline)))
+        self._chunk_modules, self._waypoint_modules = split_pipeline(
+            copy.deepcopy(list(default_pipeline() if pipeline is None else pipeline))
+        )
         self._last_sent_value: list[float] = []
         self._config = config
         self._tcp = tcp
@@ -396,8 +399,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """When the commanded motion of the latest scheduled chunk runs out.
 
         The timestamp of the last waypoint the *caller* asked for — not of the
-        last waypoint sent. Short chunks are padded to ``min_chunk_horizon_ms`` by
-        repeating their final target (see :meth:`_extend_to_min_horizon`), and
+        last waypoint sent. Short chunks may be padded by repeating their final target
+        (:class:`~novapolicy.jogging.modules.HoldPadding`), and
         that padding is a braking horizon for the server rather than motion
         anyone requested. Waiting for it would sit at the final target for the
         rest of the buffer before the next chunk could be considered, which at a
@@ -509,11 +512,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             raise MotionError(self.motion_group_id, msg)
 
     @property
-    def min_chunk_horizon_ms(self) -> float:
-        """Minimum waypoint horizon handed to the controller."""
-        return self._config.min_chunk_horizon_ms
-
-    @property
     def queued_chunk(self) -> PendingChunk | None:
         """The chunk waiting to be sent, after the pipeline's chunk modules; ``None`` once sent."""
         return self._pending_request
@@ -601,8 +599,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         # Chunk modules see every chunk, before the session keeps only the newest one.
         for module in self._chunk_modules:
             chunk = module.on_chunk(chunk, self._module_context())
-        if chunk.extend_buffer:
-            chunk = replace(chunk, steps=self._extend_to_min_horizon(chunk.steps, chunk.dt_ms))
         buffered_steps = chunk.steps
 
         # Store raw chunk data. Timestamps are computed in _jogging_loop
@@ -679,20 +675,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             if isinstance(value, (int, float)):
                 offset = int(value)
         return offset
-
-    def _extend_to_min_horizon(
-        self, steps: list[list[float]], effective_dt_ms: float
-    ) -> list[list[float]]:
-        """Extend a short chunk by holding its final caller-provided target."""
-        min_chunk_horizon_ms = max(0.0, self._config.min_chunk_horizon_ms)
-        if min_chunk_horizon_ms <= 0 or effective_dt_ms <= 0:
-            return steps
-
-        min_steps = max(1, math.ceil(min_chunk_horizon_ms / effective_dt_ms))
-        if len(steps) >= min_steps:
-            return steps
-
-        return [*steps, *[list(steps[-1]) for _ in range(min_steps - len(steps))]]
 
     async def write_ios(self, ios: Mapping[str, ValueType]) -> None:
         """Write IO values (delegated to IOWriter for deduplication)."""
