@@ -169,3 +169,25 @@ def test_the_horizon_reaches_the_newest_sample() -> None:
 
 def test_horizon_end_is_the_window_after_the_grid_start() -> None:
     assert horizon_end_time_s(1.0, 500.0) == pytest.approx(1.5)
+
+
+def test_a_live_buffer_replays_what_it_held_once_it_can_define_a_spacing() -> None:
+    from novapolicy.jogging.live_buffer import LiveBuffer
+
+    buffer = LiveBuffer(window_ms=100.0)
+    assert buffer.push(0.0, [0.0], step_ms=10.0) is None  # one point: no spacing yet
+    replay = None
+    for i in range(1, 12):
+        replay = buffer.push(i * 0.01, [float(i)], step_ms=10.0)
+    assert replay is not None
+    assert replay.step_ms == pytest.approx(10.0)
+    assert replay.steps[-1] == [pytest.approx(11.0)]
+    assert buffer.clear() is True
+    assert buffer.clear() is False
+
+
+def test_a_live_buffer_needs_a_positive_window() -> None:
+    from novapolicy.jogging.live_buffer import LiveBuffer
+
+    with pytest.raises(ValueError, match="positive window_ms"):
+        LiveBuffer(window_ms=0.0)

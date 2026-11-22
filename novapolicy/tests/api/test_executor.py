@@ -986,8 +986,12 @@ def test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejecte
             _TestPolicy(_hold_action, requires_bridge=True),
             execution=SequentialExecution(),
         )
-    with pytest.raises(ValueError, match="buffer_window_ms requires ContinuousExecution"):
-        PolicyExecutor(_schema(), _hold, execution=SequentialExecution(), buffer_window_ms=80.0)
+    from novapolicy.jogging.live_buffer import LiveBuffer
+
+    with pytest.raises(ValueError, match="live_buffer requires ContinuousExecution"):
+        PolicyExecutor(
+            _schema(), _hold, execution=SequentialExecution(), live_buffer=LiveBuffer(80.0)
+        )
 
 
 @pytest.mark.asyncio

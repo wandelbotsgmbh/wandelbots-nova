@@ -113,3 +113,12 @@ own `first_timestamp_ms` are unchanged.
 `Gr00tPolicyClient` used to take an IO action's value from the last step of the chunk; it now
 takes the first, like the LeRobot client, since IO is written when that step is due. A policy
 that toggles a gripper inside a chunk now has it follow the first step of each chunk.
+
+## `PolicyExecutor(buffer_window_ms=...)` is now `live_buffer=LiveBuffer(...)`
+
+| Before | Now |
+| --- | --- |
+| `PolicyExecutor(..., buffer_window_ms=80)` | `PolicyExecutor(..., live_buffer=LiveBuffer(window_ms=80))` |
+
+The live-target buffer is one module now (`novapolicy.LiveBuffer`), shared with the joggers. For a
+one-step policy it measured worse than the default lead path; see `docs/adr/0004`.

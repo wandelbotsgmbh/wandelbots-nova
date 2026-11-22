@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from novapolicy.executor import PolicyExecutor
-from novapolicy.jogging.live_buffer import LIVE_LEAD_MS
+from novapolicy.jogging.live_buffer import LIVE_LEAD_MS, LiveBuffer
 from novapolicy.policy_client import CallbackPolicyClient
 from novapolicy.schema import Observation, PolicySchema
 from novapolicy.types import ActionChunk, ContinuousExecution
@@ -59,7 +59,7 @@ def _executor(window_ms: float = WINDOW_MS) -> tuple[PolicyExecutor, MagicMock]:
         schema,
         CallbackPolicyClient(_never_called),
         execution=ContinuousExecution(),
-        buffer_window_ms=window_ms,
+        live_buffer=LiveBuffer(window_ms=window_ms) if window_ms > 0 else None,
     )
     session = _session()
     executor._sessions = {MG_ID: session}
@@ -218,10 +218,10 @@ def test_tcp_targets_are_refused() -> None:
         executor._send(chunk)
 
 
-def test_zero_window_keeps_the_chunk_path() -> None:
+def test_without_a_live_buffer_the_chunk_path_is_kept() -> None:
     """The default must not change behaviour for anyone."""
     executor, session = _executor(window_ms=0.0)
-    assert executor._buffer_window_ms == 0.0
+    assert executor._live_buffer is None
     _send_one(executor, session)
     assert session.sent, "the chunk path still sends"
     # The hold padding still applies on the chunk path; only the buffered mode and

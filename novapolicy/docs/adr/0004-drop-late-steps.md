@@ -11,8 +11,11 @@ chunk per control cycle). The one bounded retiming is the playback clock for one
 
 **Alternatives measured.** Spline resampling of the waypoints to 8 ms: twice the time at the
 acceleration limit (j1 at 853°/s² for 178–229 samples against 88–105), path p90 0.9–2.1 mm
-against 0.3–0.4 mm. `buffer_window_ms`: more lag and more jitter than the lead (2026-11-18,
-before `max_expected_latency_ms`; to be re-measured before it is removed).
+against 0.3–0.4 mm. A live-target buffer (`LiveBuffer`, opt-in): for a one-step RL policy at 30 Hz an
+80 ms window gave path p90 1.1–1.8 mm and 44 mm peaks against 0.3–0.4 mm and 10 mm on a 180 ms
+lead (2026-11-21). For dense jogging targets at about 90 Hz it is the better tool: 0.015° rms
+against 0.45–0.84° without it, and 2.9° on the lead path, whose waypoints 11 ms apart collide.
+It stays a separate module in front of placement, not a stage: it sets its own time grid.
 
 **Consequences.** What reaches NOVA is what the policy said, at the time it said it. The remaining
 path deviation (about 9 mm peaks) is the follower's, reported to NOVA.

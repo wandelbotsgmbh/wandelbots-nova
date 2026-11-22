@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 from dataclasses import dataclass
 from enum import StrEnum
 import gc
@@ -32,9 +33,6 @@ from novapolicy.io import IOStreamManager
 from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.live_buffer import (
     LIVE_LEAD_MS,
-    append_and_prune,
-    horizon,
-    horizon_end_time_s,
     timeline_timestamp_ms,
     trajectory_elapsed_ms,
 )
@@ -58,9 +56,7 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
-    from novapolicy.jogging.live_buffer import (
-        TimedPoint,
-    )
+    from novapolicy.jogging.live_buffer import LiveBuffer
     from novapolicy.jogging.stages import WaypointStage
     from novapolicy.joint_limits import JointLimits
     from novapolicy.rerun import PolicyRerunLogger
@@ -148,15 +144,15 @@ class ExecutionResult:
     """Last observed robot state (per motion group). Useful to know where the robot stopped."""
 
 
-def _check_buffered_mode(buffer_window_ms: float, schema: PolicySchema) -> None:
+def _check_buffered_mode(live_buffer: LiveBuffer | None, schema: PolicySchema) -> None:
     """Reject a buffered-mode setup before anything moves."""
-    if buffer_window_ms > 0 and schema.tcp_action_groups():
-        msg = "buffer_window_ms supports joint targets only; this schema has TCP actions."
+    if live_buffer is not None and schema.tcp_action_groups():
+        msg = "live_buffer supports joint targets only; this schema has TCP actions."
         raise ValueError(msg)
 
 
 def _check_execution_mode(
-    execution: ExecutionMode, policy: PolicyClient, buffer_window_ms: float
+    execution: ExecutionMode, policy: PolicyClient, live_buffer: LiveBuffer | None
 ) -> None:
     """Reject a setup that sequential execution would run wrongly, before anything moves.
 
@@ -174,8 +170,8 @@ def _check_execution_mode(
             "ContinuousExecution. For SequentialExecution drop the queue: the policy without "
             "QueuedPolicyClient, or LeRobotPolicyClient(use_async_queue=False)"
         )
-    if buffer_window_ms > 0:
-        raise ValueError("buffer_window_ms requires ContinuousExecution")
+    if live_buffer is not None:
+        raise ValueError("live_buffer requires ContinuousExecution")
 
 
 def resolve_actions(
@@ -217,7 +213,7 @@ class PolicyExecutor:
         execution: ExecutionMode = _DEFAULT_EXECUTION,
         n_action_steps: int | None = None,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
-        buffer_window_ms: float = 0.0,
+        live_buffer: LiveBuffer | None = None,
         clamp_to_joint_limits: bool = True,
         stages: Sequence[WaypointStage] = (),
     ) -> None:
@@ -295,7 +291,7 @@ class PolicyExecutor:
         self._execution = execution
         self._n_action_steps_cfg = n_action_steps
 
-        _check_execution_mode(execution, self._policy, buffer_window_ms)
+        _check_execution_mode(execution, self._policy, live_buffer)
 
         self._sessions: dict[str, WaypointJoggingSession] = {}
         self._cameras = CameraManager(camera_max_age_s)
@@ -305,12 +301,12 @@ class PolicyExecutor:
         self._io_streams = IOStreamManager(self._motion_groups, schema.io_keys_by_controller())
         self._io_tasks: set[asyncio.Task[None]] = set()
         self._policy_timelines: dict[str, _PolicyTimeline] = {}
-        self._buffer_window_ms = max(0.0, buffer_window_ms)
+        self._live_buffer = live_buffer
         self._observed_at_ms: dict[str, ServerMs | None] = {}
         self._observed_clock_ms: dict[str, ServerMs] = {}
         self._gc_frozen = False
-        _check_buffered_mode(self._buffer_window_ms, schema)
-        self._target_buffers: dict[str, list[TimedPoint]] = {}
+        _check_buffered_mode(live_buffer, schema)
+        self._live_buffers: dict[str, LiveBuffer] = {}  # a copy per motion group
         self._buffer_anchor_ms: float | None = None
         self._buffer_timeline_ms = 0.0
         self._clamp_to_joint_limits = clamp_to_joint_limits
@@ -472,7 +468,7 @@ class PolicyExecutor:
             self._joint_limits = await fetch_joint_limits(self._motion_groups)
 
         # A fresh episode gets a fresh replay window and timeline anchor.
-        self._target_buffers.clear()
+        self._live_buffers.clear()
         self._buffer_anchor_ms = None
         self._buffer_timeline_ms = 0.0
 
@@ -868,7 +864,7 @@ class PolicyExecutor:
 
         # The buffer is its own continuity: a bridge or an endpoint ramp would
         # hand it several steps for what is one policy target.
-        buffered = self._buffer_window_ms > 0
+        buffered = self._live_buffer is not None
         connected = None if buffered else self._connected_motion(trimmed, robot_states)
         if connected is not None:
             return await self._send_connected_policy_chunk(
@@ -1264,8 +1260,8 @@ class PolicyExecutor:
         run at once.
         """
         chunk = self._clamp_chunk(chunk)
-        if self._buffer_window_ms > 0:
-            target_chunks = self._send_buffered(chunk)
+        if self._live_buffer is not None:
+            target_chunks = self._send_buffered(chunk, self._live_buffer)
             self._schedule_ios(chunk)
             return target_chunks
 
@@ -1412,12 +1408,12 @@ class PolicyExecutor:
             return chunk
         return chunk.model_copy(update={"joints": held})
 
-    def _send_buffered(self, chunk: ActionChunk) -> dict[str, int]:
+    def _send_buffered(self, chunk: ActionChunk, live_buffer: LiveBuffer) -> dict[str, int]:
         """Send each target through the rolling buffer instead of as a chunk.
 
         The buffered mode for horizon-1 policies, sharing its mechanism with the
         joggers' live-target path (see :mod:`novapolicy.jogging.live_buffer`).
-        Each policy target is held and replayed ``buffer_window_ms`` late as part
+        Each policy target is held and replayed the ``live_buffer`` window late as part
         of a continuous horizon of *measured* targets, so the server always has
         somewhere to be going next and never plans a decelerate-to-standstill.
 
@@ -1448,7 +1444,7 @@ class PolicyExecutor:
         now = self._buffer_timeline_ms / 1000.0
 
         if chunk.tcp:
-            msg = "buffer_window_ms supports joint targets only; this chunk carries TCP poses."
+            msg = "live_buffer supports joint targets only; this chunk carries TCP poses."
             raise ValueError(msg)
         target_chunks: dict[str, int] = {}
         for group_id, steps in chunk.joints.items():
@@ -1458,15 +1454,14 @@ class PolicyExecutor:
                 continue
             if len(steps) != 1:
                 msg = (
-                    f"buffer_window_ms is for horizon-1 policies; '{group_id}' "
+                    f"live_buffer is for horizon-1 policies; '{group_id}' "
                     f"returned {len(steps)} steps. A chunk already carries its own "
-                    "horizon, so leave buffer_window_ms at 0 for it."
+                    "horizon, so pass no live_buffer for it."
                 )
                 raise ValueError(msg)
 
-            buffer = self._target_buffers.setdefault(group_id, [])
-            append_and_prune(buffer, now, steps[0], window_ms=self._buffer_window_ms)
-            replay = horizon(buffer, single_step_dt_ms=session.single_step_dt_ms)
+            buffer = self._live_buffers.setdefault(group_id, copy.deepcopy(live_buffer))
+            replay = buffer.push(now, steps[0], step_ms=session.single_step_dt_ms)
             if replay is None:
                 # Too little history to define a spacing. Send the bare target
                 # rather than wait for the window to fill, which would never
@@ -1476,15 +1471,12 @@ class PolicyExecutor:
                 target_chunks[group_id] = session.queued_chunk_count
                 continue
 
-            replayed, grid_start, step_dt_ms = replay
             session.update_chunk(
-                steps=replayed,
-                dt_ms=step_dt_ms,
+                steps=replay.steps,
+                dt_ms=replay.step_ms,
                 first_timestamp_ms=ServerMs(
                     timeline_timestamp_ms(
-                        self._buffer_anchor_ms or 0.0,
-                        horizon_end_time_s(grid_start, self._buffer_window_ms),
-                        lead_ms=LIVE_LEAD_MS,
+                        self._buffer_anchor_ms or 0.0, replay.end_time_s, lead_ms=LIVE_LEAD_MS
                     )
                 ),
                 extend_buffer=False,

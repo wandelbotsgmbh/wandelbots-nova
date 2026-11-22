@@ -27,6 +27,7 @@ the robot executes each shift as a lurch.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import math
 from typing import TypeAlias
 
@@ -209,3 +210,57 @@ def horizon_end_time_s(grid_start_s: float, window_ms: float) -> float:
     server caps its speed at whatever it can still brake to a stop within.
     """
     return grid_start_s + window_ms / 1000.0
+
+
+@dataclass(frozen=True, slots=True)
+class Replay:
+    """The held live targets as a horizon on an even grid."""
+
+    steps: list[list[float]]
+    step_ms: float
+    """Spacing of ``steps``."""
+    end_time_s: float
+    """Trajectory time the horizon reaches up to; the caller maps it onto the session clock
+    (plus its lead) as the horizon's first timestamp, a timeline of its own (contract T2)."""
+
+
+@dataclass
+class LiveBuffer:
+    """Opt-in: replay the last ``window_ms`` of live targets as a horizon on an even grid.
+
+    For dense streams of live targets, jogging at the loop rate: their waypoints are milliseconds
+    apart, which the follower turns into speed spikes, and each one alone is a terminal target.
+    This thins them to an even grid of real, measured targets, ``window_ms`` late. Measured on a
+    virtual UR10e at about 90 Hz: 0.015 deg rms against the commanded sine, 0.45 to 0.84 deg
+    without it. Not for policy steps: a one-step RL policy at 30 Hz tracked far better on the lead
+    path (path p90 0.3 against 1.1 to 1.8 mm with an 80 ms window).
+
+    Each motion group needs its own instance; callers copy the one they are given.
+    """
+
+    window_ms: float = 500.0
+    _points: list[TimedPoint] = field(default_factory=list, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if not self.window_ms > 0:
+            raise ValueError("LiveBuffer needs a positive window_ms")
+
+    def push(self, time_s: float, target: list[float], *, step_ms: float) -> Replay | None:
+        """Hold ``target`` (produced at trajectory time ``time_s``) and return the horizon, or
+        ``None`` while there is too little history to define a spacing (send it alone then)."""
+        append_and_prune(self._points, time_s, target, window_ms=self.window_ms)
+        replay = horizon(self._points, single_step_dt_ms=step_ms)
+        if replay is None:
+            return None
+        steps, grid_start_s, grid_step_ms = replay
+        return Replay(
+            steps=steps,
+            step_ms=grid_step_ms,
+            end_time_s=horizon_end_time_s(grid_start_s, self.window_ms),
+        )
+
+    def clear(self) -> bool:
+        """Forget the held targets; whether there were any."""
+        had = bool(self._points)
+        self._points.clear()
+        return had

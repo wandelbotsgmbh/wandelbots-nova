@@ -124,7 +124,7 @@ they are due. The padding is not motion anyone waits for. Tests:
 without blocking the loop: policy waypoint zero of what is sent (behind a bridge too). A chunk
 replaced before it is sent runs neither; one pending when the session stops is cancelled; a hook
 that raises ends the run, and none runs once its motion was stopped (stop condition, failure).
-IO without motion, and everything in `buffer_window_ms` mode, runs at once. IO is a separate
+IO without motion, and everything with a `live_buffer`, runs at once. IO is a separate
 write, so it reaches the controller one network delay later; NOVA's action chunks are to carry
 it.
 Tests: `test_io_of_a_continuous_chunk_goes_with_its_first_step`,
@@ -154,7 +154,7 @@ collection while the loop runs and released when the run ends. Test:
 `test_setup_objects_are_frozen_only_while_the_loop_runs`.
 
 **T12 Setups sequential execution would run wrongly are refused at construction:** RTC, a
-timestep queue (`QueuedPolicyClient`, LeRobot's async queue), `buffer_window_ms`. Tests:
+timestep queue (`QueuedPolicyClient`, LeRobot's async queue), a `live_buffer`. Tests:
 `test_rtc_without_overlapping_placement_is_rejected`,
 `test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected`.
 
