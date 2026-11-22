@@ -33,6 +33,7 @@ import pytest
 from nova import api
 from nova.types import Pose
 from novapolicy.jogging import jog_tcp
+from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.live_buffer import LIVE_LEAD_MS, MAX_LIVE_SAMPLES, LiveBuffer
 from novapolicy.jogging.waypoint_session import MIN_LEAD_MS, WaypointJoggingSession
 from novapolicy.jogging.waypoints import PendingChunk
@@ -983,6 +984,33 @@ def test_a_live_buffer_moves_when_due_to_the_newest_target():
         assert pending.steps[-1][0] == pytest.approx(39 * 0.01)
         assert pending.caller_step_count == len(pending.steps)
         assert pending.last_caller_step == len(pending.steps) - 1
+
+
+def test_a_live_buffer_times_targets_by_when_they_were_produced():
+    """With observed_at_ms (the jogger's one loop time for all arms) the replay follows when the
+    targets were produced, not each session's clock: frozen here, it would replay nothing."""
+    from novapolicy.jogging.live_buffer import LiveBuffer
+
+    session, _server = _build_session(pipeline=[LiveBuffer(window_ms=30.0)])
+    now = patch.object(
+        type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
+    )
+    try:
+        with now as estimated:
+            estimated.return_value = 5_000  # the session clock does not move
+            for k in range(8):
+                session.update_chunk(
+                    steps=[[float(k)] * 6],
+                    dt_ms=0.0,
+                    extend_buffer=False,
+                    observed_at_ms=ServerMs(1_000 + 10 * k),
+                )
+        pending = session._pending_request
+        assert len(pending.steps) > 1  # replayed as a horizon on the produced times
+        assert pending.steps[-1][0] == pytest.approx(7.0)
+    finally:
+        for p in session._test_patches:  # type: ignore[attr-defined]
+            p.stop()
 
 
 def test_sessions_given_one_live_buffer_do_not_share_its_points():

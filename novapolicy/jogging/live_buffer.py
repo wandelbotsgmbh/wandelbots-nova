@@ -266,13 +266,16 @@ class LiveBuffer:
                     "buffer refills. Prefer one target form per motion group."
                 )
             return chunk
-        # The buffer's own timeline: the session clock from the first target, on a fixed grid
-        # and never backwards, so a target keeps its timestamp however often it is re-sent.
-        if self._anchor_ms is None:
-            self._anchor_ms = float(context.now_ms)
-        self._timeline_ms = trajectory_elapsed_ms(
-            float(context.now_ms), self._anchor_ms, self._timeline_ms
+        # The buffer's own timeline, from the first target, on a fixed grid and never backwards,
+        # so a target keeps its timestamp however often it is re-sent. A target is timed by when
+        # it was produced (observed_at_ms: the jogger passes its loop time, one timeline for all
+        # arms), else by the session clock now.
+        produced_ms = float(
+            chunk.observed_at_ms if chunk.observed_at_ms is not None else context.now_ms
         )
+        if self._anchor_ms is None:
+            self._anchor_ms = produced_ms
+        self._timeline_ms = trajectory_elapsed_ms(produced_ms, self._anchor_ms, self._timeline_ms)
         replay = self.push(self._timeline_ms / 1000.0, chunk.steps[0], step_ms=context.step_ms)
         if replay is None:
             return chunk  # too little history yet: the target goes out alone

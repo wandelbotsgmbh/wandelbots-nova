@@ -205,11 +205,19 @@ class _BaseJogger:
         if session is not None:
             eased = [list(values)]
             anchor = self._anchor_for_now(mg, LIVE_LEAD_MS)
+            # When the target was produced, on the loop's one timeline shared by every arm: a
+            # LiveBuffer in the pipeline times targets by it, so the arms stay on one grid.
+            produced_ms = (
+                ServerMs(int(self._ack0_ms + self.elapsed * 1000.0))
+                if self._loop_t0 is not None
+                else None
+            )
             session.update_chunk(
                 steps=eased,
                 dt_ms=0.0,
                 first_timestamp_ms=anchor,
                 timestamp_offset_steps=0 if anchor is not None else 1,
+                observed_at_ms=produced_ms,
                 extend_buffer=False,
             )
             # Log what was actually commanded, not the raw request: during

@@ -158,6 +158,7 @@ def test_setting_a_single_target_streams_it_to_the_robot():
         dt_ms=0.0,
         first_timestamp_ms=None,
         timestamp_offset_steps=1,
+        observed_at_ms=None,  # the loop has not started: no shared time yet
         extend_buffer=False,
     )
     assert jogger.target == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
@@ -346,6 +347,7 @@ def test_tcp_jogging_streams_a_pose_as_a_cartesian_waypoint():
         dt_ms=0.0,
         first_timestamp_ms=None,
         timestamp_offset_steps=1,
+        observed_at_ms=None,  # the loop has not started: no shared time yet
         extend_buffer=False,
     )
 
