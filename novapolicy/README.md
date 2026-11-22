@@ -383,6 +383,7 @@ arm, keyboard, gamepad, spacemouse) in your own script. See
 | Doc                                  | Covers                                                                                                                                                                 |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [docs/jogging.md](docs/jogging.md)   | Standalone jogging: `jog_joints` / `jog_tcp`, joint/TCP modes, chunked targets, dual-arm, and error handling                                                           |
+| [docs/architecture.md](docs/architecture.md) | How the parts fit: mapping, the send pipeline and its modules, execution modes, adding a policy provider |
 | [docs/executor.md](docs/executor.md) | Advanced: explicit sequential/continuous execution modes, asynchronous inference, and the client/server timestamp protocol                                |
 | [docs/contracts.md](docs/contracts.md) | What the executor promises, as numbered and tested invariants for mapping (M) and timing (T); the reasons in [docs/adr/](docs/adr/) |
 | [docs/schema.md](docs/schema.md)     | Every observation type at a glance, then IO mappings, units, relative and TCP actions, object poses (incl. Isaac Sim prims), computed observations/actions                    |

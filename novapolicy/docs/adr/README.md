@@ -17,3 +17,4 @@ UR10e, with the client inside the NOVA cluster unless a record says otherwise.
 | [0008](0008-typed-session-clock.md) | Session-clock timestamps are typed |
 | [0009](0009-opt-in-pre-send-modules.md) | One send pipeline of opt-in modules (defaults superseded by 0010) |
 | [0010](0010-built-ins-are-modules.md) | The built-ins are pipeline modules, and the list is everything |
+| [0011](0011-providers-own-their-wire.md) | Providers own their wire protocol; the package owns the codec and NOVA |

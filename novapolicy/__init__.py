@@ -41,7 +41,7 @@ from novapolicy.jogging import (
     jog_tcp,
 )
 from novapolicy.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
-from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
+from novapolicy.policy_client import CallbackPolicyClient, PolicyClient, resolve_control_freq
 from novapolicy.pose_sources import OmniverseScene, PoseSource
 from novapolicy.poses import OrientationType
 from novapolicy.queued_client import QueuedPolicyClient
@@ -158,4 +158,5 @@ __all__ = [
     "jog_joints",
     "jog_tcp",
     "resolve_actions",
+    "resolve_control_freq",
 ]
