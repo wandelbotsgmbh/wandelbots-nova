@@ -37,7 +37,7 @@ dependencies = [
 
 [project.optional-dependencies]
 nova-rerun-bridge = [
-    "rerun-sdk==0.34.0",
+    "rerun-sdk==0.43.2",
     # Robots render from URDF, which nova2urdf derives from the DH parameters
     # and meshes the API serves. Used as a library, so no export step is needed.
     "nova2urdf>=0.3.0",
@@ -84,7 +84,7 @@ novapolicy-leapp = [
     "safetensors>=0.5.0",
 ]
 benchmark = [
-    "rerun-sdk==0.34.0",
+    "rerun-sdk==0.43.2",
     "requests>=2.32.3",
     "APScheduler>=3.11.0",
     "trimesh>=4.5.3",
