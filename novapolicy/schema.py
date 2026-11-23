@@ -1139,8 +1139,8 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
 
         Each output is an array of shape ``(steps, width)`` (``(width,)`` for one step). A joint
         key shared by several motion groups carries their joints side by side, in the order the
-        observation concatenated them, so each group takes the next ``dof[group]`` columns (the
-        last one the rest). An IO key takes its first step's value through its mapping: IO fires
+        observation concatenated them, so each group takes the next ``dof[group]`` columns (a
+        last group of unknown dof the rest); an answer too narrow for them raises. An IO key takes its first step's value through its mapping: IO fires
         when the chunk's first step is due (contract T7). ``Action.computed`` keys land in
         ``values``. A key the outputs lack is skipped; an answer with none of the expected joint
         or TCP keys, IO or values raises ``ValueError`` naming ``source``.
@@ -1153,8 +1153,9 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
             width = len(steps[0]) if steps else 0
             offset = 0
             for i, mg in enumerate(groups):
-                last = i == len(groups) - 1
-                n = width - offset if last else (dof or {}).get(mg.id)
+                n = (dof or {}).get(mg.id)
+                if n is None and i == len(groups) - 1:
+                    n = width - offset  # nothing measured to size it by: the rest
                 if n is None or offset + n > width:
                     msg = (
                         f"{source}: action {key!r} has {width} values per step, which do not "

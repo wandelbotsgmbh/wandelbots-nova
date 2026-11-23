@@ -227,7 +227,7 @@ which works when that is close to what the policy saw in training.
 | Joint velocities | UR controllers send no measured velocity; expect differenced values. |
 | Response | Run on a virtual robot first and compare where it ends with the training environment. |
 | Inputs in range | A stop condition refuses goals or commands outside the trained range. |
-| Safety | Configure the controller's safety zones; stop conditions and `on_stale` are software checks. |
+| Safety | Configure the controller's safety zones; stop conditions and the stale-input deadlines are software checks. |
 
 If the policy fails on the robot, start the robot from the same observation as in simulation and
 compare the responses step by step. That separates an input mismatch from a response mismatch.

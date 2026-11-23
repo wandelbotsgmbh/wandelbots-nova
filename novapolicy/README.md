@@ -147,7 +147,7 @@ For a robot of your cell, leave out the preconditions and use its controller nam
 | Client | For | The policy runs | Step rate | Execution | Docs |
 | --- | --- | --- | --- | --- | --- |
 | `CallbackPolicyClient(fn)` | your own async Python function | in-process | the chunk's `dt_ms`, or `control_freq=` | sequential or continuous | Quick Start above |
-| `Gr00tPolicyClient(host, port=...)` | an NVIDIA GR00T inference server | on the GR00T server, over ZMQ | `control_freq=`, default 30 Hz | sequential; continuous through `QueuedPolicyClient` or RTC | [docs/gr00t.md](docs/gr00t.md) |
+| `Gr00tPolicyClient(host, port=...)` | an NVIDIA GR00T inference server | on the GR00T server, over ZMQ | `control_freq=`, default 30 Hz | sequential; continuous through `QueuedPolicyClient` | [docs/gr00t.md](docs/gr00t.md) |
 | `LeRobotPolicyClient(server_address, checkpoint)` | LeRobot policies (ACT, SmolVLA, pi0, ...) | on a LeRobot async-inference server, over gRPC | `control_freq=` = the dataset's `fps`, default 30 Hz | sequential or continuous | [lerobot/README.md](lerobot/README.md) |
 | `NatsPolicyClient(policy_id=..., servers=...)` | a policy service on a NATS broker | in the policy service's container | reported by the service | sequential or continuous | [example](examples/execute_nats_policy_dual_arm.py) |
 | `LeappPolicyClient(export)` | reinforcement-learning policies exported with LEAPP (Isaac Lab) | in-process, with onnxruntime | from the export | `ContinuousExecution(rate_hz=client.control_freq)`, `n_action_steps=0` | [docs/reinforcement-learning.md](docs/reinforcement-learning.md) |

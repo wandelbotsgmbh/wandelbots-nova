@@ -56,7 +56,7 @@ after the observation it was computed from, which fits there (see
 the part detected at A, B, A, it ran at 29 Hz and ended 1.3 to 2.5 mm from its targets when run in
 the cluster, no joint past its end by more than 0.4°. Over a VPN with a 40 to 120 ms ping the state
 packets arrive late and in bursts: there it needed `--max-expected-latency-ms 250` (150 and 200
-stopped as over budget), ended 1.3 to 2.5 mm from its targets and went at most 1.9° past its end.
+left the waypoints too little lead), ended 1.3 to 2.5 mm from its targets and went at most 1.9° past its end.
 The flange path between A and B is a joint-space path, 26 to 50 mm off the straight line. A part detected 80 mm from A ended the
 run with `stop condition: part_outside_trained_positions` after 0 policy steps. With
 `--controller NAME` instead of `--virtual` it uses an existing controller and asks before it moves

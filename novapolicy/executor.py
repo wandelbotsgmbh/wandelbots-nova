@@ -206,7 +206,8 @@ class PolicyExecutor:
                 to PTP-move to before starting waypoint jogging.
             pipeline: The modules between the policy's chunk and NOVA, in order, exactly as
                 given; ``None`` runs :func:`~novapolicy.jogging.modules.default_pipeline`. To
-                add one, extend that list, e.g. ``[*default_pipeline(), EaseIn(duration_s=1.0)]``.
+                add one, extend that list with the same execution and policy, e.g.
+                ``[*default_pipeline(execution=execution, policy=policy), EaseIn(duration_s=1.0)]``.
                 Each motion group runs its own copy. See :mod:`novapolicy.jogging.pipeline`.
         """
         if pipeline is None:

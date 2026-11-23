@@ -116,3 +116,16 @@ async def test_a_provider_is_a_transport_and_the_schema_does_the_mapping() -> No
     assert wire.opened and wire.closed
     assert chunk.dt_ms == 50.0
     assert chunk.joints[mg.id] == [[0.1] * 6, [0.2] * 6]
+
+
+def test_decoding_takes_each_groups_joints_and_refuses_too_few() -> None:
+    left, right = MagicMock(), MagicMock()
+    left.id, right.id = "1@l", "2@r"
+    schema = PolicySchema(
+        observations=[Observation.joint_positions("arms", source=[left, right], action=True)]
+    )
+    dof = {"1@l": 2, "2@r": 3}
+    chunk = schema.decode_actions({"arms": [[1, 2, 3, 4, 5, 6]]}, dt_ms=10.0, dof=dof)
+    assert chunk.joints == {"1@l": [[1.0, 2.0]], "2@r": [[3.0, 4.0, 5.0]]}  # an extra column left
+    with pytest.raises(ValueError, match="do not split"):
+        schema.decode_actions({"arms": [[1, 2, 3, 4]]}, dt_ms=10.0, dof=dof)

@@ -238,3 +238,10 @@ pipeline's `Smoothing` and `Bridge` modules to connect chunks.
 
 `novapolicy.nats.mock_server` moved to `examples/nats_mock_server.py`; run it with
 `python novapolicy/examples/nats_mock_server.py --servers nats://...` instead of `python -m`.
+
+## The NATS client's velocities come from JointVelocities
+
+`NatsPolicyClient` reads joint velocities through `JointVelocities`, as
+`Observation.joint_velocities` does: a repeated state sample now keeps the last velocity (for up
+to a short hold) instead of reading as standstill, and the finite difference warns once per motion
+group when no measurement is available.

@@ -1482,3 +1482,25 @@ def test_a_timestep_queue_without_its_timeline_is_refused_before_anything_moves(
             _schema(), policy, execution=ContinuousExecution(), pipeline=default_pipeline()
         )
     PolicyExecutor(_schema(), policy, execution=ContinuousExecution())  # its defaults have it
+
+
+@pytest.mark.asyncio
+async def test_the_bridge_a_session_put_in_front_is_logged_to_rerun():
+    """The executor no longer builds the bridge; it logs the one the session's Bridge queued."""
+    session = _fake_session()
+
+    def queue_with_bridge(*_args: object, **kwargs: Any) -> None:
+        steps = [[0.0] * 6, [0.5] * 6, *kwargs["steps"]]
+        session.queued_chunk = PendingChunk(
+            steps=steps, dt_ms=kwargs["dt_ms"], caller_step_count=len(steps), start_step=2
+        )
+
+    session.update_chunk = MagicMock(side_effect=queue_with_bridge)
+    executor = PolicyExecutor(_schema(), _hold, execution=SequentialExecution())
+    executor._sessions = {MG_ID: session}
+    executor._rerun = MagicMock()
+    action = ActionChunk(joints={MG_ID: [[1.0] * 6, [2.0] * 6]}, dt_ms=10.0)
+    await executor._send_policy_action(action, {}, step=3, start_time=0.0, last_obs=None)
+    bridge, step = executor._rerun.log_bridge_chunk.call_args.args
+    assert step == 3
+    assert bridge.joints == {MG_ID: [[0.0] * 6, [0.5] * 6, [1.0] * 6]}

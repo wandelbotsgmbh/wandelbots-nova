@@ -25,6 +25,13 @@ carried code for one provider's features (a timestep queue's timeline, RTC seams
   about queues. Its only feedback is generic: which policy step the robot is executing
   (`synchronize_action_timestep`).
 
+**Verified (2026-11-23, a fresh virtual UR10e).** The executor no longer knows queues: a
+`QueuedPolicyClient` keeps one timeline through its `TimestepTimeline` (live test asserts every
+chunk after the first sits on it, unbridged) and moved the robot as before (path deviation 0.841°
+rms / 4.02° max against 0.84° / 4.02° with the old code); a dummy VLA over NATS ran
+continuously and sequentially; sequential execution sent 156 of 156 policy steps with IO on the
+first; the RL reach with the shared decoder kept p90 0.3 mm.
+
 **Consequences.** A new provider is a `PolicyClient` with a transport and one `get_actions`:
 build the observation with the schema, call the policy, decode with the schema
 ([adding a provider](../architecture.md#adding-a-policy-provider)). Porting a provider touches no

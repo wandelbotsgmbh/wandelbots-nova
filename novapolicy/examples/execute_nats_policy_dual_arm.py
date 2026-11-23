@@ -93,7 +93,7 @@ async def run(args: argparse.Namespace) -> None:
                 HoldPadding(min_horizon_ms=args.min_chunk_horizon_ms)
                 if isinstance(module, HoldPadding)
                 else module
-                for module in default_pipeline()
+                for module in default_pipeline(execution=execution, policy=policy)
             ],
         )
 

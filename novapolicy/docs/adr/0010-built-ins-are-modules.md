@@ -38,7 +38,7 @@ targets and chunks) stayed byte-identical through every move but one: trimmed ch
 rebase their times on the first kept step, so some waypoints of a timestep queue moved by +1 ms
 onto `anchor + int(k·dt)`. LeRobot's async queue against a fake policy sends what it sent before
 to 1e-6 rad, the float32 rounding its queue stored smoothed values in. On the virtual robot
-(final code): jogging 0.835° without a buffer, 0.015° with `LiveBuffer(500)`, `EaseIn` and
+(at `626dda5b`): jogging 0.835° without a buffer, 0.015° with `LiveBuffer(500)`, `EaseIn` and
 dual-arm without errors, as in 0009; sequential execution 156 of 156 policy steps sent, IO on the
 policy's first step; VLA over NATS continuous and sequential; a `QueuedPolicyClient` anchored its
 timeline on its first bridged chunk.
