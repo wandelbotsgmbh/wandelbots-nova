@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -122,3 +123,36 @@ def test_decoding_takes_each_groups_joints_and_refuses_too_few() -> None:
     assert chunk.joints == {"1@l": [[1.0, 2.0]], "2@r": [[3.0, 4.0, 5.0]]}  # an extra column left
     with pytest.raises(ValueError, match="do not split"):
         schema.decode_actions({"arms": [[1, 2, 3, 4]]}, dt_ms=10.0, dof=dof)
+
+
+def _http_example() -> Any:
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "examples" / "http_policy.py"
+    spec = importlib.util.spec_from_file_location("http_policy", path)
+    assert spec is not None and spec.loader is not None
+    example = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(example)
+    return example
+
+
+@pytest.mark.asyncio
+async def test_the_http_example_provider_round_trips_through_its_mock_server() -> None:
+    """examples/http_policy.py: observation out as JSON, a decoded chunk back."""
+    example = _http_example()
+
+    mg = MagicMock()
+    mg.id = "0@arm"
+    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg, action=True)])
+    server = example.serve_mock_policy([0.0] * 6)
+    host, port = server.server_address[:2]
+    client = example.HttpPolicyClient(f"http://{host}:{port}/act", control_freq=30)
+    try:
+        await client.connect([mg.id])
+        chunk = await client.get_actions({mg.id: SimpleNamespace(joints=(0.0,) * 6)}, schema)
+    finally:
+        await client.close()
+        server.shutdown()
+    assert chunk.dt_ms == pytest.approx(1000 / 30)
+    assert len(chunk.joints[mg.id]) == 15 and len(chunk.joints[mg.id][0]) == 6

@@ -244,13 +244,13 @@ async def test_one_step_targets_run_continuously(ur10e, recording):
 BROKER = os.environ.get("NOVAPOLICY_TEST_BROKER", "nats://localhost:4222")
 
 
-def _load_mock_server() -> Any:
-    """The example NATS mock policy server, loaded by path: examples are not a package."""
+def _load_mock_server(name: str = "nats_mock_server") -> Any:
+    """An example module, loaded by path: examples are not a package."""
     import importlib.util
     from pathlib import Path
 
-    path = Path(__file__).resolve().parents[2] / "examples" / "nats_mock_server.py"
-    spec = importlib.util.spec_from_file_location("nats_mock_server", path)
+    path = Path(__file__).resolve().parents[2] / "examples" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -311,3 +311,27 @@ async def test_a_dummy_vla_over_nats(ur10e, recording, mode: str):
     assert result.reason == "timeout"
     rms, peak = _tracking_deg(recording, skip_ms=0.0 if mode == "sequential" else 500.0)
     assert rms < 0.5 and peak < 2.0, (rms, peak)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.parametrize("mode", ["continuous", "sequential"])
+async def test_a_new_provider_over_http(ur10e, recording, mode: str):
+    """The provider written from scratch in examples/http_policy.py, against its mock server."""
+    example = _load_mock_server("http_policy")
+    server = example.serve_mock_policy(START, control_freq=30.0)
+    host, port = server.server_address[:2]
+    try:
+        policy = example.HttpPolicyClient(f"http://{host}:{port}/act", control_freq=30)
+        reason = await _run(
+            ur10e,
+            policy,
+            ContinuousExecution(rate_hz=10) if mode == "continuous" else SequentialExecution(),
+        )
+    finally:
+        server.shutdown()
+    assert reason == "timeout"
+    rms, peak = _tracking_deg(recording, skip_ms=0.0 if mode == "sequential" else 500.0)
+    assert rms < (1.0 if mode == "sequential" else 0.5) and peak < (
+        5.0 if mode == "sequential" else 2.0
+    ), (rms, peak)
