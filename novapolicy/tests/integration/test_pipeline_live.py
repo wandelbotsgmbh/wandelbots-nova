@@ -81,9 +81,8 @@ class _Recording:
         self.states: list[tuple[int, float]] = []
         self.requests = 0
         self.spans: list[tuple[int, int]] = []
-        self.at_send: list[
-            tuple[int, float] | None
-        ] = []  # the latest state when each request went out
+        self.at_send: list[tuple[int, float] | None] = []  # the latest state at each request
+        self.final: list[bool] = []  # whether a request is the run's final target at stop
         self.chunks: list[Any] = []  # every chunk as queued, after the chunk modules
 
 
@@ -102,6 +101,7 @@ def recording(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Recording]:
         if request is not None:
             record.requests += 1
             record.at_send.append(record.states[-1] if record.states else None)
+            record.final.append(bool(getattr(pending, "final", False)))
             waypoints = request.waypoints
             record.spans.append((waypoints[0].timestamp, waypoints[-1].timestamp))
             record.sent.extend((w.timestamp, w.waypoint.joints[0]) for w in request.waypoints)
@@ -209,9 +209,15 @@ async def test_a_dummy_vla_runs_sequentially(ur10e, recording):
     # from then on NOVA is already moving towards it. (The timeout can end the last chunk
     # anywhere, so it is not checked.)
     latest = dict(recording.sent)
-    for (_, previous_end), (next_start, _), rest in zip(
-        recording.spans, recording.spans[1:], recording.at_send[1:], strict=False
+    for (_, previous_end), (next_start, _), rest, final in zip(
+        recording.spans,
+        recording.spans[1:],
+        recording.at_send[1:],
+        recording.final[1:],
+        strict=False,
     ):
+        if final:  # the stop's final target: the timeout can cut a chunk anywhere
+            continue
         assert rest is not None, "no state before a chunk"
         assert math.degrees(abs(rest[1] - latest[previous_end])) < 0.2, (rest, latest[previous_end])
         assert math.degrees(abs(latest[next_start] - rest[1])) < 0.1
