@@ -23,9 +23,9 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
-    from novapolicy.jogging.waypoint_session import WaypointJoggingSession
     from novapolicy.rerun.context import RerunContext
     from novapolicy.rerun.streaming import StateStreamer
+    from novapolicy.transport.session import WaypointJoggingSession
     from novapolicy.types import ActionChunk
     from rerun import RecordingStream
 

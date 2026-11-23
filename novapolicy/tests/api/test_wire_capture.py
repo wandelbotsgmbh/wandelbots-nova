@@ -22,11 +22,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from novapolicy.executor import PolicyExecutor
-from novapolicy.jogging.waypoint_session import Scheduled, WaypointJoggingSession
 from novapolicy.mapping.joint_limits import JointLimits
 from novapolicy.mapping.schema import Observation, PolicySchema
 from novapolicy.providers.base import CallbackPolicyClient
 from novapolicy.providers.queued import QueuedPolicyClient
+from novapolicy.transport.session import Scheduled, WaypointJoggingSession
 from novapolicy.types import (
     ActionChunk,
     ContinuousExecution,
@@ -195,8 +195,8 @@ async def _run_executor(
     policy = kwargs.pop("policy", None) or CallbackPolicyClient(policy_fn)
     estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
     with (
-        patch("novapolicy.jogging.lifecycle.WaypointJoggingSession", side_effect=capture.make),
-        patch("novapolicy.jogging.lifecycle.EstopMonitor", return_value=estop),
+        patch("novapolicy.transport.lifecycle.WaypointJoggingSession", side_effect=capture.make),
+        patch("novapolicy.transport.lifecycle.EstopMonitor", return_value=estop),
         patch("novapolicy.rerun._is_rerun_active", return_value=False),
     ):
         executor = PolicyExecutor(_schema(), policy, timeout_s=5.0, **kwargs)

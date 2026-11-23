@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
-    from novapolicy.jogging.waypoint_session import WaypointJoggingSession
+    from novapolicy.transport.session import WaypointJoggingSession
 
 
 class _FakeSession:

@@ -4,21 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from novapolicy.jogging.clock import ServerMs
-from novapolicy.jogging.modules import (
-    Bridge,
-    DropLate,
-    EndpointRamp,
-    HoldPadding,
-    JointClamp,
-    Smoothing,
-    TimestepTimeline,
-    default_pipeline,
-    timestep_queue_modules,
-)
-from novapolicy.jogging.pipeline import ModuleContext, Timestamps, split_pipeline
-from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.mapping.joint_limits import JointLimits
+from novapolicy.pipeline.base import ModuleContext, Timestamps, split_pipeline
+from novapolicy.pipeline.defaults import default_pipeline, timestep_queue_modules
+from novapolicy.pipeline.modules.bridge import Bridge
+from novapolicy.pipeline.modules.drop_late import DropLate
+from novapolicy.pipeline.modules.endpoint_ramp import EndpointRamp
+from novapolicy.pipeline.modules.hold_padding import HoldPadding
+from novapolicy.pipeline.modules.joint_clamp import JointClamp
+from novapolicy.pipeline.modules.smoothing import Smoothing
+from novapolicy.pipeline.modules.timeline import TimestepTimeline
+from novapolicy.transport.clock import ServerMs
+from novapolicy.transport.waypoints import PendingChunk
 from novapolicy.types import ContinuousExecution, SequentialExecution
 
 LIMITS = JointLimits(lower=(-1.0,) * 3, upper=(1.0,) * 3)

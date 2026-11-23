@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from novapolicy.jogging import JoggingStateTracker
-from novapolicy.jogging.session import _BLOCKING_PAUSES
+from novapolicy.transport.state import _BLOCKING_PAUSES
 from novapolicy.types import MotionError
 
 

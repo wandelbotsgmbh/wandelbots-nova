@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from nova.types import RobotState
-    from novapolicy.jogging.waypoint_session import WaypointJoggingSession
+    from novapolicy.transport.session import WaypointJoggingSession
     from rerun import RecordingStream
 
 logger = logging.getLogger(__name__)

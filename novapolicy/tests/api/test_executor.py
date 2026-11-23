@@ -24,21 +24,18 @@ import numpy as np
 import pytest
 
 from novapolicy.executor import Phase, PolicyExecutor
-from novapolicy.jogging.clock import ServerMs
-from novapolicy.jogging.modules import (
-    EndpointRamp,
-    Smoothing,
-    default_pipeline,
-    timestep_queue_modules,
-)
-from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
-from novapolicy.jogging.waypoint_session import Scheduled
-from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.mapping.ops import Rad2Deg
 from novapolicy.mapping.schema import Action, Observation, ObservationEntry, PolicySchema
+from novapolicy.pipeline.base import ModuleContext, split_pipeline
+from novapolicy.pipeline.defaults import default_pipeline, timestep_queue_modules
+from novapolicy.pipeline.modules.endpoint_ramp import EndpointRamp
+from novapolicy.pipeline.modules.smoothing import Smoothing
 from novapolicy.providers.base import CallbackPolicyClient, PolicyClient
 from novapolicy.providers.queued import QueuedPolicyClient
 from novapolicy.tests.doubles import fake_session as _fake_session, mg as _mg
+from novapolicy.transport.clock import ServerMs
+from novapolicy.transport.session import Scheduled
+from novapolicy.transport.waypoints import PendingChunk
 from novapolicy.types import (
     ActionChunk,
     ActionMode,
@@ -222,8 +219,8 @@ def _patched_robot(**session_class: object) -> Iterator[MagicMock]:
     monitor; yields the e-stop monitor."""
     estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
     with (
-        patch("novapolicy.jogging.lifecycle.WaypointJoggingSession", **session_class),
-        patch("novapolicy.jogging.lifecycle.EstopMonitor", return_value=estop),
+        patch("novapolicy.transport.lifecycle.WaypointJoggingSession", **session_class),
+        patch("novapolicy.transport.lifecycle.EstopMonitor", return_value=estop),
     ):
         yield estop
 
@@ -926,7 +923,7 @@ def test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejecte
             _TestPolicy(_hold_action, requires_bridge=True),
             execution=SequentialExecution(),
         )
-    from novapolicy.jogging.live_buffer import LiveBuffer
+    from novapolicy.pipeline.modules.live_buffer import LiveBuffer
 
     with pytest.raises(ValueError, match="LiveBuffer requires ContinuousExecution"):
         PolicyExecutor(
@@ -992,11 +989,11 @@ async def test_a_chunk_without_motion_writes_its_io_before_its_computed_action()
 def test_the_pipeline_is_handed_to_every_session():
     """The sessions run exactly the list given, in order; the executor's defaults without one."""
     from novapolicy import EaseIn
-    from novapolicy.jogging.live_buffer import LiveBuffer
-    from novapolicy.jogging.pipeline import Timestamps
+    from novapolicy.pipeline.base import Timestamps
+    from novapolicy.pipeline.modules.live_buffer import LiveBuffer
 
     pipeline = [LiveBuffer(window_ms=80.0), Timestamps(), EaseIn(duration_s=1.0)]
-    with patch("novapolicy.jogging.lifecycle.WaypointJoggingSession") as session_cls:
+    with patch("novapolicy.transport.lifecycle.WaypointJoggingSession") as session_cls:
         executor = PolicyExecutor(
             _schema(), _hold, execution=ContinuousExecution(), pipeline=pipeline
         )
@@ -1010,7 +1007,7 @@ def test_the_pipeline_is_handed_to_every_session():
 def test_a_live_buffer_no_longer_makes_the_executor_refuse_chunks_or_tcp_targets():
     """The buffer is a session module now: a multi-step chunk passes it and a TCP target is
     buffered like a joint one, so the executor hands both to the session unchanged."""
-    from novapolicy.jogging.live_buffer import LiveBuffer
+    from novapolicy.pipeline.modules.live_buffer import LiveBuffer
 
     executor = PolicyExecutor(
         _schema(), _hold, execution=ContinuousExecution(), pipeline=[LiveBuffer(window_ms=80.0)]
@@ -1027,7 +1024,7 @@ def test_a_live_buffer_no_longer_makes_the_executor_refuse_chunks_or_tcp_targets
 
 def test_a_misordered_pipeline_is_refused_before_anything_moves():
     from novapolicy import EaseIn
-    from novapolicy.jogging.live_buffer import LiveBuffer
+    from novapolicy.pipeline.modules.live_buffer import LiveBuffer
 
     with pytest.raises(ValueError, match="before Timestamps"):
         PolicyExecutor(

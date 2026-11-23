@@ -9,10 +9,10 @@ import pytest
 
 from novapolicy.cameras import webrtc as webrtc_module
 from novapolicy.cameras.webrtc import WebRTCCameraConfig, WebRTCDevice
-from novapolicy.jogging.clock import ServerMs
-from novapolicy.jogging.waypoint_session import Scheduled
 from novapolicy.rerun import images as images_module
 from novapolicy.rerun.streaming import StateStreamer
+from novapolicy.transport.clock import ServerMs
+from novapolicy.transport.session import Scheduled
 
 rr = pytest.importorskip("rerun")
 

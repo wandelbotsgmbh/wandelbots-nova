@@ -11,11 +11,11 @@ import logging
 import math
 from typing import TYPE_CHECKING, ClassVar, TypeAlias
 
-from novapolicy.jogging.clock import ServerMs
+from novapolicy.transport.clock import ServerMs
 
 if TYPE_CHECKING:
-    from novapolicy.jogging.pipeline import ModuleContext
-    from novapolicy.jogging.waypoints import PendingChunk
+    from novapolicy.pipeline.base import ModuleContext
+    from novapolicy.transport.waypoints import PendingChunk
 
 logger = logging.getLogger(__name__)
 

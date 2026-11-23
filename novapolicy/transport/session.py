@@ -18,22 +18,24 @@ from websockets.exceptions import InvalidStatus
 from nova import api
 from nova.types import Pose, RobotState
 from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
-from novapolicy.io import IOWriter
-from novapolicy.jogging.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, ServerMs
-from novapolicy.jogging.modules import MIN_LEAD_MS, JointClamp, default_pipeline
-from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
-from novapolicy.jogging.session import (
+from novapolicy.mapping.joint_limits import fetch_joint_limits
+from novapolicy.pipeline.base import ModuleContext, split_pipeline
+from novapolicy.pipeline.defaults import default_pipeline
+from novapolicy.pipeline.modules.drop_late import MIN_LEAD_MS
+from novapolicy.pipeline.modules.joint_clamp import JointClamp
+from novapolicy.transport.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, ServerMs
+from novapolicy.transport.io import IOWriter
+from novapolicy.transport.state import (
     JoggingStateTracker,
     StandstillDetector,
     first_fired,
     jogging_details,
 )
-from novapolicy.jogging.waypoints import (
+from novapolicy.transport.waypoints import (
     PendingChunk,
     anchor_timestamp_ms,
     make_timed_waypoints_request,
 )
-from novapolicy.mapping.joint_limits import fetch_joint_limits
 from novapolicy.types import JoggingNotSupportedError, MotionError, StopContext
 
 if TYPE_CHECKING:

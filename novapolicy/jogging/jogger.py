@@ -12,12 +12,12 @@ import logging
 import time
 from typing import TYPE_CHECKING, Self, TypeAlias, cast, overload, override
 
-from novapolicy.jogging.clock import ServerMs
-from novapolicy.jogging.lifecycle import SessionLifecycle, move_to_start_joint_position
-from novapolicy.jogging.live_buffer import (
+from novapolicy.pipeline.modules.live_buffer import (
     LIVE_LEAD_MS,
     trajectory_elapsed_ms,
 )
+from novapolicy.transport.clock import ServerMs
+from novapolicy.transport.lifecycle import SessionLifecycle, move_to_start_joint_position
 from novapolicy.types import WaypointConfig
 
 if TYPE_CHECKING:
@@ -93,7 +93,7 @@ class _BaseJogger:
         """Seconds of acknowledged motion since the loop first had state; ``0.0`` before.
 
         On the session clock, sampled once per loop iteration, quantised and never backwards
-        (:func:`~novapolicy.jogging.live_buffer.trajectory_elapsed_ms`).
+        (:func:`~novapolicy.pipeline.modules.live_buffer.trajectory_elapsed_ms`).
         """
         if self._loop_t0 is None:
             return 0.0
@@ -430,7 +430,7 @@ def jog_joints(
         start_joint_position: Joint positions to PTP-move to first: a list for one robot, a dict
             per motion group for several.
         pipeline: The modules between the targets and NOVA, in order, exactly as given;
-            ``None`` runs :func:`~novapolicy.jogging.modules.default_pipeline`. Extend that list
+            ``None`` runs :func:`~novapolicy.pipeline.defaults.default_pipeline`. Extend that list
             to add one, e.g. ``[LiveBuffer(window_ms=500), *default_pipeline()]``.
 
     Returns:

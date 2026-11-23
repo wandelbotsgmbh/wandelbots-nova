@@ -6,8 +6,8 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from nova.actions import jnt
-from novapolicy.estop import EstopMonitor
-from novapolicy.jogging.waypoint_session import WaypointJoggingSession
+from novapolicy.transport.estop import EstopMonitor
+from novapolicy.transport.session import WaypointJoggingSession
 from novapolicy.types import EmergencyStopError, MotionError
 
 if TYPE_CHECKING:

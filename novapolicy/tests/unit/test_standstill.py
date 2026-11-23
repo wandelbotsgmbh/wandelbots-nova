@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from hypothesis import given, settings, strategies as st
 
-from novapolicy.jogging.session import (
+from novapolicy.transport.state import (
     _STANDSTILL_EPS_RAD,
     _STANDSTILL_HOLD_MS,
     StandstillDetector,

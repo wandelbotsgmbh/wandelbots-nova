@@ -12,7 +12,7 @@ from nova import api
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from novapolicy.jogging.clock import ServerMs
+    from novapolicy.transport.clock import ServerMs
     from novapolicy.types import JoggingMode
 
 
@@ -47,7 +47,7 @@ class PendingChunk:
     """Let ``HoldPadding`` pad the chunk (contract T6); ``LiveBuffer`` turns it off."""
     when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None
     """``(step, action)``: run ``action`` when the caller's ``step`` is due, see
-    :meth:`~novapolicy.jogging.waypoint_session.WaypointJoggingSession.update_chunk`."""
+    :meth:`~novapolicy.transport.session.WaypointJoggingSession.update_chunk`."""
     retained_prefix_steps: int = 0
     """Leading steps already sent in an earlier chunk, which ``Smoothing`` keeps exact."""
     start_step: int = 0

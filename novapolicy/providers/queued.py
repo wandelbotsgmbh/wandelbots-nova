@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from novapolicy.executor import resolve_actions
-from novapolicy.jogging.modules import timestep_queue_modules
 from novapolicy.mapping.poses import unwrap_tcp_rotations
+from novapolicy.pipeline.defaults import timestep_queue_modules
 from novapolicy.providers.action_queue import AsyncQueueAggregation, TimestampedActionQueue
 from novapolicy.providers.base import PolicyClient
 from novapolicy.types import ActionChunk

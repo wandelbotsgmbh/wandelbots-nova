@@ -8,7 +8,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from novapolicy.jogging.waypoint_session import Scheduled, WaypointJoggingSession
+from novapolicy.transport.session import Scheduled, WaypointJoggingSession
 
 
 def mg(mg_id: str = "0@ur10e", controller_id: str | None = None) -> MagicMock:

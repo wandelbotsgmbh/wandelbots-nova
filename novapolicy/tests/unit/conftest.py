@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import novapolicy.jogging.clock as clock_module
+import novapolicy.transport.clock as clock_module
 
 
 @dataclass

@@ -12,15 +12,17 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from novapolicy.cameras.manager import CameraManager
-from novapolicy.chunking import is_single_step, placement, trim_chunk
-from novapolicy.io import IOStreamManager
-from novapolicy.jogging.lifecycle import SessionLifecycle, move_to_start_joint_position
-from novapolicy.jogging.live_buffer import LiveBuffer
-from novapolicy.jogging.modules import EndpointRamp, TimestepTimeline, default_pipeline
-from novapolicy.jogging.pipeline import split_pipeline
-from novapolicy.jogging.session import first_fired
 from novapolicy.mapping.relative import apply_relative_mode
+from novapolicy.pipeline.base import split_pipeline
+from novapolicy.pipeline.defaults import default_pipeline
+from novapolicy.pipeline.modules.endpoint_ramp import EndpointRamp
+from novapolicy.pipeline.modules.live_buffer import LiveBuffer
+from novapolicy.pipeline.modules.timeline import TimestepTimeline
+from novapolicy.pipeline.placement import is_single_step, placement, trim_chunk
 from novapolicy.providers.base import PolicyClient
+from novapolicy.transport.io import IOStreamManager
+from novapolicy.transport.lifecycle import SessionLifecycle, move_to_start_joint_position
+from novapolicy.transport.state import first_fired
 from novapolicy.types import (
     ActionChunk,
     ContinuousExecution,
@@ -37,10 +39,10 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
-    from novapolicy.jogging.clock import ServerMs
-    from novapolicy.jogging.waypoint_session import WaypointJoggingSession
     from novapolicy.mapping.schema import PolicySchema
     from novapolicy.rerun import PolicyRerunLogger
+    from novapolicy.transport.clock import ServerMs
+    from novapolicy.transport.session import WaypointJoggingSession
     from novapolicy.types import StopCondition
 
 logger = logging.getLogger(__name__)
@@ -176,7 +178,7 @@ class PolicyExecutor:
                 it declares one, else all; ``0`` all; ``N > 0`` the first N (contracts M6).
             start_joint_position: Joint positions per motion group to PTP-move to first.
             pipeline: The modules between the policy's chunk and NOVA, in order, exactly as
-                given; ``None`` runs :func:`~novapolicy.jogging.modules.default_pipeline`. To
+                given; ``None`` runs :func:`~novapolicy.pipeline.defaults.default_pipeline`. To
                 add one, extend that list with the same execution and policy, e.g.
                 ``[*default_pipeline(execution=execution, policy=policy), EaseIn(duration_s=1.0)]``.
                 Each motion group runs its own copy.
@@ -651,7 +653,7 @@ class PolicyExecutor:
 
     def _send(self, chunk: ActionChunk, effects: ActionChunk) -> None:
         """Hand an action chunk to each motion group's session, placed by
-        :func:`novapolicy.chunking.placement` (the session's modules may still move it).
+        :func:`novapolicy.pipeline.placement.placement` (the session's modules may still move it).
 
         The IO and computed actions of ``effects`` (the policy's chunk) run when the policy's
         first step is due: a moving group's IO with its own step, the computed actions with the

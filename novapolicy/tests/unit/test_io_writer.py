@@ -1,4 +1,4 @@
-"""Tests for novapolicy.io.IOWriter."""
+"""Tests for novapolicy.transport.io.IOWriter."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pytest
 
 from nova import api
 from nova.cell.io import IOAccess
-from novapolicy.io import IOWriter
+from novapolicy.transport.io import IOWriter
 
 _BOOL = api.models.IOValueType.IO_VALUE_BOOLEAN
 _INT = api.models.IOValueType.IO_VALUE_ANALOG_INTEGER

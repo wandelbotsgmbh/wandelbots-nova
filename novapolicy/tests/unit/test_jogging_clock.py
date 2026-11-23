@@ -14,12 +14,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import time
 
-from novapolicy.jogging.clock import (
+from novapolicy.transport.clock import (
     _MAX_DELIVERY_DELAY_MS,
     _STATE_CLOCK_CALIBRATION_SAMPLES,
     JoggingTimeClock,
 )
-from novapolicy.jogging.session import jogging_details
+from novapolicy.transport.state import jogging_details
 
 
 def test_unsynced_clock_reports_wall_clock_elapsed(manual_time):
@@ -166,13 +166,13 @@ def test_stall_logs_a_warning_once_and_recovers(caplog, manual_time):
     manual_time.advance(0.3)
     clock.update(300)
     # A fresh ack within the lookahead window never trips the stall warning.
-    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
+    with caplog.at_level(logging.WARNING, logger="novapolicy.transport.clock"):
         for _ in range(10):
             _ = clock.estimated_server_timestamp_ms
     assert not [r for r in caplog.records if "stalled" in r.message]
     manual_time.advance(5.0)
 
-    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
+    with caplog.at_level(logging.WARNING, logger="novapolicy.transport.clock"):
         # Read "now" many times — the operator should see ONE warning, not a flood.
         for _ in range(10):
             _ = clock.estimated_server_timestamp_ms
@@ -181,14 +181,14 @@ def test_stall_logs_a_warning_once_and_recovers(caplog, manual_time):
 
     # A fresh server timestamp resumes the timeline and logs recovery once.
     caplog.clear()
-    with caplog.at_level(logging.INFO, logger="novapolicy.jogging.clock"):
+    with caplog.at_level(logging.INFO, logger="novapolicy.transport.clock"):
         clock.update(360)
     assert any("recovered" in r.message for r in caplog.records)
 
     # After recovery, a renewed stall warns again (edge-triggered, not latched).
     caplog.clear()
     manual_time.advance(5.0)
-    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
+    with caplog.at_level(logging.WARNING, logger="novapolicy.transport.clock"):
         _ = clock.estimated_server_timestamp_ms
     assert any("stalled" in r.message for r in caplog.records)
 

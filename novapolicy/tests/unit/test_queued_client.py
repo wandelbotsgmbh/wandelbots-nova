@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from novapolicy.jogging.modules import TimestepTimeline
 from novapolicy.mapping.schema import Action, Observation, PolicySchema
+from novapolicy.pipeline.modules.timeline import TimestepTimeline
 from novapolicy.providers.base import PolicyClient
 from novapolicy.providers.queued import QueuedPolicyClient
 from novapolicy.tests.doubles import mg as _mg

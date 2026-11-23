@@ -6,15 +6,15 @@ re-sent waypoint's raw value again and must give a timestamp the same result.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from novapolicy.jogging.clock import ServerMs
-    from novapolicy.jogging.waypoints import PendingChunk
     from novapolicy.mapping.joint_limits import JointLimits
+    from novapolicy.transport.clock import ServerMs
+    from novapolicy.transport.waypoints import PendingChunk
     from novapolicy.types import JoggingMode
 
 CHUNK_STAGES = ("input", "smooth", "timeline", "anchor", "shape", "horizon")
@@ -145,40 +145,3 @@ def split_pipeline(pipeline: Sequence[object]) -> SplitPipeline:
             msg = f"{type(item).__name__} is not a pipeline module (on_chunk, keep or on_waypoints)"
             raise TypeError(msg)
     return split
-
-
-@dataclass
-class EaseIn:
-    """Waypoint module: blend from where the robot stood over the first ``duration_s``.
-
-    A smootherstep of each waypoint's own timestamp since the first one (docs/jogging.md); TCP
-    rotation vectors blend per component.
-    """
-
-    duration_s: float
-    _start: tuple[int, list[float]] | None = field(default=None, init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        if self.duration_s <= 0:
-            raise ValueError("EaseIn needs a positive duration_s")
-
-    def on_waypoints(
-        self, waypoints: list[TimedWaypoint], context: ModuleContext
-    ) -> list[list[float]]:
-        values = [list(v) for _, v in waypoints]
-        if not waypoints:
-            return values
-        if self._start is None:
-            if context.position is None:
-                return values  # nothing measured yet to blend from
-            self._start = (waypoints[0][0], list(context.position))
-        t0_ms, start = self._start
-        blended: list[list[float]] = []
-        for (t_ms, _), value in zip(waypoints, values, strict=True):
-            x = min(1.0, max(0.0, (t_ms - t0_ms) / (1000.0 * self.duration_s)))
-            if x >= 1.0:
-                blended.append(value)
-                continue
-            e = x**3 * (x * (x * 6.0 - 15.0) + 10.0)
-            blended.append([s + e * (v - s) for s, v in zip(start, value, strict=True)])
-        return blended

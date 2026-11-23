@@ -30,9 +30,9 @@ from novapolicy import (
     default_pipeline,
     jog_joints,
 )
-from novapolicy.jogging import waypoint_session as ws
 from novapolicy.mapping.schema import Action, Observation, PolicySchema
 from novapolicy.providers.base import CallbackPolicyClient
+from novapolicy.transport import session as ws
 from novapolicy.types import ActionChunk
 
 if TYPE_CHECKING:

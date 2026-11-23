@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from novapolicy.jogging.live_buffer import (
+from novapolicy.pipeline.modules.live_buffer import (
     LIVE_LEAD_MS,
     MAX_LIVE_SAMPLES,
     MIN_BUFFER_SAMPLES,
@@ -172,7 +172,7 @@ def test_horizon_end_is_the_window_after_the_grid_start() -> None:
 
 
 def test_a_live_buffer_replays_what_it_held_once_it_can_define_a_spacing() -> None:
-    from novapolicy.jogging.live_buffer import LiveBuffer
+    from novapolicy.pipeline.modules.live_buffer import LiveBuffer
 
     buffer = LiveBuffer(window_ms=100.0)
     assert buffer.push(0.0, [0.0], step_ms=10.0) is None  # one point: no spacing yet
@@ -187,7 +187,7 @@ def test_a_live_buffer_replays_what_it_held_once_it_can_define_a_spacing() -> No
 
 
 def test_a_live_buffer_needs_a_positive_window() -> None:
-    from novapolicy.jogging.live_buffer import LiveBuffer
+    from novapolicy.pipeline.modules.live_buffer import LiveBuffer
 
     with pytest.raises(ValueError, match="positive window_ms"):
         LiveBuffer(window_ms=0.0)

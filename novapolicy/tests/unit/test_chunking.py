@@ -1,4 +1,5 @@
-"""Tests for the pure action-chunk transforms in :mod:`novapolicy.chunking`.
+"""Tests for the pure action-chunk transforms: :mod:`novapolicy.pipeline.placement`,
+:mod:`novapolicy.mapping.relative` and the step helpers of the pipeline modules.
 
 These are stateless functions the executor leans on for receding-horizon
 trimming, relative→absolute conversion, chunk timing, and where each chunk
@@ -16,9 +17,12 @@ import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
-from novapolicy.chunking import bridge_steps, placement, ramp_steps, smooth_steps, trim_chunk
 from novapolicy.mapping.poses import unwrap_tcp_rotations
 from novapolicy.mapping.relative import TcpDelta, apply_relative_mode, compose_tcp_deltas
+from novapolicy.pipeline.modules.bridge import bridge_steps
+from novapolicy.pipeline.modules.endpoint_ramp import ramp_steps
+from novapolicy.pipeline.modules.smoothing import smooth_steps
+from novapolicy.pipeline.placement import placement, trim_chunk
 from novapolicy.types import ActionChunk, ContinuousExecution, SequentialExecution
 
 # Strategies for generated chunks --------------------------------------------
@@ -139,10 +143,10 @@ def _tool_down_flip() -> tuple[list[float], list[list[float]]]:
 
 def test_bridge_does_not_swing_the_wrist_across_a_rotation_vector_flip():
     """Regression: a sign flip near pi once bridged through the identity in 573 steps."""
-    from novapolicy.jogging.clock import ServerMs
-    from novapolicy.jogging.modules import Bridge
-    from novapolicy.jogging.pipeline import ModuleContext
-    from novapolicy.jogging.waypoints import PendingChunk
+    from novapolicy.pipeline.base import ModuleContext
+    from novapolicy.pipeline.modules.bridge import Bridge
+    from novapolicy.transport.clock import ServerMs
+    from novapolicy.transport.waypoints import PendingChunk
 
     current, policy = _tool_down_flip()
     chunk = PendingChunk(steps=policy, dt_ms=100.0, caller_step_count=3)

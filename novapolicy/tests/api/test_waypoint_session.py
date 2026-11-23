@@ -35,19 +35,20 @@ from websockets.frames import Close
 from nova import api
 from nova.types import Pose
 from novapolicy.jogging import jog_tcp
-from novapolicy.jogging.clock import ServerMs
-from novapolicy.jogging.lifecycle import SessionLifecycle
-from novapolicy.jogging.live_buffer import LIVE_LEAD_MS, LiveBuffer
-from novapolicy.jogging.modules import HoldPadding, default_pipeline
-from novapolicy.jogging.waypoint_session import MIN_LEAD_MS, WaypointJoggingSession
-from novapolicy.jogging.waypoints import PendingChunk
+from novapolicy.pipeline.defaults import default_pipeline
+from novapolicy.pipeline.modules.hold_padding import HoldPadding
+from novapolicy.pipeline.modules.live_buffer import LIVE_LEAD_MS, LiveBuffer
+from novapolicy.transport.clock import ServerMs
+from novapolicy.transport.lifecycle import SessionLifecycle
+from novapolicy.transport.session import MIN_LEAD_MS, WaypointJoggingSession
+from novapolicy.transport.waypoints import PendingChunk
 from novapolicy.types import JoggingNotSupportedError, MotionError, WaypointConfig
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator, Sequence
     from typing import Any
 
-_SESSION = "novapolicy.jogging.waypoint_session"
+_SESSION = "novapolicy.transport.session"
 
 
 def _unpadded() -> list[object]:
@@ -823,7 +824,7 @@ def test_a_chunk_passes_a_live_buffer_and_clears_it_with_one_warning(caplog):
     chunk = [[9.0] * 6, [9.0] * 6]
     with (
         _live_session(window_ms=30.0) as (session, now),
-        caplog.at_level(logging.WARNING, logger="novapolicy.jogging.live_buffer"),
+        caplog.at_level(logging.WARNING, logger="novapolicy.pipeline.modules.live_buffer"),
     ):
         for k, value in enumerate((1.0, 2.0, 3.0)):
             _push_live(session, now, [value] * 6, _LIVE_START_MS + 10 * k)
@@ -846,7 +847,7 @@ def test_a_chunk_passes_a_live_buffer_and_clears_it_with_one_warning(caplog):
         assert max(replayed) == pytest.approx(12.0)
 
         session.update_chunk(steps=chunk, dt_ms=10.0, first_timestamp_ms=6_000)
-    warnings = [r for r in caplog.records if r.name == "novapolicy.jogging.live_buffer"]
+    warnings = [r for r in caplog.records if r.name == "novapolicy.pipeline.modules.live_buffer"]
     assert len(warnings) == 1, [r.getMessage() for r in warnings]
 
 
@@ -854,12 +855,12 @@ def test_a_chunk_only_caller_is_never_warned_by_a_live_buffer(caplog):
     """Nothing held, nothing discarded, nothing to say."""
     with (
         _live_session(window_ms=30.0) as (session, now),
-        caplog.at_level(logging.WARNING, logger="novapolicy.jogging.live_buffer"),
+        caplog.at_level(logging.WARNING, logger="novapolicy.pipeline.modules.live_buffer"),
     ):
         for k in range(3):
             now.return_value = _LIVE_START_MS + 10 * k
             session.update_chunk(steps=[[float(k)] * 6] * 2, dt_ms=10.0)
-    assert [r for r in caplog.records if r.name == "novapolicy.jogging.live_buffer"] == []
+    assert [r for r in caplog.records if r.name == "novapolicy.pipeline.modules.live_buffer"] == []
 
 
 def test_a_live_buffer_moves_when_due_to_the_newest_target():
@@ -1390,7 +1391,7 @@ async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
     running = _stream_state(_initial_state(), kind="RUNNING")
     with (
         _built(mode="cartesian", states=[running]) as (built, server),
-        patch("novapolicy.jogging.lifecycle.EstopMonitor", return_value=estop),
+        patch("novapolicy.transport.lifecycle.EstopMonitor", return_value=estop),
         patch("novapolicy.rerun._is_rerun_active", return_value=False),
     ):
         try:
@@ -1591,8 +1592,8 @@ def test_an_unknown_keyword_is_refused() -> None:
 async def test_the_session_reads_joint_limits_only_for_a_joint_clamp(clamp: bool):
     """A JointClamp gets the robot's limits, read once at the start; without one the session
     makes no extra call."""
-    from novapolicy.jogging.modules import JointClamp
     from novapolicy.mapping.joint_limits import JointLimits
+    from novapolicy.pipeline.modules.joint_clamp import JointClamp
 
     limits = JointLimits(lower=(-1.0,) * 6, upper=(1.0,) * 6)
     pipeline = [JointClamp(), *_unpadded()] if clamp else _unpadded()

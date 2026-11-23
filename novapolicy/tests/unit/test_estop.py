@@ -18,9 +18,9 @@ from pydantic import ValidationError
 import pytest
 
 from nova import api
-from novapolicy.estop import EstopMonitor
-from novapolicy.jogging.lifecycle import SessionLifecycle
 from novapolicy.tests.doubles import mg as _mg
+from novapolicy.transport.estop import EstopMonitor
+from novapolicy.transport.lifecycle import SessionLifecycle
 from novapolicy.types import EmergencyStopError, MotionError, WaypointConfig
 
 _SafetyState = api.models.SafetyStateType
@@ -43,7 +43,7 @@ async def _monitored(error: EmergencyStopError | None) -> SessionLifecycle:
     lifecycle = _lifecycle()
     monitor = MagicMock(start=AsyncMock(), error=error)
     with (
-        patch("novapolicy.jogging.lifecycle.EstopMonitor", return_value=monitor),
+        patch("novapolicy.transport.lifecycle.EstopMonitor", return_value=monitor),
         patch("novapolicy.rerun._is_rerun_active", return_value=False),
     ):
         await lifecycle.start_monitoring()
@@ -119,7 +119,7 @@ def _patched_monitor(states: list[object]) -> EstopMonitor:
     gateway.controller_api.stream_robot_controller_state = lambda **_kw: _FakeStream(states)
     monitor = EstopMonitor([_mg()])
     patcher = patch.multiple(
-        "novapolicy.estop",
+        "novapolicy.transport.estop",
         get_api_gateway=lambda _mg: gateway,
         get_cell=lambda _mg: "cell",
         get_controller_id=lambda mg: mg.id.split("@")[1],
@@ -178,7 +178,7 @@ async def test_monitor_keeps_watching_after_an_unparseable_state():
         estop
     ])
     monitor = _patched_monitor([])
-    with patch("novapolicy.estop.get_api_gateway", lambda _mg: gateway):
+    with patch("novapolicy.transport.estop.get_api_gateway", lambda _mg: gateway):
         await _run_monitor_until(monitor)
     assert isinstance(monitor.error, EmergencyStopError)
     assert monitor.error.safety_state == "SAFETY_STATE_ROBOT_EMERGENCY_STOP"
@@ -205,7 +205,7 @@ async def test_a_streak_of_unparseable_states_is_logged_once_and_its_end_too(cap
     monitor = _patched_monitor([])
     with (
         caplog.at_level(logging.INFO),
-        patch("novapolicy.estop.get_api_gateway", lambda _mg: gateway),
+        patch("novapolicy.transport.estop.get_api_gateway", lambda _mg: gateway),
     ):
         await _run_monitor_until(monitor)
     assert isinstance(monitor.error, EmergencyStopError)
@@ -246,7 +246,7 @@ async def test_a_dropped_connection_is_reopened_and_an_estop_still_detected():
         estop
     ])
     monitor = _patched_monitor([])
-    with patch("novapolicy.estop.get_api_gateway", lambda _mg: gateway):
+    with patch("novapolicy.transport.estop.get_api_gateway", lambda _mg: gateway):
         await _run_monitor_until(monitor)
     assert isinstance(monitor.error, EmergencyStopError)
     assert monitor.error.safety_state == "SAFETY_STATE_ROBOT_EMERGENCY_STOP"
@@ -264,8 +264,8 @@ async def test_a_monitor_that_reads_no_state_stops_the_run():
     gateway.controller_api.stream_robot_controller_state = lambda **_kw: _AlwaysDropping([])
     monitor = _patched_monitor([])
     with (
-        patch("novapolicy.estop.get_api_gateway", lambda _mg: gateway),
-        patch("novapolicy.estop._BLIND_LIMIT_S", 0.2),
+        patch("novapolicy.transport.estop.get_api_gateway", lambda _mg: gateway),
+        patch("novapolicy.transport.estop._BLIND_LIMIT_S", 0.2),
     ):
         await _run_monitor_until(monitor, timeout_s=2.0)
     assert isinstance(monitor.error, EmergencyStopError)

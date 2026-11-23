@@ -7,7 +7,7 @@ import json
 import pytest
 
 from nova import api
-from novapolicy.jogging.waypoints import make_timed_waypoints_request
+from novapolicy.transport.waypoints import make_timed_waypoints_request
 from novapolicy.types import WaypointConfig
 
 
@@ -71,7 +71,7 @@ def test_hold_padding_refuses_a_negative_horizon_and_allows_zero() -> None:
     """Zero means no padding, so it must stay legal."""
     import pytest
 
-    from novapolicy.jogging.modules import HoldPadding
+    from novapolicy.pipeline.modules.hold_padding import HoldPadding
 
     with pytest.raises(ValueError, match="min_horizon_ms"):
         _ = HoldPadding(min_horizon_ms=-1.0)
