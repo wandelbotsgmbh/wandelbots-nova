@@ -13,7 +13,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -63,3 +63,26 @@ def check(values: Iterable[tuple[str, float, float, float]]) -> None:
             "with ops= on the observation."
         )
         raise ValueError(msg)
+
+
+def check_vectors(
+    values: Mapping[str, Sequence[object]],
+    ranges: Mapping[str, Sequence[tuple[float, float] | None]],
+    labels: Mapping[str, Sequence[str]] | None = None,
+) -> None:
+    """:func:`check` over observation vectors keyed like the checkpoint's ranges, each
+    dimension named ``labels[key][i]`` or ``key[i]``. A vector as wide as its range only (a
+    width that disagrees is the schema check's failure, not this one's); a dimension without
+    bounds or without a numeric value is skipped."""
+    bounded: list[tuple[str, float, float, float]] = []
+    for key, vector in values.items():
+        bounds = ranges.get(key)
+        if bounds is None or len(bounds) != len(vector):
+            continue
+        names = (labels or {}).get(key) or [f"{key}[{i}]" for i in range(len(vector))]
+        bounded += [
+            (name, float(value), *bound)
+            for name, value, bound in zip(names, vector, bounds, strict=True)
+            if bound is not None and isinstance(value, (int, float)) and not isinstance(value, bool)
+        ]
+    check(bounded)

@@ -20,7 +20,6 @@ import numpy as np
 from novapolicy import training_range
 from novapolicy.gr00t.eef import TcpFormat, pose_to_eef
 from novapolicy.gr00t.transport import Gr00tZmqTransport, require_dict
-from novapolicy.ops import apply_ops
 from novapolicy.policy_client import PolicyClient, resolve_control_freq
 
 logger = logging.getLogger(__name__)
@@ -220,7 +219,8 @@ class Gr00tPolicyClient(PolicyClient):
         groot_obs = await self._build_groot_obs(states, schema, images, io_values)
         if self._state_ranges and not self._range_checked:
             self._range_checked = True
-            training_range.check(_bounded_state(groot_obs["state"], self._state_ranges))
+            state = {k: np.ravel(v).tolist() for k, v in groot_obs["state"].items()}
+            training_range.check_vectors(state, self._state_ranges)
 
         response = await asyncio.to_thread(
             self._transport.call,
@@ -310,16 +310,19 @@ class Gr00tPolicyClient(PolicyClient):
         images: dict[str, Any] | None,
         io_values: dict[str, object] | None,
     ) -> dict[str, Any]:
-        """Convert raw robot states → GR00T observation format."""
-        state_dict = self._build_state_dict(states, schema, io_values)
-        for key, values in (await schema.velocity_and_pose_values(states)).items():
-            state_dict[key] = _to_state_array(values)
-        await self._fill_computed_state(state_dict, schema)
+        """The robot state as GR00T's (1, 1, D) arrays, through the schema's mapping. A TCP
+        declared without units or frame takes GR00T's own default: metres and ``tcp_format``."""
+        groups = schema.observation_groups(await schema.build_observation(states, io_values))
+        for tm in schema.tcp_mappings:
+            pose = getattr(states.get(tm.source.id), "pose", None)
+            if pose is not None and tm.orientation_type is None and not tm.coordinate_system:
+                groups[tm.key] = pose_to_eef(pose, self._tcp_format)
+        self._actual_dof.update({mg_id: len(s.joints) for mg_id, s in states.items()})
         if self._server_state_keys is not None:
             # An observation the model does not take (a TCP pose that only pins the TCP
             # for relative actions, say) stays out of the request.
-            state_dict = {k: v for k, v in state_dict.items() if k in self._server_state_keys}
-        groot_obs: dict[str, Any] = {"state": state_dict}
+            groups = {k: v for k, v in groups.items() if k in self._server_state_keys}
+        groot_obs: dict[str, Any] = {"state": {k: _to_state_array(v) for k, v in groups.items()}}
 
         if images:
             video = _build_video(images)
@@ -331,64 +334,6 @@ class Gr00tPolicyClient(PolicyClient):
             groot_obs["language"] = {self._language_key: [[language]]}
 
         return groot_obs
-
-    def _build_state_dict(
-        self,
-        states: dict[str, RobotState],
-        schema: PolicySchema,
-        io_values: dict[str, object] | None,
-    ) -> dict[str, np.ndarray]:
-        """Build the GR00T state dict from robot states via schema mappings."""
-        state_dict: dict[str, np.ndarray] = {}
-
-        for m in schema.joint_mappings:
-            concat_joints: list[float] = []
-            for mg in m.sources:
-                s = states.get(mg.id)
-                if s is None:
-                    continue
-                joints = list(s.joints)
-                self._actual_dof[mg.id] = len(joints)
-                concat_joints.extend(joints)
-            if concat_joints:
-                # The same operators as every client: the executor inverts them on the actions.
-                state_dict[m.key] = _to_state_array(apply_ops(concat_joints, m.ops))
-
-        for tm in schema.tcp_mappings:
-            s = states.get(tm.source.id)
-            if s is not None and hasattr(s, "pose") and s.pose is not None:
-                if tm.orientation_type is None and not tm.coordinate_system:
-                    # GR00T's own default: metres and tcp_format (rot6d unless set).
-                    values = pose_to_eef(s.pose, self._tcp_format)
-                else:  # declared on the schema: the same conversion as every client
-                    values = schema.tcp_observation_values(tm, s)
-                state_dict[tm.key] = _to_state_array(values)
-
-        if io_values:
-            for iom in schema.obs_io_mappings:
-                raw = io_values.get(iom.io)
-                val = (
-                    iom.mapping.to_policy(cast("bool | int | float", raw))
-                    if raw is not None
-                    else 0.0
-                )
-                state_dict[iom.key] = _to_state_array([val])
-
-        return state_dict
-
-    @staticmethod
-    async def _fill_computed_state(state_dict: dict[str, np.ndarray], schema: PolicySchema) -> None:
-        """Run Observation.computed hooks and merge numeric results into the state.
-
-        GR00T's state is a numeric payload, so each computed value must be a
-        scalar or sequence of floats keyed to a model state input. Non-numeric
-        values (strings, images) are not supported here.
-        """
-        for obs in schema.computed_observations:
-            extra = await obs.fn(state_dict)
-            for key, value in extra.items():
-                values = value if isinstance(value, (list, tuple)) else [value]
-                state_dict[key] = _to_state_array([float(v) for v in values])
 
     # ------------------------------------------------------------------
     # Action decoding
@@ -445,23 +390,6 @@ def _action_array(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _bounded_state(
-    state: dict[str, np.ndarray], ranges: dict[str, list[tuple[float, float]]]
-) -> list[tuple[str, float, float, float]]:
-    """``(name, value, low, high)`` per state dimension the statistics bound."""
-    values: list[tuple[str, float, float, float]] = []
-    for key, array in state.items():
-        bounds = ranges.get(key, [])
-        flat = np.asarray(array, dtype=float).reshape(-1)
-        if len(bounds) != flat.size:
-            continue  # width disagrees: the schema check owns that failure
-        values += [
-            (f"{key}[{i}]", float(v), lo, hi)
-            for i, (v, (lo, hi)) in enumerate(zip(flat, bounds, strict=True))
-        ]
-    return values
 
 
 def _to_state_array(values: list[float] | tuple[float, ...]) -> np.ndarray:

@@ -254,3 +254,17 @@ continuous execution, as any chunk-per-observation policy; `AsyncQueueAggregatio
 `novapolicy.lerobot`. The queue now asks the server for a new chunk at every tick it is called
 instead of refilling at a threshold in the background, and its frozen head follows the measured
 inference time instead of a fixed three steps.
+
+## GR00T builds its state through the schema
+
+`Gr00tPolicyClient` builds its observation with `PolicySchema.build_observation` and regroups it
+per key (`observation_groups`), as every other client maps it. Two visible effects:
+
+- **An `Observation.computed` hook gets the flat observation** (`{"arm_1": ..., "arm_2": ...}`),
+  as with every other client, instead of GR00T's `(1, 1, D)` state arrays. Its numeric results
+  still become state arrays under their own names.
+- **An IO observation is 0.0 when the IO read returned nothing** (an empty `io_values`), as with
+  every other client, instead of being left out.
+
+`PolicySchema.velocity_and_pose_values` is gone; use `build_observation` and
+`observation_groups`.

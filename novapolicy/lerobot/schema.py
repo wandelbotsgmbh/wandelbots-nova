@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from lerobot.configs.types import PolicyFeature
 
     from nova.types import RobotState
-    from novapolicy.lerobot.config import FeatureStats, LeRobotExecutionSettings
+    from novapolicy.lerobot.config import LeRobotExecutionSettings
     from novapolicy.schema import PolicySchema
 
 logger = logging.getLogger(__name__)
@@ -329,23 +329,9 @@ def check_observation_range(
     observation: dict[str, Any],
     state_names: list[str],
 ) -> None:
-    """Hold the first live observation against the checkpoint's own statistics.
-
-    Declared units are an assertion by whoever wrote the schema; the checkpoint
-    can settle it. A joint reported in degrees against a checkpoint trained on
-    radians is a ~57x error, and lands so far outside the training distribution
-    that nothing else it could be — wrong units, wrong joint order, wrong robot,
-    wrong TCP — matters to the diagnosis.
-
-    Values are compared *after* the schema's operators, because that is what the
-    policy will actually see. Two thresholds, and deliberately different in kind:
-    sitting outside the demonstrated *range* only warns, because a robot parked
-    somewhere the demonstrations never visited is normal; being an order of
-    *magnitude* larger than anything in training raises, because that is not a
-    pose, it is a unit.
-
-    Silent when the checkpoint ships no statistics, or when the state width
-    disagrees with them — the feature contract check owns that failure.
+    """Hold the first live observation, after the schema's operators, against the
+    checkpoint's ``observation.state`` statistics (see :mod:`novapolicy.training_range`).
+    Silent without statistics or when the state width disagrees with them.
 
     Raises:
         ValueError: A value is implausibly far outside the training range.
@@ -353,38 +339,9 @@ def check_observation_range(
     stats = settings.stats.get(OBS_STATE)
     if stats is None:
         return
-
-    width = _stats_width(stats)
-    if width is None or width != len(state_names):
-        logger.debug(
-            "Skipping the observation range check: %d state names against %s statistics.",
-            len(state_names),
-            width,
-        )
-        return
-
-    training_range.check(_bounded_values(stats, observation, state_names))
-
-
-def _stats_width(stats: FeatureStats) -> int | None:
-    for values in (stats.minimum, stats.mean):
-        if values is not None:
-            return len(values)
-    return None
-
-
-def _bounded_values(
-    stats: FeatureStats,
-    observation: dict[str, Any],
-    state_names: list[str],
-) -> list[tuple[str, float, float, float]]:
-    """``(name, value, low, high)`` for every state value the statistics bound."""
-    values: list[tuple[str, float, float, float]] = []
-    for index, name in enumerate(state_names):
-        value = observation.get(name)
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
-            continue
-        bounds = stats.bounds(index)
-        if bounds is not None:
-            values.append((name, float(value), *bounds))
-    return values
+    bounds = [stats.bounds(i) for i in range(len(stats.minimum or stats.mean or ()))]
+    training_range.check_vectors(
+        {OBS_STATE: [observation.get(name) for name in state_names]},
+        {OBS_STATE: bounds},
+        labels={OBS_STATE: state_names},
+    )

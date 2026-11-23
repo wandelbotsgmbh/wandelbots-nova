@@ -852,17 +852,6 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
     def pose_mappings(self) -> list[_ObsPose]:
         return [o for o in self._observations if isinstance(o, _ObsPose)]
 
-    async def velocity_and_pose_values(
-        self, states: dict[str, RobotState]
-    ) -> dict[str, list[float]]:
-        """The values of every joint velocity and pose observation, one vector per key, for
-        clients that assemble their own state from the robot states."""
-        observation: dict[str, Any] = {}
-        self._fill_joint_velocities(observation, states)
-        await self._fill_poses(observation)
-        entries = [*self.joint_velocity_mappings, *self.pose_mappings]
-        return {o.key: self.observation_vector(observation, o.key) for o in entries}
-
     @property
     def obs_io_mappings(self) -> list[_ObsIO]:
         return [o for o in self._observations if isinstance(o, _ObsIO)]
@@ -1036,6 +1025,35 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         if isinstance(value, (int, float)):
             return [float(value)]
         return [float(v) for v in value]
+
+    def observation_groups(self, observation: dict[str, Any]) -> dict[str, list[float]]:
+        """A built observation regrouped into one vector per key, for clients whose wire
+        takes arrays: each joint, joint velocity, TCP, pose and IO observation under its key
+        (left out when its robot state is missing), then every other numeric value (a
+        ``Observation.computed`` one) under its own name. Constants and text stay out."""
+        groups: dict[str, list[float]] = {}
+        taken = {o.key for o in self._observations if isinstance(o, _ObsConstant)}
+        for o in self._observations:
+            if not isinstance(o, (_ObsJoints, _ObsJointVelocities, _ObsTcp, _ObsPose, _ObsIO)):
+                continue
+            if isinstance(o, (_ObsJoints, _ObsJointVelocities)):
+                names = []
+                while f"{o.key}_{len(names) + 1}" in observation:
+                    names.append(f"{o.key}_{len(names) + 1}")
+            else:
+                names = tcp_value_names(o) if isinstance(o, (_ObsTcp, _ObsPose)) else [o.key]
+            taken.update(names)
+            if names and all(n in observation for n in names):
+                groups[o.key] = [float(observation[n]) for n in names]
+        for name, value in observation.items():
+            if name in taken:
+                continue
+            values = value if isinstance(value, (list, tuple, np.ndarray)) else [value]
+            try:
+                groups[name] = [float(v) for v in np.ravel(values)]
+            except (TypeError, ValueError):
+                continue  # not numeric: no array to send
+        return groups
 
     # -- Build observation --
 

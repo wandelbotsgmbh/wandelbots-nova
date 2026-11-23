@@ -207,9 +207,9 @@ and it sends the `Observation.constant("language", ...)` prompt under the server
 `Action.computed` fires for every policy (the executor runs it after each call). For an
 actuator outside NOVA, declare the action keys it consumes, `Action.computed(fn, keys=["gripper"])`;
 the client puts their values into `chunk.values["gripper"]`, one row per step.
-`Observation.computed` also fires for GR00T, but its values are merged into GR00T's
-numeric state payload — so each computed value must be a scalar/sequence of floats keyed
-to a model state input. Pass `keys=[...]` so `validate_schema` counts them. Non-numeric outputs
+`Observation.computed` also fires for GR00T: the hook gets the flat observation as with every
+client, and its values are merged into GR00T's numeric state payload, so each computed value
+must be a scalar or sequence of floats keyed to a model state input. Pass `keys=[...]` so `validate_schema` counts them. Non-numeric outputs
 (strings, images) are only supported on the callback (bring-your-own-function) path.
 
 ## Inspecting a Server

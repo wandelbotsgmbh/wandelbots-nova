@@ -293,6 +293,7 @@ async def test_computed_observation_format() -> None:
         await client.get_actions({"0@ur10e": _state((0.0,) * 6)}, schema)
 
         assert len(called) == 1  # the function was actually triggered
+        assert called[0]["arm_1"] == 0.0  # the flat observation, as for every client
         state = server.last_observation["state"]
         assert "force_z" in state
         arr = state["force_z"]
@@ -703,9 +704,7 @@ async def test_tcp_action_decoding() -> None:
         await client.connect(["0@ur10e"])
 
         # Need a state with a pose for the observation
-        pose = MagicMock()
-        pose.position = MagicMock(x=100.0, y=200.0, z=300.0)
-        pose.orientation = MagicMock(x=0.1, y=0.2, z=0.3)
+        pose = Pose((100.0, 200.0, 300.0, 0.1, 0.2, 0.3))
         result = await client.get_actions({"0@ur10e": _state((0.0,) * 6, pose=pose)}, schema)
 
         assert isinstance(result, ActionChunk)
@@ -744,9 +743,7 @@ async def test_tcp_action_not_in_response() -> None:
         client = Gr00tPolicyClient(host="127.0.0.1", port=port, control_freq=30.0)
         await client.connect(["0@ur10e"])
 
-        pose = MagicMock()
-        pose.position = MagicMock(x=0.0, y=0.0, z=0.0)
-        pose.orientation = MagicMock(x=0.0, y=0.0, z=0.0)
+        pose = Pose((0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
         result = await client.get_actions({"0@ur10e": _state((0.0,) * 6, pose=pose)}, schema)
 
         # No eef key in response → empty tcp dict
