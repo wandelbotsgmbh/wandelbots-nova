@@ -52,7 +52,8 @@ class HttpPolicyClient(PolicyClient):
     ) -> ActionChunk:
         assert self._http is not None, "connect() first"
         observation = await schema.build_observation(states, io_values)
-        reply = await self._http.post(self._url, json={"observation": observation})
+        groups = schema.observation_groups(observation)  # {"arm": [6 values], ...}
+        reply = await self._http.post(self._url, json={"observation": groups})
         reply.raise_for_status()
         return schema.decode_actions(reply.json()["actions"], dt_ms=self._dt_ms, source="HTTP")
 

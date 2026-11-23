@@ -127,7 +127,7 @@ step; a chunk that numbers its steps (a timestep queue) is placed by its `Timest
 
 ## Adding a policy provider
 
-Step by step, with the three wire shapes and how to test one: [adding-a-provider.md](adding-a-provider.md).
+Step by step, with the one format the schema speaks, adapters for flat and array wires, and how to test a provider: [adding-a-provider.md](adding-a-provider.md).
 
 A provider is a `PolicyClient` with a transport. The schema does the mapping in both directions,
 so the provider only names things in its own wire format (this snippet runs as a test,
@@ -146,8 +146,9 @@ class MyPolicyClient(PolicyClient):
         await self._wire.open()
 
     async def get_actions(self, states, schema, images=None, io_values=None):
-        observation = await schema.build_observation(states, io_values)  # names -> values
-        outputs = await self._wire.infer(observation, images)  # {action key: (T, w)}
+        observation = await schema.build_observation(states, io_values)
+        groups = schema.observation_groups(observation)  # {"arm": [6 values], ...}
+        outputs = await self._wire.infer(groups, images)  # {"arm": [[6 values], ...]}
         return schema.decode_actions(outputs, dt_ms=self._dt_ms, source="MyPolicy")
 
     async def close(self) -> None:

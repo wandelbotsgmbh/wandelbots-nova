@@ -73,14 +73,17 @@ schema = PolicySchema(
 [schema.md](schema.md) covers TCP poses, IO, operators (`Scale`, `Rad2Deg`), frames and relative
 targets.
 
-## 2. Write `get_actions` for your wire's shape
+## 2. Write `get_actions`
 
-Every provider has the same three lines: build the observation with the schema, send it over the
-wire, decode the answer with the schema. Only the middle line is yours, and how the answer comes
-back decides which schema helper fits.
+The schema hands you the observation in one format and takes the answer back in one format,
+both by key:
 
-**Outputs by key** (JSON over HTTP, NATS, most services): the answer is `{key: [[...], ...]}`, one
-row per step.
+| | Format | Example |
+| --- | --- | --- |
+| observation | `schema.observation_groups(...)`: one vector per key | `{"arm": [6 values], "gripper": [1.0]}` |
+| answer | outputs for `schema.decode_actions(...)`: one row per step per key | `{"arm": [[6 values], ...], "gripper": [[0.0], ...]}` |
+
+Every provider is the same three lines; only the middle one, your wire, is yours:
 
 ```python
 from novapolicy import PolicyClient, resolve_control_freq
@@ -92,36 +95,32 @@ class MyPolicyClient(PolicyClient):
         self._dt_ms = 1000.0 / resolve_control_freq(control_freq, owner="MyPolicyClient")
 
     async def get_actions(self, states, schema, images=None, io_values=None):
-        observation = await schema.build_observation(states, io_values)  # {"arm_1": ..., ...}
-        outputs = await self._wire.infer(observation, images)  # {"arm": [[...6], ...]}
+        groups = schema.observation_groups(await schema.build_observation(states, io_values))
+        outputs = await self._wire.infer(groups, images)
         return schema.decode_actions(outputs, dt_ms=self._dt_ms, source="MyPolicy")
 ```
 
-**One flat vector** (LeRobot-style): the policy takes one state vector and answers flat rows.
-`observation_groups` gives one vector per key in schema order; `action_columns` and
-`split_actions` cut the rows back into outputs by key.
+**If your wire wants something else**, convert at the wire, not in between. These are the two
+that the shipped providers need:
 
-```python
-    async def get_actions(self, states, schema, images=None, io_values=None):
-        observation = await schema.build_observation(states, io_values)
-        state = [v for vector in schema.observation_groups(observation).values() for v in vector]
-        rows = await self._wire.infer(state)  # [[a0, a1, ...], ...], one row per step
-        dof = {group_id: len(s.joints) for group_id, s in states.items()}
-        outputs = schema.split_actions(rows, schema.action_columns(dof), source="MyPolicy")
-        return schema.decode_actions(outputs, dt_ms=self._dt_ms, dof=dof, source="MyPolicy")
-```
+- *One flat vector* (a LeRobot checkpoint takes one `observation.state` and answers one flat row
+  per step): `schema.flatten(groups)` joins the vectors in schema order;
+  `schema.unflatten(rows, dof=...)` cuts the rows back into outputs by key (joints, TCP, IO, then
+  computed actions, `dof` joints per motion group).
 
-**One array per key** (GR00T-style): `observation_groups` already is that.
+  ```python
+  dof = {group_id: len(state.joints) for group_id, state in states.items()}
+  rows = await self._wire.infer(schema.flatten(groups))
+  outputs = schema.unflatten(rows, dof=dof, source="MyPolicy")
+  ```
 
-```python
-    async def get_actions(self, states, schema, images=None, io_values=None):
-        observation = await schema.build_observation(states, io_values)
-        arrays = {k: np.asarray(v, np.float32) for k, v in schema.observation_groups(observation).items()}
-        outputs = await self._wire.infer(arrays)  # {key: array (steps, width)}
-        return schema.decode_actions(
-            {k: np.asarray(v).tolist() for k, v in outputs.items()}, dt_ms=self._dt_ms, source="MyPolicy"
-        )
-```
+- *Arrays* (a GR00T server takes and returns float32 arrays): convert each vector, and convert
+  the answer back to lists.
+
+  ```python
+  answer = await self._wire.infer({k: np.asarray(v, np.float32) for k, v in groups.items()})
+  outputs = {k: np.asarray(v).tolist() for k, v in answer.items()}
+  ```
 
 `dt_ms` is the policy's step spacing. Take it from the training data's frame rate
 (`control_freq=`), or from what the policy reports (`resolve_control_freq(..., recorded=...)`).

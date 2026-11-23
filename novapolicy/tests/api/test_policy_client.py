@@ -69,9 +69,9 @@ class _EchoWire:
     async def open(self) -> None:
         self.opened = True
 
-    async def infer(self, observation: dict[str, object], images: object) -> dict[str, object]:
+    async def infer(self, observation: dict[str, list[float]], images: object) -> dict[str, object]:
         self.seen = observation
-        first = [float(observation[f"arm_{i}"]) + 0.1 for i in range(1, 7)]
+        first = [v + 0.1 for v in observation["arm"]]
         return {"arm": [first, [v + 0.1 for v in first]]}
 
     async def close(self) -> None:
@@ -93,7 +93,8 @@ async def test_a_provider_is_a_transport_and_the_schema_does_the_mapping() -> No
 
         async def get_actions(self, states, schema, images=None, io_values=None):
             observation = await schema.build_observation(states, io_values)
-            outputs = await self._wire.infer(observation, images)
+            groups = schema.observation_groups(observation)  # {"arm": [6 values], ...}
+            outputs = await self._wire.infer(groups, images)  # {"arm": [[6 values], ...]}
             return schema.decode_actions(outputs, dt_ms=self._dt_ms, source="MyPolicy")
 
         async def close(self) -> None:
@@ -110,6 +111,24 @@ async def test_a_provider_is_a_transport_and_the_schema_does_the_mapping() -> No
     assert wire.opened and wire.closed
     assert chunk.dt_ms == 50.0
     assert chunk.joints[mg.id] == [[0.1] * 6, [0.2] * 6]
+
+
+def test_a_flat_wire_round_trips_through_flatten_and_unflatten() -> None:
+    """One state vector out, one flat row per step back: joints, then IO, in schema order."""
+    mg = MagicMock()
+    mg.id = "0@arm"
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=mg, action=True),
+            Observation.io("gripper", source=mg, io="digital_out[0]", action=True),
+        ]
+    )
+    groups = {"arm": [float(i) for i in range(6)], "gripper": [1.0]}
+    assert schema.flatten(groups) == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 1.0]
+    outputs = schema.unflatten([[0.1] * 6 + [0.0], [0.2] * 6 + [1.0]], dof={mg.id: 6})
+    assert outputs == {"arm": [[0.1] * 6, [0.2] * 6], "gripper": [[0.0], [1.0]]}
+    with pytest.raises(ValueError, match="expected 7"):
+        schema.unflatten([[0.1] * 6], dof={mg.id: 6})
 
 
 def test_decoding_takes_each_groups_joints_and_refuses_too_few() -> None:

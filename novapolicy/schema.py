@@ -1003,6 +1003,18 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
             raise ValueError(msg)
         return outputs
 
+    @staticmethod
+    def flatten(groups: dict[str, list[float]]) -> list[float]:
+        """:meth:`observation_groups` as one vector, key after key, for a wire that takes one."""
+        return [value for vector in groups.values() for value in vector]
+
+    def unflatten(
+        self, rows: list[list[float]], *, dof: dict[str, int], source: str = "The policy"
+    ) -> dict[str, list[list[float]]]:
+        """Flat action rows (one per step) as outputs by key, for :meth:`decode_actions`:
+        :meth:`split_actions` over :meth:`action_columns`."""
+        return self.split_actions(rows, self.action_columns(dof), source=source)
+
     def decode_actions(
         self,
         outputs: dict[str, Any],
