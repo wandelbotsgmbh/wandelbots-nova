@@ -3,7 +3,7 @@
 These mock the controller-state stream at the SDK boundary and assert the
 observable behaviour: ``EstopMonitor`` raises (via its ``error``) on a
 non-operational safety state and stays clear on operational ones, and the
-``check_*`` helpers re-raise faults. The live counterpart lives in
+session lifecycle's ``check`` re-raises faults. The live counterpart lives in
 ``integration/test_estop_live.py``.
 """
 
@@ -12,50 +12,70 @@ from __future__ import annotations
 import asyncio
 import logging
 import types
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import ValidationError
 import pytest
 
 from nova import api
-from novapolicy.estop import EstopMonitor, check_estop, check_sessions
+from novapolicy.estop import EstopMonitor
+from novapolicy.jogging.lifecycle import SessionLifecycle
 from novapolicy.tests.doubles import mg as _mg
-from novapolicy.types import EmergencyStopError, MotionError
+from novapolicy.types import EmergencyStopError, MotionError, WaypointConfig
 
 _SafetyState = api.models.SafetyStateType
 
 
 # ---------------------------------------------------------------------------
-# check_estop / check_sessions — faults re-raise, healthy state is a no-op
+# SessionLifecycle.check — faults re-raise, healthy state is a no-op
 # ---------------------------------------------------------------------------
 
 
-def test_check_estop_raises_when_error_set():
-    monitor = MagicMock()
-    monitor.error = EmergencyStopError("ur10e", "SAFETY_STATE_PROTECTIVE_STOP")
+def _lifecycle(session: MagicMock | None = None) -> SessionLifecycle:
+    lifecycle = SessionLifecycle(config=WaypointConfig())
+    if session is not None:
+        lifecycle.sessions["0@ur10e"] = session
+    return lifecycle
+
+
+async def _monitored(error: EmergencyStopError | None) -> SessionLifecycle:
+    """A lifecycle whose e-stop monitor reports ``error``."""
+    lifecycle = _lifecycle()
+    monitor = MagicMock(start=AsyncMock(), error=error)
+    with (
+        patch("novapolicy.jogging.lifecycle.EstopMonitor", return_value=monitor),
+        patch("novapolicy.rerun._is_rerun_active", return_value=False),
+    ):
+        await lifecycle.start_monitoring()
+    return lifecycle
+
+
+@pytest.mark.asyncio
+async def test_check_raises_when_the_estop_monitor_has_an_error():
+    lifecycle = await _monitored(EmergencyStopError("ur10e", "SAFETY_STATE_PROTECTIVE_STOP"))
     with pytest.raises(EmergencyStopError):
-        check_estop(monitor)
+        lifecycle.check()
 
 
-def test_check_estop_noop_when_clear():
-    monitor = MagicMock()
-    monitor.error = None
-    check_estop(monitor)  # no raise
-    check_estop(None)  # no raise
+@pytest.mark.asyncio
+async def test_check_is_a_noop_while_the_estop_monitor_is_clear():
+    assert (await _monitored(None)).check() is None
+    assert _lifecycle().check() is None  # no monitor started yet
 
 
-def test_check_sessions_reraises_failure_exception():
+def test_check_reraises_a_session_failure():
     session = MagicMock()
     session.has_failed = True
     session.failure_exception = MotionError("ur10e", "joint_limit")
     with pytest.raises(MotionError):
-        check_sessions({"0@ur10e": session})
+        _lifecycle(session).check()
 
 
-def test_check_sessions_ignores_healthy_sessions():
+def test_check_ignores_healthy_sessions():
     session = MagicMock()
     session.has_failed = False
-    check_sessions({"0@ur10e": session})  # no raise
+    session.stop_condition_triggered = None
+    assert _lifecycle(session).check() is None
 
 
 # ---------------------------------------------------------------------------

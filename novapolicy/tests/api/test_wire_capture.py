@@ -195,8 +195,8 @@ async def _run_executor(
     policy = kwargs.pop("policy", None) or CallbackPolicyClient(policy_fn)
     estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
     with (
-        patch("novapolicy.executor.WaypointJoggingSession", side_effect=capture.make),
-        patch("novapolicy.executor.EstopMonitor", return_value=estop),
+        patch("novapolicy.jogging.lifecycle.WaypointJoggingSession", side_effect=capture.make),
+        patch("novapolicy.jogging.lifecycle.EstopMonitor", return_value=estop),
         patch("novapolicy.rerun._is_rerun_active", return_value=False),
     ):
         executor = PolicyExecutor(_schema(), policy, timeout_s=5.0, **kwargs)

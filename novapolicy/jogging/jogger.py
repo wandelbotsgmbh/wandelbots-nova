@@ -12,14 +12,12 @@ import logging
 import time
 from typing import TYPE_CHECKING, Self, TypeAlias, cast, overload
 
-from novapolicy.estop import EstopMonitor
 from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.lifecycle import SessionLifecycle, move_to_start_joint_position
 from novapolicy.jogging.live_buffer import (
     LIVE_LEAD_MS,
     trajectory_elapsed_ms,
 )
-from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.types import WaypointConfig
 
 if TYPE_CHECKING:
@@ -71,27 +69,19 @@ class _BaseJogger:
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
         pipeline: Sequence[object] | None = None,
     ) -> None:
-        cfg = config or WaypointConfig()
         self._mg_list = list(motion_groups)
         self._multi = len(self._mg_list) > 1
-        self._sessions = {
-            mg: WaypointJoggingSession(
-                motion_group=mg,
-                config=cfg,
-                tcp=tcp,
-                mode=self._MODE,
-                stop_conditions=stop_conditions,
-                pipeline=pipeline,
-            )
-            for mg, tcp in motion_groups.items()
-        }
+        self._lifecycle = SessionLifecycle(
+            config=config or WaypointConfig(), stop_conditions=stop_conditions, pipeline=pipeline
+        )
+        sessions = self._lifecycle.build({
+            mg: (self._MODE, tcp) for mg, tcp in motion_groups.items()
+        })
+        self._sessions = {mg: sessions[mg.id] for mg in self._mg_list}
         if start_joint_position is not None and not isinstance(start_joint_position, dict):
             start_joint_position = {self._mg_list[0]: start_joint_position}
         self._start_joint_position = start_joint_position
         self._target: dict[MotionGroup, _Target] | None = None
-        self._lifecycle = SessionLifecycle(
-            {mg.id: session for mg, session in self._sessions.items()}, self._mg_list
-        )
         self._rerun: PolicyRerunLogger | None = None
         self._loop_t0: float | None = None
         self._ack0_ms: float = 0.0
@@ -259,7 +249,7 @@ class _BaseJogger:
     async def __aenter__(self) -> Self:
         await move_to_start_joint_position(self._start_joint_position)
         await self._lifecycle.start_sessions()
-        self._rerun = await self._lifecycle.start_monitoring(EstopMonitor(self._mg_list))
+        self._rerun = await self._lifecycle.start_monitoring()
         await self._lifecycle.wait_ready()
         kind = self.__class__.__name__
         logger.info(

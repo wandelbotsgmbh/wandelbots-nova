@@ -1,4 +1,4 @@
-"""E-stop and session failure detection."""
+"""E-stop detection."""
 
 from __future__ import annotations
 
@@ -15,12 +15,8 @@ from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
 from novapolicy.types import EmergencyStopError
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from typing import Any
-
     from nova.cell.motion_group import MotionGroup
     from nova.core.gateway import ApiGateway
-    from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 
 logger = logging.getLogger(__name__)
 
@@ -33,51 +29,6 @@ _OPERATIONAL_SAFETY_STATES = frozenset({
 _RECONNECT_DELAY_S = 0.05
 _BLIND_LIMIT_S = 2.0
 """Seconds the monitor may go without a controller state before it stops the run."""
-
-
-# ---------------------------------------------------------------------------
-# Shared failure checks
-# ---------------------------------------------------------------------------
-
-
-def check_sessions(sessions: Mapping[Any, WaypointJoggingSession]) -> None:
-    """Re-raise the first session failure; a fired stop condition is not one.
-
-    Raises:
-        MotionError: Joint limit, self-collision, or singularity.
-        RuntimeError: Jogging connection lost or unknown failure.
-    """
-    for session in sessions.values():
-        if not session.has_failed:
-            continue
-        exc = session.failure_exception
-        if exc is not None:
-            raise exc
-        raise RuntimeError(session.failure_reason or "unknown session failure")
-
-
-def triggered_stop_condition(sessions: Mapping[Any, WaypointJoggingSession]) -> str | None:
-    """Return the name of the first stop condition that fired, else ``None``."""
-    for session in sessions.values():
-        name = session.stop_condition_triggered
-        if name is not None:
-            return name
-    return None
-
-
-def check_estop(monitor: EstopMonitor | None) -> None:
-    """Raise if the e-stop monitor detected a safety stop.
-
-    Raises:
-        EmergencyStopError: Controller entered non-operational safety state.
-    """
-    if monitor is not None and monitor.error is not None:
-        raise monitor.error
-
-
-# ---------------------------------------------------------------------------
-# E-stop monitor
-# ---------------------------------------------------------------------------
 
 
 class EstopMonitor:

@@ -1246,7 +1246,7 @@ async def test_jog_tcp_chunk_is_sent_as_evenly_spaced_pose_waypoints():
     running = _stream_state(_initial_state(), kind="RUNNING")
     with (
         _built(mode="cartesian", states=[running]) as (built, server),
-        patch("novapolicy.jogging.jogger.EstopMonitor", return_value=estop),
+        patch("novapolicy.jogging.lifecycle.EstopMonitor", return_value=estop),
         patch("novapolicy.rerun._is_rerun_active", return_value=False),
     ):
         try:

@@ -222,8 +222,8 @@ def _patched_robot(**session_class: object) -> Iterator[MagicMock]:
     monitor; yields the e-stop monitor."""
     estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
     with (
-        patch("novapolicy.executor.WaypointJoggingSession", **session_class),
-        patch("novapolicy.executor.EstopMonitor", return_value=estop),
+        patch("novapolicy.jogging.lifecycle.WaypointJoggingSession", **session_class),
+        patch("novapolicy.jogging.lifecycle.EstopMonitor", return_value=estop),
     ):
         yield estop
 
@@ -943,13 +943,13 @@ def test_the_pipeline_is_handed_to_every_session():
     from novapolicy.jogging.pipeline import Timestamps
 
     pipeline = [LiveBuffer(window_ms=80.0), Timestamps(), EaseIn(duration_s=1.0)]
-    with patch("novapolicy.executor.WaypointJoggingSession") as session_cls:
+    with patch("novapolicy.jogging.lifecycle.WaypointJoggingSession") as session_cls:
         executor = PolicyExecutor(
             _schema(), _hold, execution=ContinuousExecution(), pipeline=pipeline
         )
-        executor._create_session(_mg())
+        executor._build_sessions()
         assert session_cls.call_args.kwargs["pipeline"] == tuple(pipeline)
-        PolicyExecutor(_schema(), _hold)._create_session(_mg())
+        PolicyExecutor(_schema(), _hold)._build_sessions()
         defaults = default_pipeline(execution=SequentialExecution())
         assert session_cls.call_args.kwargs["pipeline"] == tuple(defaults)
 

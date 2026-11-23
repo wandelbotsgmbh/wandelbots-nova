@@ -1,4 +1,4 @@
-"""The session lifecycle the executor and the joggers share: start, check, stop."""
+"""The session lifecycle the executor and the joggers share: build, start, check, stop."""
 
 from __future__ import annotations
 
@@ -6,17 +6,17 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from nova.actions import jnt
-from novapolicy.estop import check_estop, check_sessions, triggered_stop_condition
+from novapolicy.estop import EstopMonitor
+from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.types import EmergencyStopError, MotionError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping, Sequence
     from typing import Any
 
     from nova.cell.motion_group import MotionGroup
-    from novapolicy.estop import EstopMonitor
-    from novapolicy.jogging.waypoint_session import WaypointJoggingSession
     from novapolicy.rerun import PolicyRerunLogger
+    from novapolicy.types import JoggingMode, StopCondition, WaypointConfig
 
 _STOP_ERRORS = (asyncio.CancelledError, MotionError, EmergencyStopError, OSError, RuntimeError)
 """What stopping a session may raise without failing the teardown: the robot is stopping anyway."""
@@ -40,32 +40,58 @@ async def move_to_start_joint_position(start: Mapping[MotionGroup, list[float]] 
 
 
 class SessionLifecycle:
-    """Starts a run's sessions with an e-stop monitor and, when a viewer is active, Rerun;
-    checks them for faults and stop conditions; stops them again."""
+    """Builds a run's sessions, one per motion group; starts them with an e-stop monitor and,
+    when a viewer is active, Rerun; checks them for faults and stop conditions; stops them."""
 
     def __init__(
-        self, sessions: Mapping[str, WaypointJoggingSession], motion_groups: list[MotionGroup]
+        self,
+        *,
+        config: WaypointConfig,
+        stop_conditions: list[StopCondition] | None = None,
+        pipeline: Sequence[object] | None = None,
     ) -> None:
-        self._sessions = sessions
-        self._motion_groups = motion_groups
+        self._config = config
+        self._stop_conditions = stop_conditions
+        self._pipeline = pipeline
+        self.sessions: dict[str, WaypointJoggingSession] = {}
+        """The sessions by motion group ID, filled by :meth:`build`."""
+        self._motion_groups: list[MotionGroup] = []
         self._estop: EstopMonitor | None = None
         self.rerun: PolicyRerunLogger | None = None
 
+    def build(
+        self, groups: Mapping[MotionGroup, tuple[JoggingMode, str]]
+    ) -> dict[str, WaypointJoggingSession]:
+        """A fresh session per motion group, with its jogging mode and TCP, in place of the
+        last run's; returns :attr:`sessions`."""
+        self._motion_groups = list(groups)
+        self.sessions.clear()
+        for mg, (mode, tcp) in groups.items():
+            self.sessions[mg.id] = WaypointJoggingSession(
+                motion_group=mg,
+                config=self._config,
+                tcp=tcp,
+                mode=mode,
+                stop_conditions=self._stop_conditions,
+                pipeline=self._pipeline,
+            )
+        return self.sessions
+
     async def start_sessions(self) -> None:
-        for session in self._sessions.values():
+        for session in self.sessions.values():
             await session.start()
 
     async def start_monitoring(
         self,
-        estop: EstopMonitor,
         *,
         camera_names: list[str] | None = None,
         tcp: str = "",
         image_reader: Callable[[], dict[str, Any]] | None = None,
     ) -> PolicyRerunLogger | None:
-        """Start ``estop`` and Rerun; returns the Rerun logger, ``None`` without a viewer."""
-        self._estop = estop
-        await estop.start()
+        """Start an e-stop monitor and Rerun; returns the Rerun logger, ``None`` without a
+        viewer."""
+        self._estop = EstopMonitor(self._motion_groups)
+        await self._estop.start()
         from novapolicy.rerun import _is_rerun_active  # ruff: ignore[import-outside-top-level]
 
         if not _is_rerun_active():
@@ -79,24 +105,32 @@ class SessionLifecycle:
             tcp=tcp,
         )
         await self.rerun.initialize()
-        self.rerun.start_streaming(self._sessions, image_reader=image_reader)
+        self.rerun.start_streaming(self.sessions, image_reader=image_reader)
         return self.rerun
 
     async def wait_ready(self) -> None:
         """Wait until the server acknowledged every session, so motion starts on the first
         waypoint."""
-        for session in self._sessions.values():
+        for session in self.sessions.values():
             await session.wait_ready()
 
     @property
     def stop_condition(self) -> str | None:
-        """Name of the first stop condition that fired, or ``None``."""
-        return triggered_stop_condition(self._sessions)
+        """Name of the first stop condition that fired, or ``None``; a normal stop."""
+        fired = (session.stop_condition_triggered for session in self.sessions.values())
+        return next((name for name in fired if name is not None), None)
 
     def check(self) -> str | None:
-        """Raise a session fault or an e-stop; else return :attr:`stop_condition`."""
-        check_sessions(self._sessions)
-        check_estop(self._estop)
+        """Raise the first session failure (``MotionError``: joint limit, self-collision,
+        singularity; ``RuntimeError``: connection lost or unknown) or an e-stop
+        (``EmergencyStopError``); else return :attr:`stop_condition`."""
+        for session in self.sessions.values():
+            if session.has_failed:
+                raise session.failure_exception or RuntimeError(
+                    session.failure_reason or "unknown session failure"
+                )
+        if self._estop is not None and self._estop.error is not None:
+            raise self._estop.error
         return self.stop_condition
 
     async def close(self, *, drain: bool) -> None:
@@ -107,7 +141,7 @@ class SessionLifecycle:
         if drain:
             try:
                 _ = await asyncio.gather(
-                    *(session.drain() for session in self._sessions.values()),
+                    *(session.drain() for session in self.sessions.values()),
                     return_exceptions=True,
                 )
             except asyncio.CancelledError:
@@ -122,7 +156,7 @@ class SessionLifecycle:
         finally:
             # In parallel: each stop waits for its server to settle.
             results = await asyncio.gather(
-                *(session.stop() for session in self._sessions.values()), return_exceptions=True
+                *(session.stop() for session in self.sessions.values()), return_exceptions=True
             )
         for result in results:
             if isinstance(result, BaseException) and not isinstance(result, _STOP_ERRORS):

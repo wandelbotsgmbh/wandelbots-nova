@@ -21,9 +21,10 @@ from novapolicy.jogging import jog_joints, jog_tcp
 from novapolicy.jogging.jogger import JointJogger, TcpJogger
 from novapolicy.jogging.live_buffer import LiveBuffer
 from novapolicy.tests.doubles import fake_session as _fake_session, mg as _mg
-from novapolicy.types import MotionError
+from novapolicy.types import MotionError, WaypointConfig
 
 _JOGGER = "novapolicy.jogging.jogger"
+_LIFECYCLE = "novapolicy.jogging.lifecycle"
 
 _CLOCK_BASE = 1_000.0
 
@@ -58,7 +59,7 @@ def _no_estop_no_rerun():
     estop.start = AsyncMock()
     estop.stop = AsyncMock()
     with (
-        patch(f"{_JOGGER}.EstopMonitor", return_value=estop),
+        patch(f"{_LIFECYCLE}.EstopMonitor", return_value=estop),
         patch("novapolicy.rerun._is_rerun_active", return_value=False),
     ):
         yield
@@ -88,7 +89,7 @@ def _build_joint_jogger(
         sessions[motion_group].pipeline = kw.get("pipeline")
         return sessions[motion_group]
 
-    with patch("novapolicy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
+    with patch("novapolicy.jogging.lifecycle.WaypointJoggingSession", side_effect=make_session):
         jogger = jog_joints(
             mgs if len(mgs) > 1 else mgs[0],
             pipeline=pipeline,
@@ -113,7 +114,7 @@ def _build_tcp_jogger(
         sessions[motion_group].pipeline = kw.get("pipeline")
         return sessions[motion_group]
 
-    with patch("novapolicy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
+    with patch("novapolicy.jogging.lifecycle.WaypointJoggingSession", side_effect=make_session):
         jogger = jog_tcp(mg, tcp=tcp, pipeline=pipeline)
     return jogger, mg, sessions
 
@@ -376,7 +377,7 @@ async def test_a_failing_rerun_teardown_still_stops_every_session():
     rerun = MagicMock(initialize=AsyncMock(), stop_streaming=AsyncMock(side_effect=OSError))
     estop = MagicMock(start=AsyncMock(), stop=AsyncMock())
     with (
-        patch(f"{_JOGGER}.EstopMonitor", return_value=estop),
+        patch(f"{_LIFECYCLE}.EstopMonitor", return_value=estop),
         patch("novapolicy.rerun._is_rerun_active", return_value=True),
         patch("novapolicy.rerun.PolicyRerunLogger", return_value=rerun),
         pytest.raises(OSError),
@@ -473,7 +474,8 @@ async def test_a_cancel_while_draining_stops_the_sessions_and_reaches_the_caller
             self.stopped = True
 
     session = _Session()
-    lifecycle = SessionLifecycle({"0@ur": session}, [])  # type: ignore[dict-item]
+    lifecycle = SessionLifecycle(config=WaypointConfig())
+    lifecycle.sessions["0@ur"] = session  # ty: ignore[invalid-assignment]
     task = asyncio.create_task(lifecycle.close(drain=True))
     await drained.wait()
     task.cancel()

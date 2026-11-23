@@ -13,14 +13,12 @@ from typing import TYPE_CHECKING, Any
 
 from novapolicy.cameras.manager import CameraManager
 from novapolicy.chunking import apply_relative_mode, is_single_step, placement, trim_chunk
-from novapolicy.estop import EstopMonitor
 from novapolicy.io import IOStreamManager
 from novapolicy.jogging.lifecycle import SessionLifecycle, move_to_start_joint_position
 from novapolicy.jogging.live_buffer import LiveBuffer
 from novapolicy.jogging.modules import TimestepTimeline, default_pipeline
 from novapolicy.jogging.pipeline import split_pipeline
 from novapolicy.jogging.session import first_fired
-from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.policy_client import PolicyClient
 from novapolicy.types import (
     ActionChunk,
@@ -39,6 +37,7 @@ if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.jogging.clock import ServerMs
+    from novapolicy.jogging.waypoint_session import WaypointJoggingSession
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.schema import PolicySchema
     from novapolicy.types import StopCondition
@@ -196,8 +195,10 @@ class PolicyExecutor:
 
         _check_execution_mode(execution, self._policy, self._pipeline)
 
-        self._sessions: dict[str, WaypointJoggingSession] = {}
-        self._lifecycle = SessionLifecycle(self._sessions, self._motion_groups)
+        self._lifecycle = SessionLifecycle(
+            config=motion, stop_conditions=self._stop_conditions, pipeline=self._pipeline
+        )
+        self._sessions: dict[str, WaypointJoggingSession] = self._lifecycle.sessions
         self._cameras = CameraManager(camera_max_age_s)
         self._stop_event = asyncio.Event()
         self._last_obs: dict[str, Any] | None = None
@@ -294,10 +295,9 @@ class PolicyExecutor:
     async def _run_episode(self) -> None:
         """Create the sessions, run the observe-act loop and tear down: after a normal end the
         sessions drain, after an error they stop at once (contracts T10)."""
-        for mg in self._motion_groups:
-            self._sessions[mg.id] = self._create_session(mg)
-            self._sessions[mg.id].add_state_observer(
-                lambda state, ts_ms, _generated, group_id=mg.id: self._schema.observe_state(
+        for group_id, session in self._build_sessions().items():
+            session.add_state_observer(
+                lambda state, ts_ms, _generated, group_id=group_id: self._schema.observe_state(
                     group_id, state.joints, ts_ms / 1000.0
                 )
             )
@@ -341,7 +341,6 @@ class PolicyExecutor:
         await self._policy.connect(self.mg_ids)
         await self._policy.validate_schema(self._schema)
         self._rerun = await self._lifecycle.start_monitoring(
-            EstopMonitor(self._motion_groups),
             camera_names=self._cameras.names,
             tcp=self._schema.tcp,
             image_reader=self._cameras.read_latest_frames if self._cameras.active else None,
@@ -693,17 +692,17 @@ class PolicyExecutor:
 
         return run
 
-    def _create_session(self, mg: MotionGroup) -> WaypointJoggingSession:
-        """Create a waypoint jogging session for a motion group."""
+    def _build_sessions(self) -> dict[str, WaypointJoggingSession]:
+        """A fresh session per motion group: TCP poses for the schema's TCP action groups,
+        joints for the rest."""
         tcp_groups = self._schema.tcp_action_groups()
-        return WaypointJoggingSession(
-            motion_group=mg,
-            config=self._motion,
-            tcp=tcp_groups.get(mg.id) or self._schema.tcp,
-            stop_conditions=self._stop_conditions,
-            mode="cartesian" if mg.id in tcp_groups else "joint",
-            pipeline=self._pipeline,
-        )
+        return self._lifecycle.build({
+            mg: (
+                "cartesian" if mg.id in tcp_groups else "joint",
+                tcp_groups.get(mg.id) or self._schema.tcp,
+            )
+            for mg in self._motion_groups
+        })
 
     @property
     def _n_action_steps(self) -> int:
