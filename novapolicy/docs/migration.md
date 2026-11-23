@@ -64,10 +64,10 @@ a one-step target: step `k` is due `WaypointConfig.max_expected_latency_ms + k·
 moment it was observed (on the server's clock, 100 ms by default), and steps already too close to
 send are dropped. Before, step 0
 was placed at server "now" minus the inference time, rounded to whole steps. Chunk policies
-(GR00T, LeRobot without the async queue, NATS) therefore run about `max_expected_latency_ms`
-later than before, and lose no head steps while the latency stays below it. Chunks on their own
-timeline keep the old placement: RTC (`seam_backdate_steps`), the timestep queues
-(`QueuedPolicyClient`, the LeRobot async queue) and bridged chunks.
+(GR00T, LeRobot) therefore run about `max_expected_latency_ms` later than before, and lose no
+head steps while the latency stays below it. Chunks on their own timeline keep the old
+placement: the timestep queues (`QueuedPolicyClient`) and bridged chunks. (GR00T's RTC and
+LeRobot's own async queue, which kept it too, were removed later; see below.)
 
 
 ## GR00T applies the schema's joint operators
@@ -87,6 +87,9 @@ depend on that, instead of running them with timings that never come:
 | --- | --- |
 | `QueuedPolicyClient(...)` or `LeRobotPolicyClient(use_async_queue=True)` with `SequentialExecution()` | use `ContinuousExecution()`, or the wrapped policy without the queue |
 | a `LiveBuffer` in `pipeline=` with `SequentialExecution()` | use `ContinuousExecution()` |
+
+`use_async_queue=` was removed later: wrap the client in `QueuedPolicyClient` instead (see
+[LeRobot has no async queue of its own](#lerobot-has-no-async-queue-of-its-own)).
 
 A chunk with its own `first_timestamp_ms` is no longer bridged from the measured pose: the bridge
 rebuilt the chunk without that timestamp. It is sent at the time the policy set.
@@ -183,7 +186,7 @@ pipeline = [
 Also changed:
 
 - **A timestep queue without its timeline is refused.** In continuous execution a
-  `QueuedPolicyClient` or LeRobot's async queue keeps its chunks on one timeline
+  `QueuedPolicyClient` keeps its chunks on one timeline
   (`TimestepTimeline`, see below); an explicit pipeline without it raises at construction.
 - **The queue clients return their plan unsmoothed**, with `ActionChunk.retained_prefix_steps`
   set; the session smooths it. Rerun's action plot and pre-send stop conditions see the
@@ -233,18 +236,6 @@ pipeline's `Smoothing` and `Bridge` modules to connect chunks.
   `Bridge` is no longer required.
 - **`PendingChunk.action_timestep`** names the timestep of the caller's first step
   (`steps[start_step]`), also behind a bridge.
-
-## The NATS mock policy server is an example
-
-`novapolicy.nats.mock_server` moved to `examples/nats_mock_server.py`; run it with
-`python novapolicy/examples/nats_mock_server.py --servers nats://...` instead of `python -m`.
-
-## The NATS client's velocities come from JointVelocities
-
-`NatsPolicyClient` reads joint velocities through `JointVelocities`, as
-`Observation.joint_velocities` does: a repeated state sample now keeps the last velocity (for up
-to a short hold) instead of reading as standstill, and the finite difference warns once per motion
-group when no measurement is available.
 
 ## LeRobot has no async queue of its own
 
@@ -337,3 +328,39 @@ own: a `PolicyClient` whose `get_actions` builds the observation with the schema
 the service's subjects and decodes the reply with `schema.decode_actions`
 ([adding a provider](architecture.md#adding-a-policy-provider);
 `examples/http_policy.py` is one written that way in 26 lines).
+
+## Examples removed: episode tools and six jogging variants
+
+- `examples/replay/replay_episode.py` (with its sample episode) and
+  `examples/settings_from_episode.py` are gone. The pick-and-place example
+  (`examples/execute_gr00t_single_arm_pick_and_place/`) keeps its measured settings in
+  `episode_settings.json` and the loader it needs in `episode_settings.py`.
+- The eight `examples/jogging/jogging_{single,dual}_{joint,tcp}[_chunked].py` scripts are now
+  two, `jogging_joints.py` and `jogging_tcp.py`; `--dual` and `--chunked` select the variant.
+
+## Session failures end the run; invalid actions and refused schemas fail before motion
+
+- **Any end of the action chunk stream while a session runs fails it**, and the next check
+  (`PolicyExecutor`'s tick, the jogger's loop) raises: besides an `OSError` or `RuntimeError`,
+  now also the API client's bare `Exception` on an error frame, websockets'
+  `ConnectionClosedError`, an exception from a waypoint module or a stop condition, and a stream
+  NOVA closes without an error. These used to end the sender silently while the policy kept
+  running. Errors other than `OSError` and `RuntimeError` surface as a `RuntimeError` naming the
+  motion group, with the original as its `__cause__`.
+- **A state stream that ends after startup fails the session**, with a `RuntimeError`
+  (`state stream ended for <motion group>`) or the stream's own error. The policy used to keep
+  getting the last state. A stream that ends during a requested stop is still no failure.
+- **`PolicyExecutor` connects the policy and runs `validate_schema` before the start move**
+  (`start_joint_position`), not after it: a schema the policy refuses now fails before the robot
+  moves (ADR 0014). `connect` and `validate_schema` therefore run before the cameras, the
+  sessions, IO and pose sources are started; the shipped providers need none of them there.
+- **A failed IO write or computed action of a chunk without motion ends the run with its
+  error** (contract T7), also on the run's last tick, and the sessions stop instead of draining.
+  The error used to be swallowed.
+- **Action values are checked when queued** (contract M12). `WaypointJoggingSession.update_chunk`
+  raises `ValueError` for a value that is not finite (NaN, infinity) or a step whose width is not
+  the session's (the joint count once known, 6 for TCP poses), naming the motion group, the step
+  and the expected width; such a chunk used to reach NOVA. The executor and `set_chunk` /
+  `set_target` check every motion group before they queue any, so in `PolicyExecutor` such a
+  chunk ends the run with that `ValueError` before any arm gets it. The new
+  `WaypointJoggingSession.check_steps(steps)` runs the same check alone.
