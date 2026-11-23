@@ -1,5 +1,5 @@
 """The send pipeline end to end on a virtual robot: jogging, a dummy VLA's chunks continuously
-and sequentially, a timestep queue, and one-step targets.
+and sequentially, a timestep queue, one-step targets, and a provider written from scratch.
 
 One throwaway virtual UR10e for the module (deleted on teardown). Each test records, per motion
 group, every waypoint the session sends and every state the controller reports (server ms), and
@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import math
-import os
 import time
 from typing import TYPE_CHECKING, Any
 import uuid
@@ -37,7 +36,7 @@ from novapolicy.schema import Action, Observation, PolicySchema
 from novapolicy.types import ActionChunk
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
+    from collections.abc import Iterator
 
 START = [0.0, -1.2, 1.4, -1.8, -1.57, 0.0]
 AMPLITUDE_RAD, FREQUENCY_HZ = 0.25, 0.4
@@ -244,10 +243,7 @@ async def test_one_step_targets_run_continuously(ur10e, recording):
     assert rms < 0.5 and peak < 2.0, (rms, peak)
 
 
-BROKER = os.environ.get("NOVAPOLICY_TEST_BROKER", "nats://localhost:4222")
-
-
-def _load_mock_server(name: str = "nats_mock_server") -> Any:
+def _load_example(name: str) -> Any:
     """An example module, loaded by path: examples are not a package."""
     import importlib.util
     from pathlib import Path
@@ -260,68 +256,12 @@ def _load_mock_server(name: str = "nats_mock_server") -> Any:
     return module
 
 
-@contextlib.asynccontextmanager
-async def _mock_vla(prefix: str) -> AsyncIterator[None]:
-    """A dummy VLA over the wire: the NATS mock policy server, 25-step chunks circling joints 0
-    and 1. Skips without a broker (NOVAPOLICY_TEST_BROKER)."""
-    import nats
-
-    try:
-        probe = await asyncio.wait_for(
-            nats.connect(servers=[BROKER], connect_timeout=2, allow_reconnect=False), 5
-        )
-    except Exception:  # ruff: ignore[blind-except]
-        pytest.skip(f"No NATS broker at {BROKER}")
-    await probe.close()
-    mock = _load_mock_server()
-    policies = mock.build_policies(
-        blocks=["arm"],
-        dof=6,
-        horizon=25,
-        dt_ms=DT_MS,
-        amplitude_deg=10.0,
-        period_s=4.0,
-        joints=[0, 1],
-        patterns=["circle"],
-    )
-    server = mock.MockPolicyServer(policies, servers=[BROKER], subject_prefix=prefix)
-    await server.start()
-    try:
-        yield
-    finally:
-        await server.stop()
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio(loop_scope="module")
-@pytest.mark.parametrize("mode", ["continuous", "sequential"])
-async def test_a_dummy_vla_over_nats(ur10e, recording, mode: str):
-    from novapolicy.nats import NatsPolicyClient
-
-    prefix = f"itest{uuid.uuid4().hex[:6]}"
-    async with _mock_vla(prefix):
-        policy = NatsPolicyClient(policy_id="mock-circle", servers=BROKER, subject_prefix=prefix)
-        result = await PolicyExecutor(
-            PolicySchema(observations=[Observation.joint_positions("arm", source=ur10e)]),
-            policy,
-            execution=ContinuousExecution(rate_hz=30)
-            if mode == "continuous"
-            else SequentialExecution(),
-            n_action_steps=0,
-            start_joint_position={ur10e: START},
-            timeout_s=6.0,
-        ).run()
-    assert result.reason == "timeout"
-    rms, peak = _tracking_deg(recording, skip_ms=0.0 if mode == "sequential" else 500.0)
-    assert rms < 0.5 and peak < 2.0, (rms, peak)
-
-
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="module")
 @pytest.mark.parametrize("mode", ["continuous", "sequential"])
 async def test_a_new_provider_over_http(ur10e, recording, mode: str):
     """The provider written from scratch in examples/http_policy.py, against its mock server."""
-    example = _load_mock_server("http_policy")
+    example = _load_example("http_policy")
     server = example.serve_mock_policy(START, control_freq=30.0)
     host, port = server.server_address[:2]
     try:

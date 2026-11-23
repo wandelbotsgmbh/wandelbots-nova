@@ -18,8 +18,8 @@ carried code for one provider's features (a timestep queue's timeline, RTC seams
   across motion groups, IO mappings. A new provider maps names to its wire and nothing else.
   Of the shipped ones, GR00T, LeRobot and LEAPP decode with it, and GR00T builds its state with
   it too (`observation_groups`, one array per key; only its default TCP format is its own).
-  NATS still assembles its proprioception blocks and LeRobot its flat feature names, which its
-  checkpoint validation is built on. The first observation's check against the checkpoint's
+  LeRobot still assembles its flat feature names, which its checkpoint validation is built on.
+  (The NATS provider was removed on 2026-11-23.) The first observation's check against the checkpoint's
   statistics is one function, `training_range.check_vectors`, for GR00T and LeRobot.
 - **The package owns NOVA's side:** placement, the send pipeline and the action chunk stream.
 - **What a provider needs beyond that comes as modules** (`PolicyClient.default_modules`): a timestep

@@ -27,11 +27,10 @@ in world coordinates. Everything the policy sees is converted from these and bac
 
 **M1 Operators run both ways.** A channel's `ops` convert NOVA → policy on observations, front
 to back, and are inverted policy → NOVA on actions, back to front. An explicit `Action`'s ops
-win over its observation's. Every client applies them; a NATS policy takes NOVA units in the
-layout it declares, so ops on its schema are refused.
+win over its observation's. Every client applies them.
 Tests: `test_operator_lists_reverse_on_the_way_back`, `test_joint_observations_are_converted_on_the_way_in`,
 `test_joint_actions_are_converted_on_the_way_out`, `test_an_explicit_action_overrides_the_observations_operators`,
-`test_joint_observations_apply_the_schema_operators`, `test_validate_schema_rejects_joint_operators`.
+`test_joint_observations_apply_the_schema_operators`.
 
 **M2 Joint observations** concatenate the source groups' joints in list order, keyed
 `<key>_1..n`. Tests: `test_dual_arm_observation`, `test_concatenated_observation`.
@@ -200,5 +199,5 @@ Behaviour the contracts above do not cover yet, found while writing them:
 - **IO names are not scoped by controller:** the same name on two controllers resolves to the
   last.
 - **The observed TCP is the controller's active TCP**, not the one named for the action.
-- **LEAPP and NATS policies map no IO actions.**
+- **LEAPP policies map no IO actions.**
 - **GR00T's TCP default** (metres and rot6d in, mm and rotation vectors out) bypasses M3.

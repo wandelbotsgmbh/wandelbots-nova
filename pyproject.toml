@@ -83,16 +83,6 @@ novapolicy-leapp = [
     "requests>=2.33.1",
     "safetensors>=0.5.0",
 ]
-novapolicy-nats = [
-    "aiortc>=1.14.0",
-    # aiohttp is nats-py's WebSocket transport: required for ws:// brokers
-    # (a LAN Nova instance at ws://<host>/api/nats), unused for nats://.
-    "aiohttp>=3.9",
-    "msgpack>=1.1.0,<2",
-    "nats-py>=2.9",
-    "Pillow>=10.0.0",
-    "requests>=2.33.1",
-]
 benchmark = [
     "rerun-sdk==0.34.0",
     "requests>=2.32.3",

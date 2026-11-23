@@ -10,7 +10,7 @@ action chunk streaming interface is a module you can switch on or off.
 ```mermaid
 flowchart LR
     subgraph Provider["Policy provider (PolicyClient)"]
-        W["its own wire<br/>ZMQ · gRPC · NATS · onnxruntime"]
+        W["its own wire<br/>ZMQ · gRPC · HTTP · onnxruntime"]
     end
     subgraph Package["novapolicy"]
         S["PolicySchema<br/>codec: names, units, frames, relative targets"]
@@ -169,7 +169,6 @@ executor, the session and the jogger name no provider: adding one touches none o
 | LEAPP (onnxruntime, in process) | 37 | 154 | 146 (`pipeline.py`) | the ONNX pipeline's ports |
 | GR00T (ZMQ, msgpack) | 26 | 277 | 155 | server modality keys, checkpoint statistics, rot6d TCP |
 | LeRobot (gRPC, pickle) | 30 | 259 | 96 | checkpoint feature contract (`schema.py`, `config.py`: 403) |
-| NATS (request/reply) | 33 | 352 | 189 | proprioception blocks and the protocol's error codes |
 
 Everything beyond `get_actions` is the provider's wire and the checks its checkpoint format allows;
 mapping, decoding, placement and streaming come from the package.
@@ -187,7 +186,7 @@ mapping, decoding, placement and streaming come from the package.
 | jogging state, standstill, stop conditions (`first_fired`) | `novapolicy/jogging/session.py` |
 | e-stop stream | `novapolicy/estop.py` |
 | jogging API | `novapolicy/jogging/jogger.py` |
-| providers | `novapolicy/gr00t/`, `lerobot/`, `nats/`, `leapp/`, `queued_client.py` |
+| providers | `novapolicy/gr00t/`, `lerobot/`, `leapp/`, `queued_client.py` |
 | visualization | `novapolicy/rerun/` |
 
 The contracts every part keeps are in [contracts.md](contracts.md), each with its tests; why each

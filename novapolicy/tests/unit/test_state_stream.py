@@ -11,8 +11,6 @@ import time
 import numpy as np
 import pytest
 
-from novapolicy.nats.client import PROPRIO_KEY, NatsPolicyClient, _Block
-from novapolicy.nats.protocol import ActionSpec
 from novapolicy.state_stream import (
     DEFAULT_STALE_AFTER_S,
     StateStreamVelocities,
@@ -92,40 +90,3 @@ def test_it_satisfies_the_protocol() -> None:
 
 
 # -- the client's choice ----------------------------------------------------
-
-
-class _Source:
-    """A velocity source under the test's control."""
-
-    def __init__(self, values: tuple[float, ...] | None) -> None:
-        self.values = values
-        self.started = False
-        self.stopped = False
-
-    async def start(self) -> None:
-        self.started = True
-
-    async def stop(self) -> None:
-        self.stopped = True
-
-    def velocities(self, motion_group_id: str) -> tuple[float, ...] | None:
-        del motion_group_id
-        return self.values
-
-
-def _client(source: _Source | None) -> tuple[NatsPolicyClient, _Block]:
-    client = NatsPolicyClient(policy_id="p", servers="nats://x", velocities=source)
-    spec = ActionSpec(name="joint_target", dof=DOF, horizon=1, dt_ms=20.0)
-    block = _Block(PROPRIO_KEY, "joint_target", spec)
-    block.motion_group_id = MG_ID
-    return client, block
-
-
-@pytest.mark.asyncio
-async def test_the_nats_client_feeds_the_measured_velocities_to_the_policy() -> None:
-    """The client reads its velocity source through JointVelocities, whose fallbacks are tested
-    in test_joint_velocities."""
-    client, _block = _client(_Source(MEASURED))
-    await client._velocities.start()
-    got = client._velocities.read(MG_ID, JOINTS.tolist(), 1.0)
-    np.testing.assert_allclose(got, MEASURED, rtol=1e-6)

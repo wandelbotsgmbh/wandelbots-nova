@@ -328,3 +328,12 @@ members. Code that only uses `PolicyExecutor`, `jog_joints` and `jog_tcp` needs 
 - `set_target` and `set_chunk` check the value for every motion group before they send any. With
   several motion groups, a bare value is refused for not being a dict before its kind is checked,
   and a bare target of the wrong type says `Expected list[float] per motion group` (or `Pose`).
+
+## The NATS policy provider is removed
+
+`NatsPolicyClient` (`novapolicy.nats`), the `novapolicy-nats` extra, the NATS mock policy server
+and the NATS dual-arm example are gone. A policy service reached over NATS is a provider of its
+own: a `PolicyClient` whose `get_actions` builds the observation with the schema, sends it over
+the service's subjects and decodes the reply with `schema.decode_actions`
+([adding a provider](architecture.md#adding-a-policy-provider);
+`examples/http_policy.py` is one written that way in 26 lines).

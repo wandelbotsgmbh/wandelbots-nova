@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 
 [manifest]
@@ -767,37 +767,37 @@ wheels = [
 
 [package.optional-dependencies]
 cublas = [
-    { name = "nvidia-cublas" },
+    { name = "nvidia-cublas", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 cudart = [
-    { name = "nvidia-cuda-runtime" },
+    { name = "nvidia-cuda-runtime", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 cufft = [
-    { name = "nvidia-cufft" },
+    { name = "nvidia-cufft", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 cufile = [
-    { name = "nvidia-cufile" },
+    { name = "nvidia-cufile", marker = "sys_platform == 'linux'" },
 ]
 cupti = [
-    { name = "nvidia-cuda-cupti" },
+    { name = "nvidia-cuda-cupti", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 curand = [
-    { name = "nvidia-curand" },
+    { name = "nvidia-curand", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 cusolver = [
-    { name = "nvidia-cusolver" },
+    { name = "nvidia-cusolver", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 cusparse = [
-    { name = "nvidia-cusparse" },
+    { name = "nvidia-cusparse", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 nvjitlink = [
-    { name = "nvidia-nvjitlink" },
+    { name = "nvidia-nvjitlink", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 nvrtc = [
-    { name = "nvidia-cuda-nvrtc" },
+    { name = "nvidia-cuda-nvrtc", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 nvtx = [
-    { name = "nvidia-nvtx" },
+    { name = "nvidia-nvtx", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
 [[package]]
@@ -3791,14 +3791,6 @@ novapolicy-lerobot = [
     { name = "pillow" },
     { name = "requests" },
 ]
-novapolicy-nats = [
-    { name = "aiohttp" },
-    { name = "aiortc" },
-    { name = "msgpack" },
-    { name = "nats-py" },
-    { name = "pillow" },
-    { name = "requests" },
-]
 novax = [
     { name = "fastapi" },
     { name = "python-decouple" },
@@ -3831,12 +3823,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", marker = "extra == 'novapolicy-nats'", specifier = ">=3.9" },
     { name = "aiortc", marker = "extra == 'novapolicy'", specifier = ">=1.14.0" },
     { name = "aiortc", marker = "extra == 'novapolicy-gr00t'", specifier = ">=1.14.0" },
     { name = "aiortc", marker = "extra == 'novapolicy-leapp'", specifier = ">=1.14.0" },
     { name = "aiortc", marker = "extra == 'novapolicy-lerobot'", specifier = ">=1.14.0" },
-    { name = "aiortc", marker = "extra == 'novapolicy-nats'", specifier = ">=1.14.0" },
     { name = "aiostream", specifier = ">=0.6.4,<0.7" },
     { name = "aiostream", marker = "extra == 'wandelscript'", specifier = ">=0.6.1,<0.7" },
     { name = "antlr4-python3-runtime", marker = "extra == 'wandelscript'", specifier = "==4.13.2" },
@@ -3856,9 +3846,7 @@ requires-dist = [
     { name = "loguru", specifier = ">=0.7.2,<0.8" },
     { name = "msgpack", specifier = ">=1.2.3" },
     { name = "msgpack", marker = "extra == 'novapolicy-gr00t'", specifier = ">=1.1.0,<2" },
-    { name = "msgpack", marker = "extra == 'novapolicy-nats'", specifier = ">=1.1.0,<2" },
     { name = "nats-py", specifier = ">=2.11.0" },
-    { name = "nats-py", marker = "extra == 'novapolicy-nats'", specifier = ">=2.9" },
     { name = "nova2urdf", marker = "extra == 'nova-rerun-bridge'", specifier = ">=0.3.0" },
     { name = "numpy", specifier = ">1.1.19" },
     { name = "numpy", marker = "extra == 'wandelscript'", specifier = ">=1.1.19" },
@@ -3868,7 +3856,6 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'novapolicy-gr00t'", specifier = ">=10.0.0" },
     { name = "pillow", marker = "extra == 'novapolicy-leapp'", specifier = ">=10.0.0" },
     { name = "pillow", marker = "extra == 'novapolicy-lerobot'", specifier = ">=10.0.0" },
-    { name = "pillow", marker = "extra == 'novapolicy-nats'", specifier = ">=10.0.0" },
     { name = "pydantic", specifier = ">=2.11.4,<3" },
     { name = "python-decouple", specifier = "~=3.8" },
     { name = "python-decouple", marker = "extra == 'novax'", specifier = ">=3.8" },
@@ -3882,7 +3869,6 @@ requires-dist = [
     { name = "requests", marker = "extra == 'novapolicy-gr00t'", specifier = ">=2.33.1" },
     { name = "requests", marker = "extra == 'novapolicy-leapp'", specifier = ">=2.33.1" },
     { name = "requests", marker = "extra == 'novapolicy-lerobot'", specifier = ">=2.33.1" },
-    { name = "requests", marker = "extra == 'novapolicy-nats'", specifier = ">=2.33.1" },
     { name = "rerun-sdk", marker = "extra == 'benchmark'", specifier = "==0.34.0" },
     { name = "rerun-sdk", marker = "extra == 'nova-rerun-bridge'", specifier = "==0.34.0" },
     { name = "safetensors", marker = "extra == 'novapolicy-leapp'", specifier = ">=0.5.0" },
@@ -3895,7 +3881,7 @@ requires-dist = [
     { name = "wandelbots-api-client", specifier = "==26.7.0" },
     { name = "websockets", specifier = ">=14.1.0,<15" },
 ]
-provides-extras = ["nova-rerun-bridge", "wandelscript", "novax", "novapolicy", "novapolicy-gr00t", "novapolicy-lerobot", "novapolicy-leapp", "novapolicy-nats", "benchmark"]
+provides-extras = ["nova-rerun-bridge", "wandelscript", "novax", "novapolicy", "novapolicy-gr00t", "novapolicy-lerobot", "novapolicy-leapp", "benchmark"]
 
 [package.metadata.requires-dev]
 dev = [
