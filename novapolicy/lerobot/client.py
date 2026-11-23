@@ -286,9 +286,9 @@ class LeRobotPolicyClient(PolicyClient):
         if not self._transport.connected:
             await self.connect([])
 
-        observation = await self._lerobot_schema.build_observation(
-            states, schema, images, io_values
-        )
+        observation = await schema.build_observation(states, io_values)
+        if images:
+            observation.update(images)
         if self._task is not None:
             # LeRobot's robot client puts the instruction here too; the server
             # copies it through to the policy's tokenizer step.

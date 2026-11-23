@@ -39,18 +39,6 @@ class LeRobotSchema:
         self._logged_missing_features = False
 
     @staticmethod
-    async def build_observation(
-        states: dict[str, RobotState],
-        schema: PolicySchema,
-        images: dict[str, Any] | None,
-        io_values: dict[str, object] | None,
-    ) -> dict[str, Any]:
-        observation = await schema.build_observation(states, io_values)
-        if images:
-            observation.update(images)
-        return observation
-
-    @staticmethod
     def state_names(states: dict[str, RobotState], schema: PolicySchema) -> list[str]:
         """The flat observation.state, in a fixed order: joint positions, joint velocities, TCP
         poses, object poses, IOs, then the keys of ``Observation.computed`` (one value each).
@@ -84,33 +72,14 @@ class LeRobotSchema:
         io_targets = [
             (motion_group.id, io) for _key, motion_group, io, _mapping in schema.io_action_keys
         ]
-
-        duplicate_joint_groups = sorted(
-            group_id for group_id, count in Counter(joint_group_ids).items() if count > 1
-        )
-        if duplicate_joint_groups:
-            raise ValueError(
-                "LeRobotPolicyClient found multiple joint action targets for motion groups: "
-                f"{duplicate_joint_groups}"
-            )
-
-        duplicate_tcp_groups = sorted(
-            group_id for group_id, count in Counter(tcp_group_ids).items() if count > 1
-        )
-        if duplicate_tcp_groups:
-            raise ValueError(
-                "LeRobotPolicyClient found multiple TCP action targets for motion groups: "
-                f"{duplicate_tcp_groups}"
-            )
-
-        duplicate_io_targets = sorted(
-            target for target, count in Counter(io_targets).items() if count > 1
-        )
-        if duplicate_io_targets:
-            raise ValueError(
-                "LeRobotPolicyClient found multiple actions for the same IO target: "
-                f"{duplicate_io_targets}"
-            )
+        for targets, what in (
+            (joint_group_ids, "multiple joint action targets for motion groups"),
+            (tcp_group_ids, "multiple TCP action targets for motion groups"),
+            (io_targets, "multiple actions for the same IO target"),
+        ):
+            duplicates = sorted(target for target, count in Counter(targets).items() if count > 1)
+            if duplicates:
+                raise ValueError(f"LeRobotPolicyClient found {what}: {duplicates}")
 
         joint_groups = set(joint_group_ids)
         tcp_groups = set(tcp_group_ids)

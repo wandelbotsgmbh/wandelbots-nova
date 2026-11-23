@@ -204,10 +204,6 @@ class Gr00tPolicyClient(PolicyClient):
             ranges[key] = [(float(lo), float(hi)) for lo, hi in zip(lows, highs, strict=False)]
         return ranges
 
-    def _step_ms(self) -> float:
-        """The step spacing from ``control_freq``."""
-        return self._dt_ms
-
     async def get_actions(
         self,
         states: dict[str, RobotState],
@@ -355,7 +351,7 @@ class Gr00tPolicyClient(PolicyClient):
         reported = info.get("dt_ms")
         return schema.decode_actions(
             outputs,
-            dt_ms=float(cast("float", reported)) if reported is not None else self._step_ms(),
+            dt_ms=float(cast("float", reported)) if reported is not None else self._dt_ms,
             dof=self._actual_dof,
             source="GR00T",
         )

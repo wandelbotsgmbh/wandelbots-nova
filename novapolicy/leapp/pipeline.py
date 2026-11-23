@@ -9,7 +9,7 @@ the same way: models in YAML order, each output copied to the inputs it feeds.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import hashlib
 from pathlib import Path
 import threading
@@ -40,7 +40,6 @@ class Port:
     dtype: str
     kind: str | None = None
     connection: str | None = None  # Isaac Lab's isaaclab_connection, e.g. "state:robot:joint_pos"
-    extra: dict[str, Any] = field(default_factory=dict)
 
     @property
     def key(self) -> str:
@@ -57,9 +56,6 @@ class Port:
         return self.connection.rsplit(":", 1)[-1] if self.connection else None
 
 
-_KNOWN_PORT_FIELDS = {"name", "dtype", "shape", "type", "kind", "isaaclab_connection"}
-
-
 def _port(node: str, description: dict[str, Any]) -> Port:
     shape = description["shape"]
     if isinstance(shape, str):
@@ -71,7 +67,6 @@ def _port(node: str, description: dict[str, Any]) -> Port:
         dtype=str(description["dtype"]),
         kind=description.get("kind"),
         connection=description.get("isaaclab_connection"),
-        extra={k: v for k, v in description.items() if k not in _KNOWN_PORT_FIELDS},
     )
 
 
