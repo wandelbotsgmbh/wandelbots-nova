@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import math
+import os
 import time
 from typing import TYPE_CHECKING, Any
 import uuid
@@ -36,7 +37,7 @@ from novapolicy.schema import Action, Observation, PolicySchema
 from novapolicy.types import ActionChunk
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import AsyncIterator, Iterator
 
 START = [0.0, -1.2, 1.4, -1.8, -1.57, 0.0]
 AMPLITUDE_RAD, FREQUENCY_HZ = 0.25, 0.4
@@ -81,6 +82,7 @@ class _Recording:
         self.states: list[tuple[int, float]] = []
         self.requests = 0
         self.spans: list[tuple[int, int]] = []
+        self.chunks: list[Any] = []  # every chunk as queued, after the chunk modules
 
 
 @pytest.fixture
@@ -93,6 +95,7 @@ def recording(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Recording]:
 
     def recording_trimmed(self: Any, pending: Any) -> Any:
         scheduled = trimmed(self, pending)
+        record.chunks.append(pending)
         if scheduled.request is not None:
             record.requests += 1
             waypoints = scheduled.request.waypoints
@@ -208,10 +211,16 @@ async def test_a_dummy_vla_runs_sequentially(ur10e, recording):
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="module")
 async def test_a_timestep_queue_keeps_one_timeline(ur10e, recording):
-    reason = await _run(
-        ur10e, QueuedPolicyClient(_dummy_vla(ur10e, 15)), ContinuousExecution(rate_hz=10)
-    )
+    """The first chunk is bridged; every later one is placed on the first one's timeline by the
+    session's TimestepTimeline (not bridged again at "now"), and the queue is told which step
+    is executing."""
+    policy = QueuedPolicyClient(_dummy_vla(ur10e, 15))
+    reason = await _run(ur10e, policy, ContinuousExecution(rate_hz=10))
     assert reason == "timeout"
+    first, *later = recording.chunks
+    assert first.start_step > 0  # bridged
+    assert later and all(c.first_timestamp_ms is not None and c.start_step == 0 for c in later)
+    assert policy._replaceable > 0
     rms, peak = _tracking_deg(recording)
     assert rms < 0.5 and peak < 2.0, (rms, peak)
 
@@ -222,4 +231,76 @@ async def test_one_step_targets_run_continuously(ur10e, recording):
     reason = await _run(ur10e, _dummy_vla(ur10e, 1), ContinuousExecution(rate_hz=30))
     assert reason == "timeout"
     rms, peak = _tracking_deg(recording)
+    assert rms < 0.5 and peak < 2.0, (rms, peak)
+
+
+BROKER = os.environ.get("NOVAPOLICY_TEST_BROKER", "nats://localhost:4222")
+
+
+def _load_mock_server() -> Any:
+    """The example NATS mock policy server, loaded by path: examples are not a package."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "examples" / "nats_mock_server.py"
+    spec = importlib.util.spec_from_file_location("nats_mock_server", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@contextlib.asynccontextmanager
+async def _mock_vla(prefix: str) -> AsyncIterator[None]:
+    """A dummy VLA over the wire: the NATS mock policy server, 25-step chunks circling joints 0
+    and 1. Skips without a broker (NOVAPOLICY_TEST_BROKER)."""
+    import nats
+
+    try:
+        probe = await asyncio.wait_for(
+            nats.connect(servers=[BROKER], connect_timeout=2, allow_reconnect=False), 5
+        )
+    except Exception:  # ruff: ignore[blind-except]
+        pytest.skip(f"No NATS broker at {BROKER}")
+    await probe.close()
+    mock = _load_mock_server()
+    policies = mock.build_policies(
+        blocks=["arm"],
+        dof=6,
+        horizon=25,
+        dt_ms=DT_MS,
+        amplitude_deg=10.0,
+        period_s=4.0,
+        joints=[0, 1],
+        patterns=["circle"],
+    )
+    server = mock.MockPolicyServer(policies, servers=[BROKER], subject_prefix=prefix)
+    await server.start()
+    try:
+        yield
+    finally:
+        await server.stop()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.parametrize("mode", ["continuous", "sequential"])
+async def test_a_dummy_vla_over_nats(ur10e, recording, mode: str):
+    from novapolicy.nats import NatsPolicyClient
+
+    prefix = f"itest{uuid.uuid4().hex[:6]}"
+    async with _mock_vla(prefix):
+        policy = NatsPolicyClient(policy_id="mock-circle", servers=BROKER, subject_prefix=prefix)
+        result = await PolicyExecutor(
+            PolicySchema(observations=[Observation.joint_positions("arm", source=ur10e)]),
+            policy,
+            execution=ContinuousExecution(rate_hz=30)
+            if mode == "continuous"
+            else SequentialExecution(),
+            n_action_steps=0,
+            start_joint_position={ur10e: START},
+            timeout_s=6.0,
+        ).run()
+    assert result.reason == "timeout"
+    rms, peak = _tracking_deg(recording, skip_ms=0.0 if mode == "sequential" else 500.0)
     assert rms < 0.5 and peak < 2.0, (rms, peak)

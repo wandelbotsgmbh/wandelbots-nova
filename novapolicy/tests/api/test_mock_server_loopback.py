@@ -77,8 +77,10 @@ async def _require_broker() -> None:
     try:
         import nats
 
-        connection = await nats.connect(servers=[BROKER], connect_timeout=1, allow_reconnect=False)
-    except Exception:  # ruff: ignore[blind-except]
+        connection = await asyncio.wait_for(
+            nats.connect(servers=[BROKER], connect_timeout=1, allow_reconnect=False), 3
+        )
+    except Exception:  # ruff: ignore[blind-except] (a timeout or a refused connection)
         pytest.skip(f"No NATS broker at {BROKER}")
     else:
         await connection.close()

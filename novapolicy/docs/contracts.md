@@ -155,10 +155,10 @@ collection while the loop runs and released when the run ends. Test:
 
 **T12 Setups the executor would run wrongly are refused at construction:** under sequential
 execution a timestep queue (`QueuedPolicyClient`, LeRobot's async queue) and a `LiveBuffer`
-in the pipeline; under continuous execution a timestep queue without a `Bridge`, whose timeline
-is anchored on its first bridged chunk. Tests:
+in the pipeline; under continuous execution a timestep queue without its `TimestepTimeline`,
+which keeps its chunks on one timeline. Tests:
 `test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected`,
-`test_a_timestep_queue_without_a_bridge_is_refused_before_anything_moves`.
+`test_a_timestep_queue_without_its_timeline_is_refused_before_anything_moves`.
 
 **T13 The send pipeline.** Everything that reaches NOVA passes one ordered list per motion group:
 the common chunk, chunk modules, `Timestamps()` (T1, T2), filters (T3), waypoint modules, the
@@ -168,7 +168,7 @@ group runs its own copy; a misordered list is refused at construction.
 
 | Default | Joggers | Executor, sequential | Executor, continuous | Executor, continuous, timestep queue |
 | --- | --- | --- | --- | --- |
-| Modules | `HoldPadding`, `Timestamps`, `DropLate` | `Bridge`, `EndpointRamp`, `JointClamp`, then the joggers' | `JointClamp`, then the joggers' | `Smoothing`, `Bridge(always_anchor=True)`, `JointClamp`, then the joggers' |
+| Modules | `HoldPadding`, `Timestamps`, `DropLate` | `Bridge`, `EndpointRamp`, `JointClamp`, then the joggers' | `JointClamp`, then the joggers' | the queue's `default_modules` (`Smoothing`, `TimestepTimeline`, `Bridge(always_anchor=True)`), `JointClamp`, then the joggers' |
 
 Chunk modules see every chunk when it is queued and may change steps and timing, keeping
 `when_due` and `start_step` on the steps they belong to. `Smoothing(passes)` filters a queue's

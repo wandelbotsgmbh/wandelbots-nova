@@ -22,7 +22,7 @@ runs in each session's send pipeline, one ordered list of modules (contract T13,
 | --- | --- |
 | `SequentialExecution` | `Bridge`, `EndpointRamp`, `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
 | `ContinuousExecution` | `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
-| `ContinuousExecution`, timestep queue | `Smoothing`, `Bridge(always_anchor=True)`, `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
+| `ContinuousExecution`, timestep queue | `Smoothing`, `TimestepTimeline`, `Bridge(always_anchor=True)` (the queue's `default_modules`), `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
 
 An explicit `pipeline` is exactly what runs: extend or edit the default list rather than starting
 from an empty one.
@@ -129,9 +129,10 @@ bridge and policy chunk are sent as one continuous request, so NOVA does not sto
 and IO or computed actions remain aligned with policy waypoint zero.
 
 In continuous execution only a timestep queue (`QueuedPolicyClient`, LeRobot's async queue) is
-bridged (`Bridge(always_anchor=True)`), and only until its timeline exists: its later chunks carry
-an `action_timestep` and continue on that timeline without re-anchoring to the measured state. A
-queue's pipeline must contain a `Bridge`; the executor refuses one without at construction.
+bridged (`Bridge(always_anchor=True)`, from its `default_modules`), and only until its timeline
+exists: its later chunks carry an `action_timestep`, and the session's `TimestepTimeline` places
+them on the first one's timeline without re-anchoring to the measured state. A queue's pipeline
+must contain the `TimestepTimeline`; the executor refuses one without at construction.
 
 ### Sequential endpoint ramps
 

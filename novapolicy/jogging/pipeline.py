@@ -8,7 +8,7 @@ Everything that reaches NOVA passes one ordered list, per motion group::
   (joints in rad or TCP poses in mm and rad, one motion group): a
   :class:`~novapolicy.jogging.waypoints.PendingChunk`.
 * **Chunk modules** (``on_chunk``) run when the chunk is queued, on every chunk, before the session
-  keeps only the newest one. They may change steps and timing: ``Smoothing``, ``Bridge``,
+  keeps only the newest one. They may change steps and timing: ``Smoothing``, ``TimestepTimeline``, ``Bridge``,
   ``EndpointRamp``, ``JointClamp``, ``LiveBuffer``, ``HoldPadding``.
 * **Timestamps()** is the placement step (contracts T1 and T2): each step gets its time on the
   session clock. It is in every pipeline; list it to say where, or it goes after the last chunk

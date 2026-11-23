@@ -182,9 +182,9 @@ pipeline = [
 
 Also changed:
 
-- **A timestep queue without a `Bridge` is refused.** In continuous execution a
-  `QueuedPolicyClient` or LeRobot's async queue anchors its timeline on its first bridged chunk;
-  an explicit pipeline without `Bridge(always_anchor=True)` raises at construction.
+- **A timestep queue without its timeline is refused.** In continuous execution a
+  `QueuedPolicyClient` or LeRobot's async queue keeps its chunks on one timeline
+  (`TimestepTimeline`, see below); an explicit pipeline without it raises at construction.
 - **The queue clients return their plan unsmoothed**, with `ActionChunk.retained_prefix_steps`
   set; the session smooths it. Rerun's action plot and pre-send stop conditions see the
   unsmoothed plan. LeRobot's plan is now smoothed after its targets are resolved to NOVA units:

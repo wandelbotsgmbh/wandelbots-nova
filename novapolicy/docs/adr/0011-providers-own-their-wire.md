@@ -15,7 +15,10 @@ carried code for one provider's features (a timestep queue's timeline, RTC seams
 - **The package owns the codec:** `PolicySchema` maps NOVA state, IO and images to the policy's
   names and units (`build_observation`, `observation_vector`) and the policy's outputs back to an
   `ActionChunk` (`decode_actions`): units, rotation formats, frames, relative targets, joints split
-  across motion groups, IO mappings. A provider maps names to its wire and nothing else.
+  across motion groups, IO mappings. A new provider maps names to its wire and nothing else.
+  Of the shipped ones, GR00T and LEAPP decode with it; GR00T still assembles its own state arrays
+  (its TCP formats), NATS its proprioception blocks, and LeRobot its flat feature layout and
+  decoder, which its checkpoint validation is built on.
 - **The package owns NOVA's side:** placement, the send pipeline and the action chunk stream.
 - **What a provider needs beyond that comes as modules** (`PolicyClient.default_modules`): a timestep
   queue brings its `Smoothing`, `TimestepTimeline` and `Bridge`, and the executor knows nothing
