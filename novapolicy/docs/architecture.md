@@ -127,6 +127,8 @@ step; a chunk that numbers its steps (a timestep queue) is placed by its `Timest
 
 ## Adding a policy provider
 
+Step by step, with the three wire shapes and how to test one: [adding-a-provider.md](adding-a-provider.md).
+
 A provider is a `PolicyClient` with a transport. The schema does the mapping in both directions,
 so the provider only names things in its own wire format (this snippet runs as a test,
 `test_a_provider_is_a_transport_and_the_schema_does_the_mapping`):
