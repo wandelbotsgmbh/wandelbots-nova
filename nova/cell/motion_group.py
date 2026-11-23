@@ -232,7 +232,11 @@ class MotionGroup(AbstractRobot):
         return motion_group_description.motion_group_model
 
     async def get_setup(
-        self, tcp_name: str | None = None, payload_override: str | api.models.Payload | None = None
+        self,
+        tcp_name: str | None = None,
+        payload_override: str | api.models.Payload | None = None,
+        *,
+        self_collision_detection: bool = True,
     ) -> api.models.MotionGroupSetup:
         """Get the motion group setup.
 
@@ -266,6 +270,8 @@ class MotionGroup(AbstractRobot):
                 registered payload by name; a ``Payload`` instance is used directly.
                 Only use this when you are certain the physical controller is
                 configured with the same payload.
+            self_collision_detection: Whether the planner checks the motion group's links and
+                tool against each other.
 
         Returns:
             api.models.MotionGroupSetup: The motion group setup.
@@ -284,6 +290,7 @@ class MotionGroup(AbstractRobot):
             motion_group_description=motion_group_description,
             tcp_name=tcp_name,
             payload=resolved_payload,
+            self_collision_detection=self_collision_detection,
         )
 
     @staticmethod
@@ -368,15 +375,24 @@ class MotionGroup(AbstractRobot):
             else None
         )
 
-    async def get_safety_collision_setup(self, tcp: str) -> api.models.CollisionSetup:
+    async def get_safety_collision_setup(
+        self, tcp: str, *, self_collision_detection: bool = True
+    ) -> api.models.CollisionSetup:
         """Get the safety collision setup of the motion group.
+
+        Args:
+            tcp: The TCP whose safety tool colliders are used as the tool.
+            self_collision_detection: Whether the planner checks the motion group's links and
+                tool against each other. Enabled by default.
 
         Returns:
             api.models.CollisionSetup: The safety collision setup of the motion group.
         """
         motion_group_description = await self._fetch_motion_group_description()
         return get_safety_collision_setup_from_motion_group_description(
-            motion_group_description=motion_group_description, tcp_name=tcp
+            motion_group_description=motion_group_description,
+            tcp_name=tcp,
+            self_collision_detection=self_collision_detection,
         )
 
     async def get_default_collision_link_chain(self) -> api.models.LinkChain:
