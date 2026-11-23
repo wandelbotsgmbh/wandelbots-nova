@@ -29,12 +29,14 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
-from websockets.exceptions import InvalidStatus
+from websockets.exceptions import ConnectionClosedError, InvalidStatus
+from websockets.frames import Close
 
 from nova import api
 from nova.types import Pose
 from novapolicy.jogging import jog_tcp
 from novapolicy.jogging.clock import ServerMs
+from novapolicy.jogging.lifecycle import SessionLifecycle
 from novapolicy.jogging.live_buffer import LIVE_LEAD_MS, LiveBuffer
 from novapolicy.jogging.modules import HoldPadding, default_pipeline
 from novapolicy.jogging.waypoint_session import MIN_LEAD_MS, WaypointJoggingSession
@@ -83,7 +85,9 @@ class FakeJoggingServer:
     responses on a configurable cadence until stopped, recording every request
     the session produces. Like NOVA, the fake answers a ``StopActionChunksRequest``
     with a ``StopActionChunksResponse`` (ADR 0019) unless ``acknowledge_stop`` is off;
-    ``stop_ack_gate``, when set, holds that answer back until the event is set.
+    ``stop_ack_gate``, when set, holds that answer back until the event is set. ``drop_with``
+    stands in for a connection that breaks later: the response stream raises it after
+    ``drop_after`` responses.
     """
 
     def __init__(
@@ -93,8 +97,12 @@ class FakeJoggingServer:
         raise_exc: BaseException | None = None,
         response_delay: float = 0.003,
         acknowledge_stop: bool = True,
+        drop_with: BaseException | None = None,
+        drop_after: int = 20,
     ) -> None:
         self.requests: list[object] = []
+        self._drop_with = drop_with
+        self._drop_after = drop_after
         self._fault = fault
         self._raise_exc = raise_exc
         self._response_delay = response_delay
@@ -127,7 +135,11 @@ class FakeJoggingServer:
                 # fault on the first response is enough to surface it.
                 yield self._fault
                 return
+            sent = 0
             while not self._stop.is_set():
+                if self._drop_with is not None and sent >= self._drop_after:
+                    raise self._drop_with
+                sent += 1
                 if (
                     self._acknowledge_stop
                     and not self.stop_acknowledged
@@ -189,12 +201,14 @@ def _build_session(
     response_delay: float = 0.003,
     pipeline: Sequence[object] | None = None,
     acknowledge_stop: bool = True,
+    drop_with: BaseException | None = None,
 ) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
     server = FakeJoggingServer(
         fault=fault,
         raise_exc=raise_exc,
         response_delay=response_delay,
         acknowledge_stop=acknowledge_stop,
+        drop_with=drop_with,
     )
 
     async def state_stream(**_kw: object) -> AsyncGenerator[object, None]:
@@ -1182,6 +1196,109 @@ async def test_a_dead_state_stream_surfaces_instead_of_timing_out_startup():
         finally:
             await session.stop()
             server.stop()
+
+
+def _check(session: WaypointJoggingSession) -> str | None:
+    """What the executor and the joggers call every tick: raises a session failure."""
+    lifecycle = SessionLifecycle(config=WaypointConfig())
+    lifecycle.sessions = {session.motion_group_id: session}
+    return lifecycle.check()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        # The API client raises a bare Exception on a frame without a result.
+        Exception({"error": "server says no"}),
+        # websockets' own error for a connection that broke; not an OSError.
+        ConnectionClosedError(Close(1011, "internal error"), None),
+    ],
+    ids=["error-frame", "connection-closed"],
+)
+async def test_any_error_that_ends_the_connection_fails_the_session(error: Exception):
+    """Whatever ends the action chunk stream while the session runs, the caller has to hear of
+    it: otherwise the policy keeps inferring into a sender that is gone."""
+    async with _started(drop_with=error) as (session, _server):
+        await _wait_until(lambda: session.has_failed)
+        assert session.failure_exception.__cause__ is error
+        with pytest.raises(RuntimeError, match="0@ur10e") as raised:
+            _check(session)
+        assert raised.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+async def test_a_connection_the_server_closes_fails_the_session():
+    """The API client ends the response stream quietly when NOVA cancels it; a session that
+    did not ask to stop has lost its sender all the same."""
+    async with _started() as (session, server):
+        server.stop()  # the response stream ends without an error
+        await _wait_until(lambda: session.has_failed)
+        with pytest.raises(RuntimeError, match="closed the jogging connection for 0@ur10e"):
+            _check(session)
+
+
+class _BrokenWaypointModule:
+    def on_waypoints(self, waypoints: object, context: object) -> list[list[float]]:
+        raise ValueError("user module bug")
+
+
+@pytest.mark.asyncio
+async def test_an_error_in_a_waypoint_module_fails_the_session():
+    """A module runs inside the send loop; its exception ends that loop and must end the run."""
+    async with _started(pipeline=[_BrokenWaypointModule()]) as (session, _server):
+        session.update_chunk([[0.1] * 6], 0.0, lead=True)
+        await _wait_until(lambda: session.has_failed)
+        assert isinstance(session.failure_exception.__cause__, ValueError)
+        with pytest.raises(RuntimeError, match="user module bug"):
+            _check(session)
+
+
+@pytest.mark.asyncio
+async def test_a_state_stream_that_ends_while_running_fails_the_session():
+    """Without states the policy would keep getting the last one; a stream that ends after
+    startup ends the run, naming the motion group."""
+
+    async def short_stream(**_kw: object) -> AsyncGenerator[object, None]:
+        for i in range(30):
+            yield _stream_state(_initial_state(), ts_ms=10 * (i + 1))
+            await asyncio.sleep(0.003)
+
+    with _built() as (session, server), patch(f"{_SESSION}._STOP_TIMEOUT_S", 0.05):
+        session._motion_group.stream_state = MagicMock(side_effect=short_stream)
+        try:
+            await session.start()
+            await session.wait_ready()
+            await _wait_until(lambda: session.has_failed)
+            with pytest.raises(RuntimeError, match="state stream ended for 0@ur10e"):
+                _check(session)
+        finally:
+            await session.stop()
+            server.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_state_stream_that_ends_during_a_stop_is_no_failure():
+    """Stopping ends the stream anyway: that is not a fault."""
+    server_ref: list[FakeJoggingServer] = []
+
+    async def stream_until_stop(**_kw: object) -> AsyncGenerator[object, None]:
+        ts = 0
+        while not server_ref[0].stop_received.is_set():
+            ts += 10
+            yield _stream_state(_initial_state(), ts_ms=ts)
+            await asyncio.sleep(0.003)
+
+    with _built() as (session, server), patch(f"{_SESSION}._STOP_TIMEOUT_S", 0.05):
+        server_ref.append(server)
+        session._motion_group.stream_state = MagicMock(side_effect=stream_until_stop)
+        try:
+            await session.start()
+            await session.wait_ready()
+        finally:
+            await session.stop()
+            server.stop()
+        assert session.has_failed is False
 
 
 @pytest.mark.asyncio

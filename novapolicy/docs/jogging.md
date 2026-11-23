@@ -310,3 +310,9 @@ session opens. The endpoint, `executeActionChunks`, exists on api-gateway 26.6 a
 reached the same feature through `executeWaypointJogging`, which 26.6 removed. Older gateways
 answer the websocket upgrade with HTTP 404, which is reported as this error rather than as a
 connection failure, so the fix (upgrade NOVA) is clear.
+
+A session that loses either of its streams while it runs fails, and the next check raises
+(`RuntimeError` naming the motion group, or the `OSError` itself): the action chunk stream ending
+on any error (an error frame, a broken websocket, an exception in a waypoint module or stop
+condition) or closed by the server, and the state stream ending, so a policy is never fed the
+last state of a dead stream. Either ending during a requested stop is no failure.

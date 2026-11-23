@@ -567,9 +567,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 self._notify_state_observer(ts_ms)
         except asyncio.CancelledError:
             raise
-        except (OSError, RuntimeError) as e:
+        except Exception as e:  # ruff: ignore[blind-except] (a lost stream fails the session)
             logger.error("State stream error for %s: %s", self.motion_group_id, e)
-            self._note_state_stream_gone(str(e), e)
+            self._note_state_stream_gone(str(e) or type(e).__name__, e)
         else:
             # The server closed the stream while we still wanted it.
             self._note_state_stream_gone("state stream ended", None)
@@ -579,13 +579,28 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                     await stream.aclose()
 
     def _note_state_stream_gone(self, reason: str, error: BaseException | None) -> None:
-        """Fail the session when the state stream ends before it is ready and calibrated, so
-        :meth:`wait_ready` raises the cause; later, a lost stream is left to the jogging loop."""
-        if not self._running or self._failed:
+        """Fail the session when its state stream ends while it runs: before it is ready, so
+        :meth:`wait_ready` raises the cause, and after, so the policy is not fed the last state
+        forever. A stream that ends during a requested stop or after a stop condition is no
+        failure."""
+        if not self._running or self._failed or self._stop_requested:
             return
-        if self._ready.is_set() and self._clock.state_clock_calibrated:
-            return
-        self._fail(f"{reason} for {self.motion_group_id}", error)
+        message = f"{reason} for {self.motion_group_id}"
+        if error is None:
+            logger.error("%s", message)
+        self._fail(message, self._surfaced(error, message))
+
+    @staticmethod
+    def _surfaced(error: BaseException | None, message: str) -> BaseException | None:
+        """The exception a failure surfaces as: a typed error (``MotionError``,
+        ``JoggingNotSupportedError``), an ``OSError`` or a ``RuntimeError`` as it is; any other
+        (the API client's bare ``Exception``, websockets' ``ConnectionClosedError``, a module's
+        error) as a ``RuntimeError`` naming the motion group, chained to it."""
+        if error is None or isinstance(error, (OSError, RuntimeError)):
+            return error
+        wrapped = RuntimeError(f"{message}: {type(error).__name__}: {error}")
+        wrapped.__cause__ = error
+        return wrapped
 
     def _fail(self, reason: str, error: BaseException | None) -> None:
         """Record why the session failed."""
@@ -917,7 +932,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         api_gateway = get_api_gateway(self._motion_group)
         cell = get_cell(self._motion_group)
         controller_id = get_controller_id(self._motion_group)
-        tcp = await self._resolve_tcp()
+        tcp = ""
 
         async def client_request_generator(
             response_stream: AsyncGenerator[api.models.ExecuteActionChunksResponse, None],
@@ -937,36 +952,53 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             finally:
                 if not response_task.done():
                     response_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
+                # Its error, if any, was raised above already; it must not replace another.
+                with contextlib.suppress(asyncio.CancelledError, Exception):
                     _ = await response_task
 
         try:
+            tcp = await self._resolve_tcp()
             await api_gateway.action_chunk_streaming_api.execute_action_chunks(
                 cell=cell,
                 controller=controller_id,
                 client_request_generator=client_request_generator,
             )
         except asyncio.CancelledError:
-            pass  # shutdown, not a failure
-        except InvalidStatus as e:
+            raise  # shutdown, not a failure
+        except Exception as e:  # ruff: ignore[blind-except] (whatever ends the stream ends the session)
+            self._on_connection_end(e)
+        else:
+            self._on_connection_end(None)
+
+    def _on_connection_end(self, error: Exception | None) -> None:
+        """Fail the session for whatever ended its action chunk stream: a rejected websocket, a
+        motion error, and, while the session runs, any other error or a clean close. The API
+        client raises a bare ``Exception`` on an error frame and ends the stream quietly when
+        NOVA cancels it, websockets' ``ConnectionClosedError`` is no ``OSError``, and a module
+        or stop condition may raise anything: each leaves no sender behind."""
+        if isinstance(error, InvalidStatus):
             # 404: no executeActionChunks endpoint (jogging.md, "Error detection").
-            if e.response.status_code == _HTTP_NOT_FOUND:
+            if error.response.status_code == _HTTP_NOT_FOUND:
                 err = JoggingNotSupportedError(self.motion_group_id)
                 self._fail(str(err), err)
                 logger.error("%s", err)
             else:
-                self._fail(str(e), e)
-                logger.error("Jogging connection rejected for %s: %s", self.motion_group_id, e)
+                self._fail(str(error), error)
+                logger.error("Jogging connection rejected for %s: %s", self.motion_group_id, error)
             self._running = False
-        except MotionError as e:
-            self._fail(str(e), e)
+        elif isinstance(error, MotionError):
+            self._fail(str(error), error)
             self._running = False
-            logger.warning("Waypoint jogging stopped for %s: %s", self.motion_group_id, e)
-        except (OSError, RuntimeError) as e:
-            if self._running:
-                self._fail(str(e), e)
-                self._running = False
-                logger.error("Jogging connection lost for %s: %s", self.motion_group_id, e)
+            logger.warning("Waypoint jogging stopped for %s: %s", self.motion_group_id, error)
+        elif self._running:  # not stopping, and no stop condition fired
+            if error is None:
+                message = f"the server closed the jogging connection for {self.motion_group_id}"
+                self._fail(message, None)
+            else:
+                message = f"Waypoint jogging ended for {self.motion_group_id}"
+                self._fail(str(error) or message, self._surfaced(error, message))
+            self._running = False
+            logger.error("%s: %s", message, error or "no error")
 
     async def _resolve_tcp(self) -> str:
         """Get the TCP name for jogging."""
