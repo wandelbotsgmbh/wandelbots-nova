@@ -20,7 +20,7 @@ Every client takes the policy's step rate as `control_freq=` in Hz: the training
   default would now play twice as fast: pass `control_freq=15`.
 - The GR00T default is 30 Hz (33.3 ms per step, was 33 ms). A `dt_ms` the server reports still
   wins.
-- `dt_ms=`, `fps=` and `playback_speed=` still work, with a `DeprecationWarning`.
+- `dt_ms=`, `fps=` and `playback_speed=` are removed: pass `control_freq=`.
 
 ## Relative TCP rotations are composed
 

@@ -135,14 +135,6 @@ class PolicyInfo(BaseModel):
     def observation(self, name: str) -> FieldSpec | None:
         return next((f for f in self.observations if f.name == name), None)
 
-    @property
-    def primary_action(self) -> ActionSpec:
-        """The single action head. Multi-head policies (e.g. arm + gripper) will
-        need the caller to walk ``actions`` instead."""
-        if not self.actions:
-            raise PolicyProtocolError("Policy declares no action space.")
-        return self.actions[0]
-
 
 class ResetRequest(BaseModel):
     """Open an episode."""

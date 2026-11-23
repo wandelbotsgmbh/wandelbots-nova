@@ -31,35 +31,23 @@ class TimestampedActionQueue:
         self,
         *,
         aggregation: AsyncQueueAggregation = AsyncQueueAggregation.WEIGHTED_AVERAGE,
-        frozen_steps: int = 0,
     ) -> None:
         self._aggregation = AsyncQueueAggregation(aggregation)
-        self._frozen_steps = frozen_steps
         self._actions: list[tuple[int, NDArray[np.float32]]] = []
         self._prediction_counts: dict[int, int] = {}
         self._published: dict[int, NDArray[np.float32]] = {}
         self._latest_timestep = -1
-        self._chunk_size = -1
-
-    @property
-    def empty(self) -> bool:
-        return not self._actions
 
     @property
     def actions(self) -> list[tuple[int, NDArray[np.float32]]]:
         """The queued ``(timestep, action)`` pairs in timestep order (a copy)."""
         return list(self._actions)
 
-    @property
-    def latest_timestep(self) -> int:
-        return self._latest_timestep
-
     def clear(self) -> None:
         self._actions.clear()
         self._prediction_counts.clear()
         self._published.clear()
         self._latest_timestep = -1
-        self._chunk_size = -1
 
     def synchronize(self, timestep: int) -> int:
         """Drop queued actions before ``timestep`` and return the skipped count."""
@@ -80,32 +68,16 @@ class TimestampedActionQueue:
         }
         return timestep - previous - 1
 
-    def consume(self) -> tuple[int, NDArray[np.float32]]:
-        """Remove and return the next action in timestep order."""
-        timestep, action = self._actions.pop(0)
-        self._prediction_counts.pop(timestep, None)
-        self._latest_timestep = timestep
-        return timestep, action
-
-    def refill_needed(self, threshold: float) -> bool:
-        if self._chunk_size <= 0:
-            return True
-        return len(self._actions) / self._chunk_size < threshold
-
     def merge(
         self,
         predictions: Iterable[tuple[int, NDArray[np.float32]]],
         *,
-        frozen_steps: int | None = None,
+        frozen_steps: int = 0,
     ) -> bool:
-        """Merge a timestamped prediction into the replaceable future queue.
-
-        ``frozen_steps`` overrides the constructor's count for this merge, e.g. to cover
-        the steps that executed while the prediction was being computed.
-        """
-        frozen = self._frozen_steps if frozen_steps is None else frozen_steps
+        """Merge a timestamped prediction into the replaceable future queue; the first
+        ``frozen_steps`` after the last executed step keep their published values (they
+        executed while the prediction was being computed)."""
         decoded = list(predictions)
-        self._chunk_size = max(self._chunk_size, len(decoded))
         current = dict(self._actions)
         future: dict[int, NDArray[np.float32]] = {}
         future_counts: dict[int, int] = {}
@@ -119,7 +91,7 @@ class TimestampedActionQueue:
                 continue
 
             previous_count = self._prediction_counts.get(timestep, 1)
-            if timestep <= self._latest_timestep + frozen:
+            if timestep <= self._latest_timestep + frozen_steps:
                 future[timestep] = self._published.get(timestep, current[timestep])
                 future_counts[timestep] = previous_count
             elif self._aggregation is AsyncQueueAggregation.AVERAGE:
@@ -139,12 +111,6 @@ class TimestampedActionQueue:
         self._actions = sorted(future.items())
         self._prediction_counts = future_counts
         return bool(future)
-
-    def preview(
-        self, selected: tuple[int, NDArray[np.float32]]
-    ) -> list[tuple[int, NDArray[np.float32]]]:
-        """Return the selected action followed by the queued lookahead."""
-        return [selected, *self._actions]
 
     def predecessor(self, timestep: int) -> NDArray[np.float32] | None:
         return self._published.get(timestep - 1)

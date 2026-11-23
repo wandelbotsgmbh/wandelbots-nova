@@ -176,58 +176,48 @@ class _BaseJogger:
         """Sessions keyed by motion group ID (for Rerun streaming)."""
         return {mg.id: session for mg, session in self._sessions.items()}
 
-    def _timeline_timestamp_ms(
-        self, mg: MotionGroup, trajectory_time_s: float, lead_ms: float = LEAD_MS
-    ) -> ServerMs | None:
-        """Absolute server timestamp for a target generated at ``trajectory_time_s``.
+    def _anchor(self, mg: MotionGroup, lead_ms: float = LEAD_MS) -> ServerMs | None:
+        """Server timestamp for content generated at this iteration's instant.
 
-        The whole session shares **one fixed timeline**: content generated at
-        trajectory time ``T`` always maps to ``ack0 + T + lead``, whenever it is
-        sent. Re-deriving the anchor from server "now" at send time instead makes
-        the same trajectory point land on a slightly different timestamp in every
-        chunk, because "now" is sampled at a jittery, aged instant — measured on
-        a UR10e that re-anchoring turned an otherwise jitter-free motion into a
-        visibly vibrating one.
+        The whole session shares **one fixed timeline**: content generated at trajectory time
+        ``T`` always maps to ``ack0 + T + lead``, whenever it is sent. Re-deriving the anchor
+        from server "now" at send time makes the same trajectory point land on a slightly
+        different timestamp in every chunk ("now" is sampled at a jittery, aged instant);
+        measured on a UR10e, that turned a jitter-free motion into a visibly vibrating one.
+        The lead is constant for the same reason: anything time-varying here moves commanded
+        points to new times, and the robot executes each shift as a lurch.
 
-        Returns ``None`` before the timeline is anchored, so callers fall back to
-        a "now"-relative placement for the very first chunks.
+        ``None`` before the timeline is anchored: callers then place "now"-relative.
         """
-        session = self._sessions.get(mg)
-        if session is None or self._loop_t0 is None:
+        if mg not in self._sessions or self._loop_t0 is None:
             return None
-        # The lead is deliberately CONSTANT. Anything time-varying in this
-        # mapping (an adaptive lead, a drifting clock offset) moves previously
-        # commanded points to new absolute times, and the robot executes each
-        # such shift as a lurch -- an adaptive lead measured worse than a fixed
-        # one on every pattern tried.
-        return ServerMs(int(self._ack0_ms + trajectory_time_s * 1000.0 + lead_ms))
-
-    def _anchor_for_now(self, mg: MotionGroup, lead_ms: float = LEAD_MS) -> ServerMs | None:
-        """Timeline anchor for content generated at this iteration's instant."""
-        return self._timeline_timestamp_ms(mg, self.elapsed, lead_ms)
+        return ServerMs(int(self._ack0_ms + self.elapsed * 1000.0 + lead_ms))
 
     def _expected_dims(self, mg: MotionGroup) -> int | None:
         """Expected target dimension for a motion group. Override in subclass."""
         session = self._sessions.get(mg)
         return session.num_joints if session else None
 
-    def _validate_and_push(self, mg: MotionGroup, values: list[float]) -> None:
-        """Validate target dimensions and push the target exactly as measured.
+    def _set_live_target(self, mg: MotionGroup, values: list[float]) -> None:
+        """Validate one live target and send it exactly as measured.
 
         One waypoint, where the target actually is. Nothing is inferred about
         where it is going next — that horizon is the server's job, and until the
-        API provides it the rolling buffer in :meth:`_set_live_target` stands in.
+        API provides it a ``LiveBuffer`` in the pipeline stands in.
 
         Without a ``LiveBuffer`` in the pipeline this goes out as it is; with one, the session
         turns it into a horizon once the buffer can define a spacing. A lone waypoint is a *terminal* target the server decelerates to a
         standstill at, so motion is halting there. That is the honest cost of never
         guessing.
         """
-        self._validate_target_dims(mg, values)
+        expected = self._expected_dims(mg)
+        if expected is not None and len(values) != expected:
+            msg = f"Target has {len(values)} values but motion group '{mg.id}' expects {expected}"
+            raise ValueError(msg)
         session = self._sessions.get(mg)
         if session is not None:
-            eased = [list(values)]
-            anchor = self._anchor_for_now(mg, LIVE_LEAD_MS)
+            steps = [list(values)]
+            anchor = self._anchor(mg, LIVE_LEAD_MS)
             # When the target was produced, on the loop's one timeline shared by every arm: a
             # LiveBuffer in the pipeline times targets by it, so the arms stay on one grid.
             # Rounded apart: the loop time is on a 10 ms grid, and truncating the sum would put
@@ -238,7 +228,7 @@ class _BaseJogger:
                 else None
             )
             session.update_chunk(
-                steps=eased,
+                steps=steps,
                 dt_ms=0.0,
                 first_timestamp_ms=anchor,
                 timestamp_offset_steps=0 if anchor is not None else 1,
@@ -254,7 +244,7 @@ class _BaseJogger:
                 self._record_commanded(
                     mg.id, queued.steps, queued.dt_ms, queued.first_timestamp_ms or anchor
                 )
-            self._log_target(mg.id, eased[:1], 0.0)
+            self._log_target(mg.id, steps, 0.0)
             return
         self._log_target(mg.id, [values], 0.0)
 
@@ -267,10 +257,9 @@ class _BaseJogger:
         """
         session = self._sessions.get(mg)
         if session is not None:
-            eased = chunk
-            anchor = self._anchor_for_now(mg)
+            anchor = self._anchor(mg)
             session.update_chunk(
-                steps=eased,
+                steps=chunk,
                 dt_ms=dt_ms,
                 first_timestamp_ms=(
                     anchor if anchor is not None else session.estimated_server_timestamp_ms
@@ -279,8 +268,8 @@ class _BaseJogger:
                 # HoldPadding pads, and this is where that is decided.
                 extend_buffer=True,
             )
-            self._record_commanded(mg.id, eased, dt_ms, anchor)
-            self._log_target(mg.id, eased, dt_ms)
+            self._record_commanded(mg.id, chunk, dt_ms, anchor)
+            self._log_target(mg.id, chunk, dt_ms)
         return chunk[-1]
 
     def _dispatch_chunk(
@@ -343,16 +332,6 @@ class _BaseJogger:
             "horizon, so a LiveBuffer does not apply to it."
         )
         raise TypeError(msg)
-
-    def _set_live_target(self, mg: MotionGroup, values: list[float]) -> None:
-        """Send one live target; a ``LiveBuffer`` in the pipeline turns it into a horizon."""
-        self._validate_and_push(mg, values)
-
-    def _validate_target_dims(self, mg: MotionGroup, values: list[float]) -> None:
-        expected = self._expected_dims(mg)
-        if expected is not None and len(values) != expected:
-            msg = f"Target has {len(values)} values but motion group '{mg.id}' expects {expected}"
-            raise ValueError(msg)
 
     def _record_commanded(
         self, mg_id: str, steps: list[list[float]], dt_ms: float, anchor_ms: int | None

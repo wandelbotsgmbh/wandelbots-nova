@@ -661,11 +661,6 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         entry = self._tcp_action_specs.get(motion_group_id)
         return 6 if entry is None else tcp_width(entry)
 
-    def tcp_action_orientation_type(self, motion_group_id: str) -> poses.OrientationType | None:
-        """The rotation representation of a motion group's TCP action; None: rotation vector."""
-        entry = self._tcp_action_specs.get(motion_group_id)
-        return None if entry is None else entry.orientation_type
-
     # -- Coordinate systems --
 
     async def load_coordinate_systems(self) -> None:
