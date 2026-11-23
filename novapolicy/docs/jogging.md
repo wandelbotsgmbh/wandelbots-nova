@@ -82,7 +82,7 @@ points to new absolute times, and the robot executes each such shift as a lurch.
 A chunk shorter than `HoldPadding.min_horizon_ms` (default **500**, in the default
 pipeline) is extended by repeating its final target, so the server has a horizon it can
 brake within. The padding is sent but is not treated as commanded motion: it is excluded
-from `scheduled_until_server_ms`, so anything waiting for the chunk to finish ends at your
+from `scheduled.until_server_ms`, so anything waiting for the chunk to finish ends at your
 last step rather than sitting at it for the rest of the window. Leave `HoldPadding` out of
 the pipeline to disable padding: a chunk whose last step is not a genuine stopping point
 then gets a decelerate-to-standstill profile at its end.

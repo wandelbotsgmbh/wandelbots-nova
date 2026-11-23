@@ -196,7 +196,7 @@ The server requires continuous waypoint updates — if the buffer empties
 Chunks shorter than `HoldPadding.min_horizon_ms` (500 ms; except one-step chunks in
 continuous execution, which the next step replaces) are padded by repeating
 their final target so the server always has a horizon it can brake within. That
-padding is excluded from `scheduled_until_server_ms`, so waits for a chunk to
+padding is excluded from `scheduled.until_server_ms`, so waits for a chunk to
 finish end at the last waypoint the caller asked for rather than sitting through
 the hold.
 With 20 Hz and 1s lookahead chunks, there is ~95% overlap between
@@ -274,10 +274,12 @@ How a run ended decides what happens to motion the controller already accepted:
 when the robot has actually stopped. Two conditions are needed and neither
 suffices alone:
 
-1. **The schedule ran out** — the server clock has reached
-   `scheduled_until_server_ms`, the timestamp of the last waypoint the caller
-   asked for. This says the deadline elapsed, not that the robot stopped: it is
-   still braking through the hold padding that follows.
+1. **The schedule ran out** — every chunk the executor queued was sent
+   (`session.scheduled.chunk_count`) and the acknowledged server clock
+   (`last_server_timestamp_ms`) has reached `session.scheduled.until_server_ms`,
+   the timestamp of the last waypoint the caller asked for. This says the
+   deadline elapsed, not that the robot stopped: it is still braking through the
+   hold padding that follows.
 2. **The joints stopped moving** — `WaypointJoggingSession.is_at_standstill`.
    Before a chunk's waypoints are reached the robot is legitimately still, so
    this on its own would end the wait before any motion began.
@@ -365,15 +367,14 @@ waypoint has elapsed is dropped entirely.
 
 Trimming does not move the surviving waypoints: the absolute time-to-position
 mapping stays exactly as the caller defined it. It does change which index of the
-*sent* request holds the caller's step zero, so code that needs the timestamp of
-a particular caller step must use
-`WaypointJoggingSession.scheduled_timestamp_for_step(step)` rather than indexing
-`scheduled_waypoint_timestamps`, which describes the request on the wire.
+*sent* request holds the caller's step zero: `scheduled.waypoint_timestamps`
+describes the request on the wire, while a chunk's `when_due` step and the policy's
+first step (`executing_action_timestep`) keep the timestamps the caller laid out.
 
-A dropped chunk still advances `scheduled_chunk_count` and still reports its step
-timestamps (all of them in the past). Both are required: the executor waits for
-`scheduled_chunk_count` to reach what it queued, so a silently skipped chunk
-would leave that wait unsatisfiable for the rest of the run.
+A dropped chunk still advances `scheduled.chunk_count`, and its steps keep their
+timestamps (all of them in the past, so its `when_due` action runs at once). The
+executor waits for `scheduled.chunk_count` to reach what it queued, so a silently
+skipped chunk would leave that wait unsatisfiable for the rest of the run.
 
 ### Trajectory-absolute timestamps
 

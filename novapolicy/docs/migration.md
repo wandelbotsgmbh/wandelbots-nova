@@ -290,3 +290,35 @@ step (`HoldPadding(after_ms=300)`, `SEQUENTIAL_HOLD_MS`). Before, a chunk of 15 
 30 Hz got no hold, and an arm still moving at its last step came to rest up to 0.5° past it. Each
 sequential cycle can take up to 300 ms longer; pass your own `pipeline=[...]` with `HoldPadding()`
 for the old ending.
+
+## A slimmer transport core
+
+The session, the executor, the jogger and their shared lifecycle lost duplicate and test-only
+members. Code that only uses `PolicyExecutor`, `jog_joints` and `jog_tcp` needs no change.
+
+| Before | Now |
+| --- | --- |
+| `WaypointJoggingSession.scheduled_chunk_count` | `session.scheduled.chunk_count` |
+| `WaypointJoggingSession.scheduled_until_server_ms` | `session.scheduled.until_server_ms` |
+| `WaypointJoggingSession.scheduled_waypoint_timestamps` | `session.scheduled.waypoint_timestamps` |
+| `WaypointJoggingSession.scheduled_action_timestep` | `session.scheduled.action_timestep` |
+| `WaypointJoggingSession.scheduled_at_server_ms` | `session.scheduled.at_server_ms` |
+| `WaypointJoggingSession.scheduled_timestamp_for_step(step)` | removed; a chunk's `when_due` step and `executing_action_timestep` keep the caller's timestamps |
+| `WaypointJoggingSession.session_elapsed_ms` | `estimated_server_timestamp_ms` (the same value) |
+| `WaypointJoggingSession.is_running` | `jogging_state == "RUNNING"` |
+| `WaypointJoggingSession.standstill_ms` | removed; `is_at_standstill` |
+| `JoggingTimeClock.acknowledged_elapsed_ms` | `estimated_server_timestamp_ms` (the same value) |
+| `JoggingTimeClock.extract_from_state(state)` | `jogging_details(state)` (`novapolicy.jogging.session`), then `.jogger_session_timestamp_ms` |
+| `novapolicy.estop.check_sessions`, `check_estop`, `triggered_stop_condition` | `SessionLifecycle.check()` and `SessionLifecycle.stop_condition` |
+| `SessionLifecycle(sessions, motion_groups)` | `SessionLifecycle(config=..., stop_conditions=..., pipeline=...)`, then `build({mg: (mode, tcp)})`; `start_monitoring()` starts its own `EstopMonitor` |
+| `JointJogger(list_of_motion_groups, ...)` | `JointJogger({mg: "" for mg in ...}, ...)`; use `jog_joints` |
+
+- `session.scheduled` is a frozen `Scheduled` record (`novapolicy.jogging.waypoint_session`),
+  replaced on every send: read its fields together from one `session.scheduled`.
+- `chunking.Placement` has a `hold` field: whether `HoldPadding` may pad the chunk.
+- Tests that stub the transport patch `novapolicy.jogging.lifecycle.WaypointJoggingSession` and
+  `novapolicy.jogging.lifecycle.EstopMonitor` instead of the names in `novapolicy.executor` or
+  `novapolicy.jogging.jogger`.
+- A chunk without motion writes its IO and then runs its computed actions, one after the other
+  in one task; they used to run side by side. A moving group's IO still goes with its policy step.
+- `set_target` and `set_chunk` check the value for every motion group before they send any.

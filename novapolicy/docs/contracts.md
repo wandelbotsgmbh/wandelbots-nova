@@ -119,8 +119,9 @@ yet. Tests: `test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due`
 
 **T6 End of a chunk.** `HoldPadding(min_horizon_ms=500)` (in every default pipeline) extends a
 chunk with its last target up to the horizon, except one-step chunks in continuous execution,
-which the next step replaces before they are due, and live targets. The padding is not motion
-anyone waits for. Tests: `test_hold_padding_holds_the_last_target_up_to_the_horizon`,
+which the next step replaces before they are due (`Placement.hold`), and live targets. The
+padding is not motion anyone waits for: `WaypointJoggingSession.scheduled.until_server_ms` ends at
+the caller's last step. Tests: `test_hold_padding_holds_the_last_target_up_to_the_horizon`,
 `test_a_short_chunk_holds_its_final_target_to_fill_the_buffer`,
 `test_the_padded_tail_of_a_short_chunk_is_not_motion_anyone_waits_for`.
 
@@ -128,7 +129,8 @@ anyone waits for. Tests: `test_hold_padding_holds_the_last_target_up_to_the_hori
 without blocking the loop: policy waypoint zero of what is sent (behind a bridge too). A chunk
 replaced before it is sent runs neither; one pending when the session stops is cancelled; a hook
 that raises ends the run, and none runs once its motion was stopped (stop condition, failure).
-IO without motion runs at once. IO is a separate
+IO without motion runs at once. A group's IO is written before the chunk's computed actions,
+which run with the first moving group's step. IO is a separate
 write, so it reaches the controller one network delay later; NOVA's action chunks are to carry
 it.
 Tests: `test_io_of_a_continuous_chunk_goes_with_its_first_step`,
@@ -137,8 +139,8 @@ Tests: `test_io_of_a_continuous_chunk_goes_with_its_first_step`,
 `test_a_replaced_chunk_never_runs_its_action_and_stop_cancels_the_rest`, `test_a_chunk_action_fails_the_session_when_it_raises`,
 `test_a_chunk_action_is_skipped_when_the_motion_stopped_before_it_was_due`.
 
-**T8 Pacing.** Sequential: the next observation waits until the chunk's last step is due and the
-robot stands still. Continuous with `rate_hz`: ticks on an absolute grid; more than one period
+**T8 Pacing.** Sequential: the next observation waits until the chunk's last step is due
+(`scheduled.until_server_ms`, acknowledged) and the robot stands still (`is_at_standstill`). Continuous with `rate_hz`: ticks on an absolute grid; more than one period
 behind, the grid restarts instead of firing catch-up ticks (*restart untested*).
 Tests: `test_sequential_mode_delays_next_inference_until_deadline_and_standstill`,
 `test_sequential_mode_waits_out_the_braking_ramp_after_the_deadline`,

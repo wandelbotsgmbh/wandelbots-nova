@@ -179,10 +179,13 @@ mapping, decoding, placement and streaming come from the package.
 | Concern | Module |
 | --- | --- |
 | mapping, units, frames, relative targets, decoding | `novapolicy/schema.py`, `ops.py`, `poses.py`, `chunking.py` |
-| loop, placement, IO, cameras | `novapolicy/executor.py` |
-| sessions, start move, stop conditions, drain (executor and jogger) | `novapolicy/jogging/lifecycle.py` |
+| loop, IO and computed actions, cameras | `novapolicy/executor.py` |
+| placement (lead, hold padding) | `novapolicy/chunking.py` (`placement`) |
+| building one session per motion group, start move, e-stop monitor, fault and stop-condition checks, drain (executor and jogger) | `novapolicy/jogging/lifecycle.py` |
 | send pipeline, modules | `novapolicy/jogging/pipeline.py`, `modules.py`, `live_buffer.py` |
-| NOVA transport | `novapolicy/jogging/waypoint_session.py`, `clock.py` |
+| NOVA transport: stamping and sending (`_schedule`), what was sent (`scheduled`) | `novapolicy/jogging/waypoint_session.py`, `clock.py` |
+| jogging state, standstill, stop conditions (`first_fired`) | `novapolicy/jogging/session.py` |
+| e-stop stream | `novapolicy/estop.py` |
 | jogging API | `novapolicy/jogging/jogger.py` |
 | providers | `novapolicy/gr00t/`, `lerobot/`, `nats/`, `leapp/`, `queued_client.py` |
 | visualization | `novapolicy/rerun/` |
