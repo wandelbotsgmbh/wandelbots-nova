@@ -77,12 +77,12 @@ The server tells the keys, not their meaning. From the training setup, find out:
 The training config usually states these. A policy trained with a differential-IK controller
 (IsaacLab's relative pose command) outputs commands, and the simulated robot realized only part of
 each one; an extra `Scale` converts commanded to realized motion.
-[`examples/settings_from_episode.py`](../examples/settings_from_episode.py) measures all of this
-except the TCP from one training episode, for any number of robots: per robot whether the actions
-are joint or TCP targets, absolute or deltas, the coordinate system, the scale (units and training
-gain), the gripper polarity and values, and the home joints. It reads the column layout from the
-dataset's `meta/modality.json`, writes a JSON file the run script loads (so none of it is typed by
-hand) and stops instead of writing when the episode cannot tell.
+One training episode tells most of this: run its recorded joints through the robot's forward
+kinematics and compare the path with the recorded actions to get whether the actions are joint or
+TCP targets, absolute or deltas, their coordinate system, the scale (units and training gain), the
+gripper polarity and values, and the home joints. The pick-and-place example keeps the result in
+[`episode_settings.json`](../examples/execute_gr00t_single_arm_pick_and_place/episode_settings.json),
+loaded by its `episode_settings.py`, so none of it is typed into the run script.
 
 The TCP must be known: nothing in the data recovers it unless the training tool rotated a lot.
 Rotations pivot about it, so a TCP d mm off shifts the position by about d × angle while rotating.
@@ -94,10 +94,10 @@ server does not serve the file, so the client needs a local copy.
 ### 3. Check the cell against the training scene
 
 If the policy was trained in simulation, replay one training episode's recorded joint path on the
-real robot before running the policy:
-[`examples/replay/replay_episode.py`](../examples/replay/replay_episode.py). A replay that picks and
-places proves the robot frame, table and target positions match; whatever goes wrong afterwards is
-the policy. It does not check the TCP: joints replay the same path whatever the TCP is.
+real robot before running the policy (a `jog_joints` chunk of the episode's joints at its rate). A
+replay that picks and places proves the robot frame, table and target positions match; whatever
+goes wrong afterwards is the policy. It does not check the TCP: joints replay the same path
+whatever the TCP is.
 
 ### 4. Write the run script
 
@@ -111,7 +111,7 @@ from novapolicy import (
     SequentialExecution,
     WebRTCCameras,
 )
-from settings_from_episode import EpisodeSettings  # novapolicy/examples
+from episode_settings import EpisodeSettings  # the pick-and-place example's loader
 
 settings = EpisodeSettings.load("episode_settings.json")
 arm = settings.robots["arm"]

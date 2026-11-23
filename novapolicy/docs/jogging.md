@@ -134,8 +134,8 @@ Use a curve that is zero in both the first and second derivative at the ends —
 `smootherstep`, `6x⁵ − 15x⁴ + 10x³`. Plain `smoothstep` (`3x² − 2x³`) zeroes the
 velocity but enters and leaves at peak acceleration, which the robot executes as a
 stumble; that is the same defect as a linear ramp, one order up. This is also the
-curve `EaseIn` uses. `jogging_single_tcp.py` shows the phase warp and
-`jogging_single_joint_chunked.py` the amplitude envelope.
+curve `EaseIn` uses. `jogging_tcp.py` shows the phase warp and
+`jogging_joints.py --chunked` the amplitude envelope.
 
 Rerun state visualization should not be configured faster than the controller
 state source: duplicate states cost sampling and serialisation work without adding

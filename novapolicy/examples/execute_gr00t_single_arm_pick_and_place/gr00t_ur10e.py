@@ -32,6 +32,7 @@ import sys
 import time
 from typing import TYPE_CHECKING, Any
 
+from episode_settings import EpisodeSettings
 import numpy as np
 from zimmer_gripper import GripperStates, HoldWhileGripping, ZimmerGripper
 
@@ -51,22 +52,20 @@ from novapolicy import (
     resolve_actions,
 )
 
-# settings_from_episode.py is shared by the examples: it lives in novapolicy/examples.
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-from settings_from_episode import EpisodeSettings
-
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
 
 logger = logging.getLogger(__name__)
 
-# --- Measured from a training episode (settings_from_episode.py --write) -------------------
+# --- Measured from a training episode (episode_settings.json) ----------------------------
 # Rate, home, the deltas' coordinate system, the training controller's gains and the gripper
-# values; README.md shows how to regenerate the file for another policy or episode.
+# values (README.md says what each field means).
 SETTINGS = EpisodeSettings.load(Path(__file__).with_name("episode_settings.json"))
 ARM = SETTINGS.robots["arm"]
 if ARM.gripper_open is None or ARM.gripper_closed is None or ARM.gripper_holding is None:
-    sys.exit("episode_settings.json has no gripper for 'arm': regenerate it with gripper=...")
+    sys.exit(
+        "episode_settings.json has no gripper values for 'arm' (gripper_open, gripper_closed, gripper_holding)"
+    )
 CONTROLLER = ARM.motion_group.split("@", 1)[1]
 TCP = ARM.tcp  # the fit was made for this TCP
 
