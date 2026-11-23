@@ -37,7 +37,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Typecheck
-        run: uv run ty check --exclude "novapolicy/lerobot/**"
+        run: uv run ty check --exclude "novapolicy/providers/lerobot/**"
 
       - name: Run tests
         run: PYTHONPATH=. LOG_LEVEL=WARNING uv run pytest -rs -v -m "not integration"
@@ -58,10 +58,10 @@ jobs:
 
       - name: Verify the installed LeRobot integration
         run: |
-          uv run python -c "import novapolicy.lerobot.client, novapolicy.lerobot.schema, novapolicy.lerobot.transport"
+          uv run python -c "import novapolicy.providers.lerobot.client, novapolicy.providers.lerobot.schema, novapolicy.providers.lerobot.transport"
 
       - name: Typecheck LeRobot integration
-        run: uv run ty check novapolicy/lerobot
+        run: uv run ty check novapolicy/providers/lerobot
 
       - name: Run LeRobot tests
         run: |

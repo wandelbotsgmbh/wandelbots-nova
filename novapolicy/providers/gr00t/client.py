@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 
 from novapolicy import training_range
-from novapolicy.gr00t.eef import TcpFormat, pose_to_eef
-from novapolicy.gr00t.transport import Gr00tZmqTransport, require_dict
-from novapolicy.policy_client import PolicyClient, resolve_control_freq
+from novapolicy.providers.base import PolicyClient, resolve_control_freq
+from novapolicy.providers.gr00t.eef import TcpFormat, pose_to_eef
+from novapolicy.providers.gr00t.transport import Gr00tZmqTransport, require_dict
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ _PROTOCOL_HINT = (
 class Gr00tPolicyClient(PolicyClient):
     """Policy client for NVIDIA GR00T N1.7 ZeroMQ inference servers.
 
-    Targets GR00T protocol version :data:`~novapolicy.gr00t.GROOT_PROTOCOL_VERSION`.
+    Targets GR00T protocol version :data:`~novapolicy.providers.gr00t.GROOT_PROTOCOL_VERSION`.
 
     Args:
         host: Hostname of the GR00T ZMQ server.

@@ -19,7 +19,7 @@ from novapolicy.jogging.live_buffer import LiveBuffer
 from novapolicy.jogging.modules import EndpointRamp, TimestepTimeline, default_pipeline
 from novapolicy.jogging.pipeline import split_pipeline
 from novapolicy.jogging.session import first_fired
-from novapolicy.policy_client import PolicyClient
+from novapolicy.providers.base import PolicyClient
 from novapolicy.types import (
     ActionChunk,
     ContinuousExecution,

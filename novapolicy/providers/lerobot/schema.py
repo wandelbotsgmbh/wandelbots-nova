@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from lerobot.configs.types import PolicyFeature
 
     from nova.types import RobotState
-    from novapolicy.lerobot.config import LeRobotExecutionSettings
+    from novapolicy.providers.lerobot.config import LeRobotExecutionSettings
     from novapolicy.schema import PolicySchema
 
 logger = logging.getLogger(__name__)

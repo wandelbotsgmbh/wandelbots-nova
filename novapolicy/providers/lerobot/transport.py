@@ -8,9 +8,8 @@ from typing import Any, cast
 
 import grpc
 from lerobot.async_inference.helpers import TimedObservation
-from lerobot.transport.utils import send_bytes_in_chunks
-
 from lerobot.transport import services_pb2, services_pb2_grpc
+from lerobot.transport.utils import send_bytes_in_chunks
 
 
 class LeRobotGrpcTransport:

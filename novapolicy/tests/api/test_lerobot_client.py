@@ -19,7 +19,7 @@ from novapolicy.ops import Rad2Deg
 from novapolicy.schema import BoolMapping, Observation, PolicySchema
 from novapolicy.tests.doubles import mg as _mg, state as _state, tcp_state as _tcp_state
 
-client_module = pytest.importorskip("novapolicy.lerobot.client")
+client_module = pytest.importorskip("novapolicy.providers.lerobot.client")
 grpc = pytest.importorskip("grpc")
 helpers_module = pytest.importorskip("lerobot.async_inference.helpers")
 services_pb2 = pytest.importorskip("lerobot.transport.services_pb2")

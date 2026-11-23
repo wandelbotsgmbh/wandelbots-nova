@@ -31,7 +31,7 @@ from novapolicy import (
     jog_joints,
 )
 from novapolicy.jogging import waypoint_session as ws
-from novapolicy.policy_client import CallbackPolicyClient
+from novapolicy.providers.base import CallbackPolicyClient
 from novapolicy.schema import Action, Observation, PolicySchema
 from novapolicy.types import ActionChunk
 

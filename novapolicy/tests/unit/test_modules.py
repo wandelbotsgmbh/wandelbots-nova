@@ -176,7 +176,7 @@ def test_smoothing_keeps_the_steps_it_already_sent_exact() -> None:
 
 
 def test_a_step_rate_comes_from_the_caller_else_the_policy_else_30_hz(caplog) -> None:
-    from novapolicy.policy_client import resolve_control_freq
+    from novapolicy.providers.base import resolve_control_freq
 
     assert resolve_control_freq(20, owner="p") == 20.0
     assert resolve_control_freq(None, owner="p", recorded=50) == 50.0

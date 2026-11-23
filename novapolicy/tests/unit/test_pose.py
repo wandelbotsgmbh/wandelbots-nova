@@ -21,7 +21,7 @@ from types import SimpleNamespace
 from hypothesis import assume, given, settings, strategies as st
 import pytest
 
-from novapolicy.gr00t.eef import TcpFormat, pose_to_eef
+from novapolicy.providers.gr00t.eef import TcpFormat, pose_to_eef
 
 # Strategies ---------------------------------------------------------------
 

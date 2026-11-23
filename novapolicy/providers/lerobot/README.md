@@ -40,7 +40,7 @@ The LeRobot examples here run on a UR10e carrying the UMI gripper, whose
 ./novapolicy/examples/setup_cell.sh http://<nova-host> umi
 ```
 
-[`pick_and_place_umi_ur10e.py`](../examples/pick_and_place_umi_ur10e.py) drives the same task by
+[`pick_and_place_umi_ur10e.py`](../../examples/pick_and_place_umi_ur10e.py) drives the same task by
 hand. Run it first: if the scripted version cannot pick the cube up, no checkpoint will.
 
 ### 3. Put the checkpoint where the LeRobot server can read it
@@ -181,7 +181,7 @@ keep the same schema and use the following policy and executor options:
 
 ```python
 from novapolicy import ContinuousExecution, QueuedPolicyClient
-from novapolicy.lerobot import AsyncQueueAggregation
+from novapolicy.providers.lerobot import AsyncQueueAggregation
 
 policy = QueuedPolicyClient(
     LeRobotPolicyClient(
@@ -339,7 +339,7 @@ catch values that are too *large* for the training range — degrees where radia
 reverse sits comfortably inside a degree range and cannot be caught this way.
 
 If the dataset genuinely used different units than NOVA reports, declare the conversion rather than
-working around the warning — see [Units](../docs/schema.md#units).
+working around the warning — see [Units](../../docs/schema.md#units).
 
 **Derivation needs a checkpoint the client can read.** If `pretrained_name_or_path` names a path
 that exists only on the inference server, the NOVA client cannot inspect it — LeRobot's async RPC
@@ -363,7 +363,7 @@ the wrong policy class.
 `load_execution_settings` remains available for reading the same values directly:
 
 ```python
-from novapolicy.lerobot import load_execution_settings
+from novapolicy.providers.lerobot import load_execution_settings
 
 settings = load_execution_settings("./pretrained_model")
 # settings.chunk_size == 11
@@ -404,7 +404,7 @@ same-`dt_ms` interpolated bridge to one continuous motion request. IO and comput
 NOVA's server clock reaches policy waypoint zero; the
 robot does not stop at that boundary. Endpoint interpolation allocates additional same-`dt_ms`
 intervals for acceleration and braking of each settled request. See
-[`docs/executor.md`](../docs/executor.md#bridging-a-distant-first-waypoint).
+[`docs/executor.md`](../../docs/executor.md#bridging-a-distant-first-waypoint).
 
 ### Continuous execution with `QueuedPolicyClient`
 
@@ -580,7 +580,7 @@ can't when it has no readable copy of the checkpoint.
 
 The live observation does not resemble the training data — most often a unit mismatch. Compare the
 values in the message against the training ranges it prints. If the dataset used different units,
-declare the conversion with `ops=` on the observation; see [Units](../docs/schema.md#units).
+declare the conversion with `ops=` on the observation; see [Units](../../docs/schema.md#units).
 
 Warnings about being *outside the training distribution*, as opposed to this error, are expected
 before homing: the robot is simply somewhere the demonstrations never visited.
@@ -590,4 +590,4 @@ before homing: the robot is simply somewhere the demonstrations never visited.
 `LeRobotPolicyClient` needs the first image frame to declare LeRobot feature metadata, so the camera
 has to be connected and streaming before the first inference. A frame older than the executor's
 `camera_max_age_s` (1 s by default) counts as stale — see
-[stale inputs](../docs/executor.md#stale-inputs-and-how-a-run-ends) for what happens then.
+[stale inputs](../../docs/executor.md#stale-inputs-and-how-a-run-ends) for what happens then.

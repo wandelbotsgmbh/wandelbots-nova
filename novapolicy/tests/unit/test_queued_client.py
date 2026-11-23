@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import pytest
 
 from novapolicy.jogging.modules import TimestepTimeline
-from novapolicy.policy_client import PolicyClient
-from novapolicy.queued_client import QueuedPolicyClient
+from novapolicy.providers.base import PolicyClient
+from novapolicy.providers.queued import QueuedPolicyClient
 from novapolicy.schema import Action, Observation, PolicySchema
 from novapolicy.tests.doubles import mg as _mg
 from novapolicy.types import ActionChunk

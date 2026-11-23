@@ -10,7 +10,7 @@ import pytest
 from novapolicy.schema import Action, Observation, PolicySchema
 from novapolicy.tests.doubles import mg as _mg, state as _state
 
-schema_module = pytest.importorskip("novapolicy.lerobot.schema")
+schema_module = pytest.importorskip("novapolicy.providers.lerobot.schema")
 LeRobotSchema = schema_module.LeRobotSchema
 
 
@@ -109,7 +109,9 @@ def test_validate_schema_rejects_duplicate_io_targets_for_one_group() -> None:
 # assert_matches: schema against the checkpoint's feature contract
 # ---------------------------------------------------------------------------
 
-LeRobotExecutionSettings = pytest.importorskip("novapolicy.lerobot.config").LeRobotExecutionSettings
+LeRobotExecutionSettings = pytest.importorskip(
+    "novapolicy.providers.lerobot.config"
+).LeRobotExecutionSettings
 _types = pytest.importorskip("lerobot.configs.types")
 FeatureType = _types.FeatureType
 PolicyFeature = _types.PolicyFeature
@@ -264,7 +266,7 @@ def test_assert_matches_warns_and_skips_when_the_checkpoint_declares_no_features
 # ---------------------------------------------------------------------------
 
 check_observation_range = schema_module.check_observation_range
-FeatureStats = pytest.importorskip("novapolicy.lerobot.config").FeatureStats
+FeatureStats = pytest.importorskip("novapolicy.providers.lerobot.config").FeatureStats
 
 
 def _stats_settings(**stats) -> object:

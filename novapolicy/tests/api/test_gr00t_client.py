@@ -24,7 +24,7 @@ import pytest
 import pytest_asyncio
 
 from nova.types import Pose
-from novapolicy.gr00t import Gr00tMsgSerializer, Gr00tPolicyClient
+from novapolicy.providers.gr00t import Gr00tMsgSerializer, Gr00tPolicyClient
 from novapolicy.schema import Action, BoolMapping, Observation, ObservationEntry, PolicySchema
 from novapolicy.tests.doubles import mg as _mg, state as _state
 from novapolicy.types import ActionChunk

@@ -17,7 +17,6 @@ from novapolicy.executor import (
     PolicyExecutor,
     resolve_actions,
 )
-from novapolicy.gr00t import Gr00tPolicyClient
 from novapolicy.jogging import (
     Bridge,
     DropLate,
@@ -35,10 +34,11 @@ from novapolicy.jogging import (
     jog_tcp,
 )
 from novapolicy.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
-from novapolicy.policy_client import CallbackPolicyClient, PolicyClient, resolve_control_freq
 from novapolicy.pose_sources import OmniverseScene, PoseSource
 from novapolicy.poses import OrientationType
-from novapolicy.queued_client import QueuedPolicyClient
+from novapolicy.providers.base import CallbackPolicyClient, PolicyClient, resolve_control_freq
+from novapolicy.providers.gr00t import Gr00tPolicyClient
+from novapolicy.providers.queued import QueuedPolicyClient
 from novapolicy.schema import (
     Action,
     BoolMapping,
@@ -62,15 +62,15 @@ from novapolicy.types import (
 )
 
 if TYPE_CHECKING:
-    from novapolicy.leapp import LeappPolicyClient
-    from novapolicy.lerobot import LeRobotPolicyClient
+    from novapolicy.providers.leapp import LeappPolicyClient
+    from novapolicy.providers.lerobot import LeRobotPolicyClient
 
 
 def __getattr__(name: str) -> object:
     """Load backend-specific clients only when requested."""
     if name == "LeRobotPolicyClient":
         try:
-            return importlib.import_module("novapolicy.lerobot").LeRobotPolicyClient
+            return importlib.import_module("novapolicy.providers.lerobot").LeRobotPolicyClient
         except ModuleNotFoundError as exc:
             msg = (
                 "LeRobotPolicyClient requires the LeRobot policy extra. "
@@ -79,7 +79,7 @@ def __getattr__(name: str) -> object:
             raise ModuleNotFoundError(msg) from exc
     if name == "LeappPolicyClient":
         try:
-            return importlib.import_module("novapolicy.leapp").LeappPolicyClient
+            return importlib.import_module("novapolicy.providers.leapp").LeappPolicyClient
         except ModuleNotFoundError as exc:
             msg = (
                 "LeappPolicyClient requires the LEAPP policy extra. "

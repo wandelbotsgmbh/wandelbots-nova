@@ -9,16 +9,16 @@ from typing import TYPE_CHECKING, Any, cast
 from lerobot.async_inference.helpers import RemotePolicyConfig
 import numpy as np
 
-from novapolicy.lerobot.config import try_load_execution_settings
-from novapolicy.lerobot.schema import LeRobotSchema, check_observation_range
-from novapolicy.lerobot.transport import LeRobotGrpcTransport
-from novapolicy.policy_client import PolicyClient, resolve_control_freq
+from novapolicy.providers.base import PolicyClient, resolve_control_freq
+from novapolicy.providers.lerobot.config import try_load_execution_settings
+from novapolicy.providers.lerobot.schema import LeRobotSchema, check_observation_range
+from novapolicy.providers.lerobot.transport import LeRobotGrpcTransport
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from nova.types import RobotState
-    from novapolicy.lerobot.config import LeRobotExecutionSettings
+    from novapolicy.providers.lerobot.config import LeRobotExecutionSettings
     from novapolicy.schema import PolicySchema
     from novapolicy.types import ActionChunk
 

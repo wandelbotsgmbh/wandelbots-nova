@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from novapolicy.action_queue import AsyncQueueAggregation, TimestampedActionQueue
+from novapolicy.providers.action_queue import AsyncQueueAggregation, TimestampedActionQueue
 
 
 def test_weighted_aggregation_blends_old_and_new_predictions() -> None:

@@ -16,9 +16,9 @@ import pytest
 pytest.importorskip("onnxruntime")
 
 from nova.types import Pose
-from novapolicy.leapp import LeappPipeline, LeappPolicyClient
 from novapolicy.ops import Scale
 from novapolicy.poses import QUATERNION
+from novapolicy.providers.leapp import LeappPipeline, LeappPolicyClient
 from novapolicy.schema import Action, Observation, PolicySchema
 from novapolicy.tests.doubles import mg as _mg
 

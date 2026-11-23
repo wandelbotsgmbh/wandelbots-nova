@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from novapolicy.leapp.pipeline import _DTYPES, LeappPipeline
-from novapolicy.policy_client import PolicyClient, resolve_control_freq
+from novapolicy.providers.base import PolicyClient, resolve_control_freq
+from novapolicy.providers.leapp.pipeline import _DTYPES, LeappPipeline
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from nova.types import RobotState
-    from novapolicy.leapp.pipeline import Port
+    from novapolicy.providers.leapp.pipeline import Port
     from novapolicy.schema import PolicySchema
     from novapolicy.types import ActionChunk
 

@@ -21,7 +21,7 @@ from scipy.spatial.transform import Rotation
 
 from novapolicy.executor import PolicyExecutor
 from novapolicy.ops import Scale
-from novapolicy.policy_client import CallbackPolicyClient
+from novapolicy.providers.base import CallbackPolicyClient
 from novapolicy.schema import Action, Observation, PolicySchema
 from novapolicy.types import (
     ActionChunk,

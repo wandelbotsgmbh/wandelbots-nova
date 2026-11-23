@@ -206,8 +206,8 @@ def test_a_clamp_and_your_own_modules_may_stand_anywhere_among_the_chunk_modules
 
 
 def test_every_default_pipeline_keeps_the_stages_order():
-    from novapolicy.policy_client import CallbackPolicyClient
-    from novapolicy.queued_client import QueuedPolicyClient
+    from novapolicy.providers.base import CallbackPolicyClient
+    from novapolicy.providers.queued import QueuedPolicyClient
     from novapolicy.types import ContinuousExecution, SequentialExecution
 
     queue = QueuedPolicyClient(CallbackPolicyClient(lambda _obs: None))

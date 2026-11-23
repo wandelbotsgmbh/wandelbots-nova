@@ -35,8 +35,8 @@ from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
 from novapolicy.jogging.waypoint_session import Scheduled
 from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.ops import Rad2Deg
-from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
-from novapolicy.queued_client import QueuedPolicyClient
+from novapolicy.providers.base import CallbackPolicyClient, PolicyClient
+from novapolicy.providers.queued import QueuedPolicyClient
 from novapolicy.schema import Action, Observation, ObservationEntry, PolicySchema
 from novapolicy.tests.doubles import fake_session as _fake_session, mg as _mg
 from novapolicy.types import (
