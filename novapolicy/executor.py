@@ -16,7 +16,7 @@ from novapolicy.chunking import apply_relative_mode, is_single_step, placement, 
 from novapolicy.io import IOStreamManager
 from novapolicy.jogging.lifecycle import SessionLifecycle, move_to_start_joint_position
 from novapolicy.jogging.live_buffer import LiveBuffer
-from novapolicy.jogging.modules import TimestepTimeline, default_pipeline
+from novapolicy.jogging.modules import EndpointRamp, TimestepTimeline, default_pipeline
 from novapolicy.jogging.pipeline import split_pipeline
 from novapolicy.jogging.session import first_fired
 from novapolicy.policy_client import PolicyClient
@@ -89,9 +89,20 @@ class ExecutionResult:
 def _check_execution_mode(
     execution: ExecutionMode, policy: PolicyClient, pipeline: Sequence[object]
 ) -> None:
-    """Raise ``ValueError`` for a setup the executor would run wrongly (contracts T12)."""
+    """Raise ``ValueError`` for a setup the executor would run wrongly (contracts T12); warn
+    for one it runs as asked but rarely as meant."""
+    if [type(m) for m in pipeline] == [type(m) for m in default_pipeline()]:
+        logger.warning(
+            "The pipeline is the joggers' default (default_pipeline() without arguments): no "
+            "Bridge or JointClamp. For the executor use default_pipeline(execution=..., policy=...)"
+        )
     queue = any(isinstance(m, TimestepTimeline) for m in policy.default_modules)
     if not isinstance(execution, SequentialExecution):
+        if any(isinstance(m, EndpointRamp) for m in pipeline):
+            logger.warning(
+                "EndpointRamp brings every chunk to rest, so in ContinuousExecution the arm stops "
+                "at each replacement; leave it out unless that is meant"
+            )
         if queue and not any(isinstance(m, TimestepTimeline) for m in pipeline):
             raise ValueError(
                 f"{type(policy).__name__} numbers its steps: put its default_modules (a "

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 # The module, not its names: chunking imports this package, so it may still be loading here.
 from novapolicy import chunking
@@ -31,6 +31,8 @@ class HoldPadding:
     does not return to it (ADR 0010). Leave it out to use
     ``WaypointConfig.delay_until_braking_ms``; put it after modules that set their own horizon.
     """
+
+    stage: ClassVar[str] = "horizon"  # its place among the chunk modules (CHUNK_STAGES)
 
     min_horizon_ms: float = 500.0
     after_ms: float = 0.0
@@ -87,6 +89,8 @@ class EndpointRamp:
     IO is kept. For sequential execution, where chunks start and end at rest.
     """
 
+    stage: ClassVar[str] = "shape"  # its place among the chunk modules (CHUNK_STAGES)
+
     interpolation_steps: int = 3
     """Intervals replacing each endpoint interval. Must be at least two."""
 
@@ -122,6 +126,8 @@ class Smoothing:
     Joint and TCP values are filtered per component; IO, timing and computed-action values are
     untouched; chunks under three steps pass unchanged. Put it before the ``Bridge``.
     """
+
+    stage: ClassVar[str] = "smooth"  # its place among the chunk modules (CHUNK_STAGES)
 
     passes: int = 2
     _sent: dict[int, list[float]] = field(default_factory=dict, init=False, repr=False)
@@ -162,6 +168,8 @@ class Bridge:
     bridged chunk is dated at the send (T2). IO stays with the policy's first step; TCP
     rotations are unwrapped against the measured pose.
     """
+
+    stage: ClassVar[str] = "anchor"  # its place among the chunk modules (CHUNK_STAGES)
 
     always_anchor: bool = False
 
@@ -204,6 +212,8 @@ class TimestepTimeline:
     origin, and a later chunk starting at timestep ``t`` is placed at
     ``origin + (t - t0) * dt``. Chunks without timesteps pass. Put it before the ``Bridge``.
     """
+
+    stage: ClassVar[str] = "timeline"  # its place among the chunk modules (CHUNK_STAGES)
 
     _origin: tuple[int, int] | None = field(default=None, init=False, repr=False)
 

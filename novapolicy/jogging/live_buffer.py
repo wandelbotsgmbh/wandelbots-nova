@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 import logging
 import math
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, ClassVar, TypeAlias
 
 from novapolicy.jogging.clock import ServerMs
 
@@ -138,6 +138,8 @@ class LiveBuffer:
     For dense live targets (jogging), not policy steps (ADR 0004). Its own timeline (T2); a
     chunk of several steps passes through and clears the buffer.
     """
+
+    stage: ClassVar[str] = "input"  # its place among the chunk modules (CHUNK_STAGES)
 
     window_ms: float = 500.0
     _points: list[TimedPoint] = field(default_factory=list, init=False, repr=False)

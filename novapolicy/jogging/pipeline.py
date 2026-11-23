@@ -17,6 +17,13 @@ if TYPE_CHECKING:
     from novapolicy.joint_limits import JointLimits
     from novapolicy.types import JoggingMode
 
+CHUNK_STAGES = ("input", "smooth", "timeline", "anchor", "shape", "horizon")
+"""The order of the built-in chunk modules, by their ``stage``: LiveBuffer, Smoothing,
+TimestepTimeline, Bridge, EndpointRamp, HoldPadding. A module without a ``stage`` (JointClamp, your
+own) may stand anywhere among them."""
+
+_STAGE_ORDER = "LiveBuffer, Smoothing, TimestepTimeline, Bridge, EndpointRamp, HoldPadding"
+
 TimedWaypoint = tuple["ServerMs", list[float]]
 """A waypoint about to be sent: its time on the session clock and its values."""
 
@@ -85,13 +92,34 @@ class SplitPipeline(NamedTuple):
     waypoint_modules: list[WaypointModule]
 
 
+def _check_order(pipeline: Sequence[object]) -> None:
+    """Refuse a built-in module twice, or chunk modules out of their stages' order."""
+    builtins: set[type] = set()
+    last: tuple[int, str] | None = None
+    for item in pipeline:
+        name = type(item).__name__
+        if type(item).__module__.startswith("novapolicy.") and not isinstance(item, Timestamps):
+            if type(item) in builtins:
+                raise ValueError(f"{name} appears twice in the pipeline")
+            builtins.add(type(item))
+        stage = getattr(item, "stage", None)
+        if stage is None:
+            continue
+        rank = CHUNK_STAGES.index(stage)
+        if last is not None and rank < last[0]:
+            raise ValueError(f"{name} must come before {last[1]}: chunk modules run {_STAGE_ORDER}")
+        last = (rank, name)
+
+
 def split_pipeline(pipeline: Sequence[object]) -> SplitPipeline:
     """The modules of ``pipeline`` by kind, in order.
 
     Raises:
-        ValueError: kinds out of order, or ``Timestamps()`` twice.
+        ValueError: kinds out of order, chunk modules out of their stages' order
+            (:data:`CHUNK_STAGES`), a built-in module twice, or ``Timestamps()`` twice.
         TypeError: an item of no kind.
     """
+    _check_order(pipeline)
     split = SplitPipeline([], [], [])
     stamped = False
     for item in pipeline:

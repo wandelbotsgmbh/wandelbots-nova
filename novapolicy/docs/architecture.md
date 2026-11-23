@@ -97,6 +97,25 @@ flowchart TB
 | `LiveBuffer` | a lone live target is a terminal target the robot brakes to | not adding it |
 | `EaseIn` | a time-based target with velocity at t=0 lunges from rest | not adding it |
 
+### Order and combinations
+
+Chunk modules run in the order of their stage: `LiveBuffer` → `Smoothing` → `TimestepTimeline` →
+`Bridge` → `EndpointRamp` → `HoldPadding`. `JointClamp` and modules of your own have no stage and
+may stand anywhere among them; the others only interpolate between or repeat steps already inside
+the limits, so the clamp's place does not change the result. Refused when the session is built
+(`ValueError`):
+
+- kinds out of order, or `Timestamps()` twice;
+- chunk modules out of their stages' order (with `[Bridge, TimestepTimeline]`, a queue's step 12
+  ran 832 ms late);
+- a built-in module twice;
+- in the executor: a timestep queue without `TimestepTimeline` in continuous execution, a timestep
+  queue or a `LiveBuffer` in sequential execution.
+
+The executor warns, and runs as asked, for two lists that are rarely meant: the joggers' default
+(`default_pipeline()` without arguments: no `Bridge`, no `JointClamp`), and an `EndpointRamp` in
+continuous execution (the arm stops at every replacement).
+
 ## Execution modes
 
 ```mermaid

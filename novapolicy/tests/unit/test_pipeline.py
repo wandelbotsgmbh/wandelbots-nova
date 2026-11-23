@@ -8,7 +8,16 @@ import pytest
 
 from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.live_buffer import LiveBuffer
-from novapolicy.jogging.modules import DropLate
+from novapolicy.jogging.modules import (
+    Bridge,
+    DropLate,
+    EndpointRamp,
+    HoldPadding,
+    JointClamp,
+    Smoothing,
+    TimestepTimeline,
+    default_pipeline,
+)
 from novapolicy.jogging.pipeline import (
     ChunkModule,
     EaseIn,
@@ -141,4 +150,71 @@ def test_a_chunk_module_after_the_timestamps_is_refused():
 )
 def test_a_misordered_or_foreign_pipeline_is_refused(pipeline, error, match):
     with pytest.raises(error, match=match):
+        split_pipeline(pipeline)
+
+
+class _OwnModule:
+    """A user's chunk module: no stage, so it may stand anywhere among the chunk modules."""
+
+    def on_chunk(self, chunk, context):
+        return chunk
+
+
+@pytest.mark.parametrize(
+    ("pipeline", "match"),
+    [
+        ([Bridge(), TimestepTimeline()], "TimestepTimeline must come before Bridge"),
+        ([TimestepTimeline(), Smoothing()], "Smoothing must come before TimestepTimeline"),
+        ([HoldPadding(), EndpointRamp()], "EndpointRamp must come before HoldPadding"),
+        ([Bridge(), LiveBuffer(window_ms=500)], "LiveBuffer must come before Bridge"),
+    ],
+    ids=[
+        "timeline-after-bridge",
+        "smoothing-after-timeline",
+        "hold-before-ramp",
+        "live-buffer-late",
+    ],
+)
+def test_chunk_modules_out_of_their_stages_order_are_refused(pipeline, match):
+    with pytest.raises(ValueError, match=match):
+        split_pipeline(pipeline)
+
+
+@pytest.mark.parametrize(
+    "pipeline",
+    [[Bridge(), Bridge()], [JointClamp(), Bridge(), JointClamp()], [DropLate(), DropLate()]],
+    ids=["bridge", "clamp", "drop-late"],
+)
+def test_a_built_in_module_twice_is_refused(pipeline):
+    with pytest.raises(ValueError, match="appears twice"):
+        split_pipeline(pipeline)
+
+
+def test_a_clamp_and_your_own_modules_may_stand_anywhere_among_the_chunk_modules():
+    own = _OwnModule()
+    pipeline = [
+        JointClamp(),
+        Smoothing(),
+        own,
+        TimestepTimeline(),
+        Bridge(),
+        _OwnModule(),
+        EndpointRamp(),
+        HoldPadding(),
+    ]
+    assert len(split_pipeline(pipeline).chunk_modules) == 8
+
+
+def test_every_default_pipeline_keeps_the_stages_order():
+    from novapolicy.policy_client import CallbackPolicyClient
+    from novapolicy.queued_client import QueuedPolicyClient
+    from novapolicy.types import ContinuousExecution, SequentialExecution
+
+    queue = QueuedPolicyClient(CallbackPolicyClient(lambda _obs: None))
+    for pipeline in (
+        default_pipeline(),
+        default_pipeline(execution=SequentialExecution()),
+        default_pipeline(execution=ContinuousExecution(rate_hz=10), policy=queue),
+        [LiveBuffer(window_ms=500), *default_pipeline()],
+    ):
         split_pipeline(pipeline)

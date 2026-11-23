@@ -890,6 +890,34 @@ async def test_a_queued_client_runs_continuously_on_the_timestep_timeline(robot:
     assert all(399.0 < x < 410.0 for x in xs)  # absolute, resolved once from 400 mm
 
 
+def test_a_jogger_pipeline_or_a_ramp_under_continuous_execution_is_warned_about(caplog):
+    """Both run as asked, but rarely as meant: the joggers' default has no Bridge or JointClamp,
+    and an EndpointRamp stops the arm at every replacement."""
+    from novapolicy import EndpointRamp, default_pipeline
+
+    with caplog.at_level("WARNING"):
+        PolicyExecutor(
+            _schema(), _hold, execution=SequentialExecution(), pipeline=default_pipeline()
+        )
+    assert "joggers' default" in caplog.text
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        PolicyExecutor(
+            _schema(),
+            _hold,
+            execution=ContinuousExecution(),
+            pipeline=[EndpointRamp(), *default_pipeline()],
+        )
+    assert "EndpointRamp brings every chunk to rest" in caplog.text
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        PolicyExecutor(
+            _schema(), _hold, execution=SequentialExecution()
+        )  # the defaults: no warning
+        PolicyExecutor(_schema(), _hold, execution=ContinuousExecution())
+    assert "joggers' default" not in caplog.text and "EndpointRamp" not in caplog.text
+
+
 def test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected():
     """Sequential execution never replaces a running plan, so neither gets its timing."""
     with pytest.raises(ValueError, match="requires ContinuousExecution"):

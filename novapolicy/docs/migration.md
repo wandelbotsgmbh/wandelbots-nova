@@ -364,3 +364,12 @@ the service's subjects and decodes the reply with `schema.decode_actions`
   `set_target` check every motion group before they queue any, so in `PolicyExecutor` such a
   chunk ends the run with that `ValueError` before any arm gets it. The new
   `WaypointJoggingSession.check_steps(steps)` runs the same check alone.
+
+## Chunk modules run in a fixed order, and a built-in module only once
+
+`split_pipeline` now refuses chunk modules out of their stages' order (`LiveBuffer`, `Smoothing`,
+`TimestepTimeline`, `Bridge`, `EndpointRamp`, `HoldPadding`; `JointClamp` and your own modules
+anywhere) and a built-in module listed twice. Such a list used to run, wrongly: with
+`[Bridge, TimestepTimeline]` a queue's steps ran up to 832 ms late. Reorder the list as the error
+says. The executor also warns for the joggers' default list and for `EndpointRamp` in continuous
+execution; both still run.
