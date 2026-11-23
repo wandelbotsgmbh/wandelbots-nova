@@ -81,7 +81,9 @@ class FakeJoggingServer:
     The session yields an ``InitializeActionChunksRequest`` first, then action
     chunk requests independently of response latency. We keep emitting ``_ok()``
     responses on a configurable cadence until stopped, recording every request
-    the session produces.
+    the session produces. Like NOVA, the fake answers a ``StopActionChunksRequest``
+    with a ``StopActionChunksResponse`` (ADR 0019) unless ``acknowledge_stop`` is off;
+    ``stop_ack_gate``, when set, holds that answer back until the event is set.
     """
 
     def __init__(
@@ -90,12 +92,20 @@ class FakeJoggingServer:
         fault: object | None = None,
         raise_exc: BaseException | None = None,
         response_delay: float = 0.003,
+        acknowledge_stop: bool = True,
     ) -> None:
         self.requests: list[object] = []
         self._fault = fault
         self._raise_exc = raise_exc
         self._response_delay = response_delay
+        self._acknowledge_stop = acknowledge_stop
         self._stop = asyncio.Event()
+        self.stop_received = asyncio.Event()
+        self.stop_ack_gate: asyncio.Event | None = None
+        self.stop_acknowledged = False
+        """Whether the fake has answered the session's stop request."""
+        self.closed = False
+        """Whether the session closed the stream (its request generator ended)."""
 
     async def execute_action_chunks(
         self,
@@ -118,11 +128,25 @@ class FakeJoggingServer:
                 yield self._fault
                 return
             while not self._stop.is_set():
-                yield _ok()
+                if (
+                    self._acknowledge_stop
+                    and not self.stop_acknowledged
+                    and self.stop_received.is_set()
+                    and (self.stop_ack_gate is None or self.stop_ack_gate.is_set())
+                ):
+                    self.stop_acknowledged = True
+                    yield api.models.StopActionChunksResponse()
+                else:
+                    yield _ok()
                 await asyncio.sleep(self._response_delay)
 
-        async for request in client_request_generator(responses()):
-            self.requests.append(request)
+        try:
+            async for request in client_request_generator(responses()):
+                self.requests.append(request)
+                if isinstance(_inner(request), api.models.StopActionChunksRequest):
+                    self.stop_received.set()
+        finally:
+            self.closed = True
 
     def stop(self) -> None:
         self._stop.set()
@@ -164,11 +188,13 @@ def _build_session(
     config: WaypointConfig | None = None,
     response_delay: float = 0.003,
     pipeline: Sequence[object] | None = None,
+    acknowledge_stop: bool = True,
 ) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
     server = FakeJoggingServer(
         fault=fault,
         raise_exc=raise_exc,
         response_delay=response_delay,
+        acknowledge_stop=acknowledge_stop,
     )
 
     async def state_stream(**_kw: object) -> AsyncGenerator[object, None]:
@@ -233,8 +259,8 @@ async def _started(
                 await session.wait_ready()
             yield session, server
         finally:
-            server.stop()
             await session.stop()
+            server.stop()
 
 
 def _server_now(session: WaypointJoggingSession) -> Any:
@@ -584,8 +610,8 @@ async def test_every_state_observer_sees_each_packet_even_when_another_fails():
             count = len(seen)
             await asyncio.sleep(0.02)
         finally:
-            server.stop()
             await session.stop()
+            server.stop()
     assert seen[:3] == [10, 20, 30]
     assert len(seen) == count
 
@@ -1144,7 +1170,8 @@ async def test_a_dead_state_stream_surfaces_instead_of_timing_out_startup():
         raise broken
         yield  # pragma: no cover - generator marker
 
-    with _built() as (session, server):
+    # Without a state stream nothing can report the stop settled: don't wait it out.
+    with _built() as (session, server), patch(f"{_SESSION}._STOP_TIMEOUT_S", 0.05):
         session._motion_group.stream_state = MagicMock(side_effect=dying_stream)
         try:
             await session.start()
@@ -1153,8 +1180,8 @@ async def test_a_dead_state_stream_surfaces_instead_of_timing_out_startup():
             assert session.has_failed is True
             assert session.failure_exception is broken
         finally:
-            server.stop()
             await session.stop()
+            server.stop()
 
 
 @pytest.mark.asyncio
@@ -1460,3 +1487,101 @@ async def test_the_session_reads_joint_limits_only_for_a_joint_clamp(clamp: bool
             sent = _joints(_inner(server.requests[1]).waypoints[0])
             assert fetch.await_count == (1 if clamp else 0)
             assert sent[:3] == ([1.0, -1.0, 0.5] if clamp else [2.0, -2.0, 0.5])
+
+
+# ---------------------------------------------------------------------------
+# Stop handshake (ADR 0019)
+# ---------------------------------------------------------------------------
+
+
+def _jogging_state(details_state: object, ts_ms: int) -> object:
+    """A state packet whose jogging state is a real API model, as NOVA streams it."""
+    details = SimpleNamespace(jogger_session_timestamp_ms=ts_ms, state=details_state)
+    return SimpleNamespace(
+        joint_position=[0.0] * 6,
+        tcp_pose=None,
+        tcp="Flange",
+        execute=SimpleNamespace(details=details),
+        timestamp=datetime.now(UTC),
+    )
+
+
+@pytest.mark.asyncio
+async def test_stop_asks_the_server_and_waits_for_its_acknowledgement_before_closing():
+    """The stop request goes out on the open stream, and the session closes only once NOVA
+    acknowledged it and then reported the jogging session no longer running; a paused state
+    before the acknowledgement is no answer."""
+    stopped_reported = asyncio.Event()
+    server_ref: list[FakeJoggingServer] = []
+
+    async def state_stream(**_kw: object) -> AsyncGenerator[object, None]:
+        ts = 0
+        while True:
+            ts += 10
+            server = server_ref[0]
+            if server.stop_acknowledged and stopped_reported.is_set():
+                yield _jogging_state(api.models.JoggingPausedByUser(), ts)
+            elif server.stop_acknowledged:
+                yield _jogging_state(api.models.JoggingRunning(), ts)
+            elif server.stop_received.is_set():
+                # Not acknowledged yet: a paused state now must not end the wait.
+                yield _jogging_state(api.models.JoggingPausedByUser(), ts)
+            else:
+                yield _jogging_state(api.models.JoggingRunning(), ts)
+            await asyncio.sleep(0.003)
+
+    with _built(pipeline=_unpadded()) as (session, server):
+        server_ref.append(server)
+        server.stop_ack_gate = asyncio.Event()
+        session._motion_group.stream_state = MagicMock(side_effect=state_stream)
+        try:
+            await session.start()
+            await session.wait_ready()
+            session.update_chunk(steps=[[0.1] * 6], dt_ms=50.0)
+            await _wait_until(lambda: len(server.requests) >= 2)
+
+            stopping = asyncio.create_task(session.stop())
+            await asyncio.wait_for(server.stop_received.wait(), timeout=1.0)
+            await asyncio.sleep(0.05)
+            assert not stopping.done()  # paused, but not acknowledged
+            assert not server.closed
+
+            server.stop_ack_gate.set()
+            await _wait_until(lambda: server.stop_acknowledged)
+            await asyncio.sleep(0.05)
+            assert not stopping.done()  # acknowledged, but still RUNNING
+            assert not server.closed
+
+            stopped_reported.set()
+            await asyncio.wait_for(stopping, timeout=1.0)
+            await _wait_until(lambda: server.closed)
+            assert isinstance(_inner(server.requests[-1]), api.models.StopActionChunksRequest)
+            assert (
+                sum(
+                    isinstance(_inner(r), api.models.StopActionChunksRequest)
+                    for r in server.requests
+                )
+                == 1
+            )
+        finally:
+            await session.stop()
+            server.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_stop_the_server_never_acknowledges_ends_after_the_stop_timeout(caplog):
+    """A NOVA that never confirms the stop costs the timeout and a warning, then the session
+    closes the stream anyway."""
+    with patch(f"{_SESSION}._STOP_TIMEOUT_S", 0.2):
+        async with _started(acknowledge_stop=False) as (session, server):
+            await _wait_until(lambda: len(server.requests) >= 1)
+            started = time.monotonic()
+            with caplog.at_level(logging.WARNING, logger=_SESSION):
+                await session.stop()
+            elapsed = time.monotonic() - started
+            await _wait_until(lambda: server.closed)
+
+    assert elapsed >= 0.2
+    assert isinstance(_inner(server.requests[-1]), api.models.StopActionChunksRequest)
+    assert not server.stop_acknowledged
+    assert "did not report the jogging session stopped" in caplog.text

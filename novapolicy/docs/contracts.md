@@ -147,9 +147,13 @@ Tests: `test_sequential_mode_delays_next_inference_until_deadline_and_standstill
 `test_fixed_rate_makes_up_slow_ticks_instead_of_lowering_the_rate`.
 
 **T10 End of a run.** A normal end waits until the session clock passes the last waypoint and
-stops on the last target; an error drops what was accepted. Tests:
+stops on the last target; an error drops what was accepted. Either way each session then sends
+`StopActionChunksRequest` and keeps the stream open until NOVA acknowledged it and reports the
+session no longer running, or `_STOP_TIMEOUT_S` (2 s) passed (ADR 0019). Tests:
 `test_a_normal_end_drains_before_stopping`, `test_drain_stops_on_the_last_target_instead_of_keeping_the_velocity`,
-`test_an_error_drops_the_accepted_waypoints_instead_of_draining`.
+`test_an_error_drops_the_accepted_waypoints_instead_of_draining`,
+`test_stop_asks_the_server_and_waits_for_its_acknowledgement_before_closing`,
+`test_a_stop_the_server_never_acknowledges_ends_after_the_stop_timeout`.
 
 **T11 Garbage collection.** Objects allocated up to policy preparation are frozen out of
 collection while the loop runs and released when the run ends. Test:
