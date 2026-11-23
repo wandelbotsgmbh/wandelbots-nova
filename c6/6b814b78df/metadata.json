@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "c66b814b78df",
+  "strategy": "manual-commit",
+  "branch": "fix/armed-parked-frame-after-cancel",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "nova/cell/movement_controller/trajectory_state_machine.py",
+    "tests/cell/multi_group_doubles.py",
+    "tests/cell/test_move_forward_adapter.py",
+    "tests/cell/test_process_motion_group_state.py",
+    "tests/cell/test_trajectory_cursor_level_states.py",
+    "tests/cell/test_trajectory_state_machine.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c6/6b814b78df/0/metadata.json",
+      "transcript": "/c6/6b814b78df/0/full.jsonl",
+      "compact_transcript": "/c6/6b814b78df/0/transcript.jsonl",
+      "content_hash": "/c6/6b814b78df/0/content_hash.txt",
+      "prompt": "/c6/6b814b78df/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 9,
+    "cache_creation_tokens": 670918,
+    "cache_read_tokens": 1412010,
+    "output_tokens": 1258,
+    "api_call_count": 3
+  }
+}
