@@ -648,6 +648,11 @@ class PolicyExecutor:
         """
         place = placement(chunk, execution=self._execution)
         moving = [*chunk.joints, *chunk.tcp]
+        # Every group's steps first: a bad one must not leave another group's chunk queued.
+        for group_id, steps in [*chunk.joints.items(), *chunk.tcp.items()]:
+            session = self._sessions.get(group_id)
+            if session is not None:
+                session.check_steps(steps)
         for group_id, steps in [*chunk.joints.items(), *chunk.tcp.items()]:
             session = self._sessions.get(group_id)
             if session is None:

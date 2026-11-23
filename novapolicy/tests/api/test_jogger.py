@@ -86,6 +86,7 @@ def _build_joint_jogger(
 
     def make_session(*, motion_group: object, **kw: object) -> MagicMock:
         sessions[motion_group] = _fake_session(num_joints)
+        sessions[motion_group].motion_group_id = motion_group.id  # type: ignore[attr-defined]
         sessions[motion_group].pipeline = kw.get("pipeline")
         return sessions[motion_group]
 
@@ -244,6 +245,25 @@ _tcp = partial(_build_tcp_jogger, "0@ur10e")
         (_single, lambda j: j.set_target([1.0, 2.0, 3.0]), ValueError, "expects 6"),
         # Two robots need a dict target; a bare list is a usage error.
         (_dual, lambda j: j.set_target([1.0] * 6), TypeError, "dict"),
+        # A value that is not finite never reaches the robot.
+        (_single, lambda j: j.set_target([float("nan")] * 6), ValueError, "not finite"),
+        # Every arm is checked before any is sent: a bad second arm leaves the first unsent.
+        (
+            _dual,
+            lambda j: j.set_target(dict(zip(j._mg_list, ([0.0] * 6, [0.0] * 5), strict=True))),
+            ValueError,
+            "'0@ur5e-right' expects 6",
+        ),
+        (
+            _dual,
+            lambda j: j.set_chunk(
+                dict(zip(j._mg_list, ([[0.0] * 6], [[0.0] * 5 + [float("inf")]]), strict=True)),
+                dt_ms=10.0,
+            ),
+            ValueError,
+            r"Step 0 for motion group '0@ur5e-right' .*not finite",
+        ),
+        (_single, lambda j: j.set_chunk([[0.0] * 6, [0.0] * 7], dt_ms=10.0), ValueError, "Step 1"),
     ],
     ids=[
         "chunk-as-target",
@@ -253,6 +273,10 @@ _tcp = partial(_build_tcp_jogger, "0@ur10e")
         "tcp-chunk-as-target",
         "wrong-joint-count",
         "bare-list-for-two-arms",
+        "nan-target",
+        "second-arm-wrong-width",
+        "second-arm-chunk-not-finite",
+        "chunk-step-too-wide",
     ],
 )
 def test_a_bad_target_is_rejected_before_anything_is_streamed(build, push, error, match):

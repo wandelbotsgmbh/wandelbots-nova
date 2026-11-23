@@ -118,12 +118,20 @@ class _BaseJogger:
         session = self._sessions.get(mg)
         return session.num_joints if session else None
 
-    def _set_live_target(self, mg: MotionGroup, values: list[float]) -> None:
-        """Validate one live target and send it as one waypoint, exactly as measured."""
+    def _check_live_target(self, mg: MotionGroup, values: list[float]) -> None:
+        """Raise ``ValueError`` for a live target of the wrong width or with a value that is
+        not finite."""
         expected = self._expected_dims(mg)
         if expected is not None and len(values) != expected:
             msg = f"Target has {len(values)} values but motion group '{mg.id}' expects {expected}"
             raise ValueError(msg)
+        session = self._sessions.get(mg)
+        if session is not None:
+            session.check_steps([values])
+
+    def _set_live_target(self, mg: MotionGroup, values: list[float]) -> None:
+        """Send one live target, checked by :meth:`_check_live_target`, as one waypoint,
+        exactly as measured."""
         session = self._sessions.get(mg)
         if session is not None:
             steps = [list(values)]
@@ -301,9 +309,12 @@ class _BaseJogger:
         Raises:
             TypeError: If given a chunk of future steps (use :meth:`set_chunk`), a value of the
                 wrong kind, or one value for several motion groups.
+            ValueError: If a target has the wrong number of values or one that is not finite.
         """
         targets = self._per_group(target, chunk=False)
         values = {mg: self._values(value) for mg, value in targets.items()}
+        for mg, value in values.items():  # every group before any is sent
+            self._check_live_target(mg, value)
         for mg, value in values.items():
             self._set_live_target(mg, value)
         updated = cast("dict[MotionGroup, _Target]", targets)
@@ -327,7 +338,8 @@ class _BaseJogger:
 
         Raises:
             TypeError: If given a single target. Use :meth:`set_target`.
-            ValueError: If ``dt_ms`` is not positive.
+            ValueError: If ``dt_ms`` is not positive, or a step has the wrong number of values
+                or one that is not finite (NaN, infinity).
         """
         if dt_ms <= 0:
             msg = (
@@ -336,6 +348,10 @@ class _BaseJogger:
             )
             raise ValueError(msg)
         chunks = cast("dict[MotionGroup, _Chunk]", self._per_group(chunk, chunk=True))
+        for mg, steps in chunks.items():  # every group before any is sent
+            session = self._sessions.get(mg)
+            if session is not None:
+                session.check_steps(steps)
         finals = {mg: self._send_chunk(mg, steps, dt_ms) for mg, steps in chunks.items()}
         # A dict updates only the groups it names; a bare chunk replaces outright.
         kept: dict[MotionGroup, _Target] = (

@@ -73,6 +73,9 @@ _STOP_TIMEOUT_S = 2.0
 
 _NOTHING_YET = ServerMs(0)
 
+_TCP_WIDTH = 6
+"""Values per TCP waypoint: ``x, y, z, rx, ry, rz``, fixed by the NOVA waypoint pose."""
+
 
 @dataclass(frozen=True, slots=True)
 class Scheduled:
@@ -358,6 +361,26 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     def failure_exception(self) -> BaseException | None:
         return self._failure_exception
 
+    def check_steps(self, steps: Sequence[Sequence[float]]) -> None:
+        """Raise ``ValueError`` for a step of the wrong width (joints: :attr:`num_joints` once
+        known; TCP poses: 6) or with a value that is not finite, naming the motion group and
+        the step. :meth:`update_chunk` checks every chunk with it; a caller that queues on
+        several sessions checks all of them first, so a bad one leaves none queued."""
+        width = _TCP_WIDTH if self._mode == "cartesian" else self._num_joints
+        for index, step in enumerate(steps):
+            if width is not None and len(step) != width:
+                msg = (
+                    f"Step {index} has {len(step)} values but motion group "
+                    f"'{self.motion_group_id}' expects {width}"
+                )
+                raise ValueError(msg)
+            if not all(math.isfinite(value) for value in step):
+                msg = (
+                    f"Step {index} for motion group '{self.motion_group_id}' has a value that is "
+                    f"not finite: {list(step)}"
+                )
+                raise ValueError(msg)
+
     def update_chunk(
         self,
         steps: list[list[float]],
@@ -393,9 +416,14 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 raises fails the session.
             retained_prefix_steps: Leading steps a queue already sent, which ``Smoothing``
                 keeps exact.
+
+        Raises:
+            ValueError: A step of the wrong width or with a value that is not finite
+                (:meth:`check_steps`); nothing is queued.
         """
         if not steps:
             return
+        self.check_steps(steps)
 
         chunk = PendingChunk(
             steps=[list(step) for step in steps],

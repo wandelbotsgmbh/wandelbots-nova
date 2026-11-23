@@ -8,7 +8,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from novapolicy.jogging.waypoint_session import Scheduled
+from novapolicy.jogging.waypoint_session import Scheduled, WaypointJoggingSession
 
 
 def mg(mg_id: str = "0@ur10e", controller_id: str | None = None) -> MagicMock:
@@ -68,5 +68,16 @@ def fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
         session.queued_chunk_count += 1
 
     session.update_chunk = MagicMock(side_effect=update_chunk)
+
+    def check_steps(steps: list[list[float]]) -> None:
+        # The real check, on this double's motion group, mode and joint count.
+        shape = SimpleNamespace(
+            _mode=session.mode,
+            _num_joints=session.num_joints,
+            motion_group_id=session.motion_group_id,
+        )
+        WaypointJoggingSession.check_steps(shape, steps)  # ty: ignore[invalid-argument-type]
+
+    session.check_steps = MagicMock(side_effect=check_steps)
     session.current_state = state((0.0,) * num_joints)
     return session

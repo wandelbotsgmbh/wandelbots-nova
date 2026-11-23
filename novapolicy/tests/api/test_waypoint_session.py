@@ -1702,3 +1702,47 @@ async def test_a_stop_the_server_never_acknowledges_ends_after_the_stop_timeout(
     assert isinstance(_inner(server.requests[-1]), api.models.StopActionChunksRequest)
     assert not server.stop_acknowledged
     assert "did not report the jogging session stopped" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Action values are checked when queued
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("steps", "match"),
+    [
+        ([[0.0] * 6, [0.1, float("nan"), 0.0, 0.0, 0.0, 0.0]], r"Step 1 .*'0@ur10e'.*not finite"),
+        ([[float("inf")] + [0.0] * 5], r"Step 0 .*'0@ur10e'.*not finite"),
+        ([[0.0] * 6, [0.0] * 7], r"Step 1 has 7 values but motion group '0@ur10e' expects 6"),
+        ([[0.0] * 5], r"Step 0 has 5 values but motion group '0@ur10e' expects 6"),
+    ],
+    ids=["nan", "inf", "too-wide", "too-narrow"],
+)
+async def test_invalid_action_values_are_refused_before_anything_is_sent(
+    steps: list[list[float]], match: str
+):
+    """A NaN, an infinity or a step of the wrong width never reaches NOVA: the chunk is refused
+    when queued, naming the motion group, the step and the expected width."""
+    async with _started(pipeline=_unpadded()) as (session, server):
+        with pytest.raises(ValueError, match=match):
+            session.update_chunk(steps=steps, dt_ms=50.0)
+        assert session.queued_chunk is None
+        assert session.queued_chunk_count == 0
+        await asyncio.sleep(0.02)
+        assert not _chunk_requests(server)
+
+
+def test_a_tcp_session_takes_six_values_per_step_before_it_starts():
+    mg = MagicMock()
+    mg.id = "0@ur10e"
+    session = WaypointJoggingSession(
+        motion_group=mg, config=WaypointConfig(), tcp="Flange", mode="cartesian"
+    )
+    with pytest.raises(
+        ValueError, match="Step 0 has 7 values but motion group '0@ur10e' expects 6"
+    ):
+        session.update_chunk(steps=[[0.0] * 7], dt_ms=50.0)
+    session.update_chunk(steps=[[500.0, 0.0, 300.0, 0.0, 3.14, 0.0]], dt_ms=50.0)
+    assert session.queued_chunk_count == 1

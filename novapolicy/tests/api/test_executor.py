@@ -1440,3 +1440,39 @@ async def test_a_failed_computed_action_without_motion_ends_the_run_with_its_err
 
     with pytest.raises(RuntimeError, match="gripper did not answer"):
         await PolicyExecutor(schema, _callback(no_motion), timeout_s=2.0).run()
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_with_an_invalid_value_ends_the_run_before_any_arm_gets_it():
+    """The session refuses a NaN or a step of the wrong width; the executor checks every arm's
+    steps before it queues any, so a bad second arm does not leave the first one moving."""
+    left, right = _mg("0@ur5e-left"), _mg("0@ur5e-right")
+    schema = PolicySchema(
+        observations=[
+            Observation.joint_positions("left", source=left),
+            Observation.joint_positions("right", source=right),
+        ]
+    )
+
+    async def policy(_obs: object) -> ActionChunk:
+        return ActionChunk(
+            joints={left.id: [[0.0] * 6], right.id: [[0.0, float("nan"), 0.0, 0.0, 0.0, 0.0]]},
+            dt_ms=33.0,
+        )
+
+    sessions: dict[str, MagicMock] = {}
+
+    def make_session(*, motion_group: object, mode: str, **_kw: object) -> MagicMock:
+        s = _fake_session()  # with the session's own check_steps
+        s.motion_group_id = motion_group.id  # type: ignore[attr-defined]
+        sessions[motion_group.id] = s  # type: ignore[attr-defined]
+        return s
+
+    with _patched_robot(side_effect=make_session):
+        executor = PolicyExecutor(schema, _callback(policy), timeout_s=2.0)
+        with pytest.raises(ValueError, match=r"Step 0 .*'0@ur5e-right'.*not finite"):
+            await executor.run()
+
+    assert executor.phase is Phase.ERROR
+    for session in sessions.values():
+        session.update_chunk.assert_not_called()

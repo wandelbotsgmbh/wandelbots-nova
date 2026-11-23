@@ -81,6 +81,16 @@ differenced from consecutive positions. Tests: `test_measured_velocities_are_use
 is already in NOVA units and is sent as it is. Tests: `test_a_callback_control_freq_fills_chunks_without_step_spacing`,
 `test_control_freq_defaults_to_30_hz_and_says_so`, `test_a_resolved_chunk_is_sent_without_resolving_it_again`.
 
+**M12 Action values are checked when queued.** Every value of a step must be finite, and every
+step as wide as the session's waypoints: the robot's joint count for joints, 6 for TCP poses.
+`WaypointJoggingSession.update_chunk` raises `ValueError` naming the motion group, the step and
+the expected width before anything is queued; the executor and the joggers check every motion
+group's steps before they queue any. Tests:
+`test_invalid_action_values_are_refused_before_anything_is_sent`,
+`test_a_tcp_session_takes_six_values_per_step_before_it_starts`,
+`test_a_chunk_with_an_invalid_value_ends_the_run_before_any_arm_gets_it`,
+`test_a_bad_target_is_rejected_before_anything_is_streamed`.
+
 ## T: Timing
 
 **T1 One placement rule.** Step `k` of a chunk is due
