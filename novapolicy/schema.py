@@ -1126,6 +1126,34 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
                 extra = await o.fn(obs)
                 obs.update(extra)
 
+    def action_columns(self, dof: dict[str, int]) -> list[tuple[str, int]]:
+        """The actions as one flat vector, key by key with their widths: joint keys (their
+        motion groups' joints side by side, ``dof`` per group), TCP keys, IO keys (one value
+        each), then ``Action.computed`` keys (one value each)."""
+        columns = [(k, sum(dof.get(g.id, 0) for g in gs)) for k, gs in self.joint_action_keys]
+        columns += [(k, self.tcp_action_width(mg.id)) for k, mg in self.tcp_action_keys]
+        columns += [(k, 1) for k, *_ in self.io_action_keys]
+        columns += [(k, 1) for k in self.computed_action_keys]
+        return columns
+
+    @staticmethod
+    def split_actions(
+        rows: list[list[float]], columns: list[tuple[str, int]], *, source: str = "The policy"
+    ) -> dict[str, list[list[float]]]:
+        """Flat action rows (one per step) split into outputs by key, for
+        :meth:`decode_actions`; a row narrower than the columns raises."""
+        width = sum(n for _, n in columns)
+        outputs: dict[str, list[list[float]]] = {}
+        offset = 0
+        for key, n in columns:
+            if n:
+                outputs[key] = [list(row[offset : offset + n]) for row in rows]
+            offset += n
+        if rows and min(len(row) for row in rows) < width:
+            msg = f"{source} answered {min(len(r) for r in rows)} values per step, expected {width}"
+            raise ValueError(msg)
+        return outputs
+
     def decode_actions(
         self,
         outputs: dict[str, Any],
@@ -1156,6 +1184,8 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
                 n = (dof or {}).get(mg.id)
                 if n is None and i == len(groups) - 1:
                     n = width - offset  # nothing measured to size it by: the rest
+                if n == 0:
+                    continue  # no joints observed for this group: it is not commanded
                 if n is None or offset + n > width:
                     msg = (
                         f"{source}: action {key!r} has {width} values per step, which do not "

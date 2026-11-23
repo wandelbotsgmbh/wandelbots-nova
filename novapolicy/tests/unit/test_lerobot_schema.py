@@ -1,4 +1,4 @@
-"""Unit tests for LeRobot schema validation and flat action layout."""
+"""Unit tests for LeRobot schema validation and the flat action vector it is decoded from."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ import pytest
 from novapolicy.schema import Action, Observation, PolicySchema
 
 schema_module = pytest.importorskip("novapolicy.lerobot.schema")
-FlatActionLayout = schema_module.FlatActionLayout
 LeRobotSchema = schema_module.LeRobotSchema
 
 
@@ -49,19 +48,11 @@ def test_flat_action_layout_orders_joints_then_tcp_then_ios() -> None:
     )
 
     LeRobotSchema.validate_schema(schema)
-    layout = LeRobotSchema(dt_ms=50.0).action_layout(
-        {
-            joint_mg.id: _state((0.0,) * 6),
-            tcp_mg.id: _tcp_state((0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
-        },
-        schema,
-    )
-
-    assert layout.joints == [(joint_mg.id, slice(0, 6))]
-    assert layout.tcp == [(tcp_mg.id, slice(6, 12))]
-    assert [
-        (group_id, io, action_slice) for group_id, io, _mapping, action_slice in layout.ios
-    ] == [(joint_mg.id, "digital_out[0]", slice(12, 13))]
+    assert schema.action_columns({joint_mg.id: 6, tcp_mg.id: 6}) == [
+        ("arm", 6),
+        ("eef", 6),
+        ("gripper", 1),
+    ]
 
 
 def test_computed_action_keys_get_a_column_after_the_ios_and_land_in_values() -> None:
@@ -75,25 +66,17 @@ def test_computed_action_keys_get_a_column_after_the_ios_and_land_in_values() ->
         observations=[Observation.joint_positions("arm", source=mg)],
         actions=[Action.computed(gripper, keys=["gripper"])],
     )
-    lerobot = LeRobotSchema(dt_ms=50.0)
-    layout = lerobot.action_layout({mg.id: _state((0.0,) * 6)}, schema)
-    assert layout.values == [("gripper", slice(6, 7))]
-    assert layout.width == 7
-    steps = [np.arange(7, dtype=np.float32), np.arange(7, dtype=np.float32) + 10]
-    chunk = lerobot.decode_arrays(steps, layout)
+    columns = schema.action_columns({mg.id: 6})
+    assert columns == [("arm", 6), ("gripper", 1)]
+    steps = [list(np.arange(7.0)), list(np.arange(7.0) + 10)]
+    chunk = schema.decode_actions(schema.split_actions(steps, columns), dt_ms=50.0, dof={mg.id: 6})
     assert chunk.values == {"gripper": [[6.0], [16.0]]}
     assert chunk.joints[mg.id][1] == [10.0, 11.0, 12.0, 13.0, 14.0, 15.0]
 
 
-def test_decode_tcp_action_requires_six_values() -> None:
-    schema = LeRobotSchema(dt_ms=50.0)
-    layout = FlatActionLayout(joints=[], tcp=[("0@tcp", slice(0, 6))], ios=[])
-
-    with pytest.raises(ValueError, match="expected 6 values, got 5"):
-        schema.decode_arrays(
-            [np.asarray([1.0, 2.0, 3.0, 0.1, 0.2], dtype=np.float32)],
-            layout,
-        )
+def test_a_row_narrower_than_the_actions_is_refused() -> None:
+    with pytest.raises(ValueError, match="answered 5 values per step, expected 6"):
+        PolicySchema.split_actions([[1.0, 2.0, 3.0, 0.1, 0.2]], [("eef", 6)])
 
 
 def test_validate_schema_accepts_joint_targets_for_different_groups() -> None:
@@ -186,11 +169,8 @@ def _matching_schema(mg) -> PolicySchema:
     )
 
 
-def _check(schema, settings, *, state_names, images, layout=None) -> None:
-    lerobot_schema = LeRobotSchema(dt_ms=50.0)
-    if layout is None:
-        layout = FlatActionLayout(joints=[("0@cobot", slice(0, 6))], tcp=[], ios=[])
-    lerobot_schema.assert_matches(settings, schema, state_names, images, layout)
+def _check(schema, settings, *, state_names, images, action_width=6) -> None:
+    LeRobotSchema().assert_matches(settings, schema, state_names, images, action_width)
 
 
 def _frame(height: int = 240, width: int = 320):
@@ -313,11 +293,7 @@ def test_assert_matches_rejects_a_wrong_action_width() -> None:
             _settings(),
             state_names=[f"arm_{i}" for i in range(1, 7)],
             images={"scene": _frame()},
-            layout=FlatActionLayout(
-                joints=[("0@cobot", slice(0, 6))],
-                tcp=[],
-                ios=[("0@cobot", "digital_out[0]", None, slice(6, 7))],
-            ),
+            action_width=7,
         )
 
 
@@ -375,17 +351,6 @@ def test_assert_matches_warns_and_skips_when_the_checkpoint_declares_no_features
         )
 
     assert "declares no input features" in caplog.text
-
-
-def test_flat_action_layout_width_spans_every_slice() -> None:
-    layout = FlatActionLayout(
-        joints=[("0@left", slice(0, 6)), ("0@right", slice(6, 12))],
-        tcp=[],
-        ios=[("0@left", "digital_out[0]", None, slice(12, 13))],
-    )
-
-    assert layout.width == 13
-    assert FlatActionLayout(joints=[], tcp=[], ios=[]).width == 0
 
 
 # ---------------------------------------------------------------------------

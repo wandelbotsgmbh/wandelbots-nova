@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from novapolicy.action_queue import TimestampedActionQueue
+from novapolicy.action_queue import AsyncQueueAggregation, TimestampedActionQueue
 from novapolicy.chunking import unwrap_tcp_rotations
 from novapolicy.executor import resolve_actions
 from novapolicy.jogging.modules import timestep_queue_modules
@@ -44,16 +44,23 @@ class QueuedPolicyClient(PolicyClient):
     Args:
         policy: The wrapped client.
         margin_steps: Steps kept frozen beyond those that executed during inference.
+        aggregation: How a new prediction for a step already queued is merged with it.
 
     The merged plan is returned as it is; the executor's default pipeline smooths it in the
     session (:class:`~novapolicy.jogging.modules.Smoothing`), keeping the
     ``retained_prefix_steps`` this client reports exact.
     """
 
-    def __init__(self, policy: PolicyClient, *, margin_steps: int = 2) -> None:
+    def __init__(
+        self,
+        policy: PolicyClient,
+        *,
+        margin_steps: int = 2,
+        aggregation: AsyncQueueAggregation = AsyncQueueAggregation.WEIGHTED_AVERAGE,
+    ) -> None:
         self._policy = policy
         self._margin_steps = margin_steps
-        self._queue = TimestampedActionQueue()
+        self._queue = TimestampedActionQueue(aggregation=aggregation)
         self._replaceable = 0
         self._layout: list[tuple[str, str, int]] = []  # (kind, group id, width)
         self._values: dict[str, dict[int, list[float]]] = {}  # key -> timestep -> row

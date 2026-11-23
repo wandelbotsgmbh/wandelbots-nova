@@ -180,17 +180,18 @@ To keep a fixed-rate LeRobot action queue while NOVA continuously replaces the a
 keep the same schema and use the following policy and executor options:
 
 ```python
-from novapolicy import ContinuousExecution
+from novapolicy import ContinuousExecution, QueuedPolicyClient
 from novapolicy.lerobot import AsyncQueueAggregation
 
-policy = LeRobotPolicyClient(
-    server_address=LEROBOT_SERVER,
-    pretrained_name_or_path=SERVER_CHECKPOINT,
-    config_path=CLIENT_CHECKPOINT_CONFIG,
-    control_freq=FPS,  # the dataset's fps
-    device="cuda",
-    use_async_queue=True,
-    async_queue_aggregation=AsyncQueueAggregation.AVERAGE,
+policy = QueuedPolicyClient(
+    LeRobotPolicyClient(
+        server_address=LEROBOT_SERVER,
+        pretrained_name_or_path=SERVER_CHECKPOINT,
+        config_path=CLIENT_CHECKPOINT_CONFIG,
+        control_freq=FPS,  # the dataset's fps
+        device="cuda",
+    ),
+    aggregation=AsyncQueueAggregation.AVERAGE,
 )
 executor = PolicyExecutor(
     schema,
@@ -405,36 +406,24 @@ robot does not stop at that boundary. Endpoint interpolation allocates additiona
 intervals for acceleration and braking of each settled request. See
 [`docs/executor.md`](../docs/executor.md#bridging-a-distant-first-waypoint).
 
-### `use_async_queue`
+### Continuous execution with `QueuedPolicyClient`
 
-Enable this only when the robot transport can track LeRobot's fixed-rate client queue. It needs
-`ContinuousExecution`; `PolicyExecutor` refuses it with `SequentialExecution`:
+LeRobot has no queue of its own: for continuous execution wrap the client in
+`QueuedPolicyClient`, as any chunk-per-observation policy (`docs/executor.md`). It needs
+`ContinuousExecution`; `PolicyExecutor` refuses it with `SequentialExecution`. Configure
+`ContinuousExecution(rate_hz=control_freq)` and `n_action_steps=0`.
 
-```python
-from novapolicy.lerobot import AsyncQueueAggregation, LeRobotPolicyClient
-
-policy = LeRobotPolicyClient(
-    ...,
-    use_async_queue=True,
-    async_queue_aggregation=AsyncQueueAggregation.WEIGHTED_AVERAGE,
-    async_queue_refill_threshold=0.75,
-)
-```
-
-Aggregation is applied only when an old and a new action target the same future timestep:
+`aggregation` says how a new prediction for a step already queued is merged with it:
 
 | Mode | Merge |
 |---|---|
-| `WEIGHTED_AVERAGE` | `0.3 * old + 0.7 * new` (LeRobot default) |
+| `WEIGHTED_AVERAGE` | `0.3 * old + 0.7 * new` (LeRobot's default, and the queue's) |
 | `AVERAGE` | arithmetic mean of every prediction received for the timestep |
 
-The client defaults to `AVERAGE`: physical UR3 plug-task runs and a simulated UR10e
-pick-and-place both measured lower peak path curvature with it than with LeRobot's
-weighted average, which stays available as `WEIGHTED_AVERAGE`. The aggregated lookahead is
-smoothed by the executor's default pipeline (`Smoothing`, two passes of `[1, 2, 1] / 4`) after
-its targets are resolved to NOVA units; the four-point active prefix keeps the values already
-sent, and IO action values are never filtered. For tasks that need sharp contact transitions,
-pass the defaults without it:
+`AVERAGE` measured lower peak path curvature on physical UR3 plug-task runs and a simulated
+UR10e pick-and-place. The merged plan is smoothed by the executor's default pipeline (`Smoothing`)
+after its targets are resolved to NOVA units, and the steps already sent stay exact; for tasks
+that need sharp contact transitions, pass the defaults without it:
 
 ```python
 from novapolicy import ContinuousExecution, Smoothing, default_pipeline
@@ -444,35 +433,6 @@ pipeline = [
     m for m in default_pipeline(execution=execution, policy=policy) if not isinstance(m, Smoothing)
 ]
 ```
-
-The client normally consumes one action each policy control tick, requests a refill when 75% of the
-previous chunk remains by default, and merges overlapping actions using the selected enum mode.
-Refills use LeRobot's `must_go` flag because the server's default one-radian observation similarity
-tolerance would otherwise defer most ACT inference until queue depletion. Configure `PolicyExecutor` with
-`execution=ContinuousExecution(rate_hz=control_freq)` and `n_action_steps=0`.
-Continuously replaced chunks do not expose per-chunk endpoint ramps.
-
-NOVA's jogger clock advances independently of the Python control loop. Before consuming an action,
-the executor maps the latest acknowledged raw NOVA controller timestamp to the absolute LeRobot
-timestep; if local work delayed a tick, the client drops every action whose execution time elapsed.
-Threshold-triggered inference remains asynchronous while NOVA executes its published lookahead. It
-is merged on a later controller-synchronized tick instead of blocking after a timestep has already
-been selected. The client then prepends the predecessor from NOVA's published trajectory and retains
-the selected action plus two immutable successors. The replacement therefore contains an exact
-four-point seam preserving position, velocity, and one-step acceleration context before aggregation
-begins. IO remains sourced from the selected current action, not the prepended predecessor.
-
-Between inference updates the client consumes actions internally without resending a shrinking
-tail, so existing NOVA waypoints keep their original timeline. The initial queue prediction receives
-a measured-state bridge and execution waits for its exact policy-zero boundary. The timestamp
-already assigned to policy waypoint zero becomes the immutable action-timestep origin. Later merged
-lookaheads use ``origin + action_timestep * policy_dt`` directly in the raw controller-timer domain.
-Client wall time, server/client speed-ratio estimation, and post-boundary re-origining are not part of
-queue timestamp calculation. Only each integer timestamp sent to NOVA is quantized. The overlapping
-prefix is retained instead of being restarted from a measured-state hold at ``now``. This prevents
-both catch-up motion and repeated zero-velocity braking/acceleration. In Rerun, the four-point
-retained replacement seam is shown in Nova Violet while fresh policy output remains orange. This is
-still LeRobot async ACT queue execution, not model-side RTC.
 
 ## Observation and action mapping
 

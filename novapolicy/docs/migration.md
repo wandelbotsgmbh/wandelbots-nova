@@ -245,3 +245,12 @@ pipeline's `Smoothing` and `Bridge` modules to connect chunks.
 `Observation.joint_velocities` does: a repeated state sample now keeps the last velocity (for up
 to a short hold) instead of reading as standstill, and the finite difference warns once per motion
 group when no measurement is available.
+
+## LeRobot has no async queue of its own
+
+`LeRobotPolicyClient(use_async_queue=..., async_queue_aggregation=..., async_queue_refill_threshold=...)`
+are gone. Wrap the client in `QueuedPolicyClient(LeRobotPolicyClient(...), aggregation=...)` for
+continuous execution, as any chunk-per-observation policy; `AsyncQueueAggregation` stays in
+`novapolicy.lerobot`. The queue now asks the server for a new chunk at every tick it is called
+instead of refilling at a threshold in the background, and its frozen head follows the measured
+inference time instead of a fixed three steps.

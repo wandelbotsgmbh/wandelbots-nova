@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass, field
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
@@ -14,11 +13,9 @@ import numpy as np
 
 from novapolicy import training_range
 from novapolicy.schema import tcp_value_names
-from novapolicy.types import ActionChunk
 
 if TYPE_CHECKING:
     from lerobot.configs.types import PolicyFeature
-    from numpy.typing import NDArray
 
     from nova.types import RobotState
     from novapolicy.lerobot.config import FeatureStats, LeRobotExecutionSettings
@@ -28,9 +25,6 @@ logger = logging.getLogger(__name__)
 
 _IMAGE_NDIM = 3
 
-JointActionSlice = tuple[str, slice]
-TcpActionSlice = tuple[str, slice]
-IOActionSlice = tuple[str, str, Any, slice]
 ImageSizeDiff = tuple[str, tuple[int, ...], tuple[int, ...]]
 
 # Fractional aspect-ratio difference treated as the same aspect. Covers rounding
@@ -38,32 +32,10 @@ ImageSizeDiff = tuple[str, tuple[int, ...], tuple[int, ...]]
 _ASPECT_TOLERANCE = 0.01
 
 
-@dataclass(slots=True, frozen=True)
-class FlatActionLayout:
-    """Schema-derived slices in a flat policy action vector."""
-
-    joints: list[JointActionSlice]
-    tcp: list[TcpActionSlice]
-    ios: list[IOActionSlice]
-    values: list[tuple[str, slice]] = field(default_factory=list)
-    """One column per ``Action.computed(..., keys=[...])`` key, after the IOs."""
-
-    @property
-    def width(self) -> int:
-        """Number of values in the flat action vector this layout describes."""
-        stops = [action_slice.stop for _group, action_slice in self.joints]
-        stops.extend(action_slice.stop for _group, action_slice in self.tcp)
-        stops.extend(action_slice.stop for _group, _io, _mapping, action_slice in self.ios)
-        stops.extend(action_slice.stop for _key, action_slice in self.values)
-        return max(stops, default=0)
-
-
 class LeRobotSchema:
     """Translate PolicySchema observations and actions to LeRobot's flat schema."""
 
-    def __init__(self, *, dt_ms: float) -> None:
-        self._dt_ms = dt_ms
-        self._logged_action_chunk_shape = False
+    def __init__(self) -> None:
         self._logged_missing_features = False
 
     @staticmethod
@@ -100,41 +72,6 @@ class LeRobotSchema:
         names.extend(mapping.key for mapping in schema.obs_io_mappings)
         names.extend(key for computed in schema.computed_observations for key in computed.keys)
         return names
-
-    @staticmethod
-    def action_layout(
-        states: dict[str, RobotState],
-        schema: PolicySchema,
-    ) -> FlatActionLayout:
-        joint_slices: list[JointActionSlice] = []
-        offset = 0
-        for _key, motion_groups in schema.joint_action_keys:
-            for motion_group in motion_groups:
-                state = states.get(motion_group.id)
-                if state is None:
-                    continue
-                dof = len(state.joints)
-                joint_slices.append((motion_group.id, slice(offset, offset + dof)))
-                offset += dof
-
-        tcp_slices: list[TcpActionSlice] = []
-        for _key, motion_group in schema.tcp_action_keys:
-            width = schema.tcp_action_width(motion_group.id)
-            tcp_slices.append((motion_group.id, slice(offset, offset + width)))
-            offset += width
-
-        io_slices: list[IOActionSlice] = []
-        for _key, motion_group, io, mapping in schema.io_action_keys:
-            io_slices.append((motion_group.id, io, mapping, slice(offset, offset + 1)))
-            offset += 1
-        # Actuators outside NOVA (a gripper on its own bus): one column per declared key.
-        value_slices = [
-            (key, slice(offset + i, offset + i + 1))
-            for i, key in enumerate(schema.computed_action_keys)
-        ]
-        return FlatActionLayout(
-            joints=joint_slices, tcp=tcp_slices, ios=io_slices, values=value_slices
-        )
 
     @staticmethod
     def validate_schema(schema: PolicySchema) -> None:
@@ -192,7 +129,7 @@ class LeRobotSchema:
         schema: PolicySchema,
         state_names: list[str],
         images: dict[str, Any] | None,
-        layout: FlatActionLayout,
+        action_width: int,
     ) -> None:
         """Check the schema against what the checkpoint expects.
 
@@ -243,9 +180,9 @@ class LeRobotSchema:
         expected_action = settings.output_features.get(ACTION)
         if expected_action is not None:
             expected_width = expected_action.shape[0] if expected_action.shape else 0
-            if expected_width != layout.width:
+            if expected_width != action_width:
                 problems.append(
-                    f"action width is {layout.width}, checkpoint expects {expected_width}"
+                    f"action width is {action_width}, checkpoint expects {expected_width}"
                 )
 
         if problems:
@@ -278,84 +215,6 @@ class LeRobotSchema:
                 "names": ["height", "width", "channels"],
             }
         return features
-
-    def decode_timed_actions(
-        self,
-        actions: list[Any],
-        layout: FlatActionLayout,
-    ) -> ActionChunk:
-        return self.decode_arrays(
-            [self.action_to_array(timed_action.get_action()) for timed_action in actions],
-            layout,
-        )
-
-    def decode_arrays(
-        self,
-        action_arrays: list[NDArray[np.float32]],
-        layout: FlatActionLayout,
-        *,
-        action_timestep: int = -1,
-        io_action_array: NDArray[np.float32] | None = None,
-    ) -> ActionChunk:
-        if not action_arrays:
-            raise ValueError("LeRobot returned no action steps")
-
-        joints: dict[str, list[list[float]]] = {
-            motion_group_id: [] for motion_group_id, _action_slice in layout.joints
-        }
-        tcp: dict[str, list[list[float]]] = {
-            motion_group_id: [] for motion_group_id, _action_slice in layout.tcp
-        }
-        for action in action_arrays:
-            for motion_group_id, action_slice in layout.joints:
-                joints[motion_group_id].append([float(value) for value in action[action_slice]])
-            for motion_group_id, action_slice in layout.tcp:
-                values = action[action_slice]
-                width = action_slice.stop - action_slice.start
-                if values.size != width:
-                    msg = (
-                        f"LeRobot TCP action for {motion_group_id!r} expected "
-                        f"{width} values, got {values.size}"
-                    )
-                    raise ValueError(msg)
-                tcp[motion_group_id].append([float(value) for value in values])
-
-        if not self._logged_action_chunk_shape:
-            logger.info(
-                "First LeRobot action chunk: %d steps, action_dim=%d",
-                len(action_arrays),
-                int(action_arrays[0].size),
-            )
-            self._logged_action_chunk_shape = True
-
-        ios: dict[str, dict[str, bool | int | float | str]] = {}
-        if layout.ios:
-            io_source = action_arrays[0] if io_action_array is None else io_action_array
-            for motion_group_id, io, mapping, action_slice in layout.ios:
-                values = io_source[action_slice]
-                if values.size != 1:
-                    msg = f"LeRobot IO action {io!r} expected one value, got {values.size}"
-                    raise ValueError(msg)
-                ios.setdefault(motion_group_id, {})[io] = mapping.to_hardware(float(values[0]))
-
-        values = {
-            key: [[float(v) for v in action[action_slice]] for action in action_arrays]
-            for key, action_slice in layout.values
-        }
-        return ActionChunk(
-            joints=joints,
-            tcp=tcp,
-            ios=ios or None,
-            values=values,
-            dt_ms=self._dt_ms,
-            action_timestep=action_timestep,
-        )
-
-    @staticmethod
-    def action_to_array(action: object) -> NDArray[np.float32]:
-        if hasattr(action, "detach"):
-            action = cast("Any", action).detach().cpu().numpy()
-        return np.asarray(action, dtype=np.float32).reshape(-1)
 
     @staticmethod
     def _image_shape(key: str, images: dict[str, Any] | None) -> tuple[int, int, int]:

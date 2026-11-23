@@ -124,7 +124,7 @@ def _check_execution_mode(
         raise ValueError(
             f"{type(policy).__name__} replaces its plan step by step and requires "
             "ContinuousExecution. For SequentialExecution drop the queue: the policy without "
-            "QueuedPolicyClient, or LeRobotPolicyClient(use_async_queue=False)"
+            "QueuedPolicyClient"
         )
     if any(isinstance(module, LiveBuffer) for module in pipeline):
         raise ValueError("LiveBuffer requires ContinuousExecution")

@@ -181,8 +181,8 @@ when it was produced (the jogger's loop time, shared by all arms), and a lead ch
 clock. `JointClamp` is M7, `HoldPadding` T6. Filters drop waypoints without retiming them (`DropLate`, T3).
 Waypoint modules run at every send, on raw values, and return values only, so no timing contract
 changes: `EaseIn(duration_s)` blends from where the robot stood by each waypoint's timestamp.
-What reaches NOVA per scenario is pinned by `test_what_reaches_nova_is_unchanged`; LeRobot's async
-queue by `test_the_async_queue_smoothed_in_the_session_sends_what_it_sent_before`.
+What reaches NOVA per scenario is pinned by `test_what_reaches_nova_is_unchanged`; a queued LeRobot
+client by `test_a_queued_lerobot_client_merges_its_chunks_on_one_timeline`.
 Tests: `test_split_pipeline_keeps_each_kind_in_order`, `test_a_filter_after_a_waypoint_module_or_a_chunk_module_after_a_filter_is_refused`, `test_a_chunk_module_after_the_timestamps_is_refused`, `test_a_misordered_pipeline_is_refused_before_anything_moves`, `test_the_pipeline_is_handed_to_every_session`, `test_each_session_runs_its_own_copy_of_a_module`, `test_the_defaults_are_valid_pipelines`, `test_smoothing_keeps_the_steps_it_already_sent_exact`, `test_bridge_connects_the_robot_to_the_first_step_at_the_chunks_spacing`, `test_a_bridged_chunk_dated_by_its_observation_is_dated_at_the_send_instead`, `test_endpoint_ramp_keeps_every_step_and_moves_io_with_its_step`, `test_joint_clamp_holds_targets_inside_the_limits`, `test_the_session_reads_joint_limits_only_for_a_joint_clamp`, `test_drop_late_keeps_what_is_still_reachable_and_never_retimes`, `test_waypoint_modules_reshape_the_values_but_never_the_timestamps`, `test_a_waypoint_module_may_not_add_or_drop_waypoints`, `test_a_filled_live_buffer_is_replayed_as_a_horizon`, `test_a_live_buffer_moves_when_due_to_the_newest_target`, `test_sessions_given_one_live_buffer_do_not_share_its_points`, `test_a_live_buffer_times_targets_by_when_they_were_produced`, `test_a_live_buffer_times_lead_chunks_by_the_session_clock`, `test_live_targets_carry_the_loop_time_in_exact_grid_steps`, `test_ease_in_gives_a_moment_the_same_value_whenever_it_is_sent`.
 
 ## Known gaps

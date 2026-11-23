@@ -7,28 +7,22 @@ import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from lerobot.async_inference.helpers import RemotePolicyConfig
+import numpy as np
 
-from novapolicy.action_queue import AsyncQueueAggregation
-from novapolicy.jogging.modules import timestep_queue_modules
-from novapolicy.lerobot.action_queue import LeRobotAsyncActionQueue
 from novapolicy.lerobot.config import try_load_execution_settings
 from novapolicy.lerobot.schema import LeRobotSchema, check_observation_range
 from novapolicy.lerobot.transport import LeRobotGrpcTransport
 from novapolicy.policy_client import PolicyClient, resolve_control_freq
-from novapolicy.poses import ROTATION_VECTOR
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from nova.types import RobotState
     from novapolicy.lerobot.config import LeRobotExecutionSettings
-    from novapolicy.lerobot.schema import FlatActionLayout
     from novapolicy.schema import PolicySchema
     from novapolicy.types import ActionChunk
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_ASYNC_QUEUE_REFILL_THRESHOLD = 0.75
 
 
 class LeRobotPolicyClient(PolicyClient):
@@ -73,17 +67,11 @@ class LeRobotPolicyClient(PolicyClient):
             frame rate (``fps`` in its ``meta/info.json``). Default 30 Hz.
         device: Torch device used by the inference server.
         timeout_s: Deadline for individual gRPC calls.
-        use_async_queue: Use timestamp-aligned asynchronous inference.
-        async_queue_aggregation: How predictions for an existing future
-            timestep are aggregated. Defaults to ``AVERAGE``: on both cells
-            measured so far (UR3 plug task, UR10e pick-and-place) it showed
-            lower peak path curvature than LeRobot's own weighted average.
-        async_queue_refill_threshold: Remaining queue fraction that starts an
-            asynchronous refill.
 
-        The async queue's plan is smoothed by the executor's default pipeline
-        (:class:`~novapolicy.jogging.modules.Smoothing`, in NOVA units); leave that module
-        out for tasks that need sharp contact transitions.
+        For continuous execution wrap it in :class:`~novapolicy.QueuedPolicyClient`, as any
+        chunk-per-observation policy: ``QueuedPolicyClient(LeRobotPolicyClient(...),
+        aggregation=AsyncQueueAggregation.AVERAGE)`` (average measured lower peak path curvature
+        on a UR3 plug task and a UR10e pick-and-place than LeRobot's weighted average).
 
     Note:
         LeRobot's protocol uses pickle and must only be used on trusted networks.
@@ -102,20 +90,11 @@ class LeRobotPolicyClient(PolicyClient):
         control_freq: float | None = None,
         device: str = "cpu",
         timeout_s: float = 15.0,
-        use_async_queue: bool = False,
-        async_queue_aggregation: AsyncQueueAggregation = AsyncQueueAggregation.AVERAGE,
-        async_queue_refill_threshold: float = _DEFAULT_ASYNC_QUEUE_REFILL_THRESHOLD,
     ) -> None:
         if actions_per_chunk is not None and actions_per_chunk <= 0:
             raise ValueError(f"actions_per_chunk must be positive, got {actions_per_chunk}")
         if n_action_steps is not None and n_action_steps <= 0:
             raise ValueError(f"n_action_steps must be positive, got {n_action_steps}")
-        if not 0 < async_queue_refill_threshold <= 1:
-            msg = (
-                "async_queue_refill_threshold must be in (0, 1], "
-                f"got {async_queue_refill_threshold}"
-            )
-            raise ValueError(msg)
         if task is not None and not task.strip():
             raise ValueError("task must be a non-empty instruction, or None")
 
@@ -133,17 +112,7 @@ class LeRobotPolicyClient(PolicyClient):
         self._device = device
         self._dt_ms = 1000.0 / resolve_control_freq(control_freq, owner="LeRobotPolicyClient")
         self._transport = LeRobotGrpcTransport(server_address, timeout_s=timeout_s)
-        self._lerobot_schema = LeRobotSchema(dt_ms=self._dt_ms)
-        self._async_queue = (
-            LeRobotAsyncActionQueue(
-                self._transport,
-                self._lerobot_schema,
-                aggregation=async_queue_aggregation,
-                refill_threshold=async_queue_refill_threshold,
-            )
-            if use_async_queue
-            else None
-        )
+        self._lerobot_schema = LeRobotSchema()
         self._setup_sent = False
         self._timestep = 0
         self._range_checked = False
@@ -152,16 +121,6 @@ class LeRobotPolicyClient(PolicyClient):
     def dt_ms(self) -> float:
         """Physical action timestep in milliseconds."""
         return self._dt_ms
-
-    @property
-    def default_modules(self) -> list[object]:
-        """The async queue's timeline, smoothing and first bridge; none without the queue."""
-        return timestep_queue_modules() if self._async_queue is not None else []
-
-    def synchronize_action_timestep(self, timestep: int) -> None:
-        """Drop queue actions whose NOVA execution timestamps have elapsed."""
-        if self._async_queue is not None:
-            self._async_queue.synchronize(timestep)
 
     @property
     def n_action_steps(self) -> int | None:
@@ -175,26 +134,10 @@ class LeRobotPolicyClient(PolicyClient):
         self._setup_sent = False
         self._range_checked = False
         self._timestep = 0
-        if self._async_queue is not None:
-            self._async_queue.reset()
 
     async def validate_schema(self, schema: PolicySchema) -> None:
         """Validate schema constraints known without remote model metadata."""
         self._lerobot_schema.validate_schema(schema)
-        if self._async_queue is None:
-            return
-        averaged = [
-            key
-            for key, mg in schema.tcp_action_keys
-            if schema.tcp_action_orientation_type(mg.id) not in {None, ROTATION_VECTOR}
-        ]
-        if averaged:
-            msg = (
-                f"TCP actions {averaged} are not rotation vectors: the async queue averages "
-                "overlapping predictions value by value, which is wrong for quaternions and Euler "
-                "angles. Use use_async_queue=False"
-            )
-            raise ValueError(msg)
 
     def _resolve_settings(self) -> None:
         """Derive execution settings from the checkpoint, reconciling overrides.
@@ -329,8 +272,8 @@ class LeRobotPolicyClient(PolicyClient):
         """Send policy setup before the executor timeout starts."""
         if not self._transport.connected:
             await self.connect([])
-        state_names, layout = self._schema_layout(states, schema)
-        await asyncio.to_thread(self._ensure_policy_setup, schema, state_names, images, layout)
+        state_names, columns = self._layout(states, schema)
+        await asyncio.to_thread(self._ensure_policy_setup, schema, state_names, images, columns)
 
     async def get_actions(
         self,
@@ -350,12 +293,9 @@ class LeRobotPolicyClient(PolicyClient):
             # LeRobot's robot client puts the instruction here too; the server
             # copies it through to the policy's tokenizer step.
             observation["task"] = self._task
-        state_names, layout = self._schema_layout(states, schema)
+        state_names, columns = self._layout(states, schema)
         self._check_observation_range(observation, state_names)
-        await asyncio.to_thread(self._ensure_policy_setup, schema, state_names, images, layout)
-
-        if self._async_queue is not None:
-            return await self._async_queue.get_actions(observation, layout)
+        await asyncio.to_thread(self._ensure_policy_setup, schema, state_names, images, columns)
 
         actions = await asyncio.to_thread(
             self._transport.infer,
@@ -364,23 +304,24 @@ class LeRobotPolicyClient(PolicyClient):
             must_go=True,
         )
         self._timestep += len(actions)
-        return self._lerobot_schema.decode_timed_actions(actions, layout)
+        if not actions:
+            raise ValueError("LeRobot returned no action steps")
+        rows = [_as_row(action.get_action()) for action in actions]
+        outputs = schema.split_actions(rows, columns, source="LeRobot")
+        dof = {mg_id: len(state.joints) for mg_id, state in states.items()}
+        return schema.decode_actions(outputs, dt_ms=self._dt_ms, dof=dof, source="LeRobot")
 
     async def close(self) -> None:
-        """Cancel pending inference and close the gRPC channel."""
-        if self._async_queue is not None:
-            await self._async_queue.close()
+        """Close the gRPC channel."""
         await asyncio.to_thread(self._transport.close)
         self._setup_sent = False
 
-    def _schema_layout(
-        self,
-        states: dict[str, RobotState],
-        schema: PolicySchema,
-    ) -> tuple[list[str], FlatActionLayout]:
-        state_names = self._lerobot_schema.state_names(states, schema)
-        layout = self._lerobot_schema.action_layout(states, schema)
-        return state_names, layout
+    def _layout(
+        self, states: dict[str, RobotState], schema: PolicySchema
+    ) -> tuple[list[str], list[tuple[str, int]]]:
+        """The flat state's names and the flat action's columns."""
+        dof = {mg_id: len(state.joints) for mg_id, state in states.items()}
+        return self._lerobot_schema.state_names(states, schema), schema.action_columns(dof)
 
     def _check_observation_range(
         self,
@@ -402,12 +343,13 @@ class LeRobotPolicyClient(PolicyClient):
         schema: PolicySchema,
         state_names: list[str],
         images: dict[str, Any] | None,
-        layout: FlatActionLayout,
+        columns: list[tuple[str, int]],
     ) -> None:
         if self._setup_sent:
             return
         if self._settings is not None:
-            self._lerobot_schema.assert_matches(self._settings, schema, state_names, images, layout)
+            width = sum(n for _, n in columns)
+            self._lerobot_schema.assert_matches(self._settings, schema, state_names, images, width)
         self._transport.configure_policy(
             RemotePolicyConfig(
                 policy_type=self._policy_type,
@@ -423,4 +365,11 @@ class LeRobotPolicyClient(PolicyClient):
         self._setup_sent = True
 
 
-__all__ = ["AsyncQueueAggregation", "LeRobotPolicyClient"]
+def _as_row(action: object) -> list[float]:
+    """A LeRobot action (a torch tensor or an array) as one flat row."""
+    if hasattr(action, "detach"):
+        action = cast("Any", action).detach().cpu().numpy()
+    return np.asarray(action, dtype=np.float64).reshape(-1).tolist()
+
+
+__all__ = ["LeRobotPolicyClient"]
