@@ -936,6 +936,31 @@ async def test_io_of_a_continuous_chunk_goes_with_its_first_step(robot: _Robot):
     robot.session.write_ios.assert_awaited_once_with({"digital_out[0]": True})
 
 
+@pytest.mark.asyncio
+async def test_a_chunk_without_motion_writes_its_io_before_its_computed_action():
+    """Nothing is due later without motion: the IO is written at once, then the computed
+    actions run, in that order as on a moving group's step."""
+    order: list[str] = []
+
+    async def computed(_chunk: ActionChunk) -> None:
+        order.append("computed")
+
+    schema = PolicySchema(
+        observations=[Observation.joint_positions("arm", source=_mg())],
+        actions=[Action.computed(computed)],
+    )
+    session = _fake_session()
+    session.write_ios = AsyncMock(side_effect=lambda _ios: order.append("io"))
+    executor = PolicyExecutor(schema, _hold)
+    executor._sessions = {MG_ID: session}
+    chunk = ActionChunk(joints={}, ios={MG_ID: {"digital_out[0]": True}})
+    executor._send(chunk, chunk)
+    await asyncio.gather(*executor._io_tasks)
+
+    session.update_chunk.assert_not_called()
+    assert order == ["io", "computed"]
+
+
 def test_the_pipeline_is_handed_to_every_session():
     """The sessions run exactly the list given, in order; the executor's defaults without one."""
     from novapolicy import EaseIn

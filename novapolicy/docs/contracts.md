@@ -135,6 +135,7 @@ write, so it reaches the controller one network delay later; NOVA's action chunk
 it.
 Tests: `test_io_of_a_continuous_chunk_goes_with_its_first_step`,
 `test_a_bridged_chunk_hands_its_io_and_computed_action_to_the_policys_first_step`,
+`test_a_chunk_without_motion_writes_its_io_before_its_computed_action`,
 `test_a_chunk_action_runs_when_its_step_is_due_or_at_once_when_past`,
 `test_a_replaced_chunk_never_runs_its_action_and_stop_cancels_the_rest`, `test_a_chunk_action_fails_the_session_when_it_raises`,
 `test_a_chunk_action_is_skipped_when_the_motion_stopped_before_it_was_due`.

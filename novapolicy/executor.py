@@ -181,7 +181,6 @@ class PolicyExecutor:
             raise TypeError(msg)
         self._policy = policy
 
-        self._motion = motion
         self._start_joint_position = start_joint_position
         self._stop_conditions = stop_conditions or []
         self._timeout_s = timeout_s

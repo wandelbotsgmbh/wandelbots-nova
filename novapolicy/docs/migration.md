@@ -320,5 +320,11 @@ members. Code that only uses `PolicyExecutor`, `jog_joints` and `jog_tcp` needs 
   `novapolicy.jogging.lifecycle.EstopMonitor` instead of the names in `novapolicy.executor` or
   `novapolicy.jogging.jogger`.
 - A chunk without motion writes its IO and then runs its computed actions, one after the other
-  in one task; they used to run side by side. A moving group's IO still goes with its policy step.
-- `set_target` and `set_chunk` check the value for every motion group before they send any.
+  in one task; they used to run side by side. A failing IO write now also skips the writes and
+  computed actions after it (the run ends with the error either way). A moving group's IO still
+  goes with its policy step.
+- `PolicyExecutor.last_observation` is cleared when a run's observe-act loop starts, so a run
+  that ends before its first observation reports `last_state=None`, not the previous run's.
+- `set_target` and `set_chunk` check the value for every motion group before they send any. With
+  several motion groups, a bare value is refused for not being a dict before its kind is checked,
+  and a bare target of the wrong type says `Expected list[float] per motion group` (or `Pose`).
