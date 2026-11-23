@@ -8,6 +8,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+from novapolicy.jogging.waypoint_session import Scheduled
+
 
 def mg(mg_id: str = "0@ur10e", controller_id: str | None = None) -> MagicMock:
     """A motion group stand-in; its controller is the part of the id after ``@``."""
@@ -54,9 +56,7 @@ def fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
     session.queued_chunk_count = 0
     session.queued_chunk = None  # no Bridge module in front
     session.executing_action_timestep = -1
-    session.scheduled_chunk_count = 0
-    session.scheduled_until_server_ms = 0
-    session.scheduled_waypoint_timestamps = ()
+    session.scheduled = Scheduled()
     session.last_server_timestamp_ms = 0
     session.start = AsyncMock()
     session.stop = AsyncMock()

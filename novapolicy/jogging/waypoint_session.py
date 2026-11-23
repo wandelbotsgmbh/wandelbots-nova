@@ -71,18 +71,28 @@ _COMMAND_HISTORY_MS = 1000
 _STOP_TIMEOUT_S = 2.0
 
 
-@dataclass(slots=True)
-class _ScheduledRequest:
-    """A pending chunk resolved into the request that goes on the wire."""
+_NOTHING_YET = ServerMs(0)
 
-    request: api.models.ActionChunkRequest | None
-    """``None`` when every waypoint had already elapsed and nothing was sent."""
 
-    skipped: int
-    """Leading waypoints dropped for being unreachable."""
+@dataclass(frozen=True, slots=True)
+class Scheduled:
+    """What the latest send scheduled; :attr:`WaypointJoggingSession.scheduled`, replaced on
+    every send.
 
-    step_timestamps: list[int]
-    """Timestamp per *caller* step, including any trimmed or dropped ones."""
+    A chunk dropped because every waypoint had passed counts as scheduled too: it sends no
+    waypoints and keeps the previous ``until_server_ms``.
+    """
+
+    chunk_count: int = 0
+    """Sequence number of the latest chunk timestamped for NOVA, sent or dropped."""
+    until_server_ms: ServerMs = _NOTHING_YET
+    """Timestamp of the last step the caller asked for; hold padding after it is not counted."""
+    waypoint_timestamps: tuple[int, ...] = ()
+    """NOVA timestamps of the waypoints sent, trimmed and padded."""
+    action_timestep: int = -1
+    """Policy timestep of the first waypoint sent; ``-1`` for a bridge's steps or none."""
+    at_server_ms: ServerMs = _NOTHING_YET
+    """Latest acknowledged server timestamp when the chunk was scheduled."""
 
 
 @dataclass
@@ -124,7 +134,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     """Sends action chunks as timestamped joint or TCP waypoints via NOVA action chunk streaming;
     the server computes the motion profile and, for TCP waypoints, the IK."""
 
-    def __init__(  # ruff: ignore[too-many-statements]
+    def __init__(
         self,
         motion_group: MotionGroup,
         config: WaypointConfig,
@@ -141,6 +151,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         )
         self._built: list[tuple[int, list[float]]] = []
         """Timed values of the request last built, recorded once it is sent."""
+        self._scheduled = Scheduled()
         self._commanded: dict[int, list[float]] = {}
         """Sent waypoint values by timestamp, as the server holds them."""
         self._joint_limits: JointLimits | None = None
@@ -180,17 +191,12 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._stop_acknowledged = False
         self._stop_settled = asyncio.Event()
         self._queued_chunk_count = 0
-        self._scheduled_chunk_count = 0
         self._due_tasks: set[asyncio.Task[None]] = set()
         self._due_lock = asyncio.Lock()
-        self._scheduled_until_server_ms = 0
-        self._scheduled_waypoint_timestamps: list[int] = []
         self._scheduled_start: tuple[int, ServerMs, float] | None = None
         """Policy timestep at the caller's first step, its time and the step spacing."""
         self._last_sent: tuple[int, list[float]] | None = None
         """Timestamp and target of the last waypoint sent, for :meth:`_queue_final_target`."""
-        self._scheduled_action_timestep = -1
-        self._scheduled_at_server_ms = 0
 
         # Task management
         self._jogging_task: asyncio.Task[None] | None = None
@@ -311,25 +317,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._queued_chunk_count
 
     @property
-    def scheduled_chunk_count(self) -> int:
-        """Sequence number of the latest chunk timestamped for NOVA."""
-        return self._scheduled_chunk_count
-
-    @property
-    def scheduled_until_server_ms(self) -> ServerMs:
-        """Timestamp of the last step the caller asked for in the latest scheduled chunk; hold
-        padding after it is not counted."""
-        return ServerMs(self._scheduled_until_server_ms)
-
-    @property
-    def scheduled_waypoint_timestamps(self) -> tuple[int, ...]:
-        """NOVA timestamps of the waypoints sent in the latest request, trimmed and padded."""
-        return tuple(self._scheduled_waypoint_timestamps)
-
-    @property
-    def scheduled_action_timestep(self) -> int:
-        """Policy timestep represented by the latest scheduled request."""
-        return self._scheduled_action_timestep
+    def scheduled(self) -> Scheduled:
+        """What the latest send scheduled."""
+        return self._scheduled
 
     @property
     def executing_action_timestep(self) -> int:
@@ -340,11 +330,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         timestep, start_ms, dt_ms = self._scheduled_start
         elapsed_ms = max(0.0, self._clock.last_server_timestamp_ms - start_ms)
         return timestep + int(elapsed_ms // dt_ms) if dt_ms > 0 else timestep
-
-    @property
-    def scheduled_at_server_ms(self) -> ServerMs:
-        """Latest server timestamp observed when the request was scheduled."""
-        return ServerMs(self._scheduled_at_server_ms)
 
     @property
     def last_server_timestamp_ms(self) -> ServerMs:
@@ -476,13 +461,13 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         )
 
     async def drain(self, timeout_s: float = _DRAIN_TIMEOUT_S) -> bool:
-        """Wait until the server acknowledged :attr:`scheduled_until_server_ms`; with
+        """Wait until the server acknowledged ``scheduled.until_server_ms``; with
         ``delay_until_braking_ms`` set, the last target is sent once more to stop on (ADR 0019).
 
         Returns whether that happened within ``timeout_s``. Does not stop the session; call
         :meth:`stop` afterwards.
         """
-        if not self._running or (self._scheduled_until_server_ms <= 0 and not self._pending()):
+        if not self._running or (self._scheduled.until_server_ms <= 0 and not self._pending()):
             return True
         deadline = time.monotonic() + timeout_s
         poll_s = max(self._config.state_rate_ms, 1) / 1000.0
@@ -493,7 +478,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 self._queue_final_target()
             # Re-read every pass: the caller's last chunk may still be queued. Compared with
             # acknowledged progress, not the estimate (ADR 0019).
-            target_ms = self._scheduled_until_server_ms
+            target_ms = self._scheduled.until_server_ms
             if not self._pending() and self._clock.last_server_timestamp_ms >= target_ms:
                 return True
             # After a fault or a fired stop condition the rest of the path is not wanted.
@@ -724,23 +709,11 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 self._clock.start()
                 first_chunk = False
 
-            trimmed = self._trimmed_request(pending)
-            self._run_when_due(pending, trimmed.step_timestamps)
-            if trimmed.request is None:
-                self._record_dropped_chunk(pending, trimmed.step_timestamps)
+            request, stamps, skipped = self._schedule(pending)
+            self._run_when_due(pending, stamps)
+            self._record(pending, stamps, request, skipped)
+            if request is None:
                 continue
-            request = trimmed.request
-            self._scheduled_chunk_count = pending.sequence
-            self._scheduled_waypoint_timestamps = [
-                waypoint.timestamp for waypoint in request.waypoints
-            ]
-            # The caller's own last step, not the padded tail — see
-            # :attr:`scheduled_until_server_ms`.
-            self._scheduled_until_server_ms = trimmed.step_timestamps[pending.last_caller_step]
-            self._record_timesteps(pending, trimmed.step_timestamps, trimmed.skipped)
-            self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
-            self._record_sent()
-
             yield request
 
         if self._stop_requested:
@@ -749,17 +722,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             settled = asyncio.create_task(self._stop_settled.wait())
             _ = await asyncio.wait((settled, response_task), return_when=asyncio.FIRST_COMPLETED)
             settled.cancel()
-
-    def _record_sent(self) -> None:
-        """Remember the request being sent, after the waypoint modules: the drain stops on its
-        last waypoint, and :meth:`commanded_at` answers from it. Like the server, a request
-        replaces what was sent from its first timestamp on."""
-        first = self._built[0][0]
-        self._commanded = {
-            t: v for t, v in self._commanded.items() if first - _COMMAND_HISTORY_MS <= t < first
-        }
-        self._commanded.update((t, list(v)) for t, v in self._built)
-        self._last_sent = (self._built[-1][0], list(self._built[-1][1]))
 
     def _run_when_due(self, pending: PendingChunk, step_timestamps: list[int]) -> None:
         """Start the chunk's ``when_due`` action for the moment its step is due."""
@@ -783,98 +745,139 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         except Exception as error:  # ruff: ignore[blind-except] (any hook error fails the run)
             self._fail(f"action at a chunk step failed for {self.motion_group_id}", error)
 
-    def _record_dropped_chunk(self, pending: PendingChunk, step_timestamps: list[int]) -> None:
-        """Count a chunk dropped as entirely past as scheduled, with its step timestamps; nothing
-        was sent, so :attr:`scheduled_until_server_ms` keeps the previous chunk's motion."""
-        self._scheduled_chunk_count = pending.sequence
-        self._scheduled_waypoint_timestamps = []
-        self._record_timesteps(pending, step_timestamps, 0)
-        self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
-
-    def _record_timesteps(self, pending: PendingChunk, stamps: list[int], skipped: int) -> None:
-        """Note which policy timestep the sent request starts with (``-1`` for a bridge's
-        steps or a chunk without timesteps) and when the policy's first step is due."""
+    def _record(
+        self,
+        pending: PendingChunk,
+        stamps: list[int],
+        request: api.models.ActionChunkRequest | None,
+        skipped: int,
+    ) -> None:
+        """Note what a send scheduled, or that it dropped the chunk: :attr:`scheduled`, when the
+        policy's first step is due and, for a request, the values it sends. The drain stops on
+        its last waypoint, and :meth:`commanded_at` answers from it: like the server, a request
+        replaces what was sent from its first timestamp on."""
+        if request is None:
+            skipped = 0
         timestep, start = pending.action_timestep, pending.start_step
-        sent_first = timestep + skipped - start if timestep >= 0 and skipped >= start else -1
-        self._scheduled_action_timestep = sent_first
         if timestep >= 0 and start < len(stamps):
             self._scheduled_start = (timestep, ServerMs(stamps[start]), pending.dt_ms)
+        self._scheduled = Scheduled(
+            chunk_count=pending.sequence,
+            until_server_ms=(
+                self._scheduled.until_server_ms
+                if request is None
+                # The caller's own last step, not the padded tail.
+                else ServerMs(stamps[pending.last_caller_step])
+            ),
+            waypoint_timestamps=(
+                () if request is None else tuple(w.timestamp for w in request.waypoints)
+            ),
+            action_timestep=(
+                timestep + skipped - start if timestep >= 0 and skipped >= start else -1
+            ),
+            at_server_ms=self._clock.last_server_timestamp_ms,
+        )
+        if request is None:
+            return
+        first = self._built[0][0]
+        self._commanded = {
+            t: v for t, v in self._commanded.items() if first - _COMMAND_HISTORY_MS <= t < first
+        }
+        self._commanded.update((t, list(v)) for t, v in self._built)
+        self._last_sent = (self._built[-1][0], list(self._built[-1][1]))
 
-    def _lead_request(self, pending: PendingChunk) -> _ScheduledRequest:
-        """A chunk placed by the lead rule, with the earlier waypoints not yet due.
+    def _schedule(
+        self, pending: PendingChunk
+    ) -> tuple[api.models.ActionChunkRequest | None, list[int], int]:
+        """Stamp the chunk (the pipeline's ``Timestamps()``), run the filters and the waypoint
+        modules, and build the request; the clock is read once.
 
-        Step ``k`` is due ``max_expected_latency_ms + k * dt`` after ``observed_at_ms`` (else
-        "now"), one-step chunks spaced by the playback clock (contracts T1, T4, T5). The filters
-        drop late steps; ``step_timestamps`` reports every step, sent or not.
+        A lead chunk's step ``k`` is due ``max_expected_latency_ms + k * dt`` after
+        ``observed_at_ms`` (else "now"), one-step chunks spaced by the playback clock, and the
+        earlier one-step waypoints not yet due are sent again (contracts T1, T4, T5). Any other
+        chunk is timed from ``first_timestamp_ms`` shifted by ``timestamp_offset_steps``, else
+        from "now"; a final target no earlier than it can be reached (ADR 0019).
+
+        Returns the request (``None`` when the filters kept nothing), the timestamp of every
+        caller step, sent or not, and how many leading steps were not sent.
         """
         now_ms = self._clock.estimated_server_timestamp_ms
-        observed_ms = pending.observed_at_ms
-        lead_ms = self._config.max_expected_latency_ms
-        first_ms = (now_ms if observed_ms is None else observed_ms) + lead_ms
-        if len(pending.steps) == 1:
-            # A lagging clock may not eat the controller's planning margin.
-            first_ms = self._playback.due_ms(
-                first_ms, pending.dt_ms, now_ms + SINGLE_STEP_MARGIN_MS
-            )
-        else:
-            self._playback = _PlaybackClock()
-        dt_ms = pending.dt_ms
-        stamps = [int(first_ms + k * dt_ms) for k in range(len(pending.steps))]
-        kept = self._filtered(stamps, pending)
-        if not kept:
-            return _ScheduledRequest(request=None, skipped=len(stamps), step_timestamps=stamps)
-        sent = [(stamps[i], list(pending.steps[i])) for i in kept]
-        earliest_ms = now_ms + MIN_LEAD_MS
-        self._lead_window = [
-            (t, step) for t, step in self._lead_window if earliest_ms <= t < sent[0][0]
-        ] + sent
-        request = self._request(self._lead_window, pending)
-        return _ScheduledRequest(request=request, skipped=kept[0], step_timestamps=stamps)
-
-    def _trimmed_request(self, pending: PendingChunk) -> _ScheduledRequest:
-        """Stamp the chunk (the pipeline's ``Timestamps()``), run the filters, build the request.
-
-        Steps are timed from ``first_timestamp_ms`` shifted by ``timestamp_offset_steps``, else
-        from "now" at the send; a final target no earlier than it can be reached (ADR 0019).
-        The record has a timestamp for every caller step, sent or filtered out; ``skipped``
-        counts the steps before the first one sent.
-        """
+        dt_ms, count = pending.dt_ms, len(pending.steps)
         if pending.lead:
-            return self._lead_request(pending)
-        self._lead_window = []
-        self._playback = _PlaybackClock()
-        stamps = self._timestamps(pending)
-        kept = self._filtered(stamps, pending)
-        if not kept:
-            logger.debug(
-                "%s dropping chunk %d: all %d waypoints are in the past",
-                self.motion_group_id,
-                pending.sequence,
-                len(stamps),
+            observed_ms = now_ms if pending.observed_at_ms is None else pending.observed_at_ms
+            first_ms = observed_ms + self._config.max_expected_latency_ms
+            if count == 1:
+                # A lagging clock may not eat the controller's planning margin.
+                first_ms = self._playback.due_ms(first_ms, dt_ms, now_ms + SINGLE_STEP_MARGIN_MS)
+            else:
+                self._playback = _PlaybackClock()
+            stamps = [int(first_ms + k * dt_ms) for k in range(count)]
+        else:
+            self._lead_window = []
+            self._playback = _PlaybackClock()
+            anchor_ms = max(
+                0,
+                anchor_timestamp_ms(
+                    now_ms if pending.first_timestamp_ms is None else pending.first_timestamp_ms,
+                    pending.timestamp_offset_steps,
+                    dt_ms,
+                ),
             )
-            return _ScheduledRequest(request=None, skipped=len(stamps), step_timestamps=stamps)
-        request = self._request([(stamps[i], pending.steps[i]) for i in kept], pending)
-        return _ScheduledRequest(request=request, skipped=kept[0], step_timestamps=stamps)
+            if pending.final and pending.first_timestamp_ms is not None and dt_ms > 0:
+                # Reachable even when the robot is already past its time (ADR 0019).
+                anchor_ms = max(anchor_ms, math.ceil(now_ms + MIN_LEAD_MS))
+            stamps = [anchor_ms + int(i * dt_ms) for i in range(count)]
 
-    def _timestamps(self, pending: PendingChunk) -> list[int]:
-        """Each step's time on the session clock, for a chunk not placed by the lead rule."""
-        dt_ms = pending.dt_ms
-        base_ms = pending.first_timestamp_ms
-        if base_ms is None:
-            base_ms = self._clock.estimated_server_timestamp_ms
-        anchor_ms = max(0, anchor_timestamp_ms(base_ms, pending.timestamp_offset_steps, dt_ms))
-        if pending.final and pending.first_timestamp_ms is not None and dt_ms > 0:
-            # Reachable even when the robot is already past its time (ADR 0019).
-            earliest_ms = self._clock.estimated_server_timestamp_ms + MIN_LEAD_MS
-            anchor_ms = max(anchor_ms, math.ceil(earliest_ms))
-        return [anchor_ms + int(i * dt_ms) for i in range(len(pending.steps))]
+        context = self._module_context(now_ms)
+        kept = self._filtered(stamps, pending, context)
+        if not kept:
+            if not pending.lead:
+                logger.debug(
+                    "%s dropping chunk %d: all %d waypoints are in the past",
+                    self.motion_group_id,
+                    pending.sequence,
+                    count,
+                )
+            return None, stamps, count
+        timed = [(stamps[i], list(pending.steps[i])) for i in kept]
+        if pending.lead:
+            self._lead_window = [
+                (t, step)
+                for t, step in self._lead_window
+                if now_ms + MIN_LEAD_MS <= t < timed[0][0]
+            ] + timed
+            timed = self._lead_window
 
-    def _filtered(self, stamps: list[int], pending: PendingChunk) -> list[int]:
+        times = [t for t, _ in timed]
+        values = [list(v) for _, v in timed]
+        for module in self._waypoint_modules:
+            values = module.on_waypoints(
+                [(ServerMs(t), v) for t, v in zip(times, values, strict=True)], context
+            )
+            if len(values) != len(times):
+                msg = (
+                    f"{type(module).__name__} returned {len(values)} values for "
+                    f"{len(times)} waypoints"
+                )
+                raise ValueError(msg)
+        self._built = list(zip(times, values, strict=True))
+        return (
+            make_timed_waypoints_request(
+                self._mode,
+                self._built,
+                delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
+            ),
+            stamps,
+            kept[0],
+        )
+
+    def _filtered(
+        self, stamps: list[int], pending: PendingChunk, context: ModuleContext
+    ) -> list[int]:
         """The indices of the steps the pipeline's filters keep, in order."""
         kept = list(range(len(stamps)))
         if not self._filters or pending.final:
             return kept  # the final target is where the robot has to stop
-        context = self._module_context()
         for module in self._filters:
             waypoints = [(ServerMs(stamps[i]), pending.steps[i]) for i in kept]
             result = module.keep(waypoints, pending, context)
@@ -889,32 +892,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             kept = [i for i in narrowed if i is not None]
         return kept
 
-    def _request(
-        self, timed: list[tuple[int, list[float]]], pending: PendingChunk
-    ) -> api.models.ActionChunkRequest:
-        """The request for these timed waypoints, after the waypoint modules set their values."""
-        values = [list(v) for _, v in timed]
-        if self._waypoint_modules:
-            times = [ServerMs(t) for t, _ in timed]
-            context = self._module_context()
-            for module in self._waypoint_modules:
-                values = module.on_waypoints(list(zip(times, values, strict=True)), context)
-                if len(values) != len(timed):
-                    msg = (
-                        f"{type(module).__name__} returned {len(values)} values for "
-                        f"{len(timed)} waypoints"
-                    )
-                    raise ValueError(msg)
-        self._built = [(t, v) for (t, _), v in zip(timed, values, strict=True)]
-        return make_timed_waypoints_request(
-            self._mode,
-            self._built,
-            delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
-        )
-
-    def _module_context(self) -> ModuleContext:
+    def _module_context(self, now_ms: ServerMs | None = None) -> ModuleContext:
         return ModuleContext(
-            now_ms=self._clock.estimated_server_timestamp_ms,
+            now_ms=self._clock.estimated_server_timestamp_ms if now_ms is None else now_ms,
             position=self._position(),
             step_ms=self._config.single_step_dt_ms,
             motion_group_id=self.motion_group_id,

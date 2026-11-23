@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from novapolicy.executor import PolicyExecutor
-from novapolicy.jogging.waypoint_session import WaypointJoggingSession
+from novapolicy.jogging.waypoint_session import Scheduled, WaypointJoggingSession
 from novapolicy.joint_limits import JointLimits
 from novapolicy.policy_client import CallbackPolicyClient
 from novapolicy.queued_client import QueuedPolicyClient
@@ -92,8 +92,7 @@ class _Capture:
         proxy.jogging_state = None
         proxy.is_at_standstill = True
         proxy.queued_chunk_count = 0
-        proxy.scheduled_chunk_count = 0
-        proxy.scheduled_until_server_ms = 0
+        proxy.scheduled = Scheduled()
         proxy.start = AsyncMock()
         proxy.stop = AsyncMock()
         proxy.drain = AsyncMock(return_value=True)
@@ -118,23 +117,19 @@ class _Capture:
             # What a real session reports until its loop sends the chunk, at the next await.
             proxy.queued_chunk = pending
             real._pending_request = None
-            scheduled = real._trimmed_request(pending)
-            request = scheduled.request
+            request, stamps, skipped = real._schedule(pending)
             sent = [] if request is None else list(request.waypoints)
             due = None
-            if pending.when_due is not None and scheduled.step_timestamps:
+            if pending.when_due is not None and stamps:
                 step = pending.when_due[0]
-                due = [
-                    step,
-                    scheduled.step_timestamps[min(step, len(scheduled.step_timestamps) - 1)],
-                ]
+                due = [step, stamps[min(step, len(stamps) - 1)]]
             self.records.append({
                 "group": mg_id,
                 "now_ms": clock.now_ms,
                 "lead": pending.lead,
                 "action_timestep": pending.action_timestep,
-                "skipped": scheduled.skipped,
-                "step_timestamps": list(scheduled.step_timestamps),
+                "skipped": skipped,
+                "step_timestamps": list(stamps),
                 "sent": [
                     [w.timestamp, _round(getattr(w.waypoint, "joints", None) or [])] for w in sent
                 ],
@@ -143,19 +138,16 @@ class _Capture:
                 ),
                 "io_due": due,
             })
-            real._record_timesteps(
-                pending, scheduled.step_timestamps, scheduled.skipped
-            )  # as the loop does
-            proxy.scheduled_chunk_count = pending.sequence
-            if scheduled.step_timestamps:
-                proxy.scheduled_until_server_ms = scheduled.step_timestamps[
-                    pending.last_caller_step
-                ]
+            real._record(pending, stamps, request, skipped)  # as the loop does
+            until = proxy.scheduled.until_server_ms
+            if stamps:
+                until = stamps[pending.last_caller_step]
+            proxy.scheduled = Scheduled(chunk_count=pending.sequence, until_server_ms=until)
             if sent:
                 real._current_joints = list(getattr(sent[-1].waypoint, "joints", []) or [])
                 real._last_sent_value = list(real._current_joints)
             clock.now_ms = max(
-                clock.now_ms + self.advance_ms, float(proxy.scheduled_until_server_ms)
+                clock.now_ms + self.advance_ms, float(proxy.scheduled.until_server_ms)
             )
             sync_clock()
 

@@ -125,17 +125,18 @@ class StateStreamer:
             recording=recording,
         )
 
-        sequence = session.scheduled_chunk_count
+        scheduled = session.scheduled
+        sequence = scheduled.chunk_count
         if sequence <= self._logged_scheduled_chunks.get(mg_id, 0):
             return
         self._logged_scheduled_chunks[mg_id] = sequence
 
-        timestamps = list(session.scheduled_waypoint_timestamps)
+        timestamps = list(scheduled.waypoint_timestamps)
         if not timestamps:
             return
         values = {
-            "action_timestep": session.scheduled_action_timestep,
-            "scheduled_at_server_ms": session.scheduled_at_server_ms,
+            "action_timestep": scheduled.action_timestep,
+            "scheduled_at_server_ms": scheduled.at_server_ms,
             "first_timestamp_ms": timestamps[0],
             "last_timestamp_ms": timestamps[-1],
             "count": len(timestamps),
@@ -149,8 +150,8 @@ class StateStreamer:
             "policy/waypoint_requests",
             rr.TextLog(
                 f"{mg_id} | chunk={sequence} | "
-                f"action_timestep={session.scheduled_action_timestep} | "
-                f"scheduled_at={session.scheduled_at_server_ms}ms | "
+                f"action_timestep={scheduled.action_timestep} | "
+                f"scheduled_at={scheduled.at_server_ms}ms | "
                 f"timestamps_ms={timestamps}",
                 level=rr.TextLogLevel.TRACE,
             ),

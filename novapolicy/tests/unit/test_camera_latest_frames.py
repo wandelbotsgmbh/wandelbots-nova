@@ -9,6 +9,8 @@ import pytest
 
 from novapolicy.cameras import webrtc as webrtc_module
 from novapolicy.cameras.webrtc import WebRTCCameraConfig, WebRTCDevice
+from novapolicy.jogging.clock import ServerMs
+from novapolicy.jogging.waypoint_session import Scheduled
 from novapolicy.rerun import images as images_module
 from novapolicy.rerun.streaming import StateStreamer
 
@@ -97,10 +99,12 @@ async def test_state_streamer_logs_controller_and_waypoint_timing_to_rerun(
     session = MagicMock(
         current_state=None,
         last_server_timestamp_ms=125,
-        scheduled_chunk_count=1,
-        scheduled_waypoint_timestamps=(200, 250, 300),
-        scheduled_action_timestep=7,
-        scheduled_at_server_ms=125,
+        scheduled=Scheduled(
+            chunk_count=1,
+            waypoint_timestamps=(200, 250, 300),
+            action_timestep=7,
+            at_server_ms=ServerMs(125),
+        ),
     )
     streamer = StateStreamer(
         start_time=time.monotonic(),

@@ -601,8 +601,8 @@ class PolicyExecutor:
                 return
 
             if all(
-                session.scheduled_chunk_count >= target_chunks[group_id]
-                and session.last_server_timestamp_ms >= session.scheduled_until_server_ms
+                session.scheduled.chunk_count >= target_chunks[group_id]
+                and session.last_server_timestamp_ms >= session.scheduled.until_server_ms
                 and (session.is_at_standstill or session.jogging_state == "PAUSED_BY_USER")
                 for group_id, session in self._sessions.items()
             ):

@@ -318,8 +318,8 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
         sent = waypoint_req.waypoints[0]
         assert _joints(sent) == target
         assert sent.timestamp == 5_000  # absolute anchor honoured exactly
-        assert session.scheduled_action_timestep == 7
-        assert session.scheduled_waypoint_timestamps == (5_000,)
+        assert session.scheduled.action_timestep == 7
+        assert session.scheduled.waypoint_timestamps == (5_000,)
 
 
 @pytest.mark.asyncio
@@ -417,10 +417,10 @@ def test_a_lead_chunk_that_is_late_entirely_is_not_sent_and_not_guarded():
             pending = PendingChunk(
                 steps=[[0.0] * 6] * 3, dt_ms=40, lead=True, observed_at_ms=1_000, sequence=1
             )
-            scheduled = session._trimmed_request(pending)
-        assert scheduled.request is None
-        assert scheduled.skipped == 3
-        assert scheduled.step_timestamps == [1_100, 1_140, 1_180]
+            request, stamps, skipped = session._schedule(pending)
+        assert request is None
+        assert skipped == 3
+        assert stamps == [1_100, 1_140, 1_180]
 
 
 @pytest.mark.asyncio
@@ -605,7 +605,7 @@ def test_a_waypoint_module_may_not_add_or_drop_waypoints():
     with _built(pipeline=[_DropsOne()]) as (session, _):
         pending = PendingChunk(steps=[[0.0] * 6] * 2, dt_ms=40, first_timestamp_ms=5_000)
         with pytest.raises(ValueError, match="returned 1 values for 2 waypoints"):
-            session._trimmed_request(pending)
+            session._schedule(pending)
 
 
 # ---------------------------------------------------------------------------
@@ -680,7 +680,7 @@ def test_a_live_buffer_sends_the_first_target_alone():
         pending = _push_live(session, now, [0.5] * 6, _LIVE_START_MS)
         assert pending.steps == [[0.5] * 6]
         assert pending.first_timestamp_ms is None  # the caller's placement, untouched
-        sent = session._trimmed_request(pending).request
+        sent = session._schedule(pending)[0]
         assert sent is not None
         assert [_joints(w) for w in sent.waypoints] == [[0.5] * 6]
 
@@ -727,7 +727,7 @@ def test_every_replayed_send_carries_an_absolute_first_timestamp():
             assert pending.timestamp_offset_steps == 0
             assert pending.lead is False
             assert pending.observed_at_ms is None
-        sent = session._trimmed_request(horizons[-1]).request
+        sent = session._schedule(horizons[-1])[0]
         assert sent is not None
         assert sent.waypoints[0].timestamp == horizons[-1].first_timestamp_ms
 
@@ -743,7 +743,7 @@ def test_a_live_target_keeps_its_timestamp_as_the_window_is_resent():
             pending = _push_live(session, now, [i * 0.01] * 6, at)
             if len(pending.steps) == 1 or pending.dt_ms != pytest.approx(50.0):
                 continue  # still filling: see the test above
-            sent = session._trimmed_request(pending).request
+            sent = session._schedule(pending)[0]
             assert sent is not None
             for waypoint in sent.waypoints:
                 key = round(_joints(waypoint)[0], 9)
@@ -772,7 +772,7 @@ def test_a_live_buffer_replays_tcp_poses():
             pending = _push_live(session, now, pose, _LIVE_START_MS + 10 * k)
         assert pending.steps == poses
         assert pending.dt_ms == pytest.approx(10.0)
-        sent = session._trimmed_request(pending).request
+        sent = session._schedule(pending)[0]
         assert sent is not None
         assert _is_pose_chunk(sent)
 
@@ -968,7 +968,7 @@ async def test_waypoints_already_in_the_past_are_trimmed_before_sending():
 
 @pytest.mark.asyncio
 async def test_a_trimmed_chunk_reports_the_timestep_it_actually_starts_at():
-    """``scheduled_action_timestep`` names the policy step ``steps[0]`` came from.
+    """``scheduled.action_timestep`` names the policy step ``steps[0]`` came from.
 
     Trimming drops leading waypoints, so the first waypoint sent is not the
     caller's step zero. Reporting the untrimmed timestep misattributes every
@@ -983,7 +983,7 @@ async def test_a_trimmed_chunk_reports_the_timestep_it_actually_starts_at():
         skipped = len(steps) - len(request.waypoints)
 
         assert skipped > 0  # the premise: something was trimmed
-        assert session.scheduled_action_timestep == 100 + skipped
+        assert session.scheduled.action_timestep == 100 + skipped
 
 
 @pytest.mark.asyncio
@@ -1025,7 +1025,7 @@ async def test_a_trimmed_chunk_still_reports_where_each_caller_step_landed():
 
 @pytest.mark.asyncio
 async def test_the_padded_tail_of_a_short_chunk_is_not_motion_anyone_waits_for():
-    """``scheduled_until_server_ms`` ends at the caller's last step.
+    """``scheduled.until_server_ms`` ends at the caller's last step.
 
     A short chunk is padded to ``HoldPadding.min_horizon_ms`` by repeating its final target,
     which gives the server room to brake. Treating that hold as commanded motion
@@ -1043,9 +1043,9 @@ async def test_the_padded_tail_of_a_short_chunk_is_not_motion_anyone_waits_for()
 
         # The padding really was sent, so the server still gets its horizon.
         assert sent == [5_000, 5_050, 5_100, 5_150]
-        assert session.scheduled_waypoint_timestamps == (5_000, 5_050, 5_100, 5_150)
+        assert session.scheduled.waypoint_timestamps == (5_000, 5_050, 5_100, 5_150)
         # But the commanded motion runs out at the caller's own last step.
-        assert session.scheduled_until_server_ms == 5_050
+        assert session.scheduled.until_server_ms == 5_050
 
 
 @pytest.mark.asyncio
@@ -1063,15 +1063,15 @@ async def test_a_fully_elapsed_chunk_is_dropped_instead_of_sent():
             first_timestamp_ms=0,
             when_due=(1, boundary),
         )
-        await _wait_until(lambda: session.scheduled_chunk_count == session.queued_chunk_count)
+        await _wait_until(lambda: session.scheduled.chunk_count == session.queued_chunk_count)
 
         waypoint_requests = [r for r in server.requests if _is_joint_chunk(_inner(r))]
         assert waypoint_requests == []
         # Nothing went on the wire...
-        assert session.scheduled_waypoint_timestamps == ()
+        assert session.scheduled.waypoint_timestamps == ()
         # ...but the chunk still counts as scheduled. Callers wait for this to
         # reach what they queued, so skipping it silently strands them forever.
-        assert session.scheduled_chunk_count == session.queued_chunk_count
+        assert session.scheduled.chunk_count == session.queued_chunk_count
         # Its steps keep the timestamps they were given, all of them in the past,
         # which is what lets a policy boundary read as already due.
         await asyncio.wait_for(due.wait(), 0.5)
@@ -1328,7 +1328,7 @@ async def test_drain_stops_on_the_last_target_instead_of_keeping_the_velocity():
         config=WaypointConfig(delay_until_braking_ms=200), pipeline=_unpadded()
     ) as (session, server):
         session.update_chunk(steps=[[0.0] * 6, [1.0] * 6], dt_ms=50.0, first_timestamp_ms=5_000)
-        await _wait_until(lambda: session.scheduled_until_server_ms == 5_050)
+        await _wait_until(lambda: session.scheduled.until_server_ms == 5_050)
 
         assert await session.drain(timeout_s=0.05) is False
         chunk, final = _chunk_requests(server)
@@ -1344,7 +1344,7 @@ async def test_a_final_target_already_passed_is_still_sent_to_stop_on():
         config=WaypointConfig(delay_until_braking_ms=200), pipeline=_unpadded()
     ) as (session, server):
         session.update_chunk(steps=[[1.0] * 6], dt_ms=50.0, first_timestamp_ms=5_000)
-        await _wait_until(lambda: session.scheduled_until_server_ms == 5_000)
+        await _wait_until(lambda: session.scheduled.until_server_ms == 5_000)
         session._clock.update(5_100)
 
         await session.drain(timeout_s=0.05)
@@ -1366,7 +1366,7 @@ async def test_drain_waits_for_acknowledgement_not_for_extrapolation():
     """
     async with _started(pipeline=_unpadded()) as (session, server):
         session.update_chunk(steps=[[1.0] * 6], dt_ms=50.0, first_timestamp_ms=5_000)
-        await _wait_until(lambda: session.scheduled_until_server_ms == 5_000)
+        await _wait_until(lambda: session.scheduled.until_server_ms == 5_000)
 
         # A link that acknowledged 100ms and then went quiet: the estimate
         # extrapolates a minute past the schedule while the acknowledgement
@@ -1390,7 +1390,7 @@ async def test_drain_gives_up_when_a_stop_condition_fires_mid_drain():
     """A stop condition wants the robot stopped, not the rest of the path run."""
     async with _started(pipeline=_unpadded()) as (session, _server):
         session.update_chunk(steps=[[1.0] * 6], dt_ms=50.0, first_timestamp_ms=9_000_000)
-        await _wait_until(lambda: session.scheduled_until_server_ms == 9_000_000)
+        await _wait_until(lambda: session.scheduled.until_server_ms == 9_000_000)
 
         session._stop_condition = "force_exceeded"
 
@@ -1420,7 +1420,7 @@ async def test_drain_waits_for_a_chunk_that_is_still_only_queued():
         # Nothing is scheduled yet, so a snapshotting drain would return True here.
         assert await session.drain(timeout_s=0.05) is False
         # ...and it was the queued chunk that held it, not an empty schedule.
-        assert session.scheduled_until_server_ms == 5_000
+        assert session.scheduled.until_server_ms == 5_000
 
 
 # ---------------------------------------------------------------------------

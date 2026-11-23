@@ -32,6 +32,7 @@ from novapolicy.jogging.modules import (
     timestep_queue_modules,
 )
 from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
+from novapolicy.jogging.waypoint_session import Scheduled
 from novapolicy.jogging.waypoints import PendingChunk
 from novapolicy.ops import Rad2Deg
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
@@ -313,8 +314,7 @@ async def test_sequential_mode_delays_next_inference_until_deadline_and_standsti
     run_task, second_inference, inference_count = await _sequential_second_inference(robot)
 
     before = inference_count()
-    robot.session.scheduled_chunk_count = 1
-    robot.session.scheduled_until_server_ms = 100
+    robot.session.scheduled = Scheduled(chunk_count=1, until_server_ms=ServerMs(100))
     robot.session.is_at_standstill = True
     robot.session.last_server_timestamp_ms = 99
     await asyncio.sleep(0.03)
@@ -338,8 +338,7 @@ async def test_sequential_mode_waits_out_the_braking_ramp_after_the_deadline(rob
     run_task, second_inference, inference_count = await _sequential_second_inference(robot)
 
     before = inference_count()
-    robot.session.scheduled_chunk_count = 1
-    robot.session.scheduled_until_server_ms = 100
+    robot.session.scheduled = Scheduled(chunk_count=1, until_server_ms=ServerMs(100))
     robot.session.last_server_timestamp_ms = 150  # deadline well past
     robot.session.is_at_standstill = False  # ...but still braking
     await asyncio.sleep(0.05)
@@ -369,8 +368,7 @@ async def test_sequential_mode_settles_on_a_standstill_or_a_server_reported_paus
     """
     run_task, second_inference, inference_count = await _sequential_second_inference(robot)
 
-    robot.session.scheduled_chunk_count = 1
-    robot.session.scheduled_until_server_ms = 100
+    robot.session.scheduled = Scheduled(chunk_count=1, until_server_ms=ServerMs(100))
     robot.session.last_server_timestamp_ms = 100
     robot.session.jogging_state = jogging_state
     robot.session.is_at_standstill = at_standstill
@@ -398,11 +396,14 @@ async def test_bridge_and_policy_are_sent_as_one_continuous_chunk(robot: _Robot)
 
     def acknowledge_chunk(*_args: object, **kwargs: object) -> None:
         robot.session.queued_chunk_count += 1
-        robot.session.scheduled_chunk_count = robot.session.queued_chunk_count
         count = len(kwargs["steps"])
-        robot.session.scheduled_waypoint_timestamps = tuple(range(100, 100 * (count + 1), 100))
-        robot.session.scheduled_until_server_ms = robot.session.scheduled_waypoint_timestamps[-1]
-        robot.session.last_server_timestamp_ms = robot.session.scheduled_until_server_ms
+        stamps = tuple(range(100, 100 * (count + 1), 100))
+        robot.session.scheduled = Scheduled(
+            chunk_count=robot.session.queued_chunk_count,
+            until_server_ms=ServerMs(stamps[-1]),
+            waypoint_timestamps=stamps,
+        )
+        robot.session.last_server_timestamp_ms = stamps[-1]
         robot.session.jogging_state = "PAUSED_BY_USER"
 
     robot.session.update_chunk.side_effect = acknowledge_chunk
@@ -507,7 +508,6 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
 
     def acknowledge_chunk(*_args: object, **kwargs: Any) -> None:
         robot.session.queued_chunk_count += 1
-        robot.session.scheduled_chunk_count = robot.session.queued_chunk_count
         # What the session queues after its chunk modules: the Bridge in front of the first
         # chunk, the TimestepTimeline placing the later ones.
         queued = _after_chunk_modules(
@@ -517,8 +517,11 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         robot.session.queued_chunk = queued
         base = queued.first_timestamp_ms or 0
         stamps = [base + index * 10 for index in range(queued.caller_step_count)]
-        robot.session.scheduled_waypoint_timestamps = tuple(stamps)
-        robot.session.scheduled_until_server_ms = stamps[-1]
+        robot.session.scheduled = Scheduled(
+            chunk_count=robot.session.queued_chunk_count,
+            until_server_ms=ServerMs(stamps[-1]),
+            waypoint_timestamps=tuple(stamps),
+        )
         robot.session.last_server_timestamp_ms = stamps[-1]
         start_ms = stamps[queued.start_step]
         started.append((queued.action_timestep, ServerMs(start_ms)))
