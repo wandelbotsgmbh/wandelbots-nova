@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import itertools
 import math
 import os
 import time
@@ -201,11 +202,17 @@ async def test_a_dummy_vla_runs_sequentially(ur10e, recording):
     assert recording.requests >= 5
     rms, peak = _tracking_deg(recording, skip_ms=0.0)
     assert rms < 1.0 and peak < 5.0, (rms, peak)
-    last_commanded = max(recording.sent)[1]
-    last_measured = max(recording.states)[1]
-    assert (
-        math.degrees(abs(last_measured - last_commanded)) < 0.2
-    )  # the last state is read as the session stops
+    # Each chunk runs to standstill, and the next one starts where the arm rests (its bridge
+    # begins at the measured joints). The arm stops near the previous chunk's final target, not
+    # on it: on a virtual UR10e it moved 0.3-0.5 deg after the last waypoint, with nothing
+    # commanded. (The timeout can end the last chunk anywhere, so it is not checked.)
+    latest = dict(recording.sent)
+    states = sorted(set(recording.states))
+    for (_, previous_end), (next_start, _) in itertools.pairwise(recording.spans):
+        resting = [q for t, q in states if previous_end + LAG_MS < t < next_start]
+        assert resting, "no state between two chunks"
+        assert math.degrees(abs(resting[-1] - latest[previous_end])) < 1.0
+        assert math.degrees(abs(latest[next_start] - resting[-1])) < 0.1
 
 
 @pytest.mark.integration
