@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from novapolicy.chunking import unwrap_tcp_rotations
 from novapolicy.executor import resolve_actions
 from novapolicy.jogging.modules import timestep_queue_modules
+from novapolicy.mapping.poses import unwrap_tcp_rotations
 from novapolicy.providers.action_queue import AsyncQueueAggregation, TimestampedActionQueue
 from novapolicy.providers.base import PolicyClient
 from novapolicy.types import ActionChunk
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from nova.types import RobotState
-    from novapolicy.schema import PolicySchema
+    from novapolicy.mapping.schema import PolicySchema
 
 _TCP_DIM = 6
 

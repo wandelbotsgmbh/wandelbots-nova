@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from novapolicy.mapping.schema import Observation, PolicySchema
 from novapolicy.providers.base import CallbackPolicyClient
-from novapolicy.schema import Observation, PolicySchema
 from novapolicy.tests import doubles
 from novapolicy.types import ActionChunk
 

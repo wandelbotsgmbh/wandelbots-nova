@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
     from novapolicy.jogging.clock import ServerMs
     from novapolicy.jogging.waypoints import PendingChunk
-    from novapolicy.joint_limits import JointLimits
+    from novapolicy.mapping.joint_limits import JointLimits
     from novapolicy.types import JoggingMode
 
 CHUNK_STAGES = ("input", "smooth", "timeline", "anchor", "shape", "horizon")

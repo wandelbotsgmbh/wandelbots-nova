@@ -1592,7 +1592,7 @@ async def test_the_session_reads_joint_limits_only_for_a_joint_clamp(clamp: bool
     """A JointClamp gets the robot's limits, read once at the start; without one the session
     makes no extra call."""
     from novapolicy.jogging.modules import JointClamp
-    from novapolicy.joint_limits import JointLimits
+    from novapolicy.mapping.joint_limits import JointLimits
 
     limits = JointLimits(lower=(-1.0,) * 6, upper=(1.0,) * 6)
     pipeline = [JointClamp(), *_unpadded()] if clamp else _unpadded()

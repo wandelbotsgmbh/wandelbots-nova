@@ -9,10 +9,10 @@ import httpx
 import pytest
 
 from nova.types import Pose
-from novapolicy.ops import Scale
-from novapolicy.pose_sources import OmniverseScene, PoseSource
-from novapolicy.poses import QUATERNION
-from novapolicy.schema import Observation, PolicySchema
+from novapolicy.mapping.ops import Scale
+from novapolicy.mapping.pose_sources import OmniverseScene, PoseSource
+from novapolicy.mapping.poses import QUATERNION
+from novapolicy.mapping.schema import Observation, PolicySchema
 
 API = "http://isaac-host:8011/omniservice/api/v2"
 TOOL_DOWN = Pose((850.0, -225.0, 200.0, math.pi, 0.0, 0.0))

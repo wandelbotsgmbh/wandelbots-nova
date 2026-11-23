@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from novapolicy.schema import (
+from novapolicy.mapping.schema import (
     Action,
     BoolMapping,
     Observation,

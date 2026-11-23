@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
-from novapolicy import training_range
+from novapolicy.mapping import training_range
 from novapolicy.providers.base import PolicyClient, resolve_control_freq
 from novapolicy.providers.gr00t.eef import TcpFormat, pose_to_eef
 from novapolicy.providers.gr00t.transport import Gr00tZmqTransport, require_dict
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from nova.types import RobotState
-    from novapolicy.schema import PolicySchema
+    from novapolicy.mapping.schema import PolicySchema
     from novapolicy.types import ActionChunk
 
 _RESPONSE_PAIR_SIZE = 2

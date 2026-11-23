@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from novapolicy.joint_velocities import JointVelocities
-from novapolicy.ops import Rad2Deg
-from novapolicy.schema import Observation, PolicySchema
+from novapolicy.mapping.joint_velocities import JointVelocities
+from novapolicy.mapping.ops import Rad2Deg
+from novapolicy.mapping.schema import Observation, PolicySchema
 from novapolicy.tests.doubles import mg as _mg
 
 MG_ID = "0@ur10e"

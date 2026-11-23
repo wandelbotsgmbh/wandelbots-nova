@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from nova.types import RobotState
+    from novapolicy.mapping.schema import PolicySchema
     from novapolicy.providers.leapp.pipeline import Port
-    from novapolicy.schema import PolicySchema
     from novapolicy.types import ActionChunk
 
 logger = logging.getLogger(__name__)

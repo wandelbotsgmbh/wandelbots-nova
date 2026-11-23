@@ -12,13 +12,14 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from novapolicy.cameras.manager import CameraManager
-from novapolicy.chunking import apply_relative_mode, is_single_step, placement, trim_chunk
+from novapolicy.chunking import is_single_step, placement, trim_chunk
 from novapolicy.io import IOStreamManager
 from novapolicy.jogging.lifecycle import SessionLifecycle, move_to_start_joint_position
 from novapolicy.jogging.live_buffer import LiveBuffer
 from novapolicy.jogging.modules import EndpointRamp, TimestepTimeline, default_pipeline
 from novapolicy.jogging.pipeline import split_pipeline
 from novapolicy.jogging.session import first_fired
+from novapolicy.mapping.relative import apply_relative_mode
 from novapolicy.providers.base import PolicyClient
 from novapolicy.types import (
     ActionChunk,
@@ -38,8 +39,8 @@ if TYPE_CHECKING:
     from nova.types import RobotState
     from novapolicy.jogging.clock import ServerMs
     from novapolicy.jogging.waypoint_session import WaypointJoggingSession
+    from novapolicy.mapping.schema import PolicySchema
     from novapolicy.rerun import PolicyRerunLogger
-    from novapolicy.schema import PolicySchema
     from novapolicy.types import StopCondition
 
 logger = logging.getLogger(__name__)

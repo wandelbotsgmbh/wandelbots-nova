@@ -15,8 +15,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from novapolicy.ops import Rad2Deg
-from novapolicy.schema import BoolMapping, Observation, PolicySchema
+from novapolicy.mapping.ops import Rad2Deg
+from novapolicy.mapping.schema import BoolMapping, Observation, PolicySchema
 from novapolicy.tests.doubles import mg as _mg, state as _state, tcp_state as _tcp_state
 
 client_module = pytest.importorskip("novapolicy.providers.lerobot.client")

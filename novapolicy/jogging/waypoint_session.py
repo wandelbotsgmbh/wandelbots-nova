@@ -33,14 +33,14 @@ from novapolicy.jogging.waypoints import (
     anchor_timestamp_ms,
     make_timed_waypoints_request,
 )
-from novapolicy.joint_limits import fetch_joint_limits
+from novapolicy.mapping.joint_limits import fetch_joint_limits
 from novapolicy.types import JoggingNotSupportedError, MotionError, StopContext
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping, Sequence
 
     from nova.cell.motion_group import MotionGroup
-    from novapolicy.joint_limits import JointLimits
+    from novapolicy.mapping.joint_limits import JointLimits
     from novapolicy.types import JoggingMode, StopCondition, ValueType, WaypointConfig
 
 logger = logging.getLogger(__name__)

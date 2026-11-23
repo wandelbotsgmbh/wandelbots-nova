@@ -17,8 +17,8 @@ import uuid
 import pytest
 
 from novapolicy.executor import PolicyExecutor
+from novapolicy.mapping.schema import Observation, PolicySchema
 from novapolicy.providers.base import CallbackPolicyClient
-from novapolicy.schema import Observation, PolicySchema
 from novapolicy.types import ActionChunk, StopContext
 
 

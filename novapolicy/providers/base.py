@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from nova.types import RobotState
-    from novapolicy.schema import PolicySchema
+    from novapolicy.mapping.schema import PolicySchema
     from novapolicy.types import ActionChunk
 
 

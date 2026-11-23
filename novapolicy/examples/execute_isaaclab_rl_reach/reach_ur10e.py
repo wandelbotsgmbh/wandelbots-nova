@@ -46,7 +46,7 @@ from novapolicy import (
 
 if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
-    from novapolicy.pose_sources import PoseSource
+    from novapolicy.mapping.pose_sources import PoseSource
 
 EXPORT = Path(__file__).with_name("exported") / "reach_ur10e" / "reach_ur10e.yaml"
 # The start pose of the training environment (Isaac Lab's UR10e_CFG): tool down over the table.

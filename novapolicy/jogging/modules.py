@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, ClassVar
 from novapolicy import chunking
 from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.pipeline import Timestamps
-from novapolicy.joint_limits import DEFAULT_MARGIN_RAD
+from novapolicy.mapping.joint_limits import DEFAULT_MARGIN_RAD
 from novapolicy.types import SequentialExecution
 
 if TYPE_CHECKING:

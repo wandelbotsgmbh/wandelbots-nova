@@ -16,10 +16,10 @@ import pytest
 pytest.importorskip("onnxruntime")
 
 from nova.types import Pose
-from novapolicy.ops import Scale
-from novapolicy.poses import QUATERNION
+from novapolicy.mapping.ops import Scale
+from novapolicy.mapping.poses import QUATERNION
+from novapolicy.mapping.schema import Action, Observation, PolicySchema
 from novapolicy.providers.leapp import LeappPipeline, LeappPolicyClient
-from novapolicy.schema import Action, Observation, PolicySchema
 from novapolicy.tests.doubles import mg as _mg
 
 EXPORT = Path(__file__).parents[1] / "unit" / "data" / "leapp_reach" / "reach_ur10e.yaml"

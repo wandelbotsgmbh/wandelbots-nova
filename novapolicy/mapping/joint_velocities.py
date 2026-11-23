@@ -11,13 +11,13 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-from novapolicy.state_stream import StateStreamVelocities
+from novapolicy.mapping.state_stream import StateStreamVelocities
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from nova.cell.motion_group import MotionGroup
-    from novapolicy.state_stream import VelocitySource
+    from novapolicy.mapping.state_stream import VelocitySource
 
 logger = logging.getLogger(__name__)
 

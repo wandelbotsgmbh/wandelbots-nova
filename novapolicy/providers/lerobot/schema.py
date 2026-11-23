@@ -11,15 +11,15 @@ from lerobot.utils.constants import ACTION, OBS_IMAGES, OBS_STATE
 from lerobot.utils.feature_utils import dataset_to_policy_features
 import numpy as np
 
-from novapolicy import training_range
-from novapolicy.schema import tcp_value_names
+from novapolicy.mapping import training_range
+from novapolicy.mapping.schema import tcp_value_names
 
 if TYPE_CHECKING:
     from lerobot.configs.types import PolicyFeature
 
     from nova.types import RobotState
+    from novapolicy.mapping.schema import PolicySchema
     from novapolicy.providers.lerobot.config import LeRobotExecutionSettings
-    from novapolicy.schema import PolicySchema
 
 logger = logging.getLogger(__name__)
 

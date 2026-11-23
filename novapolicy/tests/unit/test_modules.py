@@ -18,7 +18,7 @@ from novapolicy.jogging.modules import (
 )
 from novapolicy.jogging.pipeline import ModuleContext, Timestamps, split_pipeline
 from novapolicy.jogging.waypoints import PendingChunk
-from novapolicy.joint_limits import JointLimits
+from novapolicy.mapping.joint_limits import JointLimits
 from novapolicy.types import ContinuousExecution, SequentialExecution
 
 LIMITS = JointLimits(lower=(-1.0,) * 3, upper=(1.0,) * 3)

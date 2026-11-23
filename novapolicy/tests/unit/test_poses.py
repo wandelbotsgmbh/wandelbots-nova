@@ -10,10 +10,10 @@ import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
-from novapolicy import poses
 from novapolicy.executor import resolve_actions
-from novapolicy.ops import Scale
-from novapolicy.schema import Action, Observation, PolicySchema
+from novapolicy.mapping import poses
+from novapolicy.mapping.ops import Scale
+from novapolicy.mapping.schema import Action, Observation, PolicySchema
 from novapolicy.tests.doubles import mg as _mg
 from novapolicy.types import ActionChunk
 

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from novapolicy.joint_limits import (
+from novapolicy.mapping.joint_limits import (
     DEFAULT_MARGIN_RAD,
     JointLimits,
     fetch_joint_limits,
@@ -81,7 +81,7 @@ def test_a_width_mismatch_passes_through_untouched() -> None:
 def test_the_first_clip_per_joint_is_reported(caplog: pytest.LogCaptureFixture) -> None:
     """A saturating joint means out-of-distribution or mis-mounted; say so once."""
     limits = _limits()
-    with caplog.at_level(logging.WARNING, logger="novapolicy.joint_limits"):
+    with caplog.at_level(logging.WARNING, logger="novapolicy.mapping.joint_limits"):
         for _ in range(5):
             limits.clamp([-9.0, 0.0, 0.0], MG_ID)
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
@@ -91,7 +91,7 @@ def test_the_first_clip_per_joint_is_reported(caplog: pytest.LogCaptureFixture) 
 
 def test_each_joint_reports_separately(caplog: pytest.LogCaptureFixture) -> None:
     limits = _limits()
-    with caplog.at_level(logging.WARNING, logger="novapolicy.joint_limits"):
+    with caplog.at_level(logging.WARNING, logger="novapolicy.mapping.joint_limits"):
         limits.clamp([-9.0, 0.0, 0.0], MG_ID)
         limits.clamp([0.0, 0.0, 9.0], MG_ID)
     assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 2

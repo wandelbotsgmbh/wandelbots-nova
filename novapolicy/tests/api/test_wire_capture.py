@@ -23,10 +23,10 @@ import pytest
 
 from novapolicy.executor import PolicyExecutor
 from novapolicy.jogging.waypoint_session import Scheduled, WaypointJoggingSession
-from novapolicy.joint_limits import JointLimits
+from novapolicy.mapping.joint_limits import JointLimits
+from novapolicy.mapping.schema import Observation, PolicySchema
 from novapolicy.providers.base import CallbackPolicyClient
 from novapolicy.providers.queued import QueuedPolicyClient
-from novapolicy.schema import Observation, PolicySchema
 from novapolicy.types import (
     ActionChunk,
     ContinuousExecution,

@@ -20,9 +20,9 @@ import pytest_asyncio
 from scipy.spatial.transform import Rotation
 
 from novapolicy.executor import PolicyExecutor
-from novapolicy.ops import Scale
+from novapolicy.mapping.ops import Scale
+from novapolicy.mapping.schema import Action, Observation, PolicySchema
 from novapolicy.providers.base import CallbackPolicyClient
-from novapolicy.schema import Action, Observation, PolicySchema
 from novapolicy.types import (
     ActionChunk,
     SequentialExecution,
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
-    from novapolicy.schema import _ActTcp
+    from novapolicy.mapping.schema import _ActTcp
 
 # Tool pointing straight down, well inside the UR10e's reach.
 START_DEG = (0.0, -90.0, 90.0, -90.0, -90.0, 0.0)
@@ -208,7 +208,7 @@ async def test_unit_operators_apply_before_the_offsets(ur10e):
 @pytest.mark.integration
 @pytest.mark.asyncio(loop_scope="module")
 async def test_quaternion_targets_are_converted_before_they_are_sent(ur10e):
-    from novapolicy.poses import QUATERNION
+    from novapolicy.mapping.poses import QUATERNION
 
     def turn_15deg(start: list[float]) -> list[list[float]]:
         out = []

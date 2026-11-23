@@ -11,7 +11,7 @@ import time
 import numpy as np
 import pytest
 
-from novapolicy.state_stream import (
+from novapolicy.mapping.state_stream import (
     DEFAULT_STALE_AFTER_S,
     StateStreamVelocities,
     VelocitySource,

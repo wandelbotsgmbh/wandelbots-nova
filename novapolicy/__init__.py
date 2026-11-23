@@ -33,19 +33,19 @@ from novapolicy.jogging import (
     jog_joints,
     jog_tcp,
 )
-from novapolicy.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
-from novapolicy.pose_sources import OmniverseScene, PoseSource
-from novapolicy.poses import OrientationType
-from novapolicy.providers.base import CallbackPolicyClient, PolicyClient, resolve_control_freq
-from novapolicy.providers.gr00t import Gr00tPolicyClient
-from novapolicy.providers.queued import QueuedPolicyClient
-from novapolicy.schema import (
+from novapolicy.mapping.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
+from novapolicy.mapping.pose_sources import OmniverseScene, PoseSource
+from novapolicy.mapping.poses import OrientationType
+from novapolicy.mapping.schema import (
     Action,
     BoolMapping,
     Mapping,
     Observation,
     PolicySchema,
 )
+from novapolicy.providers.base import CallbackPolicyClient, PolicyClient, resolve_control_freq
+from novapolicy.providers.gr00t import Gr00tPolicyClient
+from novapolicy.providers.queued import QueuedPolicyClient
 from novapolicy.types import (
     ActionChunk,
     ActionMode,

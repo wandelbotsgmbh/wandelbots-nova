@@ -24,8 +24,14 @@ import pytest
 import pytest_asyncio
 
 from nova.types import Pose
+from novapolicy.mapping.schema import (
+    Action,
+    BoolMapping,
+    Observation,
+    ObservationEntry,
+    PolicySchema,
+)
 from novapolicy.providers.gr00t import Gr00tMsgSerializer, Gr00tPolicyClient
-from novapolicy.schema import Action, BoolMapping, Observation, ObservationEntry, PolicySchema
 from novapolicy.tests.doubles import mg as _mg, state as _state
 from novapolicy.types import ActionChunk
 
@@ -398,7 +404,7 @@ async def test_io_action_decoding() -> None:
     time.sleep(0.1)
 
     try:
-        from novapolicy.schema import BoolMapping
+        from novapolicy.mapping.schema import BoolMapping
 
         mg = _mg()
         schema = PolicySchema(
@@ -429,7 +435,7 @@ async def test_io_action_decoding() -> None:
 @pytest.mark.asyncio
 async def test_io_actions_come_from_the_chunks_first_step() -> None:
     """IO fires when the policy's first step is due, so it carries that step's value."""
-    from novapolicy.schema import BoolMapping
+    from novapolicy.mapping.schema import BoolMapping
 
     port = _find_free_port()
     server = _RecordingGr00tServer(port)
@@ -553,7 +559,7 @@ async def test_joint_velocity_and_pose_observations_feed_server_state_keys(serve
 async def test_joint_observations_apply_the_schema_operators() -> None:
     """The executor inverts ops on the actions, so GR00T has to apply them on the observations:
     with Rad2Deg the policy sees degrees in and its degrees are read back as degrees."""
-    from novapolicy.ops import Rad2Deg
+    from novapolicy.mapping.ops import Rad2Deg
 
     port = _find_free_port()
     server = _RecordingGr00tServer(port)

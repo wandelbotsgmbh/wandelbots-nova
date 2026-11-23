@@ -6,6 +6,7 @@ NOVA poses are ``[x, y, z, rx, ry, rz]`` (mm, rotation vector) in world; quatern
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -26,6 +27,7 @@ _QUATERNION_WIDTH = 4
 _ANGLES_WIDTH = 3
 _INTRINSIC = "EULER_ANGLES_INTRINSIC_"
 _EXTRINSIC = "EULER_ANGLES_EXTRINSIC_"
+_ROTVEC_EPSILON = 1e-12
 
 
 def orientation_width(orientation_type: OrientationType) -> int:
@@ -114,3 +116,38 @@ async def coordinate_system_in_world(mg: MotionGroup, coordinate_system: str) ->
         frame = pose_matrix([*(cs.position or [0.0, 0.0, 0.0]), *rotvec]) @ frame
         current = cs.reference_coordinate_system
     return frame
+
+
+def unwrap_tcp_rotations(steps: list[list[float]], reference: list[float]) -> list[list[float]]:
+    """Rewrite each TCP step's rotation vector as the equivalent one nearest its predecessor.
+
+    ``angle * axis`` equals ``(angle + 2 pi k) * axis``; near pi measurements flip between ``v``
+    and about ``-v``, and interpolating across that would turn the wrist half a turn.
+    ``reference`` anchors the first step.
+    """
+    out: list[list[float]] = []
+    previous = list(reference)
+    for step in steps:
+        rotvec = _equivalent_rotvec_near(step[3:6], previous)
+        out.append([*step[:3], *rotvec, *step[6:]])
+        previous = rotvec
+    return out
+
+
+def _equivalent_rotvec_near(rotvec: list[float], reference: list[float]) -> list[float]:
+    angle = math.sqrt(sum(value * value for value in rotvec))
+    if angle < _ROTVEC_EPSILON:
+        # The identity has no axis of its own: its equivalents are the full turns about any
+        # axis, so take the one along the reference nearest to it.
+        reference_angle = math.sqrt(sum(value * value for value in reference))
+        if reference_angle < _ROTVEC_EPSILON:
+            return list(rotvec)
+        turns = round(reference_angle / (2.0 * math.pi))
+        scale = 2.0 * math.pi * turns / reference_angle
+        return [v + r * scale for v, r in zip(rotvec, reference, strict=True)]
+    axis = [value / angle for value in rotvec]
+    # Equivalent vectors lie on the axis line at angle + 2 pi k; pick the one
+    # nearest the reference's projection onto that line.
+    projection = sum(a * r for a, r in zip(axis, reference, strict=True))
+    turns = round((projection - angle) / (2.0 * math.pi))
+    return [a * (angle + 2.0 * math.pi * turns) for a in axis]

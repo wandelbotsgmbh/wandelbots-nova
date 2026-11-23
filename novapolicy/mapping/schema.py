@@ -15,12 +15,12 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 import numpy as np
 
 from nova.types import Pose
-from novapolicy import poses
 from novapolicy._sdk import get_controller_id
-from novapolicy.chunking import TcpDelta
-from novapolicy.joint_velocities import JointVelocities
-from novapolicy.ops import apply_ops, apply_ops_inverse, reject_forward_only
-from novapolicy.pose_sources import PoseSource
+from novapolicy.mapping import poses
+from novapolicy.mapping.joint_velocities import JointVelocities
+from novapolicy.mapping.ops import apply_ops, apply_ops_inverse, reject_forward_only
+from novapolicy.mapping.pose_sources import PoseSource
+from novapolicy.mapping.relative import TcpDelta
 from novapolicy.types import ActionChunk
 
 _TCP_SUFFIXES = ("x", "y", "z", "rx", "ry", "rz")
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.cameras import CameraSource
-    from novapolicy.ops import ValueOp
+    from novapolicy.mapping.ops import ValueOp
     from novapolicy.types import ActionMode
 
 logger = logging.getLogger(__name__)

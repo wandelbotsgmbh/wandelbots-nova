@@ -16,17 +16,9 @@ import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
-from novapolicy.chunking import (
-    TcpDelta,
-    apply_relative_mode,
-    bridge_steps,
-    compose_tcp_deltas,
-    placement,
-    ramp_steps,
-    smooth_steps,
-    trim_chunk,
-    unwrap_tcp_rotations,
-)
+from novapolicy.chunking import bridge_steps, placement, ramp_steps, smooth_steps, trim_chunk
+from novapolicy.mapping.poses import unwrap_tcp_rotations
+from novapolicy.mapping.relative import TcpDelta, apply_relative_mode, compose_tcp_deltas
 from novapolicy.types import ActionChunk, ContinuousExecution, SequentialExecution
 
 # Strategies for generated chunks --------------------------------------------

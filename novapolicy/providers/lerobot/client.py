@@ -18,8 +18,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from nova.types import RobotState
+    from novapolicy.mapping.schema import PolicySchema
     from novapolicy.providers.lerobot.config import LeRobotExecutionSettings
-    from novapolicy.schema import PolicySchema
     from novapolicy.types import ActionChunk
 
 logger = logging.getLogger(__name__)

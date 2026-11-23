@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from novapolicy.schema import Action, Observation, PolicySchema
+from novapolicy.mapping.schema import Action, Observation, PolicySchema
 from novapolicy.tests.doubles import mg as _mg, state as _state
 
 schema_module = pytest.importorskip("novapolicy.providers.lerobot.schema")
@@ -372,7 +372,7 @@ def test_state_names_include_velocities_and_poses_in_a_fixed_order():
     """Joint positions, joint velocities, TCP poses, object poses, IOs, computed keys: whatever
     the declaration order."""
     from nova.types import Pose
-    from novapolicy.poses import QUATERNION
+    from novapolicy.mapping.poses import QUATERNION
 
     mg = _mg("0@cobot")
     schema = PolicySchema(

@@ -6,18 +6,14 @@ from dataclasses import dataclass
 from itertools import pairwise
 import logging
 import math
-from typing import TYPE_CHECKING, Any, cast
-
-import numpy as np
-from scipy.spatial.transform import Rotation
+from typing import TYPE_CHECKING
 
 from novapolicy.jogging.clock import ServerMs
-from novapolicy.types import ActionChunk, ContinuousExecution
+from novapolicy.mapping.poses import unwrap_tcp_rotations
+from novapolicy.types import ContinuousExecution
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from novapolicy.types import ExecutionMode
+    from novapolicy.types import ActionChunk, ExecutionMode
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +21,6 @@ _MIN_SPACING_STEPS = 2
 _MIN_RAMP_STEPS = 2
 _MIN_SMOOTHING_STEPS = 2
 _SEGMENT_RATIO_EPSILON = 1e-12
-_ROTVEC_EPSILON = 1e-12
 
 
 def _max_steps(chunk: ActionChunk) -> int:
@@ -174,45 +169,6 @@ def _ramp_fractions(
     return fractions
 
 
-_TCP_WIDTH = 6
-"""Values of a NOVA TCP pose: [x, y, z, rx, ry, rz]."""
-
-
-def unwrap_tcp_rotations(steps: list[list[float]], reference: list[float]) -> list[list[float]]:
-    """Rewrite each TCP step's rotation vector as the equivalent one nearest its predecessor.
-
-    ``angle * axis`` equals ``(angle + 2 pi k) * axis``; near pi measurements flip between ``v``
-    and about ``-v``, and interpolating across that would turn the wrist half a turn.
-    ``reference`` anchors the first step.
-    """
-    out: list[list[float]] = []
-    previous = list(reference)
-    for step in steps:
-        rotvec = _equivalent_rotvec_near(step[3:6], previous)
-        out.append([*step[:3], *rotvec, *step[6:]])
-        previous = rotvec
-    return out
-
-
-def _equivalent_rotvec_near(rotvec: list[float], reference: list[float]) -> list[float]:
-    angle = math.sqrt(sum(value * value for value in rotvec))
-    if angle < _ROTVEC_EPSILON:
-        # The identity has no axis of its own: its equivalents are the full turns about any
-        # axis, so take the one along the reference nearest to it.
-        reference_angle = math.sqrt(sum(value * value for value in reference))
-        if reference_angle < _ROTVEC_EPSILON:
-            return list(rotvec)
-        turns = round(reference_angle / (2.0 * math.pi))
-        scale = 2.0 * math.pi * turns / reference_angle
-        return [v + r * scale for v, r in zip(rotvec, reference, strict=True)]
-    axis = [value / angle for value in rotvec]
-    # Equivalent vectors lie on the axis line at angle + 2 pi k; pick the one
-    # nearest the reference's projection onto that line.
-    projection = sum(a * r for a, r in zip(axis, reference, strict=True))
-    turns = round((projection - angle) / (2.0 * math.pi))
-    return [a * (angle + 2.0 * math.pi * turns) for a in axis]
-
-
 def bridge_steps(
     current: list[float],
     steps: list[list[float]],
@@ -293,94 +249,6 @@ def _euclidean_distance(left: list[float], right: list[float]) -> float:
     if len(left) != len(right):
         return 0.0
     return math.sqrt(sum((b - a) ** 2 for a, b in zip(left, right, strict=True)))
-
-
-@dataclass(frozen=True, slots=True)
-class TcpDelta:
-    """How a relative TCP action's steps apply (see ``Action.tcp``)."""
-
-    accumulate: bool = False
-    """True: each step applies to the pose the previous step reached, not the observed one."""
-    use_tool_coordinate_system: bool = False
-    """True: offsets in the tool coordinate system at the step's start pose; False: in world."""
-
-
-def apply_relative_mode(
-    chunk: ActionChunk,
-    states: dict[str, Any],
-    relative_mgs: Iterable[str],
-    tcp_deltas: dict[str, TcpDelta] | None = None,
-) -> ActionChunk:
-    """Convert relative action targets of ``relative_mgs`` to absolute ones (contract M5).
-
-    TCP steps compose as ``tcp_deltas`` declares and are unwrapped onto the starting rotation.
-    """
-    relative_mgs = list(relative_mgs)
-    if not relative_mgs:
-        return chunk
-
-    new_joints = dict(chunk.joints)
-    new_tcp = dict(chunk.tcp)
-
-    for mg_id in relative_mgs:
-        state = states.get(mg_id)
-        if state is None:
-            continue
-
-        # Joint deltas accumulate: step i is current + sum(deltas[0..i]).
-        if mg_id in new_joints:
-            running = list(state.joints)
-            abs_steps = []
-            for step in new_joints[mg_id]:
-                running = [r + d for r, d in zip(running, step, strict=True)]
-                abs_steps.append(list(running))
-            new_joints[mg_id] = abs_steps
-
-        if mg_id in new_tcp and hasattr(state, "pose") and state.pose is not None:
-            start = [*state.pose.position, *state.pose.orientation]
-            delta = (tcp_deltas or {}).get(mg_id, TcpDelta())
-            new_tcp[mg_id] = compose_tcp_deltas(start, new_tcp[mg_id], delta)
-
-    return ActionChunk(
-        joints=new_joints,
-        tcp=new_tcp,
-        ios=chunk.ios,
-        values=chunk.values,
-        dt_ms=chunk.dt_ms,
-        first_timestamp_ms=chunk.first_timestamp_ms,
-        action_timestep=chunk.action_timestep,
-    )
-
-
-def compose_tcp_deltas(
-    start: list[float], steps: list[list[float]], delta: TcpDelta
-) -> list[list[float]]:
-    """Absolute TCP targets ``[x, y, z, rx, ry, rz]`` (mm, rotation vector) from offsets.
-
-    A rotation offset turns the tool about the TCP: pre-multiplied in world axes,
-    post-multiplied in the tool coordinate system.
-    """
-    widths = sorted({len(step) for step in steps if len(step) != _TCP_WIDTH})
-    if widths:
-        msg = (
-            f"Relative TCP offsets must be [x, y, z, rx, ry, rz] (6 values), got {widths}: "
-            "declare the policy's rotation representation with orientation_type"
-        )
-        raise ValueError(msg)
-    p0, r0 = np.asarray(start[:3], dtype=float), Rotation.from_rotvec(start[3:6])
-    p, r = p0, r0
-    out: list[list[float]] = []
-    for step in steps:
-        base_p, base_r = (p, r) if delta.accumulate else (p0, r0)
-        dp, rv = np.asarray(step[:3], dtype=float), np.asarray(step[3:6], dtype=float)
-        if delta.use_tool_coordinate_system:
-            p = base_p + base_r.apply(dp)
-            r = cast("Rotation", base_r * Rotation.from_rotvec(rv))
-        else:
-            p = base_p + dp
-            r = cast("Rotation", Rotation.from_rotvec(rv) * base_r)
-        out.append([*p.tolist(), *r.as_rotvec().tolist()])
-    return unwrap_tcp_rotations(out, start[3:6])
 
 
 def is_single_step(chunk: ActionChunk) -> bool:

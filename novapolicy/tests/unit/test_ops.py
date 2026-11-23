@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from novapolicy.ops import (
+from novapolicy.mapping.ops import (
     Clamp,
     OpDirection,
     Rad2Deg,
@@ -15,7 +15,7 @@ from novapolicy.ops import (
     apply_ops,
     apply_ops_inverse,
 )
-from novapolicy.schema import Action, Observation, PolicySchema
+from novapolicy.mapping.schema import Action, Observation, PolicySchema
 from novapolicy.tests.doubles import mg as _mg, state as _state
 from novapolicy.types import ActionChunk
 
