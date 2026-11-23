@@ -1,4 +1,4 @@
-"""Forward-kinematics helpers for action-chunk visualization.
+"""Forward-kinematics and frame helpers for the policy overlays.
 
 Kept in the policy layer (not in ``nova_rerun_bridge``) so the main package is
 untouched. These compose the *existing* public ``DHRobot`` API
@@ -61,3 +61,16 @@ def tcp_offset_matrix(offset: Pose) -> np.ndarray:
     matrix[0:3, 0:3] = rotation
     matrix[0:3, 3] = pos
     return matrix
+
+
+def to_robot_frame(position: list[float], frame: np.ndarray | None) -> list[float]:
+    """Move a reported TCP position into the robot's frame.
+
+    Nova reports a motion group's pose relative to whatever its chain is mounted
+    on, so a TCP arrives in the frame of that mount, not the robot's. Without
+    this a trail is drawn a metre from the TCP it belongs to.
+    """
+    if frame is None:
+        return position
+    point = np.asarray(frame, dtype=float) @ np.array([*position[:3], 1.0])
+    return [float(value) for value in point[:3]]

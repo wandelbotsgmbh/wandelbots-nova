@@ -26,11 +26,13 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
+    from novapolicy.rerun.context import RerunContext
     from novapolicy.rerun.streaming import StateStreamer
     from novapolicy.types import ActionChunk
     from rerun import RecordingStream
 
-from novapolicy.rerun.logtime import elapsed_since, pinned_elapsed
+from novapolicy.rerun.constants import STATE_SAMPLE_PERIOD_S
+from novapolicy.rerun.logtime import pinned_elapsed
 from novapolicy.rerun.sink import LOG_ERRORS, AsyncLogSink
 
 logger = logging.getLogger(__name__)
@@ -98,7 +100,6 @@ class PolicyRerunLogger:
         *,
         use_tcp_offset_for_joint_actions: bool = False,
         tcp: str = "",
-        state_sample_interval_ms: float | None = None,
     ) -> None:
         self._motion_groups = motion_groups
         self._camera_names = camera_names or []
@@ -113,7 +114,6 @@ class PolicyRerunLogger:
         # The program's own viewer owns how the robot is drawn, so a policy run
         # renders the way the rest of the program does.
         viewer = get_viewer_manager().get_viewer(Rerun)
-        self._state_sample_interval_ms = state_sample_interval_ms or 1000.0 / 30.0
         # Both flags draw the same URDF collision geometry; see the bridge.
         self._show_collision: bool | None = (
             bool(viewer.show_collision_link_chain or viewer.show_collision_tool)
@@ -123,18 +123,17 @@ class PolicyRerunLogger:
         self._dh_robots: dict[str, Any] = {}
         self._tcp_offsets: dict[str, Any] = {}  # mg_id -> 4x4 flange->TCP matrix
         # mg_id -> 4x4 taking a reported pose into the robot's frame. Shared by
-        # reference with the overlay loggers, so updating it here reaches them.
+        # reference with the context, so updating it here reaches the overlays.
         self._pose_frames: dict[str, Any] = {}
         self._visualizers: dict[str, Any] = {}
         # controller id -> the visualizer built for it, so a cell with several
         # robots gets one each instead of the first one standing in for all.
         self._by_controller: dict[str | None, Any] = {}
-        self._initialized = False
+        self._ctx: RerunContext | None = None
+        """Set once initialized, cleared when streaming stops: what entries are logged with."""
         self._start_time: float = 0.0
         self._start_wall: datetime | None = None
-        self._tcp_trail: dict[str, list[list[float]]] = {}  # mg_id -> [[x,y,z], ...]
         self._tcp_target_trail: dict[str, list[list[float]]] = {}
-        self._max_trail_points = 500
         self._streamer: StateStreamer | None = None
         self._last_robot_state_at: dict[str, float] = {}
         self._recording: RecordingStream | None = None
@@ -255,8 +254,7 @@ class PolicyRerunLogger:
         trails, action chunks, target markers, all of them.
 
         The frame has to be declared on the entity that carries the geometry:
-        declaring it on the parent path does nothing for the children, which was
-        checked rather than assumed.
+        declaring it on the parent path does nothing for the children.
         """
         import rerun as rr
 
@@ -338,6 +336,7 @@ class PolicyRerunLogger:
         try:
             from nova_rerun_bridge.dh_robot import DHRobot
 
+            from novapolicy.rerun.context import RerunContext
             import rerun as rr
         except ImportError:
             logger.warning("rerun or nova_rerun_bridge not available — visualization disabled")
@@ -408,7 +407,6 @@ class PolicyRerunLogger:
                 await self._register_visualizer(
                     mg, dh_robot, robot_model_geometries, tcp_geometries
                 )
-                self._tcp_trail[mg.id] = []
                 self._tcp_target_trail[mg.id] = []
 
             await self._calibrate_if_needed()
@@ -427,7 +425,14 @@ class PolicyRerunLogger:
                 rr.TextLog("Policy execution started", level=rr.TextLogLevel.INFO),
                 recording=self._recording,
             )
-            self._initialized = True
+            self._ctx = RerunContext(
+                start_time=self._start_time,
+                recording=self._recording,
+                dh_robots=self._dh_robots,
+                tcp_offsets=self._tcp_offsets,
+                pose_frames=self._pose_frames,
+                visualizers=self._visualizers,
+            )
             self._sink.start()
             logger.info(
                 "PolicyRerunLogger initialized for %d motion groups, %d cameras",
@@ -491,71 +496,51 @@ class PolicyRerunLogger:
             )
         return self._start_wall + timedelta(seconds=moment - self._start_time)
 
-    def log_observation(self, states: dict[str, RobotState], step: int) -> None:
-        """Log robot state: update 3D mesh positions, joint scalars, TCP trail."""
-        if not self._initialized or self._recording is None:
+    def _log_now(self, write: Callable[[RerunContext], None]) -> None:
+        """Run ``write`` on the caller's thread; a failed entry is skipped, never raised."""
+        ctx = self._ctx
+        if ctx is None:
             return
         try:
-            from novapolicy.rerun.observation import (
-                log_observation,
-            )
+            write(ctx)
+        except LOG_ERRORS as e:
+            logger.debug("Rerun logging failed: %s", e)
 
-            log_observation(
-                states,
-                step,
-                start_time=self._start_time,
-                dh_robots=self._dh_robots,
-                visualizers=self._visualizers,
-                tcp_trail=self._tcp_trail,
-                max_trail_points=self._max_trail_points,
-                recording=self._recording,
-                pose_frames=self._pose_frames,
-            )
-        except (OSError, RuntimeError, ValueError, TypeError) as e:
-            logger.debug("log_observation error: %s", e)
+    def _log_later(self, write: Callable[[RerunContext], None], *, at: float | None = None) -> None:
+        """Run ``write`` on the sink; see :meth:`_defer` for ``at``."""
+        ctx = self._ctx
+        if ctx is not None:
+            self._defer(lambda: write(ctx), at=at)
+
+    def log_observation(self, states: dict[str, RobotState], step: int) -> None:
+        """Log the states the policy observed: robot mesh, joint scalars, TCP marker."""
+
+        def write(ctx: RerunContext) -> None:
+            from novapolicy.rerun.observation import log_observation
+
+            log_observation(ctx, states, step)
+
+        self._log_now(write)
 
     def log_bridge_chunk(self, chunk: ActionChunk, step: int) -> None:
         """Log an interpolated connector in Nova Violet."""
-        if not self._initialized or self._recording is None:
-            return
-        try:
-            from novapolicy.rerun.action_chunk import (
-                log_bridge_chunk,
-            )
 
-            log_bridge_chunk(
-                chunk,
-                step,
-                start_time=self._start_time,
-                dh_robots=self._dh_robots,
-                tcp_offsets=self._tcp_offsets,
-                recording=self._recording,
-            )
-        except (OSError, RuntimeError, ValueError, TypeError) as e:
-            logger.debug("log_bridge_chunk error: %s", e)
+        def write(ctx: RerunContext) -> None:
+            from novapolicy.rerun.action_chunk import log_bridge_chunk
+
+            log_bridge_chunk(ctx, chunk, step)
+
+        self._log_now(write)
 
     def log_action_chunk(self, chunk: ActionChunk, step: int, *, n_action_steps: int = 0) -> None:
         """Log action chunk as TCP path line strips and inspectable text."""
-        if not self._initialized or self._recording is None:
-            return
-        recording = self._recording
 
-        def write() -> None:
-            from novapolicy.rerun.action_chunk import (
-                log_action_chunk,
-            )
+        def write(ctx: RerunContext) -> None:
+            from novapolicy.rerun.action_chunk import log_action_chunk
 
-            log_action_chunk(
-                chunk,
-                step,
-                start_time=self._start_time,
-                dh_robots=self._dh_robots,
-                tcp_offsets=self._tcp_offsets,
-                n_action_steps=n_action_steps,
-                recording=recording,
-            )
+            log_action_chunk(ctx, chunk, step, n_action_steps=n_action_steps)
 
-        self._defer(write)
+        self._log_later(write)
 
     def log_target_tracking(
         self, chunk: ActionChunk, states: dict[str, RobotState], step: int
@@ -578,11 +563,8 @@ class PolicyRerunLogger:
         step: int,
         *,
         at: float | None = None,
-        trail: bool = True,
     ) -> None:
         """Log commanded/actual joints and the derived TCP position error."""
-        if not self._initialized or self._recording is None:
-            return
         # Snapshot before deferring: the caller reuses its target buffers.
         #
         # Guarded, because this part runs on the caller's thread — the control
@@ -595,68 +577,40 @@ class PolicyRerunLogger:
         except LOG_ERRORS as e:
             logger.debug("log_joint_tracking snapshot failed: %s", e)
             return
-        recording = self._recording
-        target_trail = self._tcp_target_trail.get(mg_id) if trail else None
+        trail = self._tcp_target_trail.get(mg_id)
 
-        def write() -> None:
-            from novapolicy.rerun.kinematics import (
-                joint_tcp_position,
-            )
-            from novapolicy.rerun.target_tracking import (
-                log_joint_tcp_tracking,
-                log_joint_tracking,
-            )
+        def write(ctx: RerunContext) -> None:
+            from novapolicy.rerun.target_tracking import log_joint_tcp_tracking, log_joint_tracking
 
-            log_joint_tracking(
-                mg_id,
-                snapshot,
-                joints,
-                step,
-                start_time=self._start_time,
-                recording=recording,
-            )
-            dh_robot = self._dh_robots.get(mg_id)
-            if pose is not None and dh_robot is not None:
-                log_joint_tcp_tracking(
-                    mg_id,
-                    joint_tcp_position(dh_robot, snapshot, self._tcp_offsets.get(mg_id)),
-                    pose,
-                    step,
-                    start_time=self._start_time,
-                    recording=recording,
-                    target_trail=target_trail,
-                    max_trail_points=self._max_trail_points,
-                    pose_frame=self._pose_frames.get(mg_id),
-                )
+            log_joint_tracking(ctx, mg_id, snapshot, joints, step)
+            position = ctx.joint_tcp(mg_id, snapshot)
+            if pose is not None and position is not None:
+                log_joint_tcp_tracking(ctx, mg_id, position, pose, step, target_trail=trail)
 
-        self._defer(write, at=at)
+        self._log_later(write, at=at)
 
     def log_robot_state(self, mg_id: str, state: RobotState, *, at: float) -> None:
         """Move the 3D robot and TCP trail to a state packet, stamped when it was generated.
 
         Meant to be called for every state packet. It logs at most one packet per
-        state sample interval of *generation* time, so the robot moves at an even
+        state sample period of *generation* time, so the robot moves at an even
         rate in the recording however the packets arrived; the streamer's polling
         loop stops logging this motion group.
         """
         streamer = self._streamer
-        if not self._initialized or self._recording is None or streamer is None:
+        if self._ctx is None or streamer is None:
             return
         last = self._last_robot_state_at.get(mg_id)
-        if last is not None and at - last < self._state_sample_interval_ms / 1000.0:
+        if last is not None and at - last < STATE_SAMPLE_PERIOD_S:
             return
         self._last_robot_state_at[mg_id] = at
         streamer.stop_polling(mg_id)
-        recording = self._recording
-        start_time = self._start_time
 
-        def write() -> None:
-            import rerun as rr
-
-            rr.set_time("policy_time", duration=elapsed_since(start_time), recording=recording)
+        def write(ctx: RerunContext) -> None:
+            ctx.set_time()
             streamer.log_state(mg_id, state)
 
-        self._defer(write, at=at)
+        self._log_later(write, at=at)
 
     def log_tcp_tracking(
         self,
@@ -668,8 +622,6 @@ class PolicyRerunLogger:
         at: float | None = None,
     ) -> None:
         """Log commanded/actual TCP pose and tracking error."""
-        if not self._initialized or self._recording is None:
-            return
         # Snapshot before deferring: the caller reuses its target buffers.
         # Guarded for the same reason as :meth:`log_joint_tracking` — this runs
         # on the control loop's own thread.
@@ -681,44 +633,31 @@ class PolicyRerunLogger:
         except LOG_ERRORS as e:
             logger.debug("log_tcp_tracking snapshot failed: %s", e)
             return
-        recording = self._recording
         trail = self._tcp_target_trail.get(mg_id)
 
-        def write() -> None:
-            from novapolicy.rerun.target_tracking import (
-                log_tcp_tracking,
-            )
+        def write(ctx: RerunContext) -> None:
+            from novapolicy.rerun.target_tracking import log_tcp_tracking
 
-            log_tcp_tracking(
-                mg_id,
-                snapshot,
-                pose,
-                step,
-                start_time=self._start_time,
-                recording=recording,
-                target_trail=trail,
-                max_trail_points=self._max_trail_points,
-                pose_frame=self._pose_frames.get(mg_id),
-            )
+            log_tcp_tracking(ctx, mg_id, snapshot, pose, step, target_trail=trail)
 
-        self._defer(write, at=at)
+        self._log_later(write, at=at)
 
     def log_images(self, images: dict[str, Any]) -> None:
         """Log camera images to Rerun."""
-        if not self._initialized or self._recording is None or not images:
+        if not images:
             return
-        try:
+
+        def write(ctx: RerunContext) -> None:
             from novapolicy.rerun.images import log_images
 
-            log_images(images, start_time=self._start_time, recording=self._recording)
-        except (OSError, RuntimeError, ValueError, TypeError) as e:
-            logger.debug("log_images error: %s", e)
+            log_images(ctx, images)
+
+        self._log_now(write)
 
     def log_completion(self, reason: str, steps: int, duration_s: float) -> None:
         """Log execution completion."""
-        if not self._initialized:
-            return
-        try:
+
+        def write(ctx: RerunContext) -> None:
             import rerun as rr
 
             rr.log(
@@ -727,11 +666,10 @@ class PolicyRerunLogger:
                     f"Policy finished: {reason} ({steps} steps, {duration_s:.1f}s)",
                     level=rr.TextLogLevel.INFO,
                 ),
-                recording=self._recording,
+                recording=ctx.recording,
             )
-        except (ImportError, OSError, RuntimeError) as e:
-            # Completion logging is best-effort; never let it break execution.
-            logger.debug("log_completion failed: %s", e)
+
+        self._log_now(write)
 
     # ------------------------------------------------------------------
     # Continuous state streaming (between policy steps)
@@ -744,22 +682,19 @@ class PolicyRerunLogger:
         image_reader: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         """Start background state and camera-frame logging."""
-        if not self._initialized:
+        ctx = self._ctx
+        if ctx is None:
             return
-        from novapolicy.rerun.streaming import (
-            StateStreamer,
-        )
+        from novapolicy.rerun.streaming import StateStreamer
 
         self._streamer = StateStreamer(
-            start_time=self._start_time,
-            dh_robots=self._dh_robots,
-            visualizers=self._visualizers,
-            tcp_trail=self._tcp_trail,
-            max_trail_points=self._max_trail_points,
-            recording=self._recording,
-            pose_frames=self._pose_frames,
+            start_time=ctx.start_time,
+            recording=ctx.recording,
+            dh_robots=ctx.dh_robots,
+            pose_frames=ctx.pose_frames,
+            visualizers=ctx.visualizers,
+            max_trail_points=ctx.max_trail_points,
             image_reader=image_reader,
-            state_sample_interval_ms=self._state_sample_interval_ms,
         )
         self._streamer.start(sessions)
 
@@ -776,7 +711,7 @@ class PolicyRerunLogger:
             self._streamer = None
             recording = self._recording
             self._recording = None
-            self._initialized = False
+            self._ctx = None
             if recording is not None:
                 try:
                     await _disconnect_recording(recording)

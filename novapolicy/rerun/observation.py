@@ -1,99 +1,50 @@
-"""Per-step observation logging: robot mesh, TCP trail, joint scalars."""
+"""Measured robot state: robot mesh, joint scalars, TCP marker and trail."""
 
 from __future__ import annotations
 
-import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-import numpy as np
-
-from novapolicy.rerun.constants import MIN_LINE_STEPS, TCP_TRAIL_COLOR, TRAIL_WIDTH_UI
+from novapolicy.rerun.constants import TCP_TRAIL_COLOR
+from novapolicy.rerun.context import log_points, log_trail
 import rerun as rr
 
 if TYPE_CHECKING:
     from nova.types import RobotState
-    from rerun import RecordingStream
+    from novapolicy.rerun.context import RerunContext
 
 
-def to_robot_frame(position: list[float], frame: object | None) -> list[float]:
-    """Move a reported TCP position into the robot's frame.
+def log_observation(ctx: RerunContext, states: dict[str, RobotState], step: int) -> None:
+    """Log the states the policy observed at ``step``.
 
-    Nova reports a motion group's pose relative to whatever its chain is mounted
-    on, so a TCP arrives in the frame of that mount, not the robot's. Without
-    this a trail is drawn a metre from the TCP it belongs to.
+    The TCP trail is left to the state streamer, which already logs every state
+    the robot reports; adding the observed ones as well would put them in the
+    trail twice.
     """
-    if frame is None:
-        return position
-    point = np.asarray(frame, dtype=float) @ np.array([*position[:3], 1.0])
-    return [float(value) for value in point[:3]]
-
-
-def log_observation(
-    states: dict[str, RobotState],
-    step: int,
-    *,
-    start_time: float,
-    dh_robots: dict[str, Any],
-    visualizers: dict[str, Any],
-    tcp_trail: dict[str, list[list[float]]],
-    max_trail_points: int,
-    recording: RecordingStream | None,
-    pose_frames: dict[str, Any] | None = None,
-) -> None:
-    """Log robot state: update 3D mesh positions, joint scalars, TCP trail."""
-    elapsed = time.monotonic() - start_time
-    rr.set_time("policy_time", duration=elapsed, recording=recording)
-    rr.set_time("policy_step", sequence=step, recording=recording)
-
+    ctx.set_time(step)
     for mg_id, state in states.items():
-        if not hasattr(state, "joints"):
-            continue
-        joints = list(state.joints)
+        log_state(ctx, mg_id, state)
 
-        # Joint timeseries
-        for i, j in enumerate(joints):
-            rr.log(f"policy/{mg_id}/joints/j{i}", rr.Scalars(j), recording=recording)
 
-        # Update 3D robot mesh
-        visualizer = visualizers.get(mg_id)
-        if visualizer is not None:
-            # Keyed by motion group: one visualizer can hold several of this
-            # model's chains, and this drives only the one that belongs here.
-            visualizer.log_robot_geometry({mg_id: joints})
+def log_state(
+    ctx: RerunContext,
+    mg_id: str,
+    state: RobotState,
+    trail: list[list[float]] | None = None,
+) -> None:
+    """Move the robot mesh to ``state`` and log its joints and TCP, extending ``trail``."""
+    joints = list(state.joints)
+    for i, value in enumerate(joints):
+        rr.log(f"policy/{mg_id}/joints/j{i}", rr.Scalars(value), recording=ctx.recording)
 
-        # TCP trail (actual path in green, screen-space width). Prefer the real
-        # TCP pose reported by the robot (honours the active TCP offset) so the
-        # trail lines up with the action chunk and the robot's TCP; fall back to
-        # DH flange FK only if no pose is available.
-        tcp_pos: list[float] | None = None
-        pose = getattr(state, "pose", None)
-        if pose is not None:
-            tcp_pos = to_robot_frame(list(pose.position), (pose_frames or {}).get(mg_id))
-        else:
-            dh_robot = dh_robots.get(mg_id)
-            if dh_robot is not None:
-                tcp_pos = dh_robot.calculate_joint_positions(joints)[-1]
-        if tcp_pos is not None:
-            trail = tcp_trail[mg_id]
-            trail.append(tcp_pos)
-            if len(trail) > max_trail_points:
-                trail.pop(0)
-            if len(trail) >= MIN_LINE_STEPS:
-                rr.log(
-                    f"policy/{mg_id}/tcp_trail",
-                    rr.LineStrips3D(
-                        [trail],
-                        colors=[TCP_TRAIL_COLOR],
-                        radii=rr.components.Radius.ui_points(TRAIL_WIDTH_UI),
-                    ),
-                    recording=recording,
-                )
-            rr.log(
-                f"policy/{mg_id}/tcp",
-                rr.Points3D(
-                    [tcp_pos],
-                    colors=[TCP_TRAIL_COLOR],
-                    radii=rr.components.Radius.ui_points(4.0),
-                ),
-                recording=recording,
-            )
+    # Keyed by motion group: one visualizer can hold several of a robot's
+    # chains, and this state drives only the one it belongs to.
+    visualizer = ctx.visualizers.get(mg_id)
+    if visualizer is not None:
+        visualizer.log_robot_geometry(joint_position={mg_id: joints})
+
+    tcp = ctx.measured_tcp(mg_id, state)
+    if tcp is None:
+        return
+    if trail is not None:
+        log_trail(ctx, f"policy/{mg_id}/tcp_trail", trail, tcp, TCP_TRAIL_COLOR)
+    log_points(ctx, f"policy/{mg_id}/tcp", [tcp], TCP_TRAIL_COLOR)

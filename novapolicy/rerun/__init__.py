@@ -13,8 +13,9 @@ Fully decoupled — zero overhead when no viewer is active.
 
 Module structure:
 - constants.py  — shared colors, widths, helpers
+- context.py    — the recording and robot models entries are logged with; trail helper
 - blueprint.py  — Rerun blueprint layout
-- observation.py — per-step state logging (robot mesh, trail, joints)
+- observation.py — measured state (robot mesh, joints, TCP marker and trail)
 - action_chunk.py — action chunk visualization (line strips + text)
 - streaming.py  — continuous state streaming between policy steps
 - images.py     — camera image logging
