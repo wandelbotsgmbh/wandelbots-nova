@@ -395,8 +395,6 @@ class PolicyExecutor:
         Exceptions (MotionError, EmergencyStopError) propagate
         to :meth:`run`.
         """
-        # A fresh episode gets a fresh replay window and timeline anchor.
-
         # Create and start sessions
         for mg in self._motion_groups:
             self._sessions[mg.id] = self._create_session(mg)
@@ -631,13 +629,9 @@ class PolicyExecutor:
         """Keep full garbage collections from pausing the control loop.
 
         Everything allocated up to here (SDK clients, sessions, a loaded model) lives for the
-        whole run, yet every full collection traverses it again: on a virtual UR10e that stopped
-        the event loop, the policy loop and the state stream together, for 135 to 240 ms every
-        7 s or so. ``gc.freeze()`` takes those objects out of collection, so collections only
-        traverse what the loop allocates (gaps below 45 ms); the collector stays on. ``run()``
-        unfreezes at the end, so a long-lived host still collects cycles left by finished runs.
-        ``gc.unfreeze()`` releases everything frozen, including what the interpreter or the host
-        froze; only a pre-forking server that froze objects for copy-on-write would notice.
+        whole run, and traversing it stalled the loop for over 100 ms per full collection.
+        ``gc.freeze()`` takes it out of collection; the collector stays on, and ``run()``
+        unfreezes at the end (which also releases anything the host froze).
         """
         gc.collect()
         gc.freeze()
@@ -759,19 +753,10 @@ class PolicyExecutor:
     async def _wait_until_sessions_settled(self, exec_start: float) -> None:
         """Wait until every submitted chunk has run out *and* the robot has stopped.
 
-        Both halves are needed. The server clock passing a chunk's last commanded
-        timestamp says the deadline elapsed, not that the robot came to rest — it
-        is still braking through the hold padding that follows. Standstill alone
-        is just as insufficient: before a chunk's waypoints are reached the robot
-        is legitimately still, so it would end the wait before any motion began.
-
-        Standstill is measured from the joint positions
-        (:attr:`WaypointJoggingSession.is_at_standstill`) rather than taken from
-        the jogging state stream. NOVA reports no "commanded waypoints ran out"
-        state: since 26.6 ``PAUSED_BY_USER`` follows a Pause/Stop *request* only,
-        and this executor never sends one, so a drained queue reports ``RUNNING``
-        indefinitely. It is still accepted here when it does appear, which is a
-        genuine standstill by any other route.
+        Both halves are needed: past the last timestamp the robot is still braking, and before
+        the first it is legitimately still. Standstill is measured from the joint positions
+        (:attr:`WaypointJoggingSession.is_at_standstill`), since NOVA reports no "waypoints ran
+        out" state; ``PAUSED_BY_USER`` is accepted when it appears.
         """
         target_chunks = {
             group_id: session.queued_chunk_count for group_id, session in self._sessions.items()
@@ -796,7 +781,7 @@ class PolicyExecutor:
             await asyncio.sleep(0.01)
 
     # -------------------------------------------------------------------------
-    # Session operations (inlined from former PolicyRunner)
+    # Session operations
     # -------------------------------------------------------------------------
 
     def _observe(self) -> dict[str, Any]:

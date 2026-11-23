@@ -10,19 +10,10 @@ Nothing here is invented. Every waypoint replayed is a target that was really
 measured, handed over late rather than extrapolated forward, which is why the
 cost is latency: the robot trails the live target by about the window.
 
-Shared by the joggers' live-target path and :class:`~novapolicy.executor.PolicyExecutor`'s
-buffered mode, so both get the same timing behaviour. The three properties below
-are the whole point, and each was measured rather than reasoned:
-
-* the replay grid is phase-locked to absolute multiples of the step, not to
-  whichever sample happens to be oldest,
-* the trajectory-time to server-time mapping uses a **constant** lead,
-* resampling interpolates each sample at the instant it was really taken.
-
-Together they mean a given measured target maps to the same absolute timestamp
-however often the window is re-sent. Re-deriving the anchor from server "now" at
-send time instead moves previously commanded points to new absolute times, and
-the robot executes each shift as a lurch.
+The replay grid is phase-locked to absolute multiples of the step, the trajectory-time to
+server-time mapping uses a **constant** lead, and resampling interpolates each sample at the
+instant it was taken. So a measured target keeps the same absolute timestamp however often the
+window is re-sent; moving commanded points to new times is executed as a lurch.
 """
 
 from __future__ import annotations
@@ -44,26 +35,12 @@ TimedPoint: TypeAlias = tuple[float, list[float]]
 """One measured target and the trajectory time it was produced at."""
 
 LIVE_LEAD_MS = 100.0
-"""How far ahead of current motion a replacement horizon starts.
-
-This is the room the controller has to blend onto the replacement, and the
-buffer is re-sent every tick, so the controller performs that join constantly.
-Give it too little and it occasionally cannot do so smoothly, which comes out as
-a brief stall and catch-up. Every waypoint in the buffer was measured rather
-than projected, so nothing here trades accuracy against distance. On the
-reference rig, evenness improved monotonically from 30ms to 100ms, where stalls
-disappeared; this is not about running out of waypoints, so lengthening the
-horizon instead does not help.
-"""
+"""How far ahead of current motion a replacement horizon starts: the room the controller has
+to blend onto it every tick. Too little shows as brief stalls and catch-ups."""
 
 TIMELINE_GRID_MS = 10.0
-"""Quantisation of the session timeline.
-
-Anchoring every push at a multiple of this keeps successive pushes on ONE
-absolute grid; without it each replacement lands at a new phase, which on the
-reference rig was the difference between grossly uneven motion and none
-measurable at all.
-"""
+"""Quantisation of the session timeline, so successive pushes land on ONE absolute grid
+rather than each at a new phase."""
 
 MIN_BUFFER_SAMPLES = 2
 """A rolling buffer needs at least two samples to define a spacing."""
@@ -82,19 +59,10 @@ any real rate needs: a 100Hz caller fills a 500ms buffer with ~50 samples.
 def trajectory_elapsed_ms(now_ms: float, anchor_ms: float, previous_ms: float) -> float:
     """Trajectory time on the **server** clock: quantised, and never backwards.
 
-    ``now_ms`` must come from the server jogger clock, not a monotonic clock.
-    The robot executes against the jogger session timer and wall time drifts
-    from it; driving this from monotonic time measured far worse in two separate
-    experiments (10mm+ tracking error and repeated stalls), even though it is the
-    smoother of the two.
-
-    Never runs backwards: server "now" is extrapolated between state samples, so
-    a late sample can resolve below an earlier estimate, and the content sent is
-    a function of this value — a backward step commands the robot to reverse.
-    Forward jumps are deliberately *not* limited: they are the clock correcting
-    after a late read of the state stream, and rate-limiting them measured far
-    worse, with the timeline falling behind until every waypoint landed in the
-    past and the robot starved.
+    ``now_ms`` must come from the server jogger clock the robot executes against: wall time
+    drifts from it. Never runs backwards (a backward step commands the robot to reverse), but
+    forward jumps are kept: they are the clock correcting after a late state read, and limiting
+    them lets the timeline fall behind until every waypoint lands in the past.
     """
     elapsed_ms = max(0.0, now_ms - anchor_ms)
     if TIMELINE_GRID_MS > 0:
@@ -173,21 +141,10 @@ def horizon(
     if len(buffer) < MIN_BUFFER_SAMPLES or span_s <= 0:
         return None
 
-    # Waypoints are laid out at a uniform spacing, so the recorded samples have
-    # to be put on a uniform grid *by interpolating at their own timestamps*.
-    # Handing them over as-is with an averaged dt replays each one at the wrong
-    # moment -- the caller's ticks jitter, and a quantised timeline collapses
-    # some of them -- which time-warps the trajectory and injects velocity noise
-    # into what is otherwise exact recorded data.
-    #
-    # The grid is ONE absolute grid, not one starting wherever the oldest
-    # surviving sample happens to sit: which sample that is changes with every
-    # prune, so anchoring to it lands the same recorded moment on a slightly
-    # different timestamp in each push -- the same re-anchoring that turns an
-    # otherwise clean motion into a vibrating one.
-    # The spacing the controller executes best is a per-controller property, so
-    # it comes from config, but never coarser than half the window, so a short
-    # buffer is still represented by more than its endpoints.
+    # Interpolate the samples at their own timestamps onto ONE absolute grid (not one starting
+    # at the oldest surviving sample, which changes with every prune). The spacing comes from
+    # config, but never coarser than half the window, so a short buffer keeps more than its
+    # endpoints.
     step_dt_s = min(single_step_dt_ms / 1000.0, span_s / 2.0)
     grid_start = math.ceil(buffer[0][0] / step_dt_s) * step_dt_s
     steps = resample_evenly(buffer, step_dt_s, start=grid_start)
@@ -202,10 +159,7 @@ def timeline_timestamp_ms(
     """Absolute server timestamp for content generated at ``trajectory_time_s``.
 
     One fixed timeline: content generated at trajectory time ``T`` always maps to
-    ``anchor + T + lead``, whenever it is sent. The lead is deliberately
-    **constant** — anything time-varying in this mapping (an adaptive lead, a
-    drifting clock offset) moves previously commanded points to new absolute
-    times, and the robot executes each such shift as a lurch.
+    ``anchor + T + lead``, whenever it is sent.
     """
     return int(anchor_ms + trajectory_time_s * 1000.0 + lead_ms)
 
@@ -240,10 +194,8 @@ class LiveBuffer:
     For dense streams of live targets, jogging at the loop rate: their waypoints are milliseconds
     apart, which the follower turns into speed spikes, and each one alone is a terminal target.
     This thins them to an even grid of real, measured targets, ``window_ms`` late, on its own
-    timeline (contract T2). Measured on a virtual UR10e at about 90 Hz: 0.015 deg rms against the
-    commanded sine, 0.45 to 0.84 deg without it. Not for policy steps: a one-step RL policy at
-    30 Hz tracked better on the lead path (path p90 0.3 against 0.6 to 0.7 mm with 80 ms, peaks
-    9 to 10 against 13 to 16 mm).
+    timeline (contract T2). Not for policy steps: a one-step policy tracks better on the lead
+    path.
 
     A chunk of several steps carries its own horizon: it passes through and clears the buffer.
     """

@@ -64,15 +64,9 @@ def _is_chunk(value: object) -> bool:
     return isinstance(value, list) and bool(value) and isinstance(value[0], list)
 
 
-# The timing constants below were tuned against a single UR10e reached over a
-# wandelbox. The mechanisms they answer to are general; the numbers are not, and
-# a different robot, controller firmware or link will want its own values. Treat
-# them as defaults to re-tune, and prefer the reasoning over the figures.
-
-# How far ahead of session time step zero is placed for an explicit chunk. Must
-# outlast the interval between pushes (plus link latency), or the seam between
-# an old and a new chunk gets executed. Deliberately constant: anything
-# time-varying in the time-to-position mapping is executed as a lurch.
+# How far ahead of session time step zero is placed for an explicit chunk (tuned on one UR10e;
+# re-tune per robot and link). Must outlast the interval between pushes plus link latency, and
+# stays constant: anything time-varying in the time-to-position mapping is executed as a lurch.
 LEAD_MS = 100.0
 
 # How much commanded history is retained for Rerun tracking, in server ms. Only
@@ -129,37 +123,16 @@ class _BaseJogger:
 
     @property
     def elapsed(self) -> float:
-        """Seconds of acknowledged motion since the jogging motion actually started.
+        """Seconds of acknowledged motion since the loop first had state; ``0.0`` before.
 
-        Holds at ``0.0`` until the robot reports it is actively executing motion
-        (all sessions :attr:`~WaypointJoggingSession.is_running`), then ticks
-        from zero. It is anchored on the first loop iteration that has state,
-        not on the robot reporting RUNNING: waiting for RUNNING deadlocks the
-        live path, because the timeline has to move before any target velocity
-        can be measured and the robot has to move before it reports RUNNING.
-        A catch-up jump is not a concern either way: targets are placed on an
-        absolute timeline and unreachable waypoints are dropped at send time.
-
-        Crucially this advances on the **server** jogger clock, not wall-clock,
-        so it stays in step with the timeline the waypoints are anchored on. The
-        extrapolation between state samples is uncapped, so on a stalled link it
-        keeps advancing rather than freezing; see :attr:`_timeline_ms` handling
-        below for why forward jumps are kept and backward ones are not.
+        Advances on the **server** jogger clock the waypoints are anchored on, quantised and
+        never backwards (see :func:`~novapolicy.jogging.live_buffer.trajectory_elapsed_ms`).
         """
         if self._loop_t0 is None:
             return 0.0
         # Sampled once per loop iteration (see __aiter__), so every target the
         # caller derives from this value is timestamped from the same instant.
-        #
-        # This MUST come from the server clock, not the monotonic clock. The
-        # robot executes against the jogger session timer, and wall time drifts
-        # from it; driving the trajectory clock from monotonic time measured
-        # far worse in two separate experiments (10mm+ tracking error and
-        # repeated stalls), even though it is the smoother of the two.
         now_ms = self._tick_ms if self._tick_ms is not None else self._acknowledged_ms()
-        # Quantisation and the never-backwards ratchet are shared with the
-        # executor's buffered mode; see trajectory_elapsed_ms for why each rule
-        # is there.
         self._timeline_ms = trajectory_elapsed_ms(now_ms, self._ack0_ms, self._timeline_ms)
         return self._timeline_ms / 1000.0
 
@@ -180,12 +153,9 @@ class _BaseJogger:
         """Server timestamp for content generated at this iteration's instant.
 
         The whole session shares **one fixed timeline**: content generated at trajectory time
-        ``T`` always maps to ``ack0 + T + lead``, whenever it is sent. Re-deriving the anchor
-        from server "now" at send time makes the same trajectory point land on a slightly
-        different timestamp in every chunk ("now" is sampled at a jittery, aged instant);
-        measured on a UR10e, that turned a jitter-free motion into a visibly vibrating one.
-        The lead is constant for the same reason: anything time-varying here moves commanded
-        points to new times, and the robot executes each shift as a lurch.
+        ``T`` always maps to ``ack0 + T + lead``, whenever it is sent, so a re-sent trajectory
+        point keeps its timestamp (re-deriving it from a jittery server "now" makes the motion
+        vibrate).
 
         ``None`` before the timeline is anchored: callers then place "now"-relative.
         """
@@ -199,16 +169,10 @@ class _BaseJogger:
         return session.num_joints if session else None
 
     def _set_live_target(self, mg: MotionGroup, values: list[float]) -> None:
-        """Validate one live target and send it exactly as measured.
+        """Validate one live target and send it as one waypoint, exactly as measured.
 
-        One waypoint, where the target actually is. Nothing is inferred about
-        where it is going next — that horizon is the server's job, and until the
-        API provides it a ``LiveBuffer`` in the pipeline stands in.
-
-        Without a ``LiveBuffer`` in the pipeline this goes out as it is; with one, the session
-        turns it into a horizon once the buffer can define a spacing. A lone waypoint is a *terminal* target the server decelerates to a
-        standstill at, so motion is halting there. That is the honest cost of never
-        guessing.
+        A lone waypoint is a *terminal* target the server decelerates to; a ``LiveBuffer`` in
+        the pipeline turns recent targets into a horizon once it can define a spacing.
         """
         expected = self._expected_dims(mg)
         if expected is not None and len(values) != expected:
@@ -397,16 +361,9 @@ class _BaseJogger:
     ) -> None:
         """Log commanded-vs-actual for one state packet, at its own instant.
 
-        Driven by the state stream rather than the control loop. The two run at
-        different rates and, more importantly, states arrive in bursts: sampling
-        the cached pose once per control tick re-reads the same packet for tens of
-        milliseconds at a time and drops the rest, which draws the tracking error
-        as a repeating flat shelf and, on a bursty link, discarded roughly half of
-        all states. One entry per packet plots every state at the
-        moment it was generated, so the trace is continuous.
-
-        The command is resolved for *this packet's* server timestamp, so both
-        sides of the difference describe the same instant.
+        Driven by the state stream (see :meth:`WaypointJoggingSession.set_state_observer`), and
+        the command is resolved for *this packet's* server timestamp, so both sides of the
+        difference describe the same instant.
         """
         if self._rerun is None:
             return
@@ -464,15 +421,8 @@ class _BaseJogger:
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> bool:
-        # Let the waypoints already accepted finish before tearing the session
-        # down. They describe motion the caller asked for, and with a rolling
-        # buffer all of it lies in the future by construction, so cancelling
-        # straight away stops the robot part-way through the commanded path.
-        #
-        # Skipped when the loop ended for a reason that wants the robot stopped
-        # NOW: a fault, an e-stop, or a fired stop condition. Draining those
-        # would keep the robot moving for the length of the horizon after
-        # something asked it to stop.
+        # Let the accepted waypoints finish, unless a fault, an e-stop or a fired stop
+        # condition wants the robot stopped now.
         if exc_type is None and self.stop_condition_triggered is None:
             await self._drain_sessions()
         self._stop_observing_states()
@@ -588,16 +538,10 @@ class _BaseJogger:
                 await asyncio.sleep(0.01)
                 continue
             if self._loop_t0 is None:
-                # Anchor as soon as state is available. Waiting for the robot to
-                # report RUNNING deadlocks the live path: the timeline stays at
-                # zero, so no target velocity can be measured, so every push is
-                # a single terminal waypoint, so the robot never starts moving
-                # and never reports RUNNING. A catch-up jump is not a concern
-                # either way: targets are placed on an absolute timeline and
-                # unreachable waypoints are dropped at send time.
+                # Anchor as soon as state is available: waiting for RUNNING deadlocks the
+                # live path, since the robot only reports it once it moves. Baseline the
+                # acknowledged clock at the same instant, so elapsed ticks from zero.
                 self._loop_t0 = time.monotonic()
-                # Baseline the acknowledged clock at the same instant so
-                # elapsed ticks from zero on the acknowledged timeline.
                 self._ack0_ms = self._acknowledged_ms()
             # One timeline sample per iteration: everything the caller does with
             # this state (read elapsed, build a chunk, push targets) shares it.
@@ -778,12 +722,10 @@ def jog_joints(
             to its start_joint_position joints for multi-robot.
         pipeline: The modules between the targets and NOVA, in order, exactly as given;
             ``None`` runs :func:`~novapolicy.jogging.modules.default_pipeline`. To add one,
-            extend that list: ``[LiveBuffer(window_ms=500), *default_pipeline()]`` replays the
-            last ``window_ms`` of live targets as a horizon on an even grid, so
-            :meth:`set_target` streams move smoothly about the window behind (measured at a
-            ~90 Hz loop: 0.015 deg rms against the target, 0.45 to 0.84 deg without); a chunk
-            passes it unchanged and clears it. ``[*default_pipeline(), EaseIn(duration_s=1.0)]``
-            starts the motion from a standstill. See :mod:`novapolicy.jogging.pipeline`.
+            extend that list: ``[LiveBuffer(window_ms=500), *default_pipeline()]`` replays live
+            targets as a smooth horizon about the window behind; ``[*default_pipeline(),
+            EaseIn(duration_s=1.0)]`` starts from a standstill. See
+            :mod:`novapolicy.jogging.pipeline`.
 
     Returns:
         A :class:`JointJogger` async context manager.
@@ -859,14 +801,7 @@ def jog_tcp(
         start_joint_position: Joint positions to PTP-move to before starting jogging.
             Single list for one robot, or dict mapping each motion group
             to its start joints for multi-robot.
-        pipeline: The modules between the targets and NOVA, in order, exactly as given;
-            ``None`` runs :func:`~novapolicy.jogging.modules.default_pipeline`. To add one,
-            extend that list: ``[LiveBuffer(window_ms=500), *default_pipeline()]`` replays the
-            last ``window_ms`` of live targets as a horizon on an even grid, so
-            :meth:`set_target` streams move smoothly about the window behind (measured at a
-            ~90 Hz loop: 0.015 deg rms against the target, 0.45 to 0.84 deg without); a chunk
-            passes it unchanged and clears it. ``[*default_pipeline(), EaseIn(duration_s=1.0)]``
-            starts the motion from a standstill. See :mod:`novapolicy.jogging.pipeline`.
+        pipeline: As for :func:`jog_joints`.
 
     Returns:
         A :class:`TcpJogger` async context manager.

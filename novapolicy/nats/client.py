@@ -80,9 +80,6 @@ PROPRIO_BLOCKS = 3
 """Each proprio field is joint positions ++ joint velocities ++ last action,
 each ``dof`` wide, all in radians / rad·s⁻¹."""
 
-"""Below this the finite difference is numerically meaningless — report zero
-velocity rather than amplify observation noise into a huge spike."""
-
 
 class _Block:
     """One bound (motion group, observation field, action head) triple."""

@@ -21,10 +21,8 @@ WARN_MARGIN = 1.0
 """A value this many training spans outside the range is worth mentioning."""
 
 FAIL_SCALE = 5.0
-"""A value this many times larger than anything in training is a unit error. Scaling the
-failure threshold by span instead was measured wrong against a live UR10e: a joint that
-barely moved during training (0.022 rad) got a +/-0.09 rad window, and the arm's own park
-pose was reported as a unit mismatch."""
+"""A value this many times larger than anything in training is a unit error. Scaled by
+magnitude, not span: a joint that barely moved in training would flag its own park pose."""
 
 
 def classify(values: Iterable[tuple[str, float, float, float]]) -> tuple[list[str], list[str]]:

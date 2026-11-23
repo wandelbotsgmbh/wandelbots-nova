@@ -58,13 +58,9 @@ _PLAYBACK_RATE_GAIN = 0.05
 """How fast the playback clock's step follows the measured time between observations: the loop
 may run slower than the policy's step (27 instead of 30 Hz over a network), and a clock stepping
 by the nominal step would fall behind and use up the lead."""
-"""Consecutive one-step waypoints acknowledged too late before the session stops (about 170 ms
-at 30 Hz): one network spike passes, a slower network stops the run."""
 
-# Longest a graceful stop waits for already-sent waypoints to finish executing.
-# Generous next to the horizon it drains (a few hundred ms), so it only trips
-# when the server has genuinely stopped reporting progress — a stalled link, or a
-# session the robot never started executing.
+# Longest a graceful stop waits for already-sent waypoints to finish executing: generous next
+# to the horizon it drains, so it only trips when the server stopped reporting progress.
 _DRAIN_TIMEOUT_S = 3.0
 
 # How long stop() waits, after StopActionChunksRequest, for the state stream to
@@ -249,10 +245,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
         Receives ``(state, jogger_session_timestamp_ms, generated_monotonic)``.
         Anything derived from state — a tracking error, a plotted trail — belongs
-        here: sampling it from the control loop instead re-reads whatever packet
-        happens to be cached, which during a delivery burst is the same one for
-        tens of milliseconds, and silently discards the rest — on a bursty link
-        that lost roughly half of all states.
+        here: states arrive in bursts, and sampling the cached one from the control
+        loop re-reads one packet and drops the rest.
 
         The observer runs inside the state-stream task and must be cheap.
         """
@@ -271,12 +265,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     def current_state_server_ms(self) -> ServerMs | None:
         """Jogger-session timestamp the cached :attr:`current_state` was measured at.
 
-        State packets are delivered in bursts on some deployments — on a wandelbox,
-        stretches of silence approaching 100ms followed by a dozen packets at once
-        — so the cached pose can be far older than "now". Anything comparing a
-        commanded value against this pose has to line the two up on *this*
-        timestamp; using wall-clock "now" instead reports a tracking error that
-        ramps at the path speed and snaps back when the burst lands.
+        State packets can arrive in bursts, so the cached pose can be far older than "now":
+        compare a commanded value against it on *this* timestamp.
         """
         ts = self._current_state_server_ms
         return None if ts is None else ServerMs(ts)
@@ -383,12 +373,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """When the commanded motion of the latest scheduled chunk runs out.
 
         The timestamp of the last waypoint the *caller* asked for — not of the
-        last waypoint sent. Short chunks may be padded by repeating their final target
-        (:class:`~novapolicy.jogging.modules.HoldPadding`), and
-        that padding is a braking horizon for the server rather than motion
-        anyone requested. Waiting for it would sit at the final target for the
-        rest of the buffer before the next chunk could be considered, which at a
-        500ms buffer is most of the wait.
+        last waypoint sent: padding by
+        :class:`~novapolicy.jogging.modules.HoldPadding` is a braking horizon for the
+        server, not requested motion.
         """
         return ServerMs(self._scheduled_until_server_ms)
 
@@ -490,8 +477,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         Builds an ActionChunkRequest carrying joint- or pose-flavoured waypoints
         (based on mode) with absolute server-time timestamps laid out as
         ``base + i*dt``. The request is sent on the next jogging loop iteration;
-        the timestamps are computed at *yield time* (see
-        the send).
+        the timestamps are computed at the send.
 
         Args:
             steps: Joint waypoints [rad] or TCP poses [x,y,z,rx,ry,rz] (mm/rad).
@@ -599,10 +585,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         then the motion is still owed to the caller: it was accepted, and
         :meth:`stop` cancelling the jogging task would throw it away mid-path.
 
-        This matters most with a rolling buffer, where by construction everything
-        sent lies in the future — the robot trails the newest target by the buffer
-        duration, so cancelling immediately truncates that much of the path.
-
         With :attr:`~novapolicy.types.WaypointConfig.delay_until_braking_ms` set,
         the robot would keep moving past the last target, so once everything is
         sent the last target goes out once more to stop on.
@@ -619,16 +601,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             if not final_queued and not self._pending():
                 final_queued = True
                 self._queue_final_target()
-            # Re-read the schedule every pass rather than snapshotting it. The
-            # jogging task is still running, so the caller's last ``set_target``
-            # may only be queued when the drain starts — snapshotting would
-            # finish before that chunk was ever timestamped and sent.
+            # Re-read every pass: the caller's last chunk may still be queued. Compare
+            # against acknowledged progress, not the extrapolated estimate, which sails
+            # past the schedule on a stalled link.
             target_ms = self._scheduled_until_server_ms
-            # Acknowledged server progress, not the extrapolated estimate. That
-            # estimate free-runs at wall-clock rate between state samples and is
-            # uncapped, so on a stalled link it sails past the schedule; draining
-            # against it would report the motion finished when the robot may not
-            # have started it — exactly the truncation a drain exists to prevent.
             if not self._pending() and self._clock.last_server_timestamp_ms >= target_ms:
                 return True
             # A fault or a fired stop condition means the rest of the path is no
@@ -736,19 +712,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     def _note_state_stream_gone(self, reason: str, error: BaseException | None) -> None:
         """Fail the session when the state stream goes away before it is ready.
 
-        Startup waits on this stream: the server/client clock skew is calibrated
-        from it, so without it :meth:`wait_ready` can only run out its timeout and
-        report a missing calibration — which says nothing about the stream having
-        died, and buries the error that was already logged. Recording the failure
-        lets ``wait_ready`` raise the real cause immediately.
-
-        Once the session is fully startable a lost stream is left to the jogging
-        loop and its own error handling, which is where an actual motion failure
-        surfaces. "Startable" has to mean ready *and* calibrated, the same pair
-        :meth:`wait_ready` waits on: the jogging websocket can set ``_ready``
-        before the state stream has delivered a single packet, and standing down
-        on readiness alone would leave that case with no way to ever calibrate
-        and no failure to report — the misleading timeout this exists to prevent.
+        Startup calibrates the clock from this stream, so :meth:`wait_ready` would otherwise
+        only time out; recording the failure lets it raise the real cause. Once the session is
+        ready *and* calibrated (what ``wait_ready`` waits on), a lost stream is left to the
+        jogging loop.
         """
         if not self._running or self._failed:
             return
@@ -939,16 +906,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     def _record_dropped_chunk(self, pending: PendingChunk, step_timestamps: list[int]) -> None:
         """Account for a chunk that was dropped for being entirely in the past.
 
-        The chunk still has to count as scheduled. Callers wait for
-        :attr:`scheduled_chunk_count` to reach what they queued, so a silently
-        skipped chunk leaves that wait unsatisfiable for the rest of the run —
-        the executor's policy boundary never opens and its IO writes never fire.
-
-        Its step timestamps are recorded too, unchanged: every one of them is in
-        the past, which is exactly what makes the boundary read as already due.
-        Nothing went on the wire, so the sent-waypoint list is cleared and
-        :attr:`scheduled_until_server_ms` is left alone — the server is still
-        executing the previous chunk, and that motion is still owed.
+        It still counts as scheduled, since callers wait for :attr:`scheduled_chunk_count` to
+        reach what they queued, and its (past) step timestamps are recorded. Nothing went on the
+        wire, so the sent-waypoint list is cleared and :attr:`scheduled_until_server_ms` keeps
+        the previous chunk's motion.
         """
         self._scheduled_chunk_count = pending.sequence
         self._scheduled_step_timestamps = list(step_timestamps)

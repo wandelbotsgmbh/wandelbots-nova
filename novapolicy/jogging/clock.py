@@ -35,27 +35,14 @@ the client's ``time.monotonic()`` and not wall-clock time; convert only through
 # waypoint timestamp in the session.
 _STATE_CLOCK_CALIBRATION_SAMPLES = 20
 
-# Longest calibration may hold startup up. The sample count above is the real
-# criterion, but the rate those samples arrive at is the caller's choice
-# (``WaypointConfig.state_rate_ms``): at 500ms per packet, 20 of them outlast
-# ``wait_ready``'s own default timeout, and a perfectly healthy session would
-# fail to start. Past this window the estimate is frozen with whatever it has —
-# fewer samples means a rougher skew estimate, not a broken one.
+# Longest calibration may hold startup up: at a slow ``state_rate_ms`` the sample count above
+# would outlast ``wait_ready``'s timeout. Past it the estimate is frozen with what it has.
 _STATE_CLOCK_CALIBRATION_WINDOW_S = 1.0
 
-# Largest delivery delay that may be attributed to a single state packet.
-#
-# The delay is a difference of ``time.time()`` readings against a skew baseline
-# frozen during calibration, so it is only as trustworthy as the wall clock. An
-# NTP step — or one oddly stamped packet — inflates it, and it is subtracted from
-# the monotonic reference, pushing estimated server time into the future. The
-# jogger's trajectory clock never runs backwards, so it latches that estimate and
-# stops advancing until the real server clock catches up: the robot holds still
-# for the length of the error. Bounding the correction bounds that stall. Chosen
-# to sit above the worst real delivery delay seen on the deployment this was
-# developed against, and under ``max_lookahead_ms`` so a fully clamped correction
-# does not by itself read as a stalled link. A link with materially worse
-# delivery wants a larger value.
+# Largest delivery delay that may be attributed to a single state packet. The delay comes
+# from wall-clock readings, so an NTP step or an oddly stamped packet inflates it and pushes
+# estimated server time ahead, where the never-backwards trajectory clock latches it and the
+# robot holds still; bounding it bounds that stall. Kept under ``max_lookahead_ms``.
 _MAX_DELIVERY_DELAY_MS = 200.0
 
 _PLACEHOLDER_YEAR = 2000
@@ -283,5 +270,4 @@ class JoggingTimeClock:
 
 SINGLE_STEP_MARGIN_MS = 67.0
 """What the controller needs, beyond the network, to plan a smooth approach to a one-step
-waypoint. Measured on a virtual UR10e (NOVA 26.8.1) from inside the cluster (round trip
-0.08 ms): 33 ms ahead was rough, 67 ms tracked smoothly."""
+waypoint (33 ms ahead was rough on a virtual UR10e, 67 ms smooth)."""
