@@ -7,9 +7,8 @@ msgpack-encoded with numpy array support.
 The protocol is defined in :mod:`novapolicy.nats.protocol`, whose source of
 truth lives outside this repository; see that module's warning before editing it.
 
-:mod:`novapolicy.nats.mock_server` serves the same protocol with fixed analytic
-motion, for debugging a client without a trained policy in the loop. It is not
-imported here: it is a debugging tool, and nothing on the client path needs it.
+``examples/nats_mock_server.py`` serves the same protocol with fixed analytic motion, a dummy
+policy for debugging a client without a trained policy in the loop.
 """
 
 from novapolicy.nats.client import NatsPolicyClient

@@ -11,17 +11,6 @@ import math
 import numpy as np
 import pytest
 
-from novapolicy.nats.mock_server import (
-    PATTERNS,
-    MockPolicy,
-    MockPolicyServer,
-    PatternConfig,
-    build_policies,
-    circle,
-    hold,
-    triangle,
-    updown,
-)
 from novapolicy.nats.protocol import (
     CloseRequest,
     PolicyProtocolError,
@@ -32,6 +21,31 @@ from novapolicy.nats.protocol import (
     decode,
     encode,
 )
+
+
+def _load_mock_server():
+    """The example NATS mock server, loaded by path: examples are not a package."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "examples" / "nats_mock_server.py"
+    spec = importlib.util.spec_from_file_location("nats_mock_server", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_mock = _load_mock_server()
+PATTERNS = _mock.PATTERNS
+MockPolicy = _mock.MockPolicy
+MockPolicyServer = _mock.MockPolicyServer
+PatternConfig = _mock.PatternConfig
+build_policies = _mock.build_policies
+circle = _mock.circle
+hold = _mock.hold
+triangle = _mock.triangle
+updown = _mock.updown
 
 DOF = 7
 BLOCKS = ["left", "right"]

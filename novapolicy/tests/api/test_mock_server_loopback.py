@@ -25,7 +25,6 @@ import numpy as np
 import pytest
 
 from novapolicy.nats.client import NatsPolicyClient
-from novapolicy.nats.mock_server import MockPolicyServer, build_policies
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -42,6 +41,24 @@ MOVING_JOINT = 1
 QUARTER_PERIOD_STEPS = int(PERIOD_S * 1000 / DT_MS / 4)
 
 pytestmark = pytest.mark.asyncio
+
+
+def _load_mock_server():
+    """The example NATS mock server, loaded by path: examples are not a package."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "examples" / "nats_mock_server.py"
+    spec = importlib.util.spec_from_file_location("nats_mock_server", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_mock = _load_mock_server()
+MockPolicyServer = _mock.MockPolicyServer
+build_policies = _mock.build_policies
 
 
 class _FakeState:

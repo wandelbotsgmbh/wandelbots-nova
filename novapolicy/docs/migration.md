@@ -233,3 +233,8 @@ pipeline's `Smoothing` and `Bridge` modules to connect chunks.
   `Bridge` is no longer required.
 - **`PendingChunk.action_timestep`** names the timestep of the caller's first step
   (`steps[start_step]`), also behind a bridge.
+
+## The NATS mock policy server is an example
+
+`novapolicy.nats.mock_server` moved to `examples/nats_mock_server.py`; run it with
+`python novapolicy/examples/nats_mock_server.py --servers nats://...` instead of `python -m`.

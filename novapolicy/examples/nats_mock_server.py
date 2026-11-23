@@ -14,10 +14,10 @@ The patterns are joint-space, relative to wherever the robot is when the episode
 opens, and every one of them starts at that pose. Nothing here knows a robot's
 joint limits, so keep the amplitude small.
 
-``python -m novapolicy.nats.mock_server`` serves one policy id per pattern::
+``python novapolicy/examples/nats_mock_server.py`` serves one policy id per pattern::
 
-    python -m novapolicy.nats.mock_server --servers nats://localhost:4222
-    python -m novapolicy.nats.mock_server --horizon 25 --amplitude-deg 5
+    python novapolicy/examples/nats_mock_server.py --servers nats://localhost:4222
+    python novapolicy/examples/nats_mock_server.py --horizon 25 --amplitude-deg 5
 
     # then, from a client
     NatsPolicyClient(policy_id="mock-circle", servers="nats://localhost:4222")
@@ -333,7 +333,7 @@ class MockPolicyServer:
         self._nc: Any = None
 
     async def start(self) -> None:
-        import nats  # ruff: ignore[import-outside-top-level]
+        import nats
 
         self._nc = await nats.connect(
             servers=self._servers, max_reconnect_attempts=-1, name="mock-policy"
