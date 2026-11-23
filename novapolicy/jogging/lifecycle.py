@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from typing import TYPE_CHECKING
 
 from nova.actions import jnt
@@ -102,13 +101,17 @@ class SessionLifecycle:
 
     async def close(self, *, drain: bool) -> None:
         """Stop Rerun, the e-stop monitor and every session; with ``drain``, let the accepted
-        waypoints run out first (a fault or e-stop wants the robot stopped now)."""
+        waypoints run out first (a fault or e-stop wants the robot stopped now). A cancel that
+        arrives while draining still stops everything, then reaches the caller."""
+        cancelled = False
         if drain:
-            with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
+            try:
                 _ = await asyncio.gather(
                     *(session.drain() for session in self._sessions.values()),
                     return_exceptions=True,
                 )
+            except asyncio.CancelledError:
+                cancelled = True
         try:
             if self.rerun is not None:
                 await self.rerun.stop_streaming()
@@ -124,3 +127,5 @@ class SessionLifecycle:
         for result in results:
             if isinstance(result, BaseException) and not isinstance(result, _STOP_ERRORS):
                 raise result
+        if cancelled:
+            raise asyncio.CancelledError

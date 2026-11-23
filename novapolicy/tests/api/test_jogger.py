@@ -8,6 +8,7 @@ the public ``jog_joints()`` API, substituting only the robot transport
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from functools import partial
 import logging
@@ -452,3 +453,30 @@ async def test_a_fired_stop_condition_stops_the_robot_without_draining():
 
     sessions[mg].drain.assert_not_awaited()
     sessions[mg].stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_while_draining_stops_the_sessions_and_reaches_the_caller() -> None:
+    from novapolicy.jogging.lifecycle import SessionLifecycle
+
+    drained = asyncio.Event()
+
+    class _Session:
+        stopped = False
+
+        async def drain(self) -> bool:
+            drained.set()
+            await asyncio.sleep(10)
+            return True
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+    session = _Session()
+    lifecycle = SessionLifecycle({"0@ur": session}, [])  # type: ignore[dict-item]
+    task = asyncio.create_task(lifecycle.close(drain=True))
+    await drained.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert session.stopped
