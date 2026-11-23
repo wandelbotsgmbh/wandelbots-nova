@@ -165,6 +165,7 @@ executor, the session and the jogger name no provider: adding one touches none o
 | Provider | `get_actions` | client | its wire | its own extras |
 | --- | --- | --- | --- | --- |
 | the snippet above | 3 | 15 | yours | none |
+| HTTP, JSON ([example](../examples/http_policy.py), written against this contract: 0 package lines changed) | 6 | 26 | `httpx` | none |
 | LEAPP (onnxruntime, in process) | 37 | 154 | 146 (`pipeline.py`) | the ONNX pipeline's ports |
 | GR00T (ZMQ, msgpack) | 26 | 277 | 155 | server modality keys, checkpoint statistics, rot6d TCP |
 | LeRobot (gRPC, pickle) | 30 | 259 | 96 | checkpoint feature contract (`schema.py`, `config.py`: 403) |
