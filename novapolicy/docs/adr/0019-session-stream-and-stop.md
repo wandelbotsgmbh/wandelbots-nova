@@ -1,6 +1,6 @@
 # 0019 The session sends without waiting for acknowledgements and ends with a stop request
 
-Status: accepted. Recorded 2026-11-23 from the code (`jogging/waypoint_session.py`); the decision
+Status: accepted. Recorded 2026-11-23 from the code (`transport/session.py`); the decision
 is older. How a run's teardown follows its reason is in
 [executor.md](../executor.md#teardown-follows-the-reason) and
 [jogging.md](../jogging.md#closing-the-session).

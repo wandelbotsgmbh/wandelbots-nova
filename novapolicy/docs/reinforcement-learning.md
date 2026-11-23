@@ -31,7 +31,7 @@ uv sync --extra "novapolicy-leapp"
 ## 2. List the export's inputs and outputs
 
 ```python
-from novapolicy.leapp import LeappPipeline
+from novapolicy.providers.leapp import LeappPipeline
 
 pipeline = LeappPipeline("path/to/export.yaml")
 print(pipeline.frequency)

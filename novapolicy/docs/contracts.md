@@ -10,7 +10,7 @@ choices are in the [decision records](adr/).
 
 | Name | What it is | In code |
 | --- | --- | --- |
-| Session clock | ms since NOVA started executing the session's first chunk (`jogger_session_timestamp_ms`). Every waypoint timestamp is one. | `ServerMs` (`jogging/clock.py`) |
+| Session clock | ms since NOVA started executing the session's first chunk (`jogger_session_timestamp_ms`). Every waypoint timestamp is one. | `ServerMs` (`transport/clock.py`) |
 | Client clock | `time.monotonic()` of this process: run timeout, tick grid, inference timeout | `float` seconds |
 | State timestamp | the session-clock time a state packet was measured at; arrives late and in bursts | `current_state_server_ms` |
 

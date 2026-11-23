@@ -1,7 +1,7 @@
 # 0014 Providers check the policy before the robot moves, and fail loudly
 
-Status: accepted. Recorded 2026-11-23 from the code of the providers (`gr00t/`, `lerobot/`,
-`training_range.py`; the NATS provider, removed later the same day, followed the same rules); the decisions are older.
+Status: accepted. Recorded 2026-11-23 from the code of the providers (`providers/gr00t/`,
+`providers/lerobot/`, `mapping/training_range.py`; the NATS provider, removed later the same day, followed the same rules); the decisions are older.
 
 **Context.** A mismatch between a schema and a policy (degrees for radians, a missing key, the
 wrong number of axes) shows up as unexpected motion if nothing checks it first, and a provider

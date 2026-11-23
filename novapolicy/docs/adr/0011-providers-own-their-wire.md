@@ -20,7 +20,7 @@ carried code for one provider's features (a timestep queue's timeline, RTC seams
   it too (`observation_groups`, one array per key; only its default TCP format is its own).
   LeRobot still assembles its flat feature names, which its checkpoint validation is built on.
   (The NATS provider was removed on 2026-11-23.) The first observation's check against the checkpoint's
-  statistics is one function, `training_range.check_vectors`, for GR00T and LeRobot.
+  statistics is one function, `mapping.training_range.check_vectors`, for GR00T and LeRobot.
 - **The package owns NOVA's side:** placement, the send pipeline and the action chunk stream.
 - **What a provider needs beyond that comes as modules** (`PolicyClient.default_modules`): a timestep
   queue brings its `Smoothing`, `TimestepTimeline` and `Bridge`, and the executor knows nothing
@@ -48,5 +48,6 @@ boundary and stays separate from the float-to-float `ValueOp`s (see
 [schema.md](../schema.md#units)). An operator's direction is a property of its class, so the
 schema refuses a forward-only operator on a writable channel without probing it. Relative TCP
 rotations compose as rotations: rotation vectors are not additive, and adding them component-wise
-turns a tool-down pose (near π) the wrong way. Pure chunk transforms are free functions in
-`chunking.py`, outside the executor, so each is testable alone.
+turns a tool-down pose (near π) the wrong way. Pure chunk transforms are free functions
+(`pipeline/placement.py`, `mapping/relative.py`, the helpers beside each module in
+`pipeline/modules/`), outside the executor, so each is testable alone.

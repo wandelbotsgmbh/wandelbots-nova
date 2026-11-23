@@ -235,8 +235,8 @@ async with jog_joints(
 Modules before `Timestamps()` work on chunks (`LiveBuffer`, `HoldPadding`); filters after it
 choose which timed waypoints go out without retiming them (`DropLate`); waypoint modules last may
 change the values only (`EaseIn`). `Timestamps()` may be left out; it then sits after the last
-chunk module. Each motion group runs its own copy. See `novapolicy.jogging.pipeline`,
-`novapolicy.jogging.modules` and contract T13 in [contracts.md](contracts.md).
+chunk module. Each motion group runs its own copy. See `novapolicy.pipeline.base`,
+`novapolicy.pipeline.modules` and contract T13 in [contracts.md](contracts.md).
 
 A time-parameterised target with non-zero velocity at `t=0` (a sinusoid has maximum velocity
 there) makes the robot lunge from a standstill. `EaseIn(duration_s=1.0)` blends each waypoint from

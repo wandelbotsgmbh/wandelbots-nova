@@ -172,7 +172,7 @@ asks for it; its `HoldWhileGripping` keeps the arm still while the jaws move.
 
 - **Rotation vectors:** near a half-turn the same orientation reads as `+v` or `-v`. Relative TCP
   actions and `QueuedPolicyClient` unwrap them; do the same
-  (`novapolicy.chunking.unwrap_tcp_rotations`) before interpolating rotation vectors yourself.
+  (`novapolicy.mapping.poses.unwrap_tcp_rotations`) before interpolating rotation vectors yourself.
 - **Commanded vs. realized actions:** how much of a command the training controller realized can
   only be approximated on another robot. Policies trained on the motion that actually happened
   (next joint positions or poses) avoid this.

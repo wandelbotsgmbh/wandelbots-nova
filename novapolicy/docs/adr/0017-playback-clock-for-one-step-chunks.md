@@ -1,6 +1,6 @@
 # 0017 One-step chunks are spaced by a playback clock
 
-Status: accepted. Recorded 2026-11-23 from the code (`jogging/waypoint_session.py`, `_PlaybackClock`);
+Status: accepted. Recorded 2026-11-23 from the code (`transport/session.py`, `_PlaybackClock`);
 the decision is older. The contract is T4; ADR 0003 names the clock and ADR 0004 counts it as the
 one bounded retiming.
 

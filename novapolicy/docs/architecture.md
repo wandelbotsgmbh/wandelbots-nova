@@ -199,16 +199,21 @@ mapping, decoding, placement and streaming come from the package.
 
 | Concern | Module |
 | --- | --- |
-| mapping, units, frames, relative targets, decoding | `novapolicy/schema.py`, `ops.py`, `poses.py`, `chunking.py` |
+| mapping: schema, units, frames, decoding | `novapolicy/mapping/` (`schema.py`, `ops.py`, `poses.py`, `pose_sources.py`) |
+| relative targets (contract M5) | `novapolicy/mapping/relative.py` |
+| measured inputs: joint velocities, state stream, joint limits, training range | `novapolicy/mapping/` (`joint_velocities.py`, `state_stream.py`, `joint_limits.py`, `training_range.py`) |
 | loop, IO and computed actions, cameras | `novapolicy/executor.py` |
-| placement (lead, hold padding) | `novapolicy/chunking.py` (`placement`) |
-| building one session per motion group, start move, e-stop monitor, fault and stop-condition checks, drain (executor and jogger) | `novapolicy/jogging/lifecycle.py` |
-| send pipeline, modules | `novapolicy/jogging/pipeline.py`, `modules.py`, `live_buffer.py` |
-| NOVA transport: stamping and sending (`_schedule`), what was sent (`scheduled`) | `novapolicy/jogging/waypoint_session.py`, `clock.py` |
-| jogging state, standstill, stop conditions (`first_fired`) | `novapolicy/jogging/session.py` |
-| e-stop stream | `novapolicy/estop.py` |
+| placement (lead, hold padding), trimming | `novapolicy/pipeline/placement.py` (`placement`, `trim_chunk`) |
+| send pipeline: module kinds, their order, the split | `novapolicy/pipeline/base.py` |
+| the default pipeline | `novapolicy/pipeline/defaults.py` (`default_pipeline`) |
+| the built-in modules, one per file | `novapolicy/pipeline/modules/` (`live_buffer.py`, `smoothing.py`, `timeline.py`, `bridge.py`, `endpoint_ramp.py`, `joint_clamp.py`, `hold_padding.py`, `drop_late.py`, `ease_in.py`) |
+| building one session per motion group, start move, e-stop monitor, fault and stop-condition checks, drain (executor and jogger) | `novapolicy/transport/lifecycle.py` |
+| NOVA transport: stamping and sending (`_schedule`), what was sent (`scheduled`) | `novapolicy/transport/session.py`, `clock.py`, `waypoints.py` |
+| jogging state, standstill, stop conditions (`first_fired`) | `novapolicy/transport/state.py` |
+| e-stop stream, IO stream | `novapolicy/transport/estop.py`, `io.py` |
 | jogging API | `novapolicy/jogging/jogger.py` |
-| providers | `novapolicy/gr00t/`, `lerobot/`, `leapp/`, `queued_client.py` |
+| provider contract, timestep queue | `novapolicy/providers/base.py`, `queued.py`, `action_queue.py` |
+| providers | `novapolicy/providers/gr00t/`, `lerobot/`, `leapp/` |
 | visualization | `novapolicy/rerun/` |
 
 The contracts every part keeps are in [contracts.md](contracts.md), each with its tests; why each

@@ -202,7 +202,8 @@ Also changed:
 - **The chunk-level shaping functions are gone:** `smooth_action_chunk`, `interpolate_action_chunk_ramps`,
   `connect_action_chunk`, `create_bridge_chunk`, `chunk_duration_s` and their result types. The
   modules (`Smoothing`, `EndpointRamp`, `Bridge`) do the same per motion group; the per-group
-  helpers are `novapolicy.chunking.smooth_steps`, `ramp_steps` and `bridge_steps`.
+  helpers are `smooth_steps`, `ramp_steps` and `bridge_steps`, next to their modules in
+  `novapolicy.pipeline.modules` (`smoothing`, `endpoint_ramp`, `bridge`).
 - **Removed shims:** `update_chunk(anchor_offset_steps=...)` (use `timestamp_offset_steps`),
   `update_chunk(server_dt_ms=...)` and `make_waypoints_request` (the session stamps chunks itself).
 - **Removed deprecated rate parameters:** `LeRobotPolicyClient(fps=...)` and
@@ -242,8 +243,8 @@ pipeline's `Smoothing` and `Bridge` modules to connect chunks.
 `LeRobotPolicyClient(use_async_queue=..., async_queue_aggregation=..., async_queue_refill_threshold=...)`
 are gone. Wrap the client in `QueuedPolicyClient(LeRobotPolicyClient(...), aggregation=...)` for
 continuous execution, as any chunk-per-observation policy; `AsyncQueueAggregation` stays in
-`novapolicy.lerobot`. The queue now asks the server for a new chunk at every tick it is called
-instead of refilling at a threshold in the background, and its frozen head follows the measured
+`novapolicy.providers.lerobot`. The queue now asks the server for a new chunk at every tick it is
+called instead of refilling at a threshold in the background, and its frozen head follows the measured
 inference time instead of a fixed three steps.
 
 ## GR00T builds its state through the schema
@@ -299,16 +300,16 @@ members. Code that only uses `PolicyExecutor`, `jog_joints` and `jog_tcp` needs 
 | `WaypointJoggingSession.is_running` | `jogging_state == "RUNNING"` |
 | `WaypointJoggingSession.standstill_ms` | removed; `is_at_standstill` |
 | `JoggingTimeClock.acknowledged_elapsed_ms` | `estimated_server_timestamp_ms` (the same value) |
-| `JoggingTimeClock.extract_from_state(state)` | `jogging_details(state)` (`novapolicy.jogging.session`), then `.jogger_session_timestamp_ms` |
+| `JoggingTimeClock.extract_from_state(state)` | `jogging_details(state)` (`novapolicy.transport.state`), then `.jogger_session_timestamp_ms` |
 | `novapolicy.estop.check_sessions`, `check_estop`, `triggered_stop_condition` | `SessionLifecycle.check()` and `SessionLifecycle.stop_condition` |
 | `SessionLifecycle(sessions, motion_groups)` | `SessionLifecycle(config=..., stop_conditions=..., pipeline=...)`, then `build({mg: (mode, tcp)})`; `start_monitoring()` starts its own `EstopMonitor` |
 | `JointJogger(list_of_motion_groups, ...)` | `JointJogger({mg: "" for mg in ...}, ...)`; use `jog_joints` |
 
-- `session.scheduled` is a frozen `Scheduled` record (`novapolicy.jogging.waypoint_session`),
+- `session.scheduled` is a frozen `Scheduled` record (`novapolicy.transport.session`),
   replaced on every send: read its fields together from one `session.scheduled`.
-- `chunking.Placement` has a `hold` field: whether `HoldPadding` may pad the chunk.
-- Tests that stub the transport patch `novapolicy.jogging.lifecycle.WaypointJoggingSession` and
-  `novapolicy.jogging.lifecycle.EstopMonitor` instead of the names in `novapolicy.executor` or
+- `Placement` (`novapolicy.pipeline.placement`) has a `hold` field: whether `HoldPadding` may pad the chunk.
+- Tests that stub the transport patch `novapolicy.transport.lifecycle.WaypointJoggingSession` and
+  `novapolicy.transport.lifecycle.EstopMonitor` instead of the names in `novapolicy.executor` or
   `novapolicy.jogging.jogger`.
 - A chunk without motion writes its IO and then runs its computed actions, one after the other
   in one task; they used to run side by side. A failing IO write now also skips the writes and
@@ -373,3 +374,66 @@ anywhere) and a built-in module listed twice. Such a list used to run, wrongly: 
 `[Bridge, TimestepTimeline]` a queue's steps ran up to 832 ms late. Reorder the list as the error
 says. The executor also warns for the joggers' default list and for `EndpointRamp` in continuous
 execution; both still run.
+
+## The package follows its architecture
+
+The modules moved into one folder per part of the [architecture](architecture.md#where-things-live):
+`mapping/`, `pipeline/` (with one file per built-in module in `pipeline/modules/`), `transport/`,
+`jogging/` (the jogging API) and `providers/`. Nothing else changed: no class or function was
+renamed and none behaves differently.
+
+- **`from novapolicy import ...` is unchanged**, `LeRobotPolicyClient` and `LeappPolicyClient`
+  included.
+- **`from novapolicy.jogging import ...` is unchanged** for every name it exported; the pipeline
+  and transport names are re-exported there from their new homes. `novapolicy.pipeline` exports
+  the same pipeline names (and `TimestepTimeline`).
+- **Deep imports change** as in the table. `chunking` was split: each helper went to the module
+  that uses it.
+- **Logger names follow the module paths** (`novapolicy.transport.clock` instead of
+  `novapolicy.jogging.clock`, ...): update logging configuration and `caplog` filters.
+- **Patch targets follow them too**: tests that stub the transport patch
+  `novapolicy.transport.lifecycle.WaypointJoggingSession` and
+  `novapolicy.transport.lifecycle.EstopMonitor`.
+- Type-checker and CI paths: `novapolicy/lerobot/**` is now `novapolicy/providers/lerobot/**`.
+
+| Before | Now |
+| --- | --- |
+| `novapolicy.schema` | `novapolicy.mapping.schema` |
+| `novapolicy.ops` | `novapolicy.mapping.ops` |
+| `novapolicy.poses` | `novapolicy.mapping.poses` |
+| `novapolicy.pose_sources` | `novapolicy.mapping.pose_sources` |
+| `novapolicy.joint_velocities` | `novapolicy.mapping.joint_velocities` |
+| `novapolicy.state_stream` | `novapolicy.mapping.state_stream` |
+| `novapolicy.joint_limits` | `novapolicy.mapping.joint_limits` |
+| `novapolicy.training_range` | `novapolicy.mapping.training_range` |
+| `novapolicy.chunking`: `TcpDelta`, `apply_relative_mode`, `compose_tcp_deltas` | `novapolicy.mapping.relative` |
+| `novapolicy.chunking`: `unwrap_tcp_rotations` | `novapolicy.mapping.poses` |
+| `novapolicy.chunking`: `trim_chunk`, `is_single_step`, `Placement`, `placement` | `novapolicy.pipeline.placement` |
+| `novapolicy.chunking`: `smooth_steps` | `novapolicy.pipeline.modules.smoothing` |
+| `novapolicy.chunking`: `bridge_steps` | `novapolicy.pipeline.modules.bridge` |
+| `novapolicy.chunking`: `ramp_steps` | `novapolicy.pipeline.modules.endpoint_ramp` |
+| `novapolicy.jogging.pipeline` (`ModuleContext`, `ChunkModule`, `WaypointModule`, `WaypointFilter`, `Timestamps`, `SplitPipeline`, `split_pipeline`, `CHUNK_STAGES`, `TimedWaypoint`) | `novapolicy.pipeline.base` |
+| `novapolicy.jogging.pipeline.EaseIn` | `novapolicy.pipeline.modules.ease_in` |
+| `novapolicy.jogging.modules.default_pipeline`, `timestep_queue_modules`, `SEQUENTIAL_HOLD_MS` | `novapolicy.pipeline.defaults` |
+| `novapolicy.jogging.modules.Smoothing` | `novapolicy.pipeline.modules.smoothing` |
+| `novapolicy.jogging.modules.TimestepTimeline` | `novapolicy.pipeline.modules.timeline` |
+| `novapolicy.jogging.modules.Bridge` | `novapolicy.pipeline.modules.bridge` |
+| `novapolicy.jogging.modules.EndpointRamp` | `novapolicy.pipeline.modules.endpoint_ramp` |
+| `novapolicy.jogging.modules.JointClamp` | `novapolicy.pipeline.modules.joint_clamp` |
+| `novapolicy.jogging.modules.HoldPadding` | `novapolicy.pipeline.modules.hold_padding` |
+| `novapolicy.jogging.modules.DropLate`, `MIN_LEAD_MS` | `novapolicy.pipeline.modules.drop_late` |
+| `novapolicy.jogging.live_buffer` | `novapolicy.pipeline.modules.live_buffer` |
+| `novapolicy.jogging.waypoint_session` | `novapolicy.transport.session` |
+| `novapolicy.jogging.clock` | `novapolicy.transport.clock` |
+| `novapolicy.jogging.waypoints` | `novapolicy.transport.waypoints` |
+| `novapolicy.jogging.session` | `novapolicy.transport.state` |
+| `novapolicy.jogging.lifecycle` | `novapolicy.transport.lifecycle` |
+| `novapolicy.estop` | `novapolicy.transport.estop` |
+| `novapolicy.io` | `novapolicy.transport.io` |
+| `novapolicy.jogging.jogger` | unchanged |
+| `novapolicy.policy_client` | `novapolicy.providers.base` |
+| `novapolicy.queued_client` | `novapolicy.providers.queued` |
+| `novapolicy.action_queue` | `novapolicy.providers.action_queue` |
+| `novapolicy.gr00t` | `novapolicy.providers.gr00t` |
+| `novapolicy.lerobot` | `novapolicy.providers.lerobot` |
+| `novapolicy.leapp` | `novapolicy.providers.leapp` |

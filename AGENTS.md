@@ -128,7 +128,7 @@ and streams them as timestamped action chunks. How well the robot follows those 
 - Do not build trajectory generation, filters, actuator models or controllers into the executor,
   the joggers or the jogging sessions. If the robot does not follow the commanded waypoints
   faithfully, fix or report it on the NOVA side. The only place to shape what is sent is a module
-  of the send pipeline (`novapolicy/jogging/pipeline.py` and `modules.py`: chunk modules before
+  of the send pipeline (`novapolicy/pipeline/`: `base.py` and `modules/`; chunk modules before
   `Timestamps()`, filters that may drop but never retime waypoints, values-only waypoint modules
   last). The built-ins (smoothing, bridge, ramp, clamp, padding, dropping late waypoints) are such
   modules; `pipeline=None` runs `default_pipeline()`, an explicit list exactly what it lists. New

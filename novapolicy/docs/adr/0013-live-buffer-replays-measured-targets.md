@@ -1,7 +1,7 @@
 # 0013 The live buffer replays measured targets on a fixed grid
 
-Status: accepted. Recorded 2026-11-23 from the code (`jogging/live_buffer.py`); the decision is
-older. What it does and its measurements: [jogging.md](../jogging.md#live-targets-and-the-replay-buffer-livebuffer),
+Status: accepted. Recorded 2026-11-23 from the code (`pipeline/modules/live_buffer.py`);
+the decision is older. What it does and its measurements: [jogging.md](../jogging.md#live-targets-and-the-replay-buffer-livebuffer),
 ADR 0004 and ADR 0009.
 
 **Context.** A live target says only where the target is now, and a lone waypoint is a terminal

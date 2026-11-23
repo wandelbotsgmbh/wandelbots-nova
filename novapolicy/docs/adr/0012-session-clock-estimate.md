@@ -1,6 +1,6 @@
 # 0012 The session clock is estimated from generation time and never rescaled
 
-Status: accepted. Recorded 2026-11-23 from the code (`jogging/clock.py`); the decision is older.
+Status: accepted. Recorded 2026-11-23 from the code (`transport/clock.py`); the decision is older.
 The estimate itself is described in [executor.md](../executor.md#timestamp-protocol).
 
 **Context.** Every waypoint is dated on NOVA's session clock (`jogger_session_timestamp_ms`), which

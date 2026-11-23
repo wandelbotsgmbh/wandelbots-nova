@@ -360,7 +360,7 @@ an exact raw controller timestamp to action zero, and every replacement uses
 
 A chunk is timestamped when it is built and sent a moment later. Waypoints whose
 timestamp has already passed — plus a small minimum lead
-(`waypoint_session.MIN_LEAD_MS`) — cannot be reached, and commanding them makes
+(`drop_late.MIN_LEAD_MS`) — cannot be reached, and commanding them makes
 the server jump to catch the trajectory. The session drops those leading
 waypoints at send time and sends the still-reachable tail. A chunk whose every
 waypoint has elapsed is dropped entirely.
@@ -395,7 +395,7 @@ ActionChunk(
 ```
 
 When left at `-1`, the executor anchors automatically (see
-`novapolicy/chunking.py::placement`): step 0 is placed at an absolute anchor with an
+`novapolicy/pipeline/placement.py::placement`): step 0 is placed at an absolute anchor with an
 offset measured in whole `dt` steps —
 
 | case | anchor | offset |

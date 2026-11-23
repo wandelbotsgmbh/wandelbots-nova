@@ -1,6 +1,7 @@
 # 0016 Joint velocities are read from the raw state stream
 
-Status: accepted. Recorded 2026-11-23 from the code (`state_stream.py`, `joint_velocities.py`);
+Status: accepted. Recorded 2026-11-23 from the code (`mapping/state_stream.py`,
+`mapping/joint_velocities.py`);
 the decision is older. The contract is M9.
 
 **Context.** A policy trained on measured joint velocities needs them at inference. The typed SDK

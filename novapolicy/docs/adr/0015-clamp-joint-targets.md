@@ -1,6 +1,6 @@
 # 0015 Joint targets are clamped inside the robot's limits
 
-Status: accepted. Recorded 2026-11-23 from the code (`joint_limits.py`); the decision is older.
+Status: accepted. Recorded 2026-11-23 from the code (`mapping/joint_limits.py`); the decision is older.
 The contract is M7; the module is `JointClamp`.
 
 **Context.** NOVA enforces joint limits by pausing the motion: one out-of-range waypoint ends the
