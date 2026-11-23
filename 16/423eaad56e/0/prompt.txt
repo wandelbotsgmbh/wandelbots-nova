@@ -174,3 +174,7 @@ so back to the SDK work, how do we proceed
 ---
 
 what is the CI problem with #569
+
+---
+
+prepare the fix
