@@ -11,7 +11,6 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from nova.actions import jnt
 from novapolicy.cameras.manager import CameraManager
 from novapolicy.chunking import (
     apply_relative_mode,
@@ -19,13 +18,9 @@ from novapolicy.chunking import (
     placement,
     trim_chunk,
 )
-from novapolicy.estop import (
-    EstopMonitor,
-    check_estop,
-    check_sessions,
-    triggered_stop_condition,
-)
+from novapolicy.estop import EstopMonitor
 from novapolicy.io import IOStreamManager
+from novapolicy.jogging.lifecycle import SessionLifecycle, move_to_start_joint_position
 from novapolicy.jogging.live_buffer import LiveBuffer
 from novapolicy.jogging.modules import TimestepTimeline, default_pipeline
 from novapolicy.jogging.pipeline import split_pipeline
@@ -237,10 +232,10 @@ class PolicyExecutor:
         _check_execution_mode(execution, self._policy, self._pipeline)
 
         self._sessions: dict[str, WaypointJoggingSession] = {}
+        self._lifecycle = SessionLifecycle(self._sessions, self._motion_groups)
         self._cameras = CameraManager(camera_max_age_s)
         self._stop_event = asyncio.Event()
         self._last_obs: dict[str, Any] | None = None
-        self._estop_monitor: EstopMonitor | None = None
         self._io_streams = IOStreamManager(self._motion_groups, schema.io_keys_by_controller())
         self._io_tasks: set[asyncio.Task[None]] = set()
         self._observed_at_ms: dict[str, ServerMs | None] = {}
@@ -317,33 +312,8 @@ class PolicyExecutor:
         self._stop_event.set()
 
     async def _cleanup(self) -> None:
-        """Outer teardown — always runs, even if ``_run_episode`` setup throws.
-
-        Owns the resources allocated *before* and *around* ``_run_episode``:
-        the jogging sessions, pending IO write tasks, and the policy
-        connection. Also performs the final status reset and result logging.
-
-        How the run ended decides what happens to motion already accepted by the
-        controller. A run that ended normally — a stop condition, the execution
-        timeout or an external :meth:`stop` — owes the caller the waypoints it accepted, so they
-        are drained first. A run that ended in an error or an e-stop drops them:
-        ``session.stop`` cancels immediately, which is the point.
-        """
-        if self.status.phase is not Phase.ERROR:
-            for session in self._sessions.values():
-                with contextlib.suppress(MotionError, EmergencyStopError, OSError, RuntimeError):
-                    await session.drain()
-
-        # In parallel: each stop waits for its server to settle.
-        results = await asyncio.gather(
-            *(session.stop() for session in self._sessions.values()), return_exceptions=True
-        )
-        for result in results:
-            if isinstance(result, BaseException) and not isinstance(
-                result, (MotionError, EmergencyStopError, OSError, RuntimeError)
-            ):
-                raise result
-
+        """Outer teardown, always run: pending IO write tasks, the policy connection, the
+        final status and result logging."""
         # Wait for pending IO tasks
         if self._io_tasks:
             await asyncio.gather(*self._io_tasks, return_exceptions=True)
@@ -369,92 +339,67 @@ class PolicyExecutor:
     # Execution lifecycle
     # -------------------------------------------------------------------------
 
-    async def _move_to_start_joint_position(self) -> None:
-        """PTP move configured motion groups before starting waypoint jogging."""
-
-        async def ptp(mg: MotionGroup, joints: list[float]) -> None:
-            tcp = await mg.active_tcp_name() or (await mg.tcp_names())[0]
-            # The cell's collision setups stay in force: the start move is planned like any
-            # other move, not around them.
-            setup = await mg.get_setup(tcp)
-            target = tuple(joints)
-            trajectory = await mg.plan([jnt(target)], tcp, motion_group_setup=setup)
-            await mg.execute(trajectory, tcp, actions=[jnt(target)])
-
-        start_positions = self._start_joint_position
-        if start_positions is None:
-            return
-        await asyncio.gather(*(ptp(mg, joints) for mg, joints in start_positions.items()))
-
-    async def _run_episode(self) -> None:  # ruff: ignore[complex-structure]
+    async def _run_episode(self) -> None:
         """Orchestrate one episode: create sessions, loop observe→act, tear down.
 
-        The ``finally`` here owns only the resources started *inside* this
-        method (rerun logger, e-stop monitor, cameras, IO streams). Sessions
-        and the policy connection are released by :meth:`_cleanup`, which
-        ``run`` guarantees runs even if this method throws during setup.
-
-        Exceptions (MotionError, EmergencyStopError) propagate
-        to :meth:`run`.
+        The ``finally`` here releases what this method started. A run that ended normally (a
+        stop condition, the timeout or :meth:`stop`) owes the caller the waypoints it accepted,
+        so the sessions drain first; an error or an e-stop drops them, which is the point.
+        Exceptions propagate to :meth:`run`.
         """
-        # Create and start sessions
         for mg in self._motion_groups:
             self._sessions[mg.id] = self._create_session(mg)
-            self._sessions[mg.id].set_state_observer(
+            self._sessions[mg.id].add_state_observer(
                 lambda state, ts_ms, _generated, group_id=mg.id: self._schema.observe_state(
                     group_id, state.joints, ts_ms / 1000.0
                 )
             )
 
-        if self._start_joint_position:
-            await self._move_to_start_joint_position()
-
-        image_sources = self._schema.image_sources
-        if image_sources:
-            logger.info("Connecting cameras...")
-            await self._cameras.connect(image_sources, self._schema.image_max_age_s)
-            logger.info("All cameras ready")
-
-        for session in self._sessions.values():
-            await session.start()
-
+        failed = False
         try:
-            await self._io_streams.start()
-            self._io_streams.wire_to_sessions(self._sessions)
-            await self._schema.load_coordinate_systems()
-            await self._schema.start_sources()
-            await self._policy.connect(self.mg_ids)
-            await self._policy.validate_schema(self._schema)
-            self._estop_monitor = EstopMonitor(self._motion_groups)
-            await self._estop_monitor.start()
-            await self._init_rerun()
-            if self._rerun is not None:
-                image_reader = self._cameras.read_latest_frames if self._cameras.active else None
-                self._rerun.start_streaming(self._sessions, image_reader=image_reader)
-            # Wait for sessions to be ready (server acknowledged init)
-            for session in self._sessions.values():
-                await session.wait_ready()
+            await self._start()
             self.result = await self._execute()
             if self._rerun is not None:
                 self._rerun.log_completion(
                     self.result.reason, self.result.steps, self.result.duration_s
                 )
             self.status.phase = Phase.COMPLETED
+        except Exception:
+            failed = True
+            raise
         finally:
-            # Release only what this method started; sessions + policy are
-            # handled by _cleanup() in run()'s finally.
             if self._gc_frozen:
                 gc.unfreeze()
                 self._gc_frozen = False
-            if self._rerun is not None:
-                await self._rerun.stop_streaming()
-            if self._estop_monitor is not None:
-                await self._estop_monitor.stop()
-                self._estop_monitor = None
+            await self._lifecycle.close(drain=not failed)
             if self._cameras.active:
                 await self._cameras.disconnect()
             await self._schema.stop_sources()
             await self._io_streams.stop()
+
+    async def _start(self) -> None:
+        """Move to the start position, connect cameras, IO, sources and the policy, and start
+        the sessions with their monitoring; returns once the server acknowledged them."""
+        await move_to_start_joint_position(self._start_joint_position)
+        image_sources = self._schema.image_sources
+        if image_sources:
+            logger.info("Connecting cameras...")
+            await self._cameras.connect(image_sources, self._schema.image_max_age_s)
+            logger.info("All cameras ready")
+        await self._lifecycle.start_sessions()
+        await self._io_streams.start()
+        self._io_streams.wire_to_sessions(self._sessions)
+        await self._schema.load_coordinate_systems()
+        await self._schema.start_sources()
+        await self._policy.connect(self.mg_ids)
+        await self._policy.validate_schema(self._schema)
+        self._rerun = await self._lifecycle.start_monitoring(
+            EstopMonitor(self._motion_groups),
+            camera_names=self._cameras.names,
+            tcp=self._schema.tcp,
+            image_reader=self._cameras.read_latest_frames if self._cameras.active else None,
+        )
+        await self._lifecycle.wait_ready()
 
     # -------------------------------------------------------------------------
     # Observe → act loop
@@ -512,12 +457,8 @@ class PolicyExecutor:
             step += 1
             self.status.step = step
 
-            # Check failures — raises directly on error
-            check_sessions(self._sessions)
-            check_estop(self._estop_monitor)
-
-            # A stop condition firing on a session tick ends the run normally.
-            stopped_by = triggered_stop_condition(self._sessions)
+            # Raises on a fault; a stop condition firing on a session tick ends the run normally.
+            stopped_by = self._lifecycle.check()
             if stopped_by is not None:
                 return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
 
@@ -558,7 +499,6 @@ class PolicyExecutor:
             return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
 
         if self._rerun is not None:
-            self._rerun.log_target_tracking(trimmed, robot_states, step)
             self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
         self._send(trimmed, action)
         # The sessions' Bridge module, if any, put a bridge in front of the policy's steps.
@@ -664,7 +604,7 @@ class PolicyExecutor:
             and (time.monotonic() - start_time) >= self._timeout_s
         ):
             return _result("timeout", step, start_time, last_obs)
-        stopped_by = triggered_stop_condition(self._sessions)
+        stopped_by = self._lifecycle.stop_condition
         if stopped_by is not None:
             return _result(
                 f"stop condition: {stopped_by}",
@@ -716,9 +656,7 @@ class PolicyExecutor:
                 return
             if self._timeout_s > 0 and (time.monotonic() - exec_start) >= self._timeout_s:
                 return
-            check_sessions(self._sessions)
-            check_estop(self._estop_monitor)
-            if triggered_stop_condition(self._sessions) is not None:
+            if self._lifecycle.check() is not None:
                 return
 
             if all(
@@ -895,27 +833,6 @@ class PolicyExecutor:
         if self._n_action_steps_cfg is not None:
             return self._n_action_steps_cfg
         return self._policy.n_action_steps or 0
-
-    # -------------------------------------------------------------------------
-    # Rerun visualization (lazy, zero-cost when viewer not active)
-    # -------------------------------------------------------------------------
-
-    async def _init_rerun(self) -> None:
-        """Initialize Rerun logger if a viewer is active."""
-        from novapolicy.rerun import _is_rerun_active  # ruff: ignore[import-outside-top-level]
-
-        if not _is_rerun_active():
-            return
-
-        from novapolicy.rerun import PolicyRerunLogger  # ruff: ignore[import-outside-top-level]
-
-        self._rerun = PolicyRerunLogger(
-            self._motion_groups,
-            camera_names=self._cameras.names,
-            use_tcp_offset_for_joint_actions=True,
-            tcp=self._schema.tcp,
-        )
-        await self._rerun.initialize()
 
 
 def _result(

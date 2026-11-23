@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 from functools import partial
 import logging
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -70,6 +71,7 @@ def _build_joint_jogger(
     *mg_ids: str,
     num_joints: int = 6,
     pipeline: tuple[object, ...] = (),
+    start_joint_position: list[float] | None = None,
 ) -> _JointSetup:
     """Build a real joint jogger over fake robot transports.
 
@@ -86,7 +88,11 @@ def _build_joint_jogger(
         return sessions[motion_group]
 
     with patch("novapolicy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
-        jogger = jog_joints(mgs if len(mgs) > 1 else mgs[0], pipeline=pipeline)
+        jogger = jog_joints(
+            mgs if len(mgs) > 1 else mgs[0],
+            pipeline=pipeline,
+            start_joint_position=start_joint_position,
+        )
     return jogger, mgs, sessions
 
 
@@ -337,6 +343,47 @@ async def test_context_starts_waits_for_and_stops_every_session():
             for mg in (left, right):
                 sessions[mg].start.assert_awaited_once()
                 sessions[mg].wait_ready.assert_awaited_once()
+    for mg in (left, right):
+        sessions[mg].stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_the_start_move_keeps_the_cells_collision_setups():
+    """The start move is planned like any other move, as in the executor."""
+    jogger, (mg,), _sessions = _build_joint_jogger("0@ur10e", start_joint_position=[0.1] * 6)
+    setup = SimpleNamespace(collision_setups={"cell": object()})
+    collision = setup.collision_setups["cell"]
+    mg.active_tcp_name = AsyncMock(return_value="Flange")
+    mg.get_setup = AsyncMock(return_value=setup)
+    mg.plan = AsyncMock(return_value="trajectory")
+    mg.execute = AsyncMock()
+
+    with _no_estop_no_rerun():
+        async with jogger:
+            pass
+
+    mg.execute.assert_awaited_once()
+    assert mg.plan.await_args.kwargs["motion_group_setup"] is setup
+    assert setup.collision_setups == {"cell": collision}
+
+
+@pytest.mark.asyncio
+async def test_a_failing_rerun_teardown_still_stops_every_session():
+    """With a viewer active, Rerun streams every session; its teardown failing must not leave a
+    robot session running."""
+    jogger, (left, right), sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
+    rerun = MagicMock(initialize=AsyncMock(), stop_streaming=AsyncMock(side_effect=OSError))
+    estop = MagicMock(start=AsyncMock(), stop=AsyncMock())
+    with (
+        patch(f"{_JOGGER}.EstopMonitor", return_value=estop),
+        patch("novapolicy.rerun._is_rerun_active", return_value=True),
+        patch("novapolicy.rerun.PolicyRerunLogger", return_value=rerun),
+        pytest.raises(OSError),
+    ):
+        async with jogger:
+            pass
+    (streamed,), _ = rerun.start_streaming.call_args
+    assert streamed == {mg.id: sessions[mg] for mg in (left, right)}
     for mg in (left, right):
         sessions[mg].stop.assert_awaited_once()
 

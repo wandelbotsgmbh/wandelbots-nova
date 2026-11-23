@@ -1,18 +1,22 @@
-"""Live-target pushes, commanded-history bookkeeping and Rerun tracking alignment."""
+"""Live-target pushes and per-state-packet Rerun tracking."""
 
 from __future__ import annotations
 
 from itertools import pairwise
 from typing import TYPE_CHECKING, cast
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from novapolicy.jogging.jogger import TcpJogger
+from novapolicy.rerun.logger import PolicyRerunLogger
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from nova.cell.motion_group import MotionGroup
+    from nova.types import RobotState
     from novapolicy.jogging.waypoint_session import WaypointJoggingSession
-    from novapolicy.rerun import PolicyRerunLogger
 
 
 class _FakeSession:
@@ -31,7 +35,6 @@ def _jogger(mode: str = "cartesian") -> tuple[TcpJogger, object, _FakeSession]:
     jogger._multi = False
     jogger._sessions = cast("dict[MotionGroup, WaypointJoggingSession]", {mg: session})
     jogger._rerun = None
-    jogger._commanded = {}
     jogger._timeline_ms = 0.0
     # Drive the session clock directly: elapsed reads the per-tick sample.
     jogger._loop_t0 = 0.0
@@ -40,110 +43,123 @@ def _jogger(mode: str = "cartesian") -> tuple[TcpJogger, object, _FakeSession]:
     return jogger, mg, session
 
 
-def test_commanded_at_resolves_the_value_for_a_past_timestamp() -> None:
-    """Tracking compares against what was commanded for the state's own moment."""
-    jogger, _mg, _session = _jogger()
-    # Recording is gated on an active Rerun logger; only its presence matters.
-    jogger._rerun = cast("PolicyRerunLogger", object())
+class _TrackedSession:
+    """What per-packet tracking reads off a session: its mode and what it sent when."""
 
-    jogger._record_commanded("mg", [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0]], 50.0, 1000)
+    motion_group_id = "mg"
 
-    assert jogger._commanded_at("mg", 1000) == [0.0, 0.0, 0.0]
-    assert jogger._commanded_at("mg", 1050) == [10.0, 0.0, 0.0]
-    # halfway between the two waypoints
-    assert jogger._commanded_at("mg", 1025) == [5.0, 0.0, 0.0]
-    # a stale state from before the chunk clamps to its first waypoint
-    assert jogger._commanded_at("mg", 900) == [0.0, 0.0, 0.0]
+    def __init__(self, mode: str = "cartesian", sent: list[float] | None = None) -> None:
+        self.mode = mode
+        self.sent = sent  # what was sent, ramping by 1 per ms from server time 1000
+        self.observers: list[Callable[[object, int, float], None]] = []
 
+    def commanded_at(self, server_ms: int) -> list[float] | None:
+        if self.sent is None:
+            return None
+        return [value + server_ms - 1000 for value in self.sent]
 
-def test_commanded_history_prefers_the_newest_chunk() -> None:
-    """A replacement chunk overwrites the old command at the same timestamp."""
-    jogger, _mg, _session = _jogger()
-    jogger._rerun = cast("PolicyRerunLogger", object())
+    def add_state_observer(self, observer: Callable[[object, int, float], None]) -> None:
+        self.observers.append(observer)
 
-    jogger._record_commanded("mg", [[1.0, 0.0, 0.0]], 0.0, 1000)
-    jogger._record_commanded("mg", [[2.0, 0.0, 0.0]], 0.0, 1000)
-
-    assert jogger._commanded_at("mg", 1000) == [2.0, 0.0, 0.0]
+    def remove_state_observer(self, observer: Callable[[object, int, float], None]) -> None:
+        self.observers.remove(observer)
 
 
-def test_commanded_history_is_not_recorded_without_rerun() -> None:
-    """The history exists only to feed the plot; it must cost nothing otherwise."""
-    jogger, _mg, _session = _jogger()
-
-    jogger._record_commanded("mg", [[1.0, 0.0, 0.0]], 0.0, 1000)
-
-    assert jogger._commanded_at("mg", 1000) is None
+_Entry = tuple[str, list[float], int, float | None]
 
 
-class _FakeRerun:
-    """Records what would have been sent to Rerun."""
+class _RecordingLogger(PolicyRerunLogger):
+    """A Rerun logger that records its per-packet writes instead of sending them."""
 
     def __init__(self) -> None:
-        self.tcp: list[tuple[str, list[float], float | None]] = []
-        self.joint: list[tuple[str, list[float], float | None]] = []
+        self._step = 0
+        self._observed = []
+        self.tcp: list[_Entry] = []
+        self.joint: list[_Entry] = []
         self.robot: list[tuple[str, float]] = []
 
-    def log_robot_state(self, mg_id, state, *, at):
-        _ = state
+    def log_robot_state(self, mg_id: str, state: RobotState, *, at: float) -> None:
         self.robot.append((mg_id, at))
 
-    def log_tcp_tracking(self, mg_id, target, actual, step, *, at=None):
-        _ = actual, step
-        self.tcp.append((mg_id, list(target), at))
+    def log_tcp_tracking(
+        self, mg_id: str, target: list[float], actual: RobotState, step: int, *, at=None
+    ) -> None:
+        self.tcp.append((mg_id, list(target), step, at))
 
-    def log_joint_tracking(self, mg_id, target, actual, step, *, at=None):
-        _ = actual, step
-        self.joint.append((mg_id, list(target), at))
+    def log_joint_tracking(
+        self, mg_id: str, target: list[float], actual: RobotState, step: int, *, at=None
+    ) -> None:
+        self.joint.append((mg_id, list(target), step, at))
+
+
+_STATE = cast("RobotState", object())
 
 
 def test_tracking_is_logged_per_state_at_that_state_s_own_instant() -> None:
-    """Each state packet gets its own entry, stamped when it was generated.
+    """Each state packet gets its own entry, stamped when it was generated, against what was
+    sent for that packet's own server timestamp.
 
-    Sampling once per control tick instead re-reads the cached pose, which is
-    the same packet for ~90ms during a delivery burst, and draws the tracking
-    error as a flat shelf.
+    Sampling once per control tick instead re-reads the cached pose, the same packet for ~90ms
+    during a delivery burst, and draws the tracking error as a flat shelf.
     """
-    jogger, _mg, _session = _jogger()
-    fake = _FakeRerun()
-    jogger._rerun = cast("PolicyRerunLogger", fake)
-    jogger._record_commanded("mg", [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0]], 50.0, 1000)
+    logger = _RecordingLogger()
+    session = cast("WaypointJoggingSession", _TrackedSession(sent=[0.0]))
 
-    state = object()
     # a burst: three packets generated 8ms apart, delivered together
     for offset, generated in ((0, 100.0), (8, 100.008), (16, 100.016)):
-        jogger._log_state_tracking("mg", "cartesian", state, 1000 + offset, generated)
+        logger.log_state_packet(session, _STATE, 1000 + offset, generated)
 
-    assert [entry[2] for entry in fake.tcp] == [100.0, 100.008, 100.016]
-    # each is the command interpolated for its own server timestamp, so no two
-    # consecutive entries are the same point
-    plotted = [entry[1] for entry in fake.tcp]
-    assert plotted[0] != plotted[1] != plotted[2]
-    assert plotted[1][0] == pytest.approx(1.6)
+    assert [entry[3] for entry in logger.tcp] == [100.0, 100.008, 100.016]
+    assert [entry[1][0] for entry in logger.tcp] == [0.0, 8.0, 16.0]
 
 
-def test_tracking_is_skipped_when_nothing_was_commanded_for_that_instant() -> None:
-    """No command history for the packet means no misleading entry."""
-    jogger, _mg, _session = _jogger()
-    fake = _FakeRerun()
-    jogger._rerun = cast("PolicyRerunLogger", fake)
+def test_tracking_is_skipped_when_nothing_was_sent_yet() -> None:
+    """No sent history means no misleading entry; the 3D robot still moves."""
+    logger = _RecordingLogger()
 
-    jogger._log_state_tracking("mg", "cartesian", object(), 1000, 100.0)
+    logger.log_state_packet(cast("WaypointJoggingSession", _TrackedSession()), _STATE, 1000, 100.0)
 
-    assert fake.tcp == []
-    assert fake.robot == [("mg", 100.0)]  # the 3D robot still moves
+    assert logger.tcp == []
+    assert logger.robot == [("mg", 100.0)]
 
 
-def test_joint_mode_tracking_uses_the_joint_logger() -> None:
-    jogger, _mg, _session = _jogger(mode="joint")
-    fake = _FakeRerun()
-    jogger._rerun = cast("PolicyRerunLogger", fake)
-    jogger._record_commanded("mg", [[1.0, 2.0, 3.0]], 0.0, 1000)
+def test_joint_mode_tracking_uses_the_joint_logger_at_the_latest_observed_step() -> None:
+    logger = _RecordingLogger()
+    logger._step = 7  # what log_observation last saw
+    session = cast("WaypointJoggingSession", _TrackedSession("joint", sent=[1.0, 2.0]))
 
-    jogger._log_state_tracking("mg", "joint", object(), 1000, 100.0)
+    logger.log_state_packet(session, _STATE, 1000, 100.0)
 
-    assert fake.joint and not fake.tcp
-    assert fake.joint[0][1] == [1.0, 2.0, 3.0]
+    assert logger.joint == [("mg", [1.0, 2.0], 7, 100.0)]
+    assert not logger.tcp
+
+
+@pytest.mark.asyncio
+async def test_streaming_observes_every_session_until_it_stops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Executor and joggers alike: start_streaming hooks each session's state packets,
+    stop_streaming unhooks them."""
+    from novapolicy.rerun.context import RerunContext  # imports rerun, which may be skipped
+
+    streamer = MagicMock(start=MagicMock(), stop=AsyncMock())
+    monkeypatch.setattr(
+        "novapolicy.rerun.streaming.StateStreamer", MagicMock(return_value=streamer)
+    )
+    logger = _RecordingLogger()
+    logger._ctx = RerunContext(start_time=0.0, recording=None)
+    logger._streamer = None
+    logger._recording = None
+    logger._sink = MagicMock()
+    session = _TrackedSession(sent=[3.0])
+
+    logger.start_streaming({"mg": cast("WaypointJoggingSession", session)})
+    (observer,) = session.observers
+    observer(_STATE, 1000, 100.0)
+    await logger.stop_streaming()
+
+    assert logger.tcp == [("mg", [3.0], 0, 100.0)]
+    assert session.observers == []
 
 
 # ---------------------------------------------------------------------------
@@ -227,25 +243,3 @@ def test_live_targets_carry_the_loop_time_in_exact_grid_steps(ack0_ms: float) ->
         jogger._set_live_target(mg, [float(i), 0.0, 0.0, 0.0, 0.0, 0.0])
     produced = [chunk["observed_at_ms"] for chunk in session.chunks]
     assert all(b - a == 10 for a, b in pairwise(produced)), produced
-
-
-def test_the_tracking_record_follows_what_the_session_queued() -> None:
-    """With a LiveBuffer the session commands a target about the window later; the tracking
-    record must show that, not the raw target."""
-    from novapolicy.jogging.waypoints import PendingChunk
-
-    jogger, mg, session = _push_jogger()
-
-    class _Rerun:
-        def log_action_chunk(self, chunk: object, step: int) -> None:
-            pass
-
-    jogger._rerun = _Rerun()
-    jogger._loop_t0 = 0.0
-    session.queued_chunk = PendingChunk(
-        steps=[[1.0] * 6, [2.0] * 6], dt_ms=50.0, first_timestamp_ms=2_000
-    )
-    jogger._set_live_target(mg, [9.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-    history = jogger._commanded["mg"]
-    assert min(history) == 2_000
-    assert history[2_000][0] == 1.0

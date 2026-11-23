@@ -1283,7 +1283,7 @@ async def test_absolute_targets_reach_the_robot_in_nova_units(robot: _Robot):
 
 
 @pytest.mark.asyncio
-async def test_the_start_move_keeps_the_cells_collision_setups():
+async def test_the_start_move_keeps_the_cells_collision_setups(robot: _Robot):
     """Regression: the start move used to clear the collision setups and plan without them."""
     mg = MagicMock()
     setup = SimpleNamespace(collision_setups={"cell": object()})
@@ -1293,12 +1293,10 @@ async def test_the_start_move_keeps_the_cells_collision_setups():
     mg.execute = AsyncMock()
     collision = setup.collision_setups["cell"]
 
-    async def policy(_obs: object) -> ActionChunk:
-        return ActionChunk(joints={MG_ID: [[0.0] * 6]}, dt_ms=10.0)
+    executor = PolicyExecutor(_schema(), _hold, timeout_s=0.1, start_joint_position={mg: [0.1] * 6})
+    await executor.run()
 
-    executor = PolicyExecutor(_schema(), _callback(policy), start_joint_position={mg: [0.1] * 6})
-    await executor._move_to_start_joint_position()
-
+    mg.execute.assert_awaited_once()
     assert mg.plan.await_args.kwargs["motion_group_setup"] is setup
     assert setup.collision_setups == {"cell": collision}
 

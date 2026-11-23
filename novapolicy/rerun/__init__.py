@@ -17,7 +17,7 @@ Module structure:
 - blueprint.py  — Rerun blueprint layout
 - observation.py — measured state (robot mesh, joints, TCP marker and trail)
 - action_chunk.py — action chunk visualization (line strips + text)
-- streaming.py  — continuous state streaming between policy steps
+- streaming.py  — controller timing and camera frames between policy steps
 - images.py     — camera image logging
 - logger.py     — main PolicyRerunLogger orchestrator
 """

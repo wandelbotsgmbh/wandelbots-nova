@@ -1,4 +1,4 @@
-"""Continuous state streaming — logs robot position between policy steps."""
+"""Background logging between policy steps: controller timing and camera frames."""
 
 from __future__ import annotations
 
@@ -26,11 +26,10 @@ _IMAGE_STREAM_PERIOD_S = 1.0 / 15.0
 
 
 class StateStreamer:
-    """Stream robot state and the latest camera frames to Rerun.
+    """Log controller timing and the latest camera frames to Rerun, and the robot state it is
+    handed (see :meth:`PolicyRerunLogger.log_state_packet`).
 
-    Robot visualization is capped at 30 Hz so it cannot starve camera updates
-    or overwhelm the live Rerun viewer. Camera frames are logged at 15 Hz
-    independently of the policy inference cadence.
+    Camera frames are logged at 15 Hz independently of the policy inference cadence.
     """
 
     def __init__(
@@ -60,8 +59,6 @@ class StateStreamer:
         self._running = False
         self._tick_counter = 0
         self._logged_scheduled_chunks: dict[str, int] = {}
-        self._last_state_at: dict[str, float] = {}
-        self._not_polled: set[str] = set()
 
     def start(self, sessions: dict[str, WaypointJoggingSession]) -> None:
         """Start the background streaming task."""
@@ -95,9 +92,6 @@ class StateStreamer:
                 )
 
                 for mg_id, session in self._sessions.items():
-                    state = session.current_state
-                    if state is not None and mg_id not in self._not_polled:
-                        self._log_state_when_generated(mg_id, session, state, elapsed)
                     self._log_controller_timing(mg_id, session)
 
                 if self._image_reader is not None and elapsed >= next_image_time:
@@ -163,34 +157,6 @@ class StateStreamer:
             recording=recording,
         )
 
-    def stop_polling(self, mg_id: str) -> None:
-        """Leave this motion group's state to :meth:`log_state`, called per packet."""
-        self._not_polled.add(mg_id)
-
     def log_state(self, mg_id: str, state: RobotState) -> None:
         """Log one state at the time already set on the recording."""
         log_state(self._ctx, mg_id, state, self._tcp_trail.setdefault(mg_id, []))
-
-    def _log_state_when_generated(
-        self,
-        mg_id: str,
-        session: WaypointJoggingSession,
-        state: RobotState,
-        elapsed: float,
-    ) -> None:
-        """Log the cached state once, at the instant it was generated.
-
-        State packets arrive in bursts, with gaps near 100 ms. Logged at "now"
-        on every tick, the cached state repeats through each gap and the plot
-        shows a stop the robot never made.
-        """
-        generated_at = session.current_state_generated_at
-        if generated_at is None:
-            self.log_state(mg_id, state)
-            return
-        if generated_at == self._last_state_at.get(mg_id):
-            return  # nothing new arrived since the last tick
-        self._last_state_at[mg_id] = generated_at
-        self._ctx.set_time(elapsed=generated_at - self._ctx.start_time)
-        self.log_state(mg_id, state)
-        self._ctx.set_time(elapsed=elapsed)

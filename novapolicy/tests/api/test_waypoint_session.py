@@ -539,6 +539,56 @@ async def test_waypoint_modules_reshape_the_values_but_never_the_timestamps():
         assert session._last_sent[1][0] == 2.0
 
 
+@pytest.mark.asyncio
+async def test_commanded_at_is_what_was_sent_for_that_moment():
+    """Tracking compares a state with what was sent for its own moment: after the waypoint
+    modules, interpolated between waypoints, clamped outside them, a request replacing what was
+    sent from its first timestamp on."""
+    async with _started(pipeline=[_AddOne()]) as (session, server):
+        assert session.commanded_at(5_000) is None
+        session.update_chunk(
+            steps=[[0.0] * 6, [10.0] * 6], dt_ms=50.0, first_timestamp_ms=ServerMs(5_000)
+        )
+        await _wait_until(lambda: len(server.requests) >= 2)
+        assert [session.commanded_at(t)[0] for t in (4_000, 5_000, 5_025, 9_000)] == [
+            1.0,
+            1.0,
+            pytest.approx(6.0),
+            11.0,
+        ]
+        session.update_chunk(steps=[[20.0] * 6], dt_ms=50.0, first_timestamp_ms=ServerMs(5_025))
+        await _wait_until(lambda: len(server.requests) >= 3)
+        assert [session.commanded_at(t)[0] for t in (5_000, 5_025, 5_050)] == [1.0, 21.0, 21.0]
+
+
+@pytest.mark.asyncio
+async def test_every_state_observer_sees_each_packet_even_when_another_fails():
+    """A failing Rerun observer must not starve the policy's own observation."""
+    seen: list[int] = []
+
+    def failing(*_args: object) -> None:
+        raise RuntimeError("viewer gone")
+
+    def recording(_state: object, ts_ms: int, _generated_at: float) -> None:
+        seen.append(ts_ms)
+
+    states = [_stream_state(_initial_state(), ts_ms=t) for t in (10, 20, 30)]
+    with _built(states=states) as (session, server):
+        session.add_state_observer(failing)
+        session.add_state_observer(recording)
+        try:
+            await session.start()
+            await _wait_until(lambda: 30 in seen)
+            session.remove_state_observer(recording)
+            count = len(seen)
+            await asyncio.sleep(0.02)
+        finally:
+            server.stop()
+            await session.stop()
+    assert seen[:3] == [10, 20, 30]
+    assert len(seen) == count
+
+
 def test_each_session_runs_its_own_copy_of_a_module():
     module = _AddOne()
     with _built(pipeline=[module]) as (left, _), _built(pipeline=[module]) as (right, _):

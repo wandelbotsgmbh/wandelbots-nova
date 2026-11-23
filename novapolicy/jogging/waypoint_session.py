@@ -8,6 +8,7 @@ velocity profiling, interpolation, and limits internally.
 from __future__ import annotations
 
 import asyncio
+import bisect
 import contextlib
 import copy
 from dataclasses import dataclass, replace
@@ -62,6 +63,10 @@ by the nominal step would fall behind and use up the lead."""
 # Longest a graceful stop waits for already-sent waypoints to finish executing: generous next
 # to the horizon it drains, so it only trips when the server stopped reporting progress.
 _DRAIN_TIMEOUT_S = 3.0
+
+# How much sent history :meth:`WaypointJoggingSession.commanded_at` keeps, in server ms: only
+# needs to outlast the delivery burst that makes a state packet stale.
+_COMMAND_HISTORY_MS = 1000
 
 # How long stop() waits, after StopActionChunksRequest, for the state stream to
 # report the session no longer RUNNING before it closes the stream anyway.
@@ -147,7 +152,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._chunk_modules, self._filters, self._waypoint_modules = split_pipeline(
             copy.deepcopy(list(default_pipeline() if pipeline is None else pipeline))
         )
-        self._last_sent_value: list[float] = []
+        self._built: list[tuple[int, list[float]]] = []
+        """Timed values of the request last built, recorded once it is sent."""
+        self._commanded: dict[int, list[float]] = {}
+        """Sent waypoint values by timestamp, as the server holds them."""
         self._joint_limits: JointLimits | None = None
         """Read at :meth:`start` when a ``JointClamp`` is in the pipeline."""
         self._config = config
@@ -165,7 +173,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._current_tcp_name: str | None = None
         self._num_joints: int | None = None
         self._current_state_server_ms: int | None = None
-        self._state_observer: Callable[[RobotState, int, float], None] | None = None
+        self._state_observers: list[Callable[[RobotState, int, float], None]] = []
 
         # Stop-condition state
         self._prev_state: RobotState | None = None
@@ -240,26 +248,37 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             return None
         return self._build_robot_state()
 
-    def set_state_observer(self, observer: Callable[[RobotState, int, float], None] | None) -> None:
+    def add_state_observer(self, observer: Callable[[RobotState, int, float], None]) -> None:
         """Call ``observer`` once per state packet, not once per control tick.
 
-        Receives ``(state, jogger_session_timestamp_ms, generated_monotonic)``.
-        Anything derived from state — a tracking error, a plotted trail — belongs
-        here: states arrive in bursts, and sampling the cached one from the control
-        loop re-reads one packet and drops the rest.
-
-        The observer runs inside the state-stream task and must be cheap.
+        Receives ``(state, jogger_session_timestamp_ms, generated_monotonic)``. Anything derived
+        from state belongs here: states arrive in bursts, and sampling the cached one from the
+        control loop re-reads one packet and drops the rest. Observers run inside the
+        state-stream task and must be cheap.
         """
-        self._state_observer = observer
+        self._state_observers.append(observer)
 
-    @property
-    def current_state_generated_at(self) -> float | None:
-        """Monotonic instant the cached :attr:`current_state` was generated.
+    def remove_state_observer(self, observer: Callable[[RobotState, int, float], None]) -> None:
+        """Stop calling ``observer``; one that was never added is ignored."""
+        with contextlib.suppress(ValueError):
+            self._state_observers.remove(observer)
 
-        ``None`` before the first jogger timestamp; see
-        :attr:`~novapolicy.jogging.clock.JoggingTimeClock.last_sample_wall`.
-        """
-        return self._clock.last_sample_wall
+    def commanded_at(self, server_ms: int) -> list[float] | None:
+        """The waypoint value sent for ``server_ms``, interpolated between sent waypoints and
+        clamped to the first and last; ``None`` before anything was sent."""
+        history = self._commanded
+        if not history:
+            return None
+        timestamps = sorted(history)
+        index = bisect.bisect_left(timestamps, server_ms)
+        if index == 0:
+            return history[timestamps[0]]
+        if index >= len(timestamps):
+            return history[timestamps[-1]]
+        before, after = timestamps[index - 1], timestamps[index]
+        start, end = history[before], history[after]
+        fraction = (server_ms - before) / (after - before)
+        return [a + fraction * (b - a) for a, b in zip(start, end, strict=False)]
 
     @property
     def current_state_server_ms(self) -> ServerMs | None:
@@ -720,9 +739,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._failure_exception = error
 
     def _notify_state_observer(self, ts_ms: int) -> None:
-        """Hand this packet to the observer, stamped when it was generated."""
-        observer = self._state_observer
-        if observer is None:
+        """Hand this packet to every observer, stamped when it was generated."""
+        if not self._state_observers:
             return
         state = self._build_robot_state()
         if state is None:
@@ -733,13 +751,13 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         generated_at = self._clock.last_sample_wall
         if generated_at is None:
             generated_at = time.monotonic()
-        try:
-            observer(state, ts_ms, generated_at)
-        except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as e:
-            # Observers are best-effort (visualisation); never break the stream.
-            # AttributeError included deliberately: an observer reading a field
-            # off a partially-populated state must not kill the state task.
-            logger.debug("State observer failed for %s: %s", self.motion_group_id, e)
+        for observer in list(self._state_observers):
+            try:
+                observer(state, ts_ms, generated_at)
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as e:
+                # Best-effort: one failing observer neither breaks the stream nor skips the
+                # others. AttributeError: an observer may read a partially populated state.
+                logger.debug("State observer failed for %s: %s", self.motion_group_id, e)
 
     # -------------------------------------------------------------------------
     # Jogging loop (waypoint mode)
@@ -860,8 +878,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._scheduled_until_server_ms = trimmed.step_timestamps[pending.last_caller_step]
             self._record_timesteps(pending, trimmed.step_timestamps, trimmed.skipped)
             self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms
-            # What was actually sent, after the stages: the drain stops on this.
-            self._last_sent = (request.waypoints[-1].timestamp, list(self._last_sent_value))
+            self._record_sent()
 
             yield request
 
@@ -872,6 +889,17 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             settled = asyncio.create_task(self._stop_settled.wait())
             _ = await asyncio.wait((settled, response_task), return_when=asyncio.FIRST_COMPLETED)
             settled.cancel()
+
+    def _record_sent(self) -> None:
+        """Remember the request being sent, after the waypoint modules: the drain stops on its
+        last waypoint, and :meth:`commanded_at` answers from it. Like the server, a request
+        replaces what was sent from its first timestamp on."""
+        first = self._built[0][0]
+        self._commanded = {
+            t: v for t, v in self._commanded.items() if first - _COMMAND_HISTORY_MS <= t < first
+        }
+        self._commanded.update((t, list(v)) for t, v in self._built)
+        self._last_sent = (self._built[-1][0], list(self._built[-1][1]))
 
     def _run_when_due(self, pending: PendingChunk, step_timestamps: list[int]) -> None:
         """Start the chunk's ``when_due`` action for the moment its step is due."""
@@ -1042,10 +1070,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                         f"{len(timed)} waypoints"
                     )
                     raise ValueError(msg)
-        self._last_sent_value = values[-1]
+        self._built = [(t, v) for (t, _), v in zip(timed, values, strict=True)]
         return make_timed_waypoints_request(
             self._mode,
-            [(t, v) for (t, _), v in zip(timed, values, strict=True)],
+            self._built,
             delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
         )
 

@@ -17,19 +17,13 @@ triggering condition's name is available on ``jogger.stop_condition_triggered``.
 from __future__ import annotations
 
 import asyncio
-import bisect
-import contextlib
 import logging
 import time
 from typing import TYPE_CHECKING, Self, TypeAlias, cast, overload
 
-from novapolicy.estop import (
-    EstopMonitor,
-    check_estop,
-    check_sessions,
-    triggered_stop_condition,
-)
+from novapolicy.estop import EstopMonitor
 from novapolicy.jogging.clock import ServerMs
+from novapolicy.jogging.lifecycle import SessionLifecycle, move_to_start_joint_position
 from novapolicy.jogging.live_buffer import (
     LIVE_LEAD_MS,
     trajectory_elapsed_ms,
@@ -69,10 +63,6 @@ def _is_chunk(value: object) -> bool:
 # latency, and stays constant: anything time-varying in the time-to-position mapping is executed
 # as a lurch.
 LEAD_MS = LIVE_LEAD_MS
-
-# How much commanded history is retained for Rerun tracking, in server ms. Only
-# needs to outlast the delivery burst that makes the cached pose stale.
-_COMMAND_HISTORY_MS = 1000
 
 
 # ---------------------------------------------------------------------------
@@ -114,13 +104,14 @@ class _BaseJogger:
             start_joint_position = {self._mg_list[0]: start_joint_position}
         self._start_joint_position = start_joint_position
         self._target: dict[MotionGroup, _Target] | None = None
-        self._estop: EstopMonitor | None = None
+        self._lifecycle = SessionLifecycle(
+            {mg.id: session for mg, session in self._sessions.items()}, self._mg_list
+        )
         self._rerun: PolicyRerunLogger | None = None
         self._loop_t0: float | None = None
         self._ack0_ms: float = 0.0
         self._tick_ms: float | None = None
         self._timeline_ms: float = 0.0
-        self._commanded: dict[str, dict[int, list[float]]] = {}
 
     @property
     def elapsed(self) -> float:
@@ -145,10 +136,6 @@ class _BaseJogger:
         sets the pace for all of them.
         """
         return min(s.session_elapsed_ms for s in self._sessions.values())
-
-    def _sessions_by_id(self) -> dict[str, WaypointJoggingSession]:
-        """Sessions keyed by motion group ID (for Rerun streaming)."""
-        return {mg.id: session for mg, session in self._sessions.items()}
 
     def _anchor(self, mg: MotionGroup) -> ServerMs | None:
         """Server timestamp for content generated at this iteration's instant.
@@ -200,18 +187,7 @@ class _BaseJogger:
                 observed_at_ms=produced_ms,
                 extend_buffer=False,
             )
-            # Log what the session queued, after the pipeline's chunk modules: with a LiveBuffer
-            # the target is commanded about the window later, and plotting the raw target would
-            # show that delay as tracking error. (Waypoint modules such as EaseIn reshape values
-            # at the send and are not reflected here.)
-            queued = session.queued_chunk
-            if queued is not None:
-                self._record_commanded(
-                    mg.id, queued.steps, queued.dt_ms, queued.first_timestamp_ms or anchor
-                )
-            self._log_target(mg.id, steps, 0.0)
-            return
-        self._log_target(mg.id, [values], 0.0)
+        self._log_target(mg.id, [list(values)], 0.0)
 
     def _send_chunk(self, mg: MotionGroup, chunk: _Chunk, dt_ms: float) -> list[float]:
         """Send one motion group's chunk. Returns its final step.
@@ -233,7 +209,6 @@ class _BaseJogger:
                 # HoldPadding pads, and this is where that is decided.
                 extend_buffer=True,
             )
-            self._record_commanded(mg.id, chunk, dt_ms, anchor)
             self._log_target(mg.id, chunk, dt_ms)
         return chunk[-1]
 
@@ -298,84 +273,18 @@ class _BaseJogger:
         )
         raise TypeError(msg)
 
-    def _record_commanded(
-        self, mg_id: str, steps: list[list[float]], dt_ms: float, anchor_ms: int | None
-    ) -> None:
-        """Remember what was commanded for each server millisecond.
-
-        Only kept while Rerun is logging — it exists so the tracking plot can
-        line a command up with the state that was measured at the same moment.
-        A later chunk overwrites an earlier one at the same timestamp, which is
-        what the server does with it too.
-        """
-        if self._rerun is None or anchor_ms is None or not steps:
-            return
-        history = self._commanded.setdefault(mg_id, {})
-        spacing = dt_ms if dt_ms > 0 else 0.0
-        for i, step in enumerate(steps):
-            history[anchor_ms + int(i * spacing)] = list(step)
-            if spacing <= 0:
-                break
-        cutoff = anchor_ms - _COMMAND_HISTORY_MS
-        for timestamp in [t for t in history if t < cutoff]:
-            del history[timestamp]
-
-    def _commanded_at(self, mg_id: str, server_ms: int | None) -> list[float] | None:
-        """What was commanded for ``server_ms``, interpolated between waypoints."""
-        history = self._commanded.get(mg_id)
-        if not history or server_ms is None:
-            return None
-        timestamps = sorted(history)
-        index = bisect.bisect_left(timestamps, server_ms)
-        if index == 0:
-            return history[timestamps[0]]
-        if index >= len(timestamps):
-            return history[timestamps[-1]]
-        before, after = timestamps[index - 1], timestamps[index]
-        start, end = history[before], history[after]
-        fraction = (server_ms - before) / (after - before)
-        return [start[k] + fraction * (end[k] - start[k]) for k in range(len(start))]
-
     def _log_target(self, mg_id: str, steps: list[list[float]], dt_ms: float) -> None:
-        """Log jogging target to Rerun as an action chunk visualization."""
+        """Log jogging target to Rerun as an action chunk; the tracking error is logged per
+        state packet (see :meth:`PolicyRerunLogger.log_state_packet`)."""
         if self._rerun is None:
             return
         from novapolicy.types import ActionChunk  # ruff: ignore[import-outside-top-level]
 
-        # Only the commanded chunk is logged here. Tracking error belongs to
-        # the state, not to this tick, and is logged per state packet in
-        # :meth:`_log_state_tracking`.
-        session = self._sessions_by_id().get(mg_id)
-        if session is not None and session.mode == "cartesian":
+        if self._MODE == "cartesian":
             chunk = ActionChunk(tcp={mg_id: steps}, dt_ms=dt_ms)
         else:
             chunk = ActionChunk(joints={mg_id: steps}, dt_ms=dt_ms)
         self._rerun.log_action_chunk(chunk, step=0)
-
-    def _log_state_tracking(
-        self,
-        mg_id: str,
-        mode: str,
-        state: RobotState,
-        server_ms: int,
-        generated_at: float,
-    ) -> None:
-        """Log commanded-vs-actual for one state packet, at its own instant.
-
-        Driven by the state stream (see :meth:`WaypointJoggingSession.set_state_observer`), and
-        the command is resolved for *this packet's* server timestamp, so both sides of the
-        difference describe the same instant.
-        """
-        if self._rerun is None:
-            return
-        self._rerun.log_robot_state(mg_id, state, at=generated_at)
-        commanded = self._commanded_at(mg_id, server_ms)
-        if commanded is None:
-            return
-        if mode == "cartesian":
-            self._rerun.log_tcp_tracking(mg_id, commanded, state, step=0, at=generated_at)
-        else:
-            self._rerun.log_joint_tracking(mg_id, commanded, state, step=0, at=generated_at)
 
     def state(self) -> dict[MotionGroup, RobotState] | RobotState | None:
         """Get current robot state(s).
@@ -393,20 +302,10 @@ class _BaseJogger:
         return result if result else None
 
     async def __aenter__(self) -> Self:
-        # PTP to start_joint_position positions before starting jogging
-        if self._start_joint_position:
-            await self._move_to_start_joint_position()
-
-        for session in self._sessions.values():
-            await session.start()
-        self._estop = EstopMonitor(self._mg_list)
-        await self._estop.start()
-        await self._init_rerun()
-        # Wait for all sessions to be fully initialized (server acknowledged)
-        # before returning control to user code. This ensures the robot is
-        # ready to execute waypoints the moment user code starts its timer.
-        for session in self._sessions.values():
-            await session.wait_ready()
+        await move_to_start_joint_position(self._start_joint_position)
+        await self._lifecycle.start_sessions()
+        self._rerun = await self._lifecycle.start_monitoring(EstopMonitor(self._mg_list))
+        await self._lifecycle.wait_ready()
         kind = self.__class__.__name__
         logger.info(
             "%s started (%d motion group%s)",
@@ -422,90 +321,13 @@ class _BaseJogger:
         exc_val: BaseException | None,
         exc_tb: object,
     ) -> bool:
-        # Let the accepted waypoints finish, unless a fault, an e-stop or a fired stop
-        # condition wants the robot stopped now.
-        if exc_type is None and self.stop_condition_triggered is None:
-            with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
-                _ = await asyncio.gather(
-                    *(session.drain() for session in self._sessions.values()),
-                    return_exceptions=True,
-                )
-        self._stop_observing_states()
-        if self._rerun is not None:
-            await self._rerun.stop_streaming()
-            self._rerun = None
-        if self._estop is not None:
-            await self._estop.stop()
-            self._estop = None
-        # In parallel: each stop waits for its server to settle.
-        results = await asyncio.gather(
-            *(session.stop() for session in self._sessions.values()), return_exceptions=True
+        # A fault, an e-stop or a fired stop condition wants the robot stopped now.
+        await self._lifecycle.close(
+            drain=exc_type is None and self.stop_condition_triggered is None
         )
-        for result in results:
-            if isinstance(result, BaseException) and not isinstance(
-                result, (asyncio.CancelledError, OSError, RuntimeError)
-            ):
-                raise result
+        self._rerun = None
         logger.info("%s stopped", self.__class__.__name__)
         return False
-
-    async def _init_rerun(self) -> None:
-        """Initialize Rerun logger if a viewer is active."""
-        from novapolicy.rerun import _is_rerun_active  # ruff: ignore[import-outside-top-level]
-
-        if not _is_rerun_active():
-            return
-
-        from novapolicy.rerun import PolicyRerunLogger  # ruff: ignore[import-outside-top-level]
-
-        self._rerun = PolicyRerunLogger(
-            self._mg_list,
-            use_tcp_offset_for_joint_actions=True,
-        )
-        await self._rerun.initialize()
-        if self._rerun is not None:
-            self._rerun.start_streaming(self._sessions_by_id())
-            self._observe_states_for_rerun()
-
-    def _observe_states_for_rerun(self) -> None:
-        """Log tracking error from the state stream for as long as Rerun is on."""
-        for mg, session in self._sessions.items():
-            mg_id, mode = mg.id, session.mode
-
-            def observe(
-                state: RobotState,
-                server_ms: int,
-                generated_at: float,
-                mg_id: str = mg_id,
-                mode: str = mode,
-            ) -> None:
-                self._log_state_tracking(mg_id, mode, state, server_ms, generated_at)
-
-            session.set_state_observer(observe)
-
-    def _stop_observing_states(self) -> None:
-        for session in self._sessions.values():
-            session.set_state_observer(None)
-
-    async def _move_to_start_joint_position(self) -> None:
-        """PTP move all motion groups to their start_joint_position positions."""
-        from nova.actions import jnt  # ruff: ignore[import-outside-top-level]
-
-        async def _ptp(mg: MotionGroup, joints: list[float]) -> None:
-            tcp = await mg.active_tcp_name() or (await mg.tcp_names())[0]
-            # Clear collision setups so the cell's safety planes don't reject
-            # planning at this exact start pose (the same relaxation a manual
-            # PTP-to-home would use).
-            setup = await mg.get_setup(tcp)
-            setup.collision_setups = {}
-            target = tuple(joints)
-            traj = await mg.plan([jnt(target)], tcp, motion_group_setup=setup)
-            await mg.execute(traj, tcp, actions=[jnt(target)])
-
-        start_positions = self._start_joint_position
-        if start_positions is None:
-            return
-        await asyncio.gather(*(_ptp(mg, joints) for mg, joints in start_positions.items()))
 
     @property
     def stop_condition_triggered(self) -> str | None:
@@ -514,7 +336,7 @@ class _BaseJogger:
         A fired stop condition ends the ``async for`` loop normally (no
         exception); read this afterwards to learn which one fired.
         """
-        return triggered_stop_condition(self._sessions)
+        return self._lifecycle.stop_condition
 
     async def __aiter__(
         self,
@@ -522,11 +344,7 @@ class _BaseJogger:
         """Yield current state at ~100Hz. Raises on faults; a stop condition ends
         the loop normally (see :attr:`stop_condition_triggered`). Use ``break`` to stop.
         """
-        while True:
-            check_sessions(self._sessions)
-            check_estop(self._estop)
-            if triggered_stop_condition(self._sessions) is not None:
-                return
+        while self._lifecycle.check() is None:
             s = self.state()
             if s is None:
                 await asyncio.sleep(0.01)

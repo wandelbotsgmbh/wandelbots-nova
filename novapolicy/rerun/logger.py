@@ -19,13 +19,14 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from nova_rerun_bridge.dh_robot import DHRobot
     from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
+    from novapolicy.jogging.waypoint_session import WaypointJoggingSession
     from novapolicy.rerun.context import RerunContext
     from novapolicy.rerun.streaming import StateStreamer
     from novapolicy.types import ActionChunk
@@ -136,6 +137,9 @@ class PolicyRerunLogger:
         self._tcp_target_trail: dict[str, list[list[float]]] = {}
         self._streamer: StateStreamer | None = None
         self._last_robot_state_at: dict[str, float] = {}
+        self._step = 0
+        """The latest observed policy step, which per-packet tracking is logged at."""
+        self._observed: list[tuple[WaypointJoggingSession, Callable[..., None]]] = []
         self._recording: RecordingStream | None = None
         # Rerun writes are handed off rather than paid for on the caller's
         # thread: for a jogging control loop the caller is the loop producing
@@ -513,14 +517,16 @@ class PolicyRerunLogger:
             self._defer(lambda: write(ctx), at=at)
 
     def log_observation(self, states: dict[str, RobotState], step: int) -> None:
-        """Log the states the policy observed: robot mesh, joint scalars, TCP marker."""
+        """Log the states the policy observed: robot mesh, joint scalars, TCP marker. Written by
+        the sink, like every state packet, so one thread draws the robot."""
+        self._step = step
 
         def write(ctx: RerunContext) -> None:
             from novapolicy.rerun.observation import log_observation
 
             log_observation(ctx, states, step)
 
-        self._log_now(write)
+        self._log_later(write)
 
     def log_bridge_chunk(self, chunk: ActionChunk, step: int) -> None:
         """Log an interpolated connector in Nova Violet."""
@@ -541,19 +547,6 @@ class PolicyRerunLogger:
             log_action_chunk(ctx, chunk, step, n_action_steps=n_action_steps)
 
         self._log_later(write)
-
-    def log_target_tracking(
-        self, chunk: ActionChunk, states: dict[str, RobotState], step: int
-    ) -> None:
-        """Log each first commanded target against the latest actual state."""
-        for mg_id, steps in chunk.joints.items():
-            state = states.get(mg_id)
-            if steps and state is not None:
-                self.log_joint_tracking(mg_id, steps[0], state, step)
-        for mg_id, steps in chunk.tcp.items():
-            state = states.get(mg_id)
-            if steps and state is not None:
-                self.log_tcp_tracking(mg_id, steps[0], state, step)
 
     def log_joint_tracking(
         self,
@@ -592,10 +585,8 @@ class PolicyRerunLogger:
     def log_robot_state(self, mg_id: str, state: RobotState, *, at: float) -> None:
         """Move the 3D robot and TCP trail to a state packet, stamped when it was generated.
 
-        Meant to be called for every state packet. It logs at most one packet per
-        state sample period of *generation* time, so the robot moves at an even
-        rate in the recording however the packets arrived; the streamer's polling
-        loop stops logging this motion group.
+        Meant to be called for every state packet. It logs at most one packet per state sample
+        period of *generation* time, so the robot moves at an even rate however packets arrived.
         """
         streamer = self._streamer
         if self._ctx is None or streamer is None:
@@ -604,7 +595,6 @@ class PolicyRerunLogger:
         if last is not None and at - last < STATE_SAMPLE_PERIOD_S:
             return
         self._last_robot_state_at[mg_id] = at
-        streamer.stop_polling(mg_id)
 
         def write(ctx: RerunContext) -> None:
             ctx.set_time()
@@ -672,16 +662,30 @@ class PolicyRerunLogger:
         self._log_now(write)
 
     # ------------------------------------------------------------------
-    # Continuous state streaming (between policy steps)
+    # State packets, controller timing and camera frames (between policy steps)
     # ------------------------------------------------------------------
+
+    def log_state_packet(
+        self, session: WaypointJoggingSession, state: RobotState, server_ms: int, at: float
+    ) -> None:
+        """Log one state packet: the robot, and what the session sent for that packet's own
+        server timestamp against it, so both sides of the tracking error are the same instant."""
+        mg_id = session.motion_group_id
+        self.log_robot_state(mg_id, state, at=at)
+        commanded = session.commanded_at(server_ms)
+        if commanded is None:
+            return
+        log = self.log_tcp_tracking if session.mode == "cartesian" else self.log_joint_tracking
+        log(mg_id, commanded, state, self._step, at=at)
 
     def start_streaming(
         self,
-        sessions: dict[str, Any],
+        sessions: Mapping[str, WaypointJoggingSession],
         *,
         image_reader: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
-        """Start background state and camera-frame logging."""
+        """Log every state packet of ``sessions``, and their controller timing and the camera
+        frames in the background."""
         ctx = self._ctx
         if ctx is None:
             return
@@ -696,10 +700,25 @@ class PolicyRerunLogger:
             max_trail_points=ctx.max_trail_points,
             image_reader=image_reader,
         )
-        self._streamer.start(sessions)
+        self._streamer.start(dict(sessions))
+        for session in sessions.values():
+
+            def observe(
+                state: RobotState,
+                server_ms: int,
+                at: float,
+                session: WaypointJoggingSession = session,
+            ) -> None:
+                self.log_state_packet(session, state, server_ms, at)
+
+            session.add_state_observer(observe)
+            self._observed.append((session, observe))
 
     async def stop_streaming(self) -> None:
-        """Stop background streaming and disconnect the dedicated recording."""
+        """Stop logging state packets and streaming, and disconnect the dedicated recording."""
+        for session, observe in self._observed:
+            session.remove_state_observer(observe)
+        self._observed = []
         try:
             if self._streamer is not None:
                 await self._streamer.stop()
