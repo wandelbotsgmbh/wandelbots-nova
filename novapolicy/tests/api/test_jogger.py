@@ -129,7 +129,7 @@ def _tick(jogger, sessions, elapsed_ms: float) -> None:
     jogger._loop_t0 = _CLOCK_BASE  # type: ignore[attr-defined]
     jogger._ack0_ms = 0.0  # type: ignore[attr-defined]
     for session in sessions.values():
-        session.session_elapsed_ms = elapsed_ms
+        session.estimated_server_timestamp_ms = elapsed_ms
 
 
 def test_setting_a_single_target_streams_it_to_the_robot():

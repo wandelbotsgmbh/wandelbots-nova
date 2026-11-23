@@ -22,7 +22,11 @@ from novapolicy.io import IOWriter
 from novapolicy.jogging.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, ServerMs
 from novapolicy.jogging.modules import MIN_LEAD_MS, JointClamp, default_pipeline
 from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
-from novapolicy.jogging.session import JoggingStateTracker, StandstillDetector
+from novapolicy.jogging.session import (
+    JoggingStateTracker,
+    StandstillDetector,
+    jogging_details,
+)
 from novapolicy.jogging.waypoints import (
     PendingChunk,
     anchor_timestamp_ms,
@@ -64,14 +68,6 @@ _COMMAND_HISTORY_MS = 1000
 # How long stop() waits, after StopActionChunksRequest, for the state stream to
 # report the session no longer RUNNING before it closes the stream anyway.
 _STOP_TIMEOUT_S = 2.0
-
-
-def _jogging_running(state: api.models.MotionGroupState) -> bool:
-    """Whether the state reports a jogging session that is RUNNING."""
-    details = state.execute.details if state.execute is not None else None
-    return isinstance(details, api.models.JoggingDetails) and isinstance(
-        details.state, api.models.JoggingRunning
-    )
 
 
 @dataclass(slots=True)
@@ -188,7 +184,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._due_lock = asyncio.Lock()
         self._scheduled_until_server_ms = 0
         self._scheduled_waypoint_timestamps: list[int] = []
-        self._scheduled_step_timestamps: list[int] = []
         self._scheduled_start: tuple[int, ServerMs, float] | None = None
         """Policy timestep at the caller's first step, its time and the step spacing."""
         self._last_sent: tuple[int, list[float]] | None = None
@@ -294,21 +289,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._jog_tracker.last_kind
 
     @property
-    def is_running(self) -> bool:
-        """Whether the jogging state stream reports ``RUNNING``; it engages a moment after the
-        first waypoint."""
-        return self._jog_tracker.last_kind == "RUNNING"
-
-    @property
     def is_at_standstill(self) -> bool:
         """Whether the joints have stopped moving, measured from the state stream; NOVA reports
         no "waypoints ran out" state (executor.md, "Detecting standstill")."""
         return self._standstill.is_settled
-
-    @property
-    def standstill_ms(self) -> float:
-        """How long the joints have been still [server ms]; ``0.0`` if moving."""
-        return self._standstill.standstill_ms
 
     @property
     def has_failed(self) -> bool:
@@ -319,12 +303,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """Name of the stop condition that ended the session, or ``None``; a normal stop, so
         :attr:`has_failed` stays ``False``."""
         return self._stop_condition
-
-    @property
-    def session_elapsed_ms(self) -> int:
-        """Session "now" [server ms], extrapolated from the latest acknowledged state without a
-        cap (ADR 0012)."""
-        return self._clock.acknowledged_elapsed_ms
 
     @property
     def queued_chunk_count(self) -> int:
@@ -344,16 +322,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
     @property
     def scheduled_waypoint_timestamps(self) -> tuple[int, ...]:
-        """NOVA timestamps of the waypoints sent in the latest request, trimmed and padded; for
-        a caller's step use :meth:`scheduled_timestamp_for_step`."""
+        """NOVA timestamps of the waypoints sent in the latest request, trimmed and padded."""
         return tuple(self._scheduled_waypoint_timestamps)
-
-    def scheduled_timestamp_for_step(self, step: int) -> ServerMs | None:
-        """NOVA timestamp of the caller's ``step`` in the latest chunk, sent or dropped; ``None``
-        when it had no such step."""
-        if 0 <= step < len(self._scheduled_step_timestamps):
-            return ServerMs(self._scheduled_step_timestamps[step])
-        return None
 
     @property
     def scheduled_action_timestep(self) -> int:
@@ -592,13 +562,16 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 if state.tcp is not None:
                     self._current_tcp_name = state.tcp
                 self._jog_tracker.update_from_state(state)
+                details = jogging_details(state)
                 # Only a state after the stop was acknowledged counts (ADR 0019).
-                if self._stop_acknowledged and not _jogging_running(state):
+                if self._stop_acknowledged and not isinstance(
+                    getattr(details, "state", None), api.models.JoggingRunning
+                ):
                     self._stop_settled.set()
                 state_timestamp = getattr(state, "timestamp", None)
                 self._clock.observe_state_timestamp(state_timestamp)
-                ts_ms = JoggingTimeClock.extract_from_state(state)
-                if ts_ms is None:
+                ts_ms = getattr(details, "jogger_session_timestamp_ms", None)
+                if not isinstance(ts_ms, int):
                     continue
                 self._clock.update(ts_ms, state_timestamp)
                 self._current_state_server_ms = ts_ms
@@ -757,7 +730,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 continue
             request = trimmed.request
             self._scheduled_chunk_count = pending.sequence
-            self._scheduled_step_timestamps = list(trimmed.step_timestamps)
             self._scheduled_waypoint_timestamps = [
                 waypoint.timestamp for waypoint in request.waypoints
             ]
@@ -814,7 +786,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """Count a chunk dropped as entirely past as scheduled, with its step timestamps; nothing
         was sent, so :attr:`scheduled_until_server_ms` keeps the previous chunk's motion."""
         self._scheduled_chunk_count = pending.sequence
-        self._scheduled_step_timestamps = list(step_timestamps)
         self._scheduled_waypoint_timestamps = []
         self._record_timesteps(pending, step_timestamps, 0)
         self._scheduled_at_server_ms = self._clock.last_server_timestamp_ms

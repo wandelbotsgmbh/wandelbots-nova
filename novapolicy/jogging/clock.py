@@ -115,7 +115,9 @@ class JoggingTimeClock:
 
     @property
     def estimated_server_timestamp_ms(self) -> ServerMs:
-        """Estimate the server clock now, extrapolated from the latest state timestamp."""
+        """Session "now": the latest jogger timestamp plus the time since its state was
+        generated; client elapsed time before the first one. Not capped by
+        ``max_lookahead_ms``, which only warns (ADR 0012)."""
         if not self.synced:
             # Before the first server timestamp, the server clock starts with the first send.
             return ServerMs(self.client_elapsed_ms)
@@ -123,17 +125,6 @@ class JoggingTimeClock:
         if drift_ms >= self.max_lookahead_ms:
             self._note_stall(drift_ms)
         return ServerMs(self._last_server_ts_ms + int(max(0.0, drift_ms)))
-
-    @property
-    def acknowledged_elapsed_ms(self) -> int:
-        """Estimated session "now": the latest jogger timestamp plus the time since its state
-        was generated; client elapsed time before the first one.
-
-        Not capped by ``max_lookahead_ms``, which only warns (ADR 0012).
-        """
-        if not self.synced:
-            return self.client_elapsed_ms
-        return self.estimated_server_timestamp_ms
 
     def _note_stall(self, drift_ms: float) -> None:
         """Warn once when no fresh jogger timestamp arrived for one lookahead window."""
@@ -185,20 +176,6 @@ class JoggingTimeClock:
             )
         self._last_server_ts_ms = timestamp_ms
         self._last_server_wall = sample_wall
-
-    @staticmethod
-    def extract_from_state(state: object) -> int | None:
-        """Extract jogger_session_timestamp_ms from a MotionGroupState, or None."""
-        execute = getattr(state, "execute", None)
-        if execute is None:
-            return None
-        details = getattr(execute, "details", None)
-        if details is None:
-            return None
-        ts = getattr(details, "jogger_session_timestamp_ms", None)
-        if isinstance(ts, int):
-            return ts
-        return None
 
 
 SINGLE_STEP_MARGIN_MS = 67.0

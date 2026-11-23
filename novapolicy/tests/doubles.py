@@ -46,14 +46,11 @@ def fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
     session.failure_reason = ""
     session.failure_exception = None
     session.stop_condition_triggered = None
-    session.session_elapsed_ms = 0
-    session.is_running = False
     session.jogging_state = None
     # Explicit, not left to auto-attribute: a bare MagicMock attribute is
     # truthy, which would silently satisfy the settle check's standstill term
     # and stop these tests exercising it at all.
     session.is_at_standstill = False
-    session.standstill_ms = 0.0
     session.queued_chunk_count = 0
     session.queued_chunk = None  # no Bridge module in front
     session.executing_action_timestep = -1
@@ -61,19 +58,6 @@ def fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
     session.scheduled_until_server_ms = 0
     session.scheduled_waypoint_timestamps = ()
     session.last_server_timestamp_ms = 0
-
-    def scheduled_timestamp_for_step(step: int) -> int | None:
-        """Mirror the real session: caller step index -> absolute timestamp.
-
-        Nothing is trimmed in these tests, so the caller's steps and the sent
-        waypoints are the same list.
-        """
-        timestamps = session.scheduled_waypoint_timestamps
-        if 0 <= step < len(timestamps):
-            return timestamps[step]
-        return None
-
-    session.scheduled_timestamp_for_step = MagicMock(side_effect=scheduled_timestamp_for_step)
     session.start = AsyncMock()
     session.stop = AsyncMock()
     session.drain = AsyncMock(return_value=True)

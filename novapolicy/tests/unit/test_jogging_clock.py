@@ -19,6 +19,7 @@ from novapolicy.jogging.clock import (
     _STATE_CLOCK_CALIBRATION_SAMPLES,
     JoggingTimeClock,
 )
+from novapolicy.jogging.session import jogging_details
 
 
 def test_unsynced_clock_reports_wall_clock_elapsed(manual_time):
@@ -91,8 +92,8 @@ def test_delayed_state_uses_generation_time_not_receipt_time(manual_time):
     assert clock.estimated_server_timestamp_ms in {1_199, 1_200}
 
 
-def test_extract_from_state_walks_execute_details():
-    """extract_from_state reads execute.details.jogger_session_timestamp_ms."""
+def test_jogging_details_walks_execute_details():
+    """jogging_details reads execute.details, where jogger_session_timestamp_ms lives."""
 
     class _Details:
         jogger_session_timestamp_ms = 123
@@ -103,41 +104,41 @@ def test_extract_from_state_walks_execute_details():
     class _State:
         execute = _Execute()
 
-    assert JoggingTimeClock.extract_from_state(_State()) == 123
+    assert getattr(jogging_details(_State()), "jogger_session_timestamp_ms", None) == 123
 
 
-def test_extract_from_state_handles_missing_fields():
+def test_jogging_details_handles_missing_fields():
     """Missing execute/details yields None rather than raising."""
 
     class _Empty:
         execute = None
 
-    assert JoggingTimeClock.extract_from_state(_Empty()) is None
-    assert JoggingTimeClock.extract_from_state(object()) is None
+    assert jogging_details(_Empty()) is None
+    assert jogging_details(object()) is None
 
 
 # ===========================================================================
-# acknowledged_elapsed_ms — "now" must follow the server, not a free-running
+# estimated_server_timestamp_ms — "now" must follow the server, not a free-running
 # wall clock, so a stalled connection can't make targets race ahead.
 # ===========================================================================
 
 
-def test_unsynced_acknowledged_elapsed_falls_back_to_wall_clock(manual_time):
+def test_unsynced_estimate_falls_back_to_wall_clock(manual_time):
     """Before any server timestamp arrives, 'now' is just wall-clock elapsed."""
     clock = JoggingTimeClock()
     clock.start()
     manual_time.advance(0.2)
     assert clock.synced is False
-    assert clock.acknowledged_elapsed_ms in {199, 200}
+    assert clock.estimated_server_timestamp_ms in {199, 200}
 
 
-def test_acknowledged_elapsed_tracks_wall_clock_on_a_healthy_link(manual_time):
+def test_estimate_tracks_wall_clock_on_a_healthy_link(manual_time):
     """With fresh server acks, acknowledged time follows the latest server sample."""
     clock = JoggingTimeClock(max_lookahead_ms=300.0)
     clock.start()
     manual_time.advance(0.5)
     clock.update(500)
-    assert clock.acknowledged_elapsed_ms == 500
+    assert clock.estimated_server_timestamp_ms == 500
 
 
 def test_estimated_time_keeps_advancing_through_a_stall(manual_time):
@@ -153,7 +154,7 @@ def test_estimated_time_keeps_advancing_through_a_stall(manual_time):
     clock.update(300)
     manual_time.advance(5.0)
 
-    assert clock.acknowledged_elapsed_ms == 5_300
+    assert clock.estimated_server_timestamp_ms == 5_300
 
 
 def test_stall_logs_a_warning_once_and_recovers(caplog, manual_time):
@@ -167,14 +168,14 @@ def test_stall_logs_a_warning_once_and_recovers(caplog, manual_time):
     # A fresh ack within the lookahead window never trips the stall warning.
     with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
         for _ in range(10):
-            _ = clock.acknowledged_elapsed_ms
+            _ = clock.estimated_server_timestamp_ms
     assert not [r for r in caplog.records if "stalled" in r.message]
     manual_time.advance(5.0)
 
     with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
         # Read "now" many times — the operator should see ONE warning, not a flood.
         for _ in range(10):
-            _ = clock.acknowledged_elapsed_ms
+            _ = clock.estimated_server_timestamp_ms
     stall_warnings = [r for r in caplog.records if "stalled" in r.message]
     assert len(stall_warnings) == 1
 
@@ -188,7 +189,7 @@ def test_stall_logs_a_warning_once_and_recovers(caplog, manual_time):
     caplog.clear()
     manual_time.advance(5.0)
     with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
-        _ = clock.acknowledged_elapsed_ms
+        _ = clock.estimated_server_timestamp_ms
     assert any("stalled" in r.message for r in caplog.records)
 
 

@@ -525,7 +525,9 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         robot.session.executing_action_timestep = (
             queued.action_timestep + (stamps[-1] - start_ms) // 10
         )
-        robot.session.session_elapsed_ms = 100_000  # must not affect controller-timer placement
+        robot.session.estimated_server_timestamp_ms = (
+            100_000  # must not affect controller-timer placement
+        )
 
     policy = _TestPolicy(get_actions, requires_bridge=True)
     robot.session.update_chunk.side_effect = acknowledge_chunk

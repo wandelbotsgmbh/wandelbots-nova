@@ -17,6 +17,12 @@ _BLOCKING_PAUSES = frozenset({
 })
 
 
+def jogging_details(state: object) -> object | None:
+    """``state.execute.details`` of a ``MotionGroupState``, or ``None`` when it has none."""
+    execute = getattr(state, "execute", None)
+    return None if execute is None else getattr(execute, "details", None)
+
+
 # How far a joint may drift from its reference before the robot counts as moving [rad].
 _STANDSTILL_EPS_RAD = 1e-3
 
@@ -87,7 +93,7 @@ class JoggingStateTracker:
 
     def update_from_state(self, state: object) -> None:
         """Extract jogging pause reason from MotionGroupState.execute.details."""
-        jog_state = self._extract_jogging_state(state)
+        jog_state = getattr(jogging_details(state), "state", None)
 
         if jog_state is None:
             self._paused_reason = None
@@ -116,17 +122,6 @@ class JoggingStateTracker:
                 self._paused_detail = description
             else:
                 self._paused_detail = ""
-
-    @staticmethod
-    def _extract_jogging_state(state: object) -> object | None:
-        """Navigate MotionGroupState.execute.details.state safely."""
-        execute = getattr(state, "execute", None)
-        if execute is None:
-            return None
-        details = getattr(execute, "details", None)
-        if details is None:
-            return None
-        return getattr(details, "state", None)
 
     def check(self) -> None:
         """Raise MotionError after confirmed blocking pause."""

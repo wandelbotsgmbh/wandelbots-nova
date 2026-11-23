@@ -372,7 +372,8 @@ async def test_a_lead_chunk_of_several_steps_is_dated_by_its_observation():
         # they are left out; the rest keep their times.
         assert [w.timestamp for w in second] == [1_300, 1_340, 1_380]
         assert [_joints(w)[0] for w in second] == [13.0, 14.0, 15.0]
-        assert session._scheduled_step_timestamps[:3] == [1_180, 1_220, 1_260]
+        # The dropped steps 0 to 2 kept 1180, 1220 and 1260: step 3 sits three steps after.
+        assert second[0].timestamp == 1_180 + 3 * 40
 
 
 @pytest.mark.asyncio
@@ -995,23 +996,31 @@ async def test_a_trimmed_chunk_still_reports_where_each_caller_step_landed():
     indexing the *sent* request shifts that origin by however many were dropped,
     on every chunk, compounding.
     """
-    async with _started(pipeline=_unpadded()) as (session, server):
+    seen: list[tuple[int, ServerMs] | None] = []
+
+    class _SeesStart:
+        """A chunk module noting where the session says the policy's first step sat."""
+
+        def on_chunk(self, chunk: PendingChunk, context: Any) -> PendingChunk:
+            seen.append(context.scheduled_start)  # a closure: survives the per-session copy
+            return chunk
+
+    async with _started(pipeline=[_SeesStart(), *_unpadded()]) as (session, server):
         steps = [[float(i)] * 6 for i in range(6)]
-        session.update_chunk(steps=steps, dt_ms=50.0, first_timestamp_ms=0)
+        session.update_chunk(steps=steps, dt_ms=50.0, first_timestamp_ms=0, action_timestep=100)
 
         await _wait_until(lambda: len(server.requests) >= 2)
         request = _inner(server.requests[1])
         assert _is_joint_chunk(request)
         skipped = len(steps) - len(request.waypoints)
         assert skipped > 0  # the premise: something was trimmed
+        # A surviving step keeps the slot it was laid out on.
+        assert request.waypoints[0].timestamp == skipped * 50
 
-        # Every caller step keeps the slot it was laid out on, sent or not.
-        for step in range(len(steps)):
-            assert session.scheduled_timestamp_for_step(step) == step * 50
-        # A surviving step resolves to the timestamp it was really sent with.
-        assert session.scheduled_timestamp_for_step(skipped) == request.waypoints[0].timestamp
-        # And a step the caller never passed has no answer.
-        assert session.scheduled_timestamp_for_step(len(steps)) is None
+        # The next chunk sees the policy's step zero where the caller laid it out, not where
+        # the first surviving waypoint went.
+        session.update_chunk(steps=steps, dt_ms=50.0)
+        assert seen[-1] == (100, 0)
 
 
 @pytest.mark.asyncio
@@ -1042,8 +1051,18 @@ async def test_the_padded_tail_of_a_short_chunk_is_not_motion_anyone_waits_for()
 @pytest.mark.asyncio
 async def test_a_fully_elapsed_chunk_is_dropped_instead_of_sent():
     """A chunk whose every waypoint has passed is not worth sending at all."""
+    due = asyncio.Event()
+
+    async def boundary() -> None:
+        due.set()
+
     async with _started(pipeline=_unpadded()) as (session, server):
-        session.update_chunk(steps=[[1.0] * 6, [2.0] * 6], dt_ms=1.0, first_timestamp_ms=0)
+        session.update_chunk(
+            steps=[[1.0] * 6, [2.0] * 6],
+            dt_ms=1.0,
+            first_timestamp_ms=0,
+            when_due=(1, boundary),
+        )
         await _wait_until(lambda: session.scheduled_chunk_count == session.queued_chunk_count)
 
         waypoint_requests = [r for r in server.requests if _is_joint_chunk(_inner(r))]
@@ -1055,8 +1074,7 @@ async def test_a_fully_elapsed_chunk_is_dropped_instead_of_sent():
         assert session.scheduled_chunk_count == session.queued_chunk_count
         # Its steps keep the timestamps they were given, all of them in the past,
         # which is what lets a policy boundary read as already due.
-        assert session.scheduled_timestamp_for_step(0) == 0
-        assert session.scheduled_timestamp_for_step(1) == 1
+        await asyncio.wait_for(due.wait(), 0.5)
 
 
 @pytest.mark.asyncio
@@ -1141,19 +1159,19 @@ async def test_a_dead_state_stream_surfaces_instead_of_timing_out_startup():
 
 @pytest.mark.asyncio
 async def test_the_state_stream_updates_the_observable_robot_state():
-    """current_state reflects joints pushed by the server state stream; is_running follows the
-    stream's RUNNING jogging state."""
+    """current_state reflects joints pushed by the server state stream; jogging_state follows
+    the stream's jogging state."""
     moved = SimpleNamespace(joints=(0.1, 0.2, 0.3, 0.4, 0.5, 0.6))
     states = [_stream_state(moved, kind="RUNNING")]
     async with _started(states=states, ready=False) as (session, _):
-        assert session.is_running is False  # no execution state reported yet
+        assert session.jogging_state is None  # no execution state reported yet
         await _wait_until(
             lambda: (
                 session.current_state is not None
                 and list(session.current_state.joints) == [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
             )
         )
-        await _wait_until(lambda: session.is_running)
+        await _wait_until(lambda: session.jogging_state == "RUNNING")
 
 
 @pytest.mark.asyncio
@@ -1171,7 +1189,6 @@ async def test_standstill_is_reported_once_the_joints_stop_changing():
         assert session.is_at_standstill is False  # no state sampled yet
         await _wait_until(lambda: session.is_at_standstill)
         assert session.jogging_state == "RUNNING"  # never anything else
-        assert session.standstill_ms > 0
 
 
 @pytest.mark.asyncio

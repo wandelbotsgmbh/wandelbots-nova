@@ -56,10 +56,6 @@ class _Clock:
         return self.now_ms
 
     @property
-    def acknowledged_elapsed_ms(self) -> float:
-        return self.now_ms
-
-    @property
     def last_server_timestamp_ms(self) -> int:
         return int(self.now_ms)
 
@@ -93,10 +89,8 @@ class _Capture:
         proxy.failure_reason = ""
         proxy.failure_exception = None
         proxy.stop_condition_triggered = None
-        proxy.is_running = True
         proxy.jogging_state = None
         proxy.is_at_standstill = True
-        proxy.standstill_ms = 1000.0
         proxy.queued_chunk_count = 0
         proxy.scheduled_chunk_count = 0
         proxy.scheduled_until_server_ms = 0
@@ -105,10 +99,8 @@ class _Capture:
         proxy.drain = AsyncMock(return_value=True)
         proxy.wait_ready = AsyncMock()
         proxy.write_ios = AsyncMock()
-        step_timestamps: list[int] = []
 
         def sync_clock() -> None:
-            proxy.session_elapsed_ms = int(clock.now_ms)
             proxy.last_server_timestamp_ms = int(clock.now_ms)
             proxy.estimated_server_timestamp_ms = clock.now_ms
             proxy.current_state_server_ms = int(clock.now_ms) - 5
@@ -117,9 +109,6 @@ class _Capture:
             state.joints = tuple(real._current_joints or [0.0] * 6)
             state.pose = state.tcp = None
             proxy.current_state = state
-
-        def scheduled_timestamp_for_step(step: int) -> int | None:
-            return step_timestamps[step] if 0 <= step < len(step_timestamps) else None
 
         def update_chunk(*a: object, **kw: Any) -> None:
             real.update_chunk(*a, **kw)
@@ -154,7 +143,6 @@ class _Capture:
                 ),
                 "io_due": due,
             })
-            step_timestamps[:] = scheduled.step_timestamps
             real._record_timesteps(
                 pending, scheduled.step_timestamps, scheduled.skipped
             )  # as the loop does
@@ -172,7 +160,6 @@ class _Capture:
             sync_clock()
 
         proxy.update_chunk = MagicMock(side_effect=update_chunk)
-        proxy.scheduled_timestamp_for_step = MagicMock(side_effect=scheduled_timestamp_for_step)
         proxy.queued_chunk = None
         sync_clock()
         return proxy

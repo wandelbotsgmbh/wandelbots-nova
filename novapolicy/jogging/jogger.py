@@ -113,7 +113,7 @@ class _BaseJogger:
 
     def _acknowledged_ms(self) -> float:
         """Acknowledged session "now" [ms], the minimum across arms: the slowest sets the pace."""
-        return min(s.session_elapsed_ms for s in self._sessions.values())
+        return min(s.estimated_server_timestamp_ms for s in self._sessions.values())
 
     def _anchor(self, mg: MotionGroup) -> ServerMs | None:
         """Session-clock time of content produced at this iteration, ``ack0 + elapsed + LEAD_MS``,
