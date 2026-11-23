@@ -91,22 +91,21 @@ class _Recording:
 @pytest.fixture
 def recording(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Recording]:
     record = _Recording()
-    trimmed, notify = (
-        ws.WaypointJoggingSession._trimmed_request,
+    schedule, notify = (
+        ws.WaypointJoggingSession._schedule,
         ws.WaypointJoggingSession._notify_state_observer,
     )
 
-    def recording_trimmed(self: Any, pending: Any) -> Any:
-        scheduled = trimmed(self, pending)
+    def recording_schedule(self: Any, pending: Any) -> Any:
+        scheduled = schedule(self, pending)
+        request = scheduled[0]
         record.chunks.append(pending)
-        if scheduled.request is not None:
+        if request is not None:
             record.requests += 1
             record.at_send.append(record.states[-1] if record.states else None)
-            waypoints = scheduled.request.waypoints
+            waypoints = request.waypoints
             record.spans.append((waypoints[0].timestamp, waypoints[-1].timestamp))
-            record.sent.extend(
-                (w.timestamp, w.waypoint.joints[0]) for w in scheduled.request.waypoints
-            )
+            record.sent.extend((w.timestamp, w.waypoint.joints[0]) for w in request.waypoints)
         return scheduled
 
     def recording_notify(self: Any, ts_ms: int) -> None:
@@ -114,7 +113,7 @@ def recording(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Recording]:
             record.states.append((ts_ms, self._current_joints[0]))
         notify(self, ts_ms)
 
-    monkeypatch.setattr(ws.WaypointJoggingSession, "_trimmed_request", recording_trimmed)
+    monkeypatch.setattr(ws.WaypointJoggingSession, "_schedule", recording_schedule)
     monkeypatch.setattr(ws.WaypointJoggingSession, "_notify_state_observer", recording_notify)
     yield record
 
