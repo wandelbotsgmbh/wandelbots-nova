@@ -203,9 +203,10 @@ async def test_a_dummy_vla_runs_sequentially(ur10e, recording):
     rms, peak = _tracking_deg(recording, skip_ms=0.0)
     assert rms < 1.0 and peak < 5.0, (rms, peak)
     # Each chunk runs to standstill, and the next one starts where the arm rests (its bridge
-    # begins at the measured joints). The arm stops near the previous chunk's final target, not
-    # on it: on a virtual UR10e it moved 0.3-0.5 deg after the last waypoint, with nothing
-    # commanded. (The timeout can end the last chunk anywhere, so it is not checked.)
+    # begins at the measured joints). The arm rests 0.3-0.5 deg from the previous chunk's final
+    # target on a virtual UR10e; the 0.2 deg bound this test started with failed 1 run in 4
+    # already on the commit that added it. Cause not established. (The timeout can end the last
+    # chunk anywhere, so it is not checked.)
     latest = dict(recording.sent)
     states = sorted(set(recording.states))
     for (_, previous_end), (next_start, _) in itertools.pairwise(recording.spans):
