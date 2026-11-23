@@ -21,7 +21,7 @@ import bisect
 import contextlib
 import logging
 import time
-from typing import TYPE_CHECKING, TypeAlias, cast, overload
+from typing import TYPE_CHECKING, Self, TypeAlias, cast, overload
 
 from novapolicy.estop import (
     EstopMonitor,
@@ -64,10 +64,11 @@ def _is_chunk(value: object) -> bool:
     return isinstance(value, list) and bool(value) and isinstance(value[0], list)
 
 
-# How far ahead of session time step zero is placed for an explicit chunk (tuned on one UR10e;
-# re-tune per robot and link). Must outlast the interval between pushes plus link latency, and
-# stays constant: anything time-varying in the time-to-position mapping is executed as a lurch.
-LEAD_MS = 100.0
+# How far ahead of session time step zero is placed, for a chunk and a live target alike (tuned
+# on one UR10e; re-tune per robot and link). Must outlast the interval between pushes plus link
+# latency, and stays constant: anything time-varying in the time-to-position mapping is executed
+# as a lurch.
+LEAD_MS = LIVE_LEAD_MS
 
 # How much commanded history is retained for Rerun tracking, in server ms. Only
 # needs to outlast the delivery burst that makes the cached pose stale.
@@ -149,7 +150,7 @@ class _BaseJogger:
         """Sessions keyed by motion group ID (for Rerun streaming)."""
         return {mg.id: session for mg, session in self._sessions.items()}
 
-    def _anchor(self, mg: MotionGroup, lead_ms: float = LEAD_MS) -> ServerMs | None:
+    def _anchor(self, mg: MotionGroup) -> ServerMs | None:
         """Server timestamp for content generated at this iteration's instant.
 
         The whole session shares **one fixed timeline**: content generated at trajectory time
@@ -161,7 +162,7 @@ class _BaseJogger:
         """
         if mg not in self._sessions or self._loop_t0 is None:
             return None
-        return ServerMs(int(self._ack0_ms + self.elapsed * 1000.0 + lead_ms))
+        return ServerMs(int(self._ack0_ms + self.elapsed * 1000.0 + LEAD_MS))
 
     def _expected_dims(self, mg: MotionGroup) -> int | None:
         """Expected target dimension for a motion group. Override in subclass."""
@@ -181,7 +182,7 @@ class _BaseJogger:
         session = self._sessions.get(mg)
         if session is not None:
             steps = [list(values)]
-            anchor = self._anchor(mg, LIVE_LEAD_MS)
+            anchor = self._anchor(mg)
             # When the target was produced, on the loop's one timeline shared by every arm: a
             # LiveBuffer in the pipeline times targets by it, so the arms stay on one grid.
             # Rounded apart: the loop time is on a 10 ms grid, and truncating the sum would put
@@ -391,7 +392,7 @@ class _BaseJogger:
                 result[mg] = s
         return result if result else None
 
-    async def __aenter__(self) -> _BaseJogger:
+    async def __aenter__(self) -> Self:
         # PTP to start_joint_position positions before starting jogging
         if self._start_joint_position:
             await self._move_to_start_joint_position()
@@ -424,7 +425,11 @@ class _BaseJogger:
         # Let the accepted waypoints finish, unless a fault, an e-stop or a fired stop
         # condition wants the robot stopped now.
         if exc_type is None and self.stop_condition_triggered is None:
-            await self._drain_sessions()
+            with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
+                _ = await asyncio.gather(
+                    *(session.drain() for session in self._sessions.values()),
+                    return_exceptions=True,
+                )
         self._stop_observing_states()
         if self._rerun is not None:
             await self._rerun.stop_streaming()
@@ -443,14 +448,6 @@ class _BaseJogger:
                 raise result
         logger.info("%s stopped", self.__class__.__name__)
         return False
-
-    async def _drain_sessions(self) -> None:
-        """Wait out every session's outstanding waypoint schedule, in parallel."""
-        with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
-            _ = await asyncio.gather(
-                *(session.drain() for session in self._sessions.values()),
-                return_exceptions=True,
-            )
 
     async def _init_rerun(self) -> None:
         """Initialize Rerun logger if a viewer is active."""
@@ -492,8 +489,6 @@ class _BaseJogger:
 
     async def _move_to_start_joint_position(self) -> None:
         """PTP move all motion groups to their start_joint_position positions."""
-        import asyncio as _asyncio  # ruff: ignore[import-outside-top-level]
-
         from nova.actions import jnt  # ruff: ignore[import-outside-top-level]
 
         async def _ptp(mg: MotionGroup, joints: list[float]) -> None:
@@ -510,8 +505,7 @@ class _BaseJogger:
         start_positions = self._start_joint_position
         if start_positions is None:
             return
-        tasks = [_ptp(mg, joints) for mg, joints in start_positions.items()]
-        await _asyncio.gather(*tasks)
+        await asyncio.gather(*(_ptp(mg, joints) for mg, joints in start_positions.items()))
 
     @property
     def stop_condition_triggered(self) -> str | None:
@@ -645,10 +639,6 @@ class JointJogger(_BaseJogger):
             pipeline=pipeline,
         )
 
-    async def __aenter__(self) -> JointJogger:
-        await super().__aenter__()
-        return self
-
 
 class TcpJogger(_BaseJogger):
     """TCP pose jogger. Do not instantiate directly — use :func:`jog_tcp`."""
@@ -667,10 +657,6 @@ class TcpJogger(_BaseJogger):
             msg = f"Expected Pose per motion group, got {type(target)}"
             raise TypeError(msg)
         return [*target.position, *target.orientation]
-
-    async def __aenter__(self) -> TcpJogger:
-        await super().__aenter__()
-        return self
 
 
 # ---------------------------------------------------------------------------

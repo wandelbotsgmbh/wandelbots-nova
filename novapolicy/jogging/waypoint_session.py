@@ -282,14 +282,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             if self._stop_condition is not None:
                 return
             if self._failed:
-                if self._failure_exception is not None:
-                    raise RuntimeError(
-                        f"Waypoint jogging failed for {self.motion_group_id}: "
-                        f"{self._failure_reason}"
-                    ) from self._failure_exception
                 raise RuntimeError(
                     f"Waypoint jogging failed for {self.motion_group_id}: {self._failure_reason}"
-                )
+                ) from self._failure_exception
             if time.monotonic() >= deadline:
                 reason = (
                     self._failure_reason or "no ready acknowledgement or state-clock calibration"
@@ -441,11 +436,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._config.single_step_dt_ms
 
     @property
-    def single_step_lead_ms(self) -> float:
-        """The lead of the placement rule: ``max_expected_latency_ms``."""
-        return self._config.max_expected_latency_ms
-
-    @property
     def queued_chunk(self) -> PendingChunk | None:
         """The chunk waiting to be sent, after the pipeline's chunk modules; ``None`` once sent."""
         return self._pending_request
@@ -490,7 +480,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 negative value backdates an overlapping seam; ``0`` is exact.
             action_timestep: Absolute policy timestep represented by ``steps[0]``.
                 Logged with the scheduled request in Rerun.
-            lead: Date step ``k`` :attr:`single_step_lead_ms` ``+ k * dt_ms`` after
+            lead: Date step ``k`` ``max_expected_latency_ms + k * dt_ms`` after
                 ``observed_at_ms``, or after the send when that is ``None`` (sequential
                 execution); ``first_timestamp_ms`` and ``timestamp_offset_steps`` are then
                 not used.
@@ -721,8 +711,12 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             return
         if self._ready.is_set() and self._clock.state_clock_calibrated:
             return
+        self._fail(f"{reason} for {self.motion_group_id}", error)
+
+    def _fail(self, reason: str, error: BaseException | None) -> None:
+        """Record why the session failed."""
         self._failed = True
-        self._failure_reason = f"{reason} for {self.motion_group_id}"
+        self._failure_reason = reason
         self._failure_exception = error
 
     def _notify_state_observer(self, ts_ms: int) -> None:
@@ -899,9 +893,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             async with self._due_lock:  # one chunk's actions after the other's
                 await action()
         except Exception as error:  # ruff: ignore[blind-except] (any hook error fails the run)
-            self._failed = True
-            self._failure_reason = f"action at a chunk step failed for {self.motion_group_id}"
-            self._failure_exception = error
+            self._fail(f"action at a chunk step failed for {self.motion_group_id}", error)
 
     def _record_dropped_chunk(self, pending: PendingChunk, step_timestamps: list[int]) -> None:
         """Account for a chunk that was dropped for being entirely in the past.
@@ -946,7 +938,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """
         now_ms = self._clock.estimated_server_timestamp_ms
         observed_ms = pending.observed_at_ms
-        first_ms = (now_ms if observed_ms is None else observed_ms) + self.single_step_lead_ms
+        lead_ms = self._config.max_expected_latency_ms
+        first_ms = (now_ms if observed_ms is None else observed_ms) + lead_ms
         if len(pending.steps) == 1:
             # A lagging clock may not eat the controller's planning margin.
             first_ms = self._playback.due_ms(
@@ -1003,13 +996,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """Each step's time on the session clock, for a chunk not placed by the lead rule."""
         dt_ms = pending.dt_ms
         base_ms = pending.first_timestamp_ms
-        if base_ms is None or dt_ms <= 0:
-            if base_ms is None:
-                base_ms = self._clock.estimated_server_timestamp_ms
-            first_ms = max(0, anchor_timestamp_ms(base_ms, pending.timestamp_offset_steps, dt_ms))
-            return [first_ms + int(i * dt_ms) for i in range(len(pending.steps))]
+        if base_ms is None:
+            base_ms = self._clock.estimated_server_timestamp_ms
         anchor_ms = max(0, anchor_timestamp_ms(base_ms, pending.timestamp_offset_steps, dt_ms))
-        if pending.final:
+        if pending.final and pending.first_timestamp_ms is not None and dt_ms > 0:
             # The robot may already be past the final target's time, keeping its velocity; it
             # still has to go back and stop there.
             earliest_ms = self._clock.estimated_server_timestamp_ms + MIN_LEAD_MS
@@ -1131,28 +1121,19 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             # actionable error rather than a generic connection loss.
             if e.response.status_code == _HTTP_NOT_FOUND:
                 err = JoggingNotSupportedError(self.motion_group_id)
-                self._failed = True
-                self._failure_reason = str(err)
-                self._failure_exception = err
-                self._running = False
+                self._fail(str(err), err)
                 logger.error("%s", err)
             else:
-                self._failed = True
-                self._failure_reason = str(e)
-                self._failure_exception = e
-                self._running = False
+                self._fail(str(e), e)
                 logger.error("Jogging connection rejected for %s: %s", self.motion_group_id, e)
+            self._running = False
         except MotionError as e:
-            self._failed = True
-            self._failure_reason = str(e)
-            self._failure_exception = e
+            self._fail(str(e), e)
             self._running = False
             logger.warning("Waypoint jogging stopped for %s: %s", self.motion_group_id, e)
         except (OSError, RuntimeError) as e:
             if self._running:
-                self._failed = True
-                self._failure_reason = str(e)
-                self._failure_exception = e
+                self._fail(str(e), e)
                 self._running = False
                 logger.error("Jogging connection lost for %s: %s", self.motion_group_id, e)
 

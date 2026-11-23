@@ -64,9 +64,7 @@ def trajectory_elapsed_ms(now_ms: float, anchor_ms: float, previous_ms: float) -
     forward jumps are kept: they are the clock correcting after a late state read, and limiting
     them lets the timeline fall behind until every waypoint lands in the past.
     """
-    elapsed_ms = max(0.0, now_ms - anchor_ms)
-    if TIMELINE_GRID_MS > 0:
-        elapsed_ms = math.floor(elapsed_ms / TIMELINE_GRID_MS) * TIMELINE_GRID_MS
+    elapsed_ms = math.floor(max(0.0, now_ms - anchor_ms) / TIMELINE_GRID_MS) * TIMELINE_GRID_MS
     return max(previous_ms, elapsed_ms)
 
 
