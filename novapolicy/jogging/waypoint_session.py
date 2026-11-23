@@ -25,6 +25,7 @@ from novapolicy.jogging.pipeline import ModuleContext, split_pipeline
 from novapolicy.jogging.session import (
     JoggingStateTracker,
     StandstillDetector,
+    first_fired,
     jogging_details,
 )
 from novapolicy.jogging.waypoints import (
@@ -1019,16 +1020,12 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             motion_group_id=self.motion_group_id,
             io_values=self._io_values,
         )
-        for condition in self._stop_conditions:
-            if condition(ctx):
-                self._stop_condition = getattr(condition, "__name__", repr(condition))
-                self._running = False
-                logger.info(
-                    "Stop condition '%s' triggered for %s",
-                    self._stop_condition,
-                    self.motion_group_id,
-                )
-                return
+        fired = first_fired(self._stop_conditions, ctx)
+        if fired is not None:
+            self._stop_condition = fired
+            self._running = False
+            logger.info("Stop condition '%s' triggered for %s", fired, self.motion_group_id)
+            return
 
         self._prev_state = current_state
         self._prev_tick_time = now

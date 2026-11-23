@@ -5,8 +5,14 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from novapolicy.types import MotionError
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from novapolicy.types import StopCondition, StopContext
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +21,14 @@ _BLOCKING_PAUSES = frozenset({
     "PAUSED_NEAR_COLLISION",
     "PAUSED_NEAR_SINGULARITY",
 })
+
+
+def first_fired(conditions: Iterable[StopCondition], ctx: StopContext) -> str | None:
+    """Name of the first condition that returns ``True`` for ``ctx``, else ``None``."""
+    for condition in conditions:
+        if condition(ctx):
+            return getattr(condition, "__name__", repr(condition))
+    return None
 
 
 def jogging_details(state: object) -> object | None:

@@ -24,6 +24,7 @@ from novapolicy.jogging.lifecycle import SessionLifecycle, move_to_start_joint_p
 from novapolicy.jogging.live_buffer import LiveBuffer
 from novapolicy.jogging.modules import TimestepTimeline, default_pipeline
 from novapolicy.jogging.pipeline import split_pipeline
+from novapolicy.jogging.session import first_fired
 from novapolicy.jogging.waypoint_session import WaypointJoggingSession
 from novapolicy.policy_client import PolicyClient
 from novapolicy.types import (
@@ -659,9 +660,9 @@ class PolicyExecutor:
                 target_joints=target_joints,
                 target_ios=target_ios,
             )
-            for condition in self._stop_conditions:
-                if condition(ctx):
-                    return getattr(condition, "__name__", repr(condition))
+            fired = first_fired(self._stop_conditions, ctx)
+            if fired is not None:
+                return fired
         return None
 
     def _send(self, chunk: ActionChunk, effects: ActionChunk) -> None:
