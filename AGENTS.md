@@ -137,3 +137,32 @@ and streams them as timestamped action chunks. How well the robot follows those 
 - Transport timing is in scope: waypoint timestamps, the lead, loop pacing, and guards that stop
   a run loudly instead of degrading it silently.
 - Light output smoothing is acceptable only if it stays small; prefer none.
+
+### Debugging a run from its Rerun recording
+
+A run with a Rerun viewer can be saved as an `.rrd` file (viewer: File → Save). Read it as a
+dataframe with Rerun's data access, the `catalog` extra (`datafusion`, `pandas`). Keep it out of the
+project's extras and run it ad hoc, at the version `pyproject.toml` pins:
+
+```bash
+uv run --no-project --with "rerun-sdk[catalog]==0.43.2" python
+```
+
+```python
+from rerun.server import Server
+
+srv = Server(datasets={"run": ["run.rrd"]})
+df = srv.client().get_dataset("run").filter_contents(["/policy/**"]).reader(index="log_time").to_pandas()
+# columns are "<entity path>:<archetype>:<component>"; a scalar cell is a list of one value
+```
+
+- Filter with `/policy/**`: motion group ids appear escaped in entity paths (`0\@ur10e`).
+- Timelines: `log_time` (wall clock), `policy_step` and `policy_time` (the policy loop), `state_tick`.
+- `/policy/<mg>/tcp_error/position_norm_mm`: commanded against measured TCP per state packet; the
+  commanded value is what the session actually sent for that moment. With `tcp_target/position/*`
+  and `tcp_actual/position/*`, tell lag (the arm on the path but late) from leaving the path.
+- `/policy/<mg>/joints/j*`: measured joints. `/policy/<mg>/waypoint_request/*`: per request,
+  `scheduled_at_server_ms` (sent), `first_timestamp_ms` (first waypoint due; the difference is the
+  lead), `count`, `action_timestep`. `/policy/action_chunks`: the policy's outputs.
+- Without the extra, `rerun.chunk.RrdReader(path).stream()` yields the raw chunks
+  (`chunk.entity_path`, `chunk.to_record_batch()`).
