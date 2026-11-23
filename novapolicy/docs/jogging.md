@@ -190,7 +190,7 @@ follow from that:
 
 - **Sampled once per iteration.** Every target you derive from `elapsed` within
   one pass through the loop is stamped from the same instant.
-- **Quantised** to a 10 ms grid (`jogger.TIMELINE_GRID_MS`), so successive chunks
+- **Quantised** to a 10 ms grid (`live_buffer.TIMELINE_GRID_MS`), so successive chunks
   anchor on one absolute grid instead of each landing at a new phase.
 - **Never runs backwards.** Server "now" is extrapolated between state samples, so
   a late sample can resolve below an earlier estimate; since content is a function
