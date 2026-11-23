@@ -416,25 +416,17 @@ def is_single_step(chunk: ActionChunk) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class Placement:
-    """Where a chunk's first step sits on one session's server timeline.
-
-    ``first_timestamp_ms`` is an exact raw NOVA timestamp, or ``None`` to
-    resolve server "now" at yield time. ``timestamp_offset_steps`` shifts that
-    timestamp by whole ``dt`` steps: ``+1`` = one step ahead (sequential),
-    negative = backdated overlap, ``0`` = exact.
-    """
+    """Where a chunk's first step sits on one session's server timeline: an exact raw NOVA
+    timestamp, or ``None`` to resolve server "now" at the send."""
 
     first_timestamp_ms: ServerMs | None
-    timestamp_offset_steps: int
     lead: bool = False
     """Placed by the lead rule (contract T1): the session dates step ``k``
     ``WaypointConfig.max_expected_latency_ms + k * dt`` after the observation, or after the send
     in sequential execution."""
 
 
-def placement(
-    chunk: ActionChunk, *, execution: ExecutionMode, from_observation: bool = False
-) -> Placement:
+def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:
     """Decide how a chunk is anchored on one session's timeline.
 
     One rule for both modes: step ``k`` is due ``max_expected_latency_ms + k * dt`` after a
@@ -445,17 +437,13 @@ def placement(
     Exceptions, each a timeline of the policy's own:
 
     * an explicit ``chunk.first_timestamp_ms`` (>=0): used verbatim;
-    * in continuous execution a chunk that does not answer the latest observation as returned
-      (``from_observation`` false) or carries a timestep of its own: "now" at the send.
+    * in continuous execution a chunk that carries a timestep of its own, or several steps
+      without a spacing: "now" at the send (a ``TimestepTimeline`` then places a queue's).
     """
     if chunk.first_timestamp_ms >= 0:
-        return Placement(ServerMs(chunk.first_timestamp_ms), 0)
+        return Placement(ServerMs(chunk.first_timestamp_ms))
     if not isinstance(execution, ContinuousExecution):
-        return Placement(None, 0, lead=True)
-    if (
-        from_observation
-        and chunk.action_timestep < 0
-        and (chunk.dt_ms > 0 or is_single_step(chunk))
-    ):
-        return Placement(None, 0, lead=True)
-    return Placement(None, 0)
+        return Placement(None, lead=True)
+    if chunk.action_timestep < 0 and (chunk.dt_ms > 0 or is_single_step(chunk)):
+        return Placement(None, lead=True)
+    return Placement(None)

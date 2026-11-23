@@ -314,16 +314,14 @@ def test_an_explicit_start_time_always_wins(explicit):
     ):
         place = placement(chunk, execution=execution)
         assert place.first_timestamp_ms == explicit
-        assert place.timestamp_offset_steps == 0
 
 
 def test_sequential_execution_uses_the_same_lead_rule():
     """One rule for both modes; the session dates a sequential chunk from its send."""
     chunk = ActionChunk(joints={"0@ur5e": [[0.0] * 6] * 4}, dt_ms=1000 / 30)
-    for from_observation in (True, False):
-        place = placement(chunk, execution=SequentialExecution(), from_observation=from_observation)
-        assert place.lead
-        assert place.first_timestamp_ms is None
+    place = placement(chunk, execution=SequentialExecution())
+    assert place.lead
+    assert place.first_timestamp_ms is None
 
 
 def test_a_chunk_answering_an_observation_is_dated_by_it():
@@ -331,10 +329,9 @@ def test_a_chunk_answering_an_observation_is_dated_by_it():
     session, a fixed lead after that observation."""
     for steps in ([[0.0] * 6], [[0.0] * 6] * 8):
         chunk = ActionChunk(joints={"0@ur5e": steps}, dt_ms=1000 / 30)
-        place = placement(chunk, execution=ContinuousExecution(), from_observation=True)
+        place = placement(chunk, execution=ContinuousExecution())
         assert place.lead
         assert place.first_timestamp_ms is None
-        assert not placement(chunk, execution=ContinuousExecution()).lead
 
 
 def test_a_chunk_on_its_own_timeline_is_not_dated_by_the_observation():
@@ -344,9 +341,8 @@ def test_a_chunk_on_its_own_timeline_is_not_dated_by_the_observation():
         base.model_copy(update={"action_timestep": 4}),
         base.model_copy(update={"dt_ms": 0.0}),
     ):
-        place = placement(chunk, execution=ContinuousExecution(), from_observation=True)
+        place = placement(chunk, execution=ContinuousExecution())
         assert not place.lead
-        assert place.timestamp_offset_steps == 0
 
 
 # compose_tcp_deltas ---------------------------------------------------------

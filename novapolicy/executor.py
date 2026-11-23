@@ -865,7 +865,7 @@ class PolicyExecutor:
         policy's first step is due; a chunk module that puts steps in front keeps them there. A
         group with IO but no motion, and computed actions of a chunk without motion, run at once.
         """
-        place = placement(chunk, execution=self._execution, from_observation=True)
+        place = placement(chunk, execution=self._execution)
         # A one-step chunk placed ahead is replaced by the next step before it is due: padding
         # it with a hold would make the controller brake towards every step.
         hold = not (
@@ -883,7 +883,6 @@ class PolicyExecutor:
                 steps=steps,
                 dt_ms=chunk.dt_ms,
                 first_timestamp_ms=place.first_timestamp_ms,
-                timestamp_offset_steps=place.timestamp_offset_steps,
                 action_timestep=chunk.action_timestep,
                 extend_buffer=hold,
                 lead=place.lead,

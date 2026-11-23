@@ -642,7 +642,6 @@ async def test_async_queue_replacements_preserve_the_initial_policy_timeline(rob
         [2.5] * 6,
     ]
     assert first_send.kwargs["first_timestamp_ms"] is None
-    assert first_send.kwargs["timestamp_offset_steps"] == 0
     assert replacement.kwargs["steps"] == [
         [0.75] * 6,
         [1.75] * 6,
