@@ -121,16 +121,17 @@ class SessionLifecycle:
         return next((name for name in fired if name is not None), None)
 
     def check(self) -> str | None:
-        """Raise the first session failure (``MotionError``: joint limit, self-collision,
-        singularity; ``RuntimeError``: connection lost or unknown) or an e-stop
-        (``EmergencyStopError``); else return :attr:`stop_condition`."""
+        """Raise an e-stop (``EmergencyStopError``) or else the first session failure
+        (``MotionError``: joint limit, self-collision, singularity; ``RuntimeError``: connection
+        lost or unknown); else return :attr:`stop_condition`. The e-stop comes first: it also
+        ends the sessions' streams, and it is the cause to report."""
+        if self._estop is not None and self._estop.error is not None:
+            raise self._estop.error
         for session in self.sessions.values():
             if session.has_failed:
                 raise session.failure_exception or RuntimeError(
                     session.failure_reason or "unknown session failure"
                 )
-        if self._estop is not None and self._estop.error is not None:
-            raise self._estop.error
         return self.stop_condition
 
     async def close(self, *, drain: bool) -> None:

@@ -63,6 +63,17 @@ async def test_check_is_a_noop_while_the_estop_monitor_is_clear():
     assert _lifecycle().check() is None  # no monitor started yet
 
 
+@pytest.mark.asyncio
+async def test_an_estop_is_reported_before_the_session_failures_it_causes():
+    """An e-stop also ends the sessions' streams; the e-stop is the cause to report."""
+    lifecycle = await _monitored(EmergencyStopError("ur10e", "SAFETY_STATE_PROTECTIVE_STOP"))
+    lifecycle.sessions["0@ur10e"] = MagicMock(
+        has_failed=True, failure_exception=RuntimeError("the server closed the jogging connection")
+    )
+    with pytest.raises(EmergencyStopError):
+        lifecycle.check()
+
+
 def test_check_reraises_a_session_failure():
     session = MagicMock()
     session.has_failed = True
