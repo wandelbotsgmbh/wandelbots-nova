@@ -59,14 +59,8 @@ def log_joint_tcp_tracking(
     *,
     target_trail: list[list[float]] | None = None,
 ) -> None:
-    """Log TCP position/error derived from a commanded joint target.
-
-    The target is derived from a ``DHRobot`` based in the robot's frame, while
-    Nova reports the actual pose relative to whatever the chain is mounted on,
-    so the context's pose frame brings the two together. Without it the error
-    vector runs from the TCP to a point a metre below the robot, and the error
-    scalars read that whole offset.
-    """
+    """Log TCP position/error derived from a commanded joint target, both in the robot's frame
+    (the actual pose moved there by the context's pose frame)."""
     if len(target_position) < _TCP_POSITION_DIMS:
         return
 

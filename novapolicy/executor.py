@@ -53,14 +53,9 @@ _ASYNC_REPLACEMENT_LEAD_STEPS = 1
 _DEFAULT_WAYPOINT_CONFIG = WaypointConfig()
 _DEFAULT_EXECUTION = SequentialExecution()
 
-# A camera feeding a control loop should be fresh in frame terms, not in tens of
-# seconds. One second is loose enough for a slow stream and tight enough that a
-# frozen feed surfaces before it has driven many chunks of motion.
+# Default freshness bound for the policy's camera frames, and the deadline for one inference
+# (ADR 0018).
 _DEFAULT_CAMERA_MAX_AGE_S = 1.0
-
-# Outer liveness guard on one inference. Generous by design: it exists to catch a
-# hung service, not to police latency. Transports may have tighter deadlines of
-# their own (LeRobot's gRPC calls use 15s).
 _DEFAULT_INFERENCE_TIMEOUT_S = 30.0
 
 
@@ -99,13 +94,7 @@ class ExecutionResult:
 def _check_execution_mode(
     execution: ExecutionMode, policy: PolicyClient, pipeline: Sequence[object]
 ) -> None:
-    """Reject a setup the executor would run wrongly, before anything moves.
-
-    Sequential execution waits for standstill and observes again, so nothing in it replaces a
-    plan while it runs: a timestep queue (``QueuedPolicyClient``) or a
-    live-target buffer would be fed timings that never come. In continuous
-    execution a timestep queue needs its ``TimestepTimeline``, or every chunk restarts at "now".
-    """
+    """Raise ``ValueError`` for a setup the executor would run wrongly (contracts T12)."""
     queue = any(isinstance(m, TimestepTimeline) for m in policy.default_modules)
     if not isinstance(execution, SequentialExecution):
         if queue and not any(isinstance(m, TimestepTimeline) for m in pipeline):
@@ -128,10 +117,9 @@ def _check_execution_mode(
 def resolve_actions(
     schema: PolicySchema, chunk: ActionChunk, states: dict[str, RobotState]
 ) -> ActionChunk:
-    """A policy's raw chunk as the executor sends it: units and rotation representation
-    converted back (the schema's operators and ``orientation_type``), relative targets
-    composed with ``states`` in each action's coordinate system, and TCP targets expressed
-    in the world. Use it for dry runs (after ``await schema.load_coordinate_systems()``)."""
+    """A policy's raw chunk as the executor sends it (contracts M4): inverse operators, relative
+    targets composed with ``states``, TCP targets in the world. For dry runs, after
+    ``await schema.load_coordinate_systems()``."""
     chunk = schema.apply_inverse_ops(chunk)  # NOVA units, rotation vectors, policy frames
     chunk = apply_relative_mode(
         chunk,
@@ -143,11 +131,8 @@ def resolve_actions(
 
 
 class PolicyExecutor:
-    """Runs one policy episode: observe → query policy → send actions → repeat.
-
-    The policy is a pure function: obs → actions. It never signals "done".
-    Execution runs until timeout_s expires or stop() is called externally.
-    """
+    """Runs one policy episode: observe → query policy → send actions → repeat, until the
+    timeout, a stop condition or :meth:`stop`; the policy never signals "done"."""
 
     def __init__(
         self,
@@ -171,39 +156,23 @@ class PolicyExecutor:
             policy: PolicyClient that maps observations to actions.
             stop_conditions: Optional checks run each tick; one returning ``True``
                 stops the run normally (its name appears in ``result.reason``).
-            timeout_s: Maximum execution duration in seconds. 0 = no timeout.
-
-            camera_max_age_s: Default freshness bound for camera frames, in
-                seconds. A channel can override it with
-                ``Observation.image(..., max_age_s=...)``. Frames older than the
-                bound are stale and end the run with ``RuntimeError``. Applies to the policy's
-                frames only — visualization uses a looser bound of its own.
-            inference_timeout_s: Deadline for one ``get_actions`` call, in
-                seconds. 0 = no deadline. This is a liveness guard against a
-                hung policy service, applied uniformly whatever the transport's
-                own timeout is; it is not a real-time guarantee.
-            motion: Waypoint jogging configuration. Defaults to WaypointConfig().
-            execution: Explicit execution strategy. ``SequentialExecution``
-                completes and settles each chunk before the next inference;
-                ``ContinuousExecution`` replaces the active lookahead either as
-                fast as possible or at its configured fixed rate.
-            n_action_steps: Number of steps from each action chunk to execute.
-                None (default): Use the policy's own horizon when it declares
-                one (a LeRobot client reports its checkpoint's value), else all
-                steps.
-                0: Execute all steps returned by the policy, ignoring any
-                horizon the policy declares.
-                >0: Trim to first N steps (receding horizon). Later steps
-                have higher prediction uncertainty and are discarded.
-                The policy still predicts the full action_horizon (e.g. 16)
-                which remains available to asynchronous policy clients.
-            start_joint_position: Optional mapping of motion group to joint pose
-                to PTP-move to before starting waypoint jogging.
+            timeout_s: Maximum execution duration [s]; 0 = no timeout.
+            camera_max_age_s: Default freshness bound for the policy's camera frames [s]; a
+                channel overrides it with ``Observation.image(..., max_age_s=...)``. An older
+                frame ends the run with ``RuntimeError``.
+            inference_timeout_s: Deadline for one ``get_actions`` call [s]; 0 = none. A
+                liveness guard, not a real-time bound.
+            motion: Waypoint jogging configuration.
+            execution: ``SequentialExecution`` settles each chunk before the next inference;
+                ``ContinuousExecution`` replaces the lookahead as fast as possible or at its rate.
+            n_action_steps: Steps executed from each chunk: ``None`` the policy's own horizon if
+                it declares one, else all; ``0`` all; ``N > 0`` the first N (contracts M6).
+            start_joint_position: Joint positions per motion group to PTP-move to first.
             pipeline: The modules between the policy's chunk and NOVA, in order, exactly as
                 given; ``None`` runs :func:`~novapolicy.jogging.modules.default_pipeline`. To
                 add one, extend that list with the same execution and policy, e.g.
                 ``[*default_pipeline(execution=execution, policy=policy), EaseIn(duration_s=1.0)]``.
-                Each motion group runs its own copy. See :mod:`novapolicy.jogging.pipeline`.
+                Each motion group runs its own copy.
         """
         if pipeline is None:
             pipeline = default_pipeline(execution=execution, policy=policy)
@@ -265,12 +234,7 @@ class PolicyExecutor:
         return self._last_obs
 
     async def run(self) -> ExecutionResult:
-        """Run execution, blocking until timeout or stop.
-
-        Public lifecycle shell: resets state, drives the :class:`Phase` state
-        machine (mapping errors to ``Phase.ERROR``), and guarantees
-        :meth:`_cleanup` runs. The actual orchestration lives in
-        :meth:`_run_episode`.
+        """Run one episode, blocking until it ends; an error sets ``Phase.ERROR`` and re-raises.
 
         Returns:
             ExecutionResult on normal termination (timeout, stopped, or a
@@ -314,7 +278,6 @@ class PolicyExecutor:
     async def _cleanup(self) -> None:
         """Outer teardown, always run: pending IO write tasks, the policy connection, the
         final status and result logging."""
-        # Wait for pending IO tasks
         if self._io_tasks:
             await asyncio.gather(*self._io_tasks, return_exceptions=True)
             self._io_tasks.clear()
@@ -340,13 +303,8 @@ class PolicyExecutor:
     # -------------------------------------------------------------------------
 
     async def _run_episode(self) -> None:
-        """Orchestrate one episode: create sessions, loop observe→act, tear down.
-
-        The ``finally`` here releases what this method started. A run that ended normally (a
-        stop condition, the timeout or :meth:`stop`) owes the caller the waypoints it accepted,
-        so the sessions drain first; an error or an e-stop drops them, which is the point.
-        Exceptions propagate to :meth:`run`.
-        """
+        """Create the sessions, run the observe-act loop and tear down: after a normal end the
+        sessions drain, after an error they stop at once (contracts T10)."""
         for mg in self._motion_groups:
             self._sessions[mg.id] = self._create_session(mg)
             self._sessions[mg.id].add_state_observer(
@@ -425,9 +383,7 @@ class PolicyExecutor:
         tick_due: float | None = None  # when the current tick was due on the fixed-rate grid
 
         while not self._stop_event.is_set():
-            # Always yield once per iteration so stop()/other tasks make progress
-            # even when the policy and sleeps below complete synchronously
-            # (e.g. dt_ms=0 or a local in-process policy).
+            # Yield every iteration, so stop() runs even when the policy answers synchronously.
             await asyncio.sleep(0)
 
             termination = self._termination_result(step, start_time, last_obs)
@@ -436,10 +392,9 @@ class PolicyExecutor:
 
             tick_start = time.monotonic()
 
-            # Observe
             robot_states = self._observe()
             if not robot_states:
-                await asyncio.sleep(0.01)  # retry shortly
+                await asyncio.sleep(0.01)
                 continue
             action, start_time = await self._observe_and_infer(robot_states, step, start_time)
             if step == 0:
@@ -558,13 +513,8 @@ class PolicyExecutor:
         return await self._infer(robot_states, images), start_time
 
     def _freeze_setup_objects(self) -> None:
-        """Keep full garbage collections from pausing the control loop.
-
-        Everything allocated up to here (SDK clients, sessions, a loaded model) lives for the
-        whole run, and traversing it stalled the loop for over 100 ms per full collection.
-        ``gc.freeze()`` takes it out of collection; the collector stays on, and ``run()``
-        unfreezes at the end (which also releases anything the host froze).
-        """
+        """Collect, then freeze everything allocated so far out of garbage collection until
+        :meth:`_run_episode` unfreezes it (ADR 0007)."""
         gc.collect()
         gc.freeze()
         self._gc_frozen = True
@@ -582,9 +532,6 @@ class PolicyExecutor:
                 action = await self._policy.get_actions(
                     robot_states, self._schema, images, self._io_streams.all_values or None
                 )
-            # Units first: a relative target is a delta in the policy's units, and
-            # adding a degree-space delta to a radian state is exactly the error the
-            # operators exist to prevent.
             if action.resolved:
                 return action
             return resolve_actions(self._schema, action, robot_states)
@@ -620,12 +567,10 @@ class PolicyExecutor:
         start_time: float,
         fixed_rate_period: float,
     ) -> float:
-        """Pace the loop after a chunk is sent, per the configured timing mode.
+        """Pace the loop after a send; returns when the next tick is due.
 
-        Fixed-rate execution sleeps until the next tick on an absolute grid (as ROS
-        ``Rate.sleep``), so a slow tick or a late wake-up is made up by the next tick
-        instead of lowering the rate. More than a period behind, the grid restarts
-        from now rather than firing catch-up ticks. Returns when the next tick is due.
+        Sequential execution waits for the sessions to settle. A fixed rate sleeps until the next
+        tick on an absolute grid, which restarts when more than a period behind (ADR 0006).
         """
         if isinstance(self._execution, SequentialExecution):
             await self._wait_until_sessions_settled(start_time)
@@ -641,13 +586,8 @@ class PolicyExecutor:
         return next_due
 
     async def _wait_until_sessions_settled(self, exec_start: float) -> None:
-        """Wait until every submitted chunk has run out *and* the robot has stopped.
-
-        Both halves are needed: past the last timestamp the robot is still braking, and before
-        the first it is legitimately still. Standstill is measured from the joint positions
-        (:attr:`WaypointJoggingSession.is_at_standstill`), since NOVA reports no "waypoints ran
-        out" state; ``PAUSED_BY_USER`` is accepted when it appears.
-        """
+        """Wait until every queued chunk was sent, its last step is past and the robot stands
+        still (or reports ``PAUSED_BY_USER``); see executor.md, "Detecting standstill"."""
         target_chunks = {
             group_id: session.queued_chunk_count for group_id, session in self._sessions.items()
         }
@@ -679,11 +619,8 @@ class PolicyExecutor:
             state = session.current_state
             if state is not None:
                 result[group_id] = state
-                # When the observation was taken, on the server's clock: a continuous chunk is
-                # due a fixed time after it. A one-step target goes by the state's own timestamp
-                # (its playback clock smooths that); a multi-step chunk by the clock estimate,
-                # since the state stream's jitter and stalls would shift whole chunks against
-                # each other and the follower turns every shifted seam into a speed spike.
+                # When the observation was taken on the session clock: the clock estimate for
+                # multi-step chunks, the state's own timestamp for one-step ones (ADR 0003).
                 self._observed_clock_ms[group_id] = session.estimated_server_timestamp_ms
                 measured_ms = session.current_state_server_ms
                 self._observed_at_ms[group_id] = (
@@ -696,12 +633,8 @@ class PolicyExecutor:
     def _check_stop_conditions_pre_send(
         self, chunk: ActionChunk, robot_states: dict[str, RobotState]
     ) -> str | None:
-        """Evaluate stop conditions against the intended action before sending.
-
-        Gives conditions visibility into what the policy intends to do (target
-        positions + IO writes) so they can stop before execution. Returns the
-        name of the first condition that fired (``True``), or ``None``.
-        """
+        """Evaluate stop conditions against the chunk's targets and IO before it is sent; returns
+        the name of the first condition that fired, or ``None``."""
         if not self._stop_conditions:
             return None
 
@@ -735,13 +668,11 @@ class PolicyExecutor:
         """Hand an action chunk to each motion group's session, placed by
         :func:`novapolicy.chunking.placement` (the session's modules may still move it).
 
-        Contract: the IO and computed actions of ``effects`` (the policy's chunk) run when the
-        policy's first step is due; a chunk module that puts steps in front keeps them there. A
-        group with IO but no motion, and computed actions of a chunk without motion, run at once.
+        The IO and computed actions of ``effects`` (the policy's chunk) run when the policy's
+        first step is due; without motion, at once (contracts T7).
         """
         place = placement(chunk, execution=self._execution)
-        # A one-step chunk placed ahead is replaced by the next step before it is due: padding
-        # it with a hold would make the controller brake towards every step.
+        # No hold padding for a one-step chunk placed ahead (contracts T6).
         hold = not (
             place.lead
             and is_single_step(chunk)
@@ -783,11 +714,7 @@ class PolicyExecutor:
         self, effects: ActionChunk, group_id: str, moving: list[str]
     ) -> tuple[int, Callable[[], Awaitable[None]]] | None:
         """The session runs this group's IO, and with the first moving group the chunk's
-        computed actions, when the policy's first step is due.
-
-        Interim: NOVA's action chunk API is to carry timestamped IO itself. Then the IO goes out
-        with the waypoints, on the controller's clock, and only computed actions remain here.
-        """
+        computed actions, when the policy's first step is due (interim, ADR 0005)."""
         ios = (effects.ios or {}).get(group_id)
         computed = group_id == moving[0] and self._schema.has_computed_actions
         session = self._sessions[group_id]
@@ -824,12 +751,8 @@ class PolicyExecutor:
 
     @property
     def _n_action_steps(self) -> int:
-        """Number of action steps to execute from each chunk (0 = all).
-
-        An explicit executor argument always wins, including an explicit ``0``
-        that keeps the full horizon for an asynchronous queue. Only when none
-        was given does the policy's own declared horizon apply.
-        """
+        """Steps executed from each chunk (0 = all): the executor's argument, ``0`` included,
+        else the policy's own horizon."""
         if self._n_action_steps_cfg is not None:
             return self._n_action_steps_cfg
         return self._policy.n_action_steps or 0

@@ -14,12 +14,8 @@ if TYPE_CHECKING:
 
 
 def log_observation(ctx: RerunContext, states: dict[str, RobotState], step: int) -> None:
-    """Log the states the policy observed at ``step``.
-
-    The TCP trail is left to the state streamer, which already logs every state
-    the robot reports; adding the observed ones as well would put them in the
-    trail twice.
-    """
+    """Log the states the policy observed at ``step``, without the TCP trail: the state
+    streamer draws it from every state packet."""
     ctx.set_time(step)
     for mg_id, state in states.items():
         log_state(ctx, mg_id, state)
@@ -36,8 +32,7 @@ def log_state(
     for i, value in enumerate(joints):
         rr.log(f"policy/{mg_id}/joints/j{i}", rr.Scalars(value), recording=ctx.recording)
 
-    # Keyed by motion group: one visualizer can hold several of a robot's
-    # chains, and this state drives only the one it belongs to.
+    # One visualizer may hold several chains of a robot; this state drives only its own.
     visualizer = ctx.visualizers.get(mg_id)
     if visualizer is not None:
         visualizer.log_robot_geometry(joint_position={mg_id: joints})

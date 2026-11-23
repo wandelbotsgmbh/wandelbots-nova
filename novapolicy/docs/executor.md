@@ -71,7 +71,9 @@ from an asynchronous action queue.
 Execution behavior is selected with an explicit mode object. Note `n_action_steps`: it defaults to
 `None`, meaning "use the horizon the policy declares" — a `LeRobotPolicyClient` reports its
 checkpoint's `n_action_steps`. Pass `0` to execute every returned step regardless, which is what
-the continuous asynchronous-queue setup wants, or a positive number to trim explicitly.
+the continuous asynchronous-queue setup wants, or a positive number to trim explicitly. Trimming
+is a receding horizon: later steps carry more prediction uncertainty and are discarded, while the
+policy still predicts its full horizon (e.g. 16 steps) for an asynchronous client to keep.
 
 ```python
 from novapolicy import (

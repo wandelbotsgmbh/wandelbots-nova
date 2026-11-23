@@ -10,11 +10,7 @@ if TYPE_CHECKING:
 import rerun as rr
 import rerun.blueprint as rrb
 
-# Every plotted series is stamped on ``policy_time``. Left unset, a view falls
-# back to whichever timeline the viewer has selected — in practice the built-in
-# wall-clock ``log_time``, which records when a value was written rather than
-# when it was measured. Pinning the range to ``policy_time`` keeps the plots on
-# the timeline the data actually belongs to.
+# The timeline every plot is pinned to, not the viewer's selected one (ADR 0020).
 _POLICY_TIMELINE = "policy_time"
 
 
@@ -35,17 +31,12 @@ def send_blueprint(
 ) -> None:
     """Send a Rerun blueprint with 3D view, camera panels, joints, and text logs.
 
-    *extra_3d_contents* names entity roots to include in the 3D view beyond the
-    per-motion-group ones, for a robot logged somewhere else -- a URDF covering a
-    whole controller lives under the controller, not under a motion group.
+    ``extra_3d_contents``: further entity roots for the 3D view, e.g. a controller-wide URDF.
     """
 
-    # Motion-group ids can contain characters that Rerun escapes in entity paths
-    # (e.g. "@" in "0@ur10e" is stored as "0\@ur10e"). Blueprint content filters
-    # must use the same escaped form or they silently match nothing.
+    # Filters must use the escaped form ("0@ur10e" is stored as "0\@ur10e") or match nothing.
     escaped_ids = [rr.escape_entity_path_part(mg_id) for mg_id in motion_group_ids]
 
-    # 3D view contents: robot meshes + policy overlays
     contents_3d = ["coordinate_system_world/**", "motion/**", "collision_scenes/**"]
     for mg_id in escaped_ids:
         contents_3d.extend([f"{mg_id}/**", f"policy/{mg_id}/**"])
@@ -85,18 +76,7 @@ def send_blueprint(
                 name=f"TCP target/actual {mg_id}",
                 time_ranges=_whole_policy_timeline(),
             ),
-            # Position and orientation error get a view each. A time-series
-            # view shares one Y axis across everything in it, and these are in
-            # different units at wildly different magnitudes: position error runs
-            # to tens of mm while orientation error is a few thousandths of a
-            # radian. Plotted together, the orientation series are flattened onto
-            # zero by the position scale and read as "no error" whatever their
-            # actual value.
-            #
-            # The ``_norm_`` entities are siblings of the ``position``/
-            # ``orientation`` groups rather than children, so they have to be
-            # listed explicitly — a bare ``position/**`` would silently drop the
-            # norm, which is the one series that shows a constant lag as constant.
+            # A view each for position and orientation error, norms listed explicitly (ADR 0020).
             rrb.TimeSeriesView(
                 contents=[
                     f"policy/{mg_id}/tcp_error/position/**",

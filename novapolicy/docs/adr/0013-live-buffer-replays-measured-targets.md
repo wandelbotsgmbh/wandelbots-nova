@@ -31,6 +31,7 @@ targets milliseconds apart turn into speed spikes in the follower.
 
 **Consequences.** The window is the whole horizon, and the server caps its speed at what it can
 brake within, so the window has to be a few hundred milliseconds. Too little lead shows as brief
-stalls and catch-ups. The grid spacing is `WaypointConfig.single_step_dt_ms`, configuration
+stalls and catch-ups. `LIVE_LEAD_MS` (100 ms, the joggers' `LEAD_MS` for chunks too) was tuned on
+one UR10e; re-tune it per robot and link. The grid spacing is `WaypointConfig.single_step_dt_ms`, configuration
 rather than a constant because which spacing executes most smoothly depends on the controller,
 and never coarser than half the buffered span, so a short buffer keeps more than its endpoints.

@@ -1,9 +1,5 @@
-"""Waypoint jogging session — sends timestamped position waypoints directly.
-
-Uses NOVA's action chunk streaming endpoint (``ActionChunkRequest``, carrying
-joint- or pose-flavoured waypoints) to stream action chunks. The server handles
-velocity profiling, interpolation, and limits internally.
-"""
+"""Waypoint jogging session: streams timestamped joint or pose waypoints for one motion group
+through NOVA's action chunk streaming (``ActionChunkRequest``), after the send pipeline."""
 
 from __future__ import annotations
 
@@ -56,12 +52,9 @@ _PLAYBACK_RESYNC_MS = 100.0
 """Farther than this from "observation + lead" (a stall, a burst), the playback clock jumps back."""
 
 _PLAYBACK_RATE_GAIN = 0.05
-"""How fast the playback clock's step follows the measured time between observations: the loop
-may run slower than the policy's step (27 instead of 30 Hz over a network), and a clock stepping
-by the nominal step would fall behind and use up the lead."""
+"""How fast the playback clock's step follows the measured time between observations (ADR 0017)."""
 
-# Longest a graceful stop waits for already-sent waypoints to finish executing: generous next
-# to the horizon it drains, so it only trips when the server stopped reporting progress.
+# Longest a graceful stop waits for already-sent waypoints to finish executing (ADR 0019).
 _DRAIN_TIMEOUT_S = 3.0
 
 # How much sent history :meth:`WaypointJoggingSession.commanded_at` keeps, in server ms: only
@@ -97,7 +90,7 @@ class _ScheduledRequest:
 
 @dataclass
 class _PlaybackClock:
-    """Due times for one-step waypoints, spaced like a streaming jitter buffer plays out."""
+    """Due times for one-step waypoints, spaced like a streaming jitter buffer plays out (ADR 0017)."""
 
     last_due_ms: float | None = None  # due time of the latest one-step waypoint
     _last_target_ms: float | None = None  # its "observation + lead"
@@ -131,11 +124,8 @@ class _PlaybackClock:
 
 
 class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
-    """Sends action chunks as timestamped waypoints via NOVA action chunk streaming.
-
-    Sends raw position waypoints (joint or TCP) with timing info.
-    The server computes the motion profile and handles IK (for TCP mode).
-    """
+    """Sends action chunks as timestamped joint or TCP waypoints via NOVA action chunk streaming;
+    the server computes the motion profile and, for TCP waypoints, the IK."""
 
     def __init__(  # ruff: ignore[too-many-statements]
         self,
@@ -181,17 +171,12 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._stop_condition: str | None = None
         """Name of the stop condition that fired (normal stop, not a failure)."""
 
-        # Server time synchronization: auto-computes the speed ratio between
-        # server clock and client wall-clock, then scales outgoing timestamps
-        # so the robot moves at real-time speed.
-        self._clock = JoggingTimeClock()
+        self._clock = JoggingTimeClock()  # session-clock estimate (ADR 0012)
         # One-step waypoints already sent and not yet due, resent with every new one.
         self._lead_window: list[tuple[int, list[float]]] = []
         self._playback = _PlaybackClock()  # due times of one-step waypoints
 
-        # Pending waypoints to send (set by update_chunk, consumed by jogging loop).
-        # For normal chunks, store raw steps/timing and build the request at
-        # yield-time so timestamps are computed as late as possible.
+        # The newest queued chunk, stamped and sent by the jogging loop.
         self._pending_request: PendingChunk | None = None
         self._pending_request_event = asyncio.Event()
         self._stop_requested = False
@@ -249,13 +234,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return self._build_robot_state()
 
     def add_state_observer(self, observer: Callable[[RobotState, int, float], None]) -> None:
-        """Call ``observer`` once per state packet, not once per control tick.
-
-        Receives ``(state, jogger_session_timestamp_ms, generated_monotonic)``. Anything derived
-        from state belongs here: states arrive in bursts, and sampling the cached one from the
-        control loop re-reads one packet and drops the rest. Observers run inside the
-        state-stream task and must be cheap.
-        """
+        """Call ``observer(state, jogger_session_timestamp_ms, generated_monotonic)`` once per
+        state packet. Observers run inside the state-stream task and must be cheap."""
         self._state_observers.append(observer)
 
     def remove_state_observer(self, observer: Callable[[RobotState, int, float], None]) -> None:
@@ -282,20 +262,14 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
     @property
     def current_state_server_ms(self) -> ServerMs | None:
-        """Jogger-session timestamp the cached :attr:`current_state` was measured at.
-
-        State packets can arrive in bursts, so the cached pose can be far older than "now":
-        compare a commanded value against it on *this* timestamp.
-        """
+        """Jogger-session timestamp the cached :attr:`current_state` was measured at; compare
+        commanded values against the state on this timestamp, not on "now"."""
         ts = self._current_state_server_ms
         return None if ts is None else ServerMs(ts)
 
     async def wait_ready(self, timeout_s: float = 10.0) -> None:
-        """Wait until the jogging session is initialized or fail if startup dies.
-
-        Returns early when a stop condition ended the session during startup: that is a
-        normal end, which the caller reports through :attr:`stop_condition_triggered`.
-        """
+        """Wait until the server acknowledged the session and the clock is calibrated; raise
+        ``RuntimeError`` if startup fails or times out. Returns early on a fired stop condition."""
         deadline = time.monotonic() + timeout_s
         while not self._ready.is_set() or not self._clock.state_clock_calibrated:
             if self._stop_condition is not None:
@@ -321,25 +295,14 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
     @property
     def is_running(self) -> bool:
-        """Whether the robot is actively executing jogging motion.
-
-        Driven by the jogging state stream reporting ``kind == "RUNNING"``.
-        Reflects the robot's actual execution state (the control loop engages a
-        moment after the first waypoint), so it marks when motion truly begins
-        — the right moment to start a time-parameterised target.
-        """
+        """Whether the jogging state stream reports ``RUNNING``; it engages a moment after the
+        first waypoint."""
         return self._jog_tracker.last_kind == "RUNNING"
 
     @property
     def is_at_standstill(self) -> bool:
-        """Whether the joints have stopped moving, measured from the state stream.
-
-        The server reports no "commanded waypoints ran out" state: since NOVA
-        26.6, ``PAUSED_BY_USER`` follows a Pause/Stop *request* only, and this
-        session never sends one — a drained queue keeps reporting ``RUNNING``.
-        Anything that has to know the robot actually came to rest, rather than
-        that its last deadline passed, has to ask this.
-        """
+        """Whether the joints have stopped moving, measured from the state stream; NOVA reports
+        no "waypoints ran out" state (executor.md, "Detecting standstill")."""
         return self._standstill.is_settled
 
     @property
@@ -353,23 +316,14 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
     @property
     def stop_condition_triggered(self) -> str | None:
-        """Name of the stop condition that ended the session, or ``None``.
-
-        Set when a stop condition returns ``True``. This is a *normal* stop,
-        not a failure — ``has_failed`` stays ``False``.
-        """
+        """Name of the stop condition that ended the session, or ``None``; a normal stop, so
+        :attr:`has_failed` stays ``False``."""
         return self._stop_condition
 
     @property
     def session_elapsed_ms(self) -> int:
-        """Session "now", extrapolated from the latest acknowledged server state.
-
-        Driven by :attr:`JoggingTimeClock.acknowledged_elapsed_ms`. The
-        extrapolation is deliberately uncapped — capping it deadlocks startup,
-        because the jogger timer only advances once waypoints execute — so on a
-        stalled link this keeps advancing and the clock warns instead. The value
-        is in raw server milliseconds, which are real milliseconds.
-        """
+        """Session "now" [server ms], extrapolated from the latest acknowledged state without a
+        cap (ADR 0012)."""
         return self._clock.acknowledged_elapsed_ms
 
     @property
@@ -384,37 +338,19 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
     @property
     def scheduled_until_server_ms(self) -> ServerMs:
-        """When the commanded motion of the latest scheduled chunk runs out.
-
-        The timestamp of the last waypoint the *caller* asked for — not of the
-        last waypoint sent: padding by
-        :class:`~novapolicy.jogging.modules.HoldPadding` is a braking horizon for the
-        server, not requested motion.
-        """
+        """Timestamp of the last step the caller asked for in the latest scheduled chunk; hold
+        padding after it is not counted."""
         return ServerMs(self._scheduled_until_server_ms)
 
     @property
     def scheduled_waypoint_timestamps(self) -> tuple[int, ...]:
-        """NOVA timestamps of the waypoints actually sent in the latest request.
-
-        Trimmed and padded as sent, so this describes the request on the wire.
-        To ask where one of the *caller's* steps landed, use
-        :meth:`scheduled_timestamp_for_step` — indices here do not line up with
-        the caller's own once anything has been trimmed.
-        """
+        """NOVA timestamps of the waypoints sent in the latest request, trimmed and padded; for
+        a caller's step use :meth:`scheduled_timestamp_for_step`."""
         return tuple(self._scheduled_waypoint_timestamps)
 
     def scheduled_timestamp_for_step(self, step: int) -> ServerMs | None:
-        """Absolute NOVA timestamp assigned to the caller's step ``step``.
-
-        Indexed by the caller's own step numbering, so trimming and dropping are
-        invisible here: a step whose moment had already passed keeps the
-        timestamp it was given, which is what makes it read as due. Indexing
-        :attr:`scheduled_waypoint_timestamps` instead shifts every lookup by the
-        number of trimmed waypoints.
-
-        ``None`` when the latest chunk had no such step.
-        """
+        """NOVA timestamp of the caller's ``step`` in the latest chunk, sent or dropped; ``None``
+        when it had no such step."""
         if 0 <= step < len(self._scheduled_step_timestamps):
             return ServerMs(self._scheduled_step_timestamps[step])
         return None
@@ -481,39 +417,25 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None,
         retained_prefix_steps: int = 0,
     ) -> None:
-        """Queue a new action chunk as waypoints.
-
-        Builds an ActionChunkRequest carrying joint- or pose-flavoured waypoints
-        (based on mode) with absolute server-time timestamps laid out as
-        ``base + i*dt``. The request is sent on the next jogging loop iteration;
-        the timestamps are computed at the send.
+        """Queue a chunk; the jogging loop stamps it on the session clock and sends it.
 
         Args:
-            steps: Joint waypoints [rad] or TCP poses [x,y,z,rx,ry,rz] (mm/rad).
-            dt_ms: Time between consecutive waypoints (ms). 0 = single-step.
-            first_timestamp_ms: Exact raw NOVA jogger-session timestamp for
-                step zero. When omitted, server "now" is resolved immediately
-                before sending so the timestamp cannot become stale in the queue.
-            timestamp_offset_steps: Shift the selected timestamp by whole
-                ``dt`` steps. ``+1`` places step zero one interval ahead; a
-                negative value backdates an overlapping seam; ``0`` is exact.
-            action_timestep: Absolute policy timestep represented by ``steps[0]``.
-                Logged with the scheduled request in Rerun.
+            steps: Joint waypoints [rad] or TCP poses ``[x, y, z, rx, ry, rz]`` [mm, rad].
+            dt_ms: Time between consecutive waypoints [ms]; 0 = single step.
+            first_timestamp_ms: Session-clock time of step zero; ``None`` resolves "now" at the
+                send.
+            timestamp_offset_steps: Shift of step zero in whole ``dt`` steps (``+1`` one ahead).
+            action_timestep: Absolute policy timestep of ``steps[0]``; ``-1`` for none.
+            extend_buffer: Whether ``HoldPadding`` may pad the chunk.
             lead: Date step ``k`` ``max_expected_latency_ms + k * dt_ms`` after
-                ``observed_at_ms``, or after the send when that is ``None`` (sequential
-                execution); ``first_timestamp_ms`` and ``timestamp_offset_steps`` are then
-                not used.
-            observed_at_ms: Server timestamp of the state the chunk was computed from
-                (:attr:`current_state_server_ms` at observation time). For a live target it
-                is when the target was produced: the joggers pass their loop time, one
-                timeline for all arms, and a ``LiveBuffer`` times targets by it (a ``lead``
-                chunk keeps the session clock there).
-            when_due: ``(step, action)``. ``action`` runs when the caller's ``step`` is due on
-                the server's clock, for the chunk's IO and computed actions. It runs at once
-                when that step was already past (a dropped chunk), never when the chunk is
-                replaced before it is sent (its motion never runs), and not when the session
-                stopped, failed or hit a stop condition before it was due. Actions of one
-                session run one after another. An exception fails the session.
+                ``observed_at_ms``, or after the send when ``None`` (contracts T1); the two
+                arguments above are then not used.
+            observed_at_ms: Session-clock time of the state the chunk was computed from; for a
+                live target, when it was produced (a ``LiveBuffer`` times targets by it).
+            when_due: ``(step, action)``: ``action`` runs when the caller's ``step`` is due, at
+                once if already past, never if the chunk is replaced before it is sent or the
+                session stopped first (contracts T7). Actions run one after another; one that
+                raises fails the session.
             retained_prefix_steps: Leading steps a queue already sent, which ``Smoothing``
                 keeps exact.
         """
@@ -537,9 +459,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         for module in self._chunk_modules:
             chunk = module.on_chunk(chunk, self._module_context())
 
-        # Store raw chunk data. Timestamps are computed in _jogging_loop
-        # immediately before yielding to the server, avoiding drift from any
-        # internal await/scheduling delay between policy and stream send.
         self._queued_chunk_count += 1
         self._pending_request = replace(chunk, sequence=self._queued_chunk_count)
         self._pending_request_event.set()
@@ -586,20 +505,11 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         )
 
     async def drain(self, timeout_s: float = _DRAIN_TIMEOUT_S) -> bool:
-        """Wait for the waypoints already sent to finish executing.
+        """Wait until the server acknowledged :attr:`scheduled_until_server_ms`; with
+        ``delay_until_braking_ms`` set, the last target is sent once more to stop on (ADR 0019).
 
-        Every waypoint carries an absolute server timestamp, so "finished" is
-        simply the server *acknowledging* a time at or past the last one the
-        caller asked for (see :attr:`scheduled_until_server_ms`). Until
-        then the motion is still owed to the caller: it was accepted, and
-        :meth:`stop` cancelling the jogging task would throw it away mid-path.
-
-        With :attr:`~novapolicy.types.WaypointConfig.delay_until_braking_ms` set,
-        the robot would keep moving past the last target, so once everything is
-        sent the last target goes out once more to stop on.
-
-        Returns whether the schedule was reached before ``timeout_s``. Does not
-        stop the session; call :meth:`stop` afterwards.
+        Returns whether that happened within ``timeout_s``. Does not stop the session; call
+        :meth:`stop` afterwards.
         """
         if not self._running or (self._scheduled_until_server_ms <= 0 and not self._pending()):
             return True
@@ -610,14 +520,12 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             if not final_queued and not self._pending():
                 final_queued = True
                 self._queue_final_target()
-            # Re-read every pass: the caller's last chunk may still be queued. Compare
-            # against acknowledged progress, not the extrapolated estimate, which sails
-            # past the schedule on a stalled link.
+            # Re-read every pass: the caller's last chunk may still be queued. Compared with
+            # acknowledged progress, not the estimate (ADR 0019).
             target_ms = self._scheduled_until_server_ms
             if not self._pending() and self._clock.last_server_timestamp_ms >= target_ms:
                 return True
-            # A fault or a fired stop condition means the rest of the path is no
-            # longer wanted; surface it rather than waiting the schedule out.
+            # After a fault or a fired stop condition the rest of the path is not wanted.
             if self._failed or self._stop_condition is not None:
                 return False
             if time.monotonic() >= deadline:
@@ -650,11 +558,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._pending_request_event.set()
 
     async def stop(self) -> None:
-        """Stop the session gracefully.
-
-        Cancels immediately: anything still scheduled is dropped. Call
-        :meth:`drain` first to let the accepted waypoints run out.
-        """
+        """Stop the session at once, dropping anything still scheduled; call :meth:`drain` first
+        to let the accepted waypoints run out."""
         self._running = False
         for task in self._due_tasks:
             task.cancel()  # not due yet: the motion it belongs to is stopped too
@@ -687,25 +592,20 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 if state.tcp is not None:
                     self._current_tcp_name = state.tcp
                 self._jog_tracker.update_from_state(state)
-                # Only a state after the server acknowledged the stop says the
-                # stop took effect: a paused state before it is no answer.
+                # Only a state after the stop was acknowledged counts (ADR 0019).
                 if self._stop_acknowledged and not _jogging_running(state):
                     self._stop_settled.set()
                 state_timestamp = getattr(state, "timestamp", None)
                 self._clock.observe_state_timestamp(state_timestamp)
-                # Extract server jogger session timestamp for time synchronization.
                 ts_ms = JoggingTimeClock.extract_from_state(state)
                 if ts_ms is None:
                     continue
                 self._clock.update(ts_ms, state_timestamp)
                 self._current_state_server_ms = ts_ms
-                # Only samples carrying a server timestamp can date the hold,
-                # and those are exactly the ones the settle check compares
-                # against its schedule.
+                # Standstill is timed on the session clock, so only samples carrying it count.
                 self._standstill.update(ts_ms, self._current_joints)
                 self._notify_state_observer(ts_ms)
         except asyncio.CancelledError:
-            # Expected on shutdown; stop quietly without logging as an error.
             raise
         except (OSError, RuntimeError) as e:
             logger.error("State stream error for %s: %s", self.motion_group_id, e)
@@ -719,13 +619,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                     await stream.aclose()
 
     def _note_state_stream_gone(self, reason: str, error: BaseException | None) -> None:
-        """Fail the session when the state stream goes away before it is ready.
-
-        Startup calibrates the clock from this stream, so :meth:`wait_ready` would otherwise
-        only time out; recording the failure lets it raise the real cause. Once the session is
-        ready *and* calibrated (what ``wait_ready`` waits on), a lost stream is left to the
-        jogging loop.
-        """
+        """Fail the session when the state stream ends before it is ready and calibrated, so
+        :meth:`wait_ready` raises the cause; later, a lost stream is left to the jogging loop."""
         if not self._running or self._failed:
             return
         if self._ready.is_set() and self._clock.state_clock_calibrated:
@@ -745,9 +640,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         state = self._build_robot_state()
         if state is None:
             return
-        # Before the first server timestamp there is no generation instant to
-        # place this on, so fall back to now: it is the best estimate available
-        # and, unlike the clock's zero-initialised field, it is a real instant.
+        # No generation instant before the first server timestamp: use now (ADR 0012).
         generated_at = self._clock.last_sample_wall
         if generated_at is None:
             generated_at = time.monotonic()
@@ -755,8 +648,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             try:
                 observer(state, ts_ms, generated_at)
             except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as e:
-                # Best-effort: one failing observer neither breaks the stream nor skips the
-                # others. AttributeError: an observer may read a partially populated state.
+                # One failing observer (AttributeError: it read a partial state) neither breaks
+                # the stream nor skips the others.
                 logger.debug("State observer failed for %s: %s", self.motion_group_id, e)
 
     # -------------------------------------------------------------------------
@@ -764,13 +657,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     # -------------------------------------------------------------------------
 
     async def _request_server_stop(self) -> None:
-        """End the session on the server with StopActionChunksRequest.
-
-        Closing the stream without it leaves NOVA reporting the session as
-        RUNNING, with its timer frozen: the next jogging session syncs its clock
-        to that timer, and the next trajectory execution fails on the jogging
-        details.
-        """
+        """End the session on the server with ``StopActionChunksRequest`` and wait up to
+        ``_STOP_TIMEOUT_S`` for it to leave ``RUNNING`` (ADR 0019)."""
         task = self._jogging_task
         if task is None or task.done() or not self._ready.is_set():
             return
@@ -884,8 +772,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
         if self._stop_requested:
             yield api.models.StopActionChunksRequest()
-            # Closing the stream before the state leaves RUNNING can leave the
-            # server reporting it as RUNNING.
+            # Keep the stream open until the state leaves RUNNING (ADR 0019).
             settled = asyncio.create_task(self._stop_settled.wait())
             _ = await asyncio.wait((settled, response_task), return_when=asyncio.FIRST_COMPLETED)
             settled.cancel()
@@ -924,13 +811,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._fail(f"action at a chunk step failed for {self.motion_group_id}", error)
 
     def _record_dropped_chunk(self, pending: PendingChunk, step_timestamps: list[int]) -> None:
-        """Account for a chunk that was dropped for being entirely in the past.
-
-        It still counts as scheduled, since callers wait for :attr:`scheduled_chunk_count` to
-        reach what they queued, and its (past) step timestamps are recorded. Nothing went on the
-        wire, so the sent-waypoint list is cleared and :attr:`scheduled_until_server_ms` keeps
-        the previous chunk's motion.
-        """
+        """Count a chunk dropped as entirely past as scheduled, with its step timestamps; nothing
+        was sent, so :attr:`scheduled_until_server_ms` keeps the previous chunk's motion."""
         self._scheduled_chunk_count = pending.sequence
         self._scheduled_step_timestamps = list(step_timestamps)
         self._scheduled_waypoint_timestamps = []
@@ -947,22 +829,11 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._scheduled_start = (timestep, ServerMs(stamps[start]), pending.dt_ms)
 
     def _lead_request(self, pending: PendingChunk) -> _ScheduledRequest:
-        """A chunk placed by the lead rule, with the waypoints still queued before it.
+        """A chunk placed by the lead rule, with the earlier waypoints not yet due.
 
-        Contract: step ``k`` is due ``max_expected_latency_ms + k * dt`` after the observation
-        (``observed_at_ms``, else server "now"), as UMI and Diffusion Policy date actions. Steps
-        due within ``MIN_LEAD_MS`` of now are dropped; the rest keep their times, and
-        ``step_timestamps`` reports every step, sent or not.
-
-        One-step chunks are spaced by a playback clock instead: it follows the observations by
-        at most ``_PLAYBACK_SLEW`` of a step per step, as a streaming jitter buffer does (FANUC
-        Stream Motion; Isaac ROS spaces steps by ``step_dt``), so state-stream jitter does not
-        reach the follower as speed jumps (over a network: 0 to 120 ms between evenly spaced
-        targets, and a zig-zagging arm). A multi-step chunk carries its own spacing.
-
-        Each request re-sends the earlier waypoints that are not yet due, as MoveIt Servo sends
-        a rolling window: the follower keeps them anyway, but WBR takes only the newest chunk
-        per control cycle, and a chunk lost in a burst comes back with the next one.
+        Step ``k`` is due ``max_expected_latency_ms + k * dt`` after ``observed_at_ms`` (else
+        "now"), one-step chunks spaced by the playback clock (contracts T1, T4, T5). The filters
+        drop late steps; ``step_timestamps`` reports every step, sent or not.
         """
         now_ms = self._clock.estimated_server_timestamp_ms
         observed_ms = pending.observed_at_ms
@@ -991,15 +862,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     def _trimmed_request(self, pending: PendingChunk) -> _ScheduledRequest:
         """Stamp the chunk (the pipeline's ``Timestamps()``), run the filters, build the request.
 
-        Every step gets its time on the caller's timeline: ``first_timestamp_ms`` shifted by
-        ``timestamp_offset_steps``, or, without one, the session's "now" at the send, so nothing
-        can be stale yet. A final target is moved up to the earliest reachable moment instead,
-        because the robot has to come back and stop on it. The filters (``DropLate`` by default)
-        then decide which waypoints go out; they never retime one.
-
-        The returned record always carries a timestamp for *every* step the caller passed,
-        whether it was sent or filtered out, so callers can still ask where any of their own
-        steps landed; ``skipped`` counts the steps before the first one sent.
+        Steps are timed from ``first_timestamp_ms`` shifted by ``timestamp_offset_steps``, else
+        from "now" at the send; a final target no earlier than it can be reached (ADR 0019).
+        The record has a timestamp for every caller step, sent or filtered out; ``skipped``
+        counts the steps before the first one sent.
         """
         if pending.lead:
             return self._lead_request(pending)
@@ -1008,8 +874,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         stamps = self._timestamps(pending)
         kept = self._filtered(stamps, pending)
         if not kept:
-            # The whole chunk is in the past; the caller's next target will supersede it.
-            # Sending it would only make the robot lurch.
             logger.debug(
                 "%s dropping chunk %d: all %d waypoints are in the past",
                 self.motion_group_id,
@@ -1028,8 +892,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             base_ms = self._clock.estimated_server_timestamp_ms
         anchor_ms = max(0, anchor_timestamp_ms(base_ms, pending.timestamp_offset_steps, dt_ms))
         if pending.final and pending.first_timestamp_ms is not None and dt_ms > 0:
-            # The robot may already be past the final target's time, keeping its velocity; it
-            # still has to go back and stop there.
+            # Reachable even when the robot is already past its time (ADR 0019).
             earliest_ms = self._clock.estimated_server_timestamp_ms + MIN_LEAD_MS
             anchor_ms = max(anchor_ms, math.ceil(earliest_ms))
         return [anchor_ms + int(i * dt_ms) for i in range(len(pending.steps))]
@@ -1096,12 +959,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return None if pose is None else [*pose.position, *pose.orientation]
 
     async def _jogging_loop(self) -> None:
-        """Open jogging session and send waypoints when available.
-
-        Responses are consumed independently so network round-trip latency does
-        not gate outgoing waypoint updates. When no chunk is pending, the loop
-        waits instead of sending hold messages that could alter the profile.
-        """
+        """Open the action chunk stream and send each pending chunk; responses are consumed in
+        their own task, and nothing is sent while no chunk is pending (ADR 0019)."""
         api_gateway = get_api_gateway(self._motion_group)
         cell = get_cell(self._motion_group)
         controller_id = get_controller_id(self._motion_group)
@@ -1110,9 +969,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         async def client_request_generator(
             response_stream: AsyncGenerator[api.models.ExecuteActionChunksResponse, None],
         ) -> AsyncGenerator[api.models.ExecuteActionChunksRequest, None]:
-            # 1. Initialize the action chunk session.
-            # The server starts its internal timer when the first waypoint
-            # request arrives (not on InitializeActionChunksRequest).
+            # The session clock starts with the first waypoint request, not with this one.
             yield api.models.InitializeActionChunksRequest(
                 motion_group=self._motion_group.id, tcp=tcp
             )
@@ -1122,10 +979,6 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 name=f"wp-jog-responses-{self.motion_group_id}",
             )
             try:
-                # Send prepared chunks independently of response latency. New
-                # targets still overwrite _pending_request before it is sent,
-                # so stale updates are coalesced without coupling the command
-                # cadence to a websocket round trip.
                 async for request in self._pending_waypoint_requests(response_task):
                     yield request
             finally:
@@ -1141,12 +994,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 client_request_generator=client_request_generator,
             )
         except asyncio.CancelledError:
-            # Expected on shutdown; cancellation is not a jogging failure.
-            pass
+            pass  # shutdown, not a failure
         except InvalidStatus as e:
-            # An old api-gateway (< 26.6) has no executeActionChunks endpoint
-            # and rejects the websocket upgrade with HTTP 404. Surface that as an
-            # actionable error rather than a generic connection loss.
+            # 404: no executeActionChunks endpoint (jogging.md, "Error detection").
             if e.response.status_code == _HTTP_NOT_FOUND:
                 err = JoggingNotSupportedError(self.motion_group_id)
                 self._fail(str(err), err)
@@ -1179,12 +1029,8 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         return ""
 
     def _check_stop_conditions(self) -> None:
-        """Evaluate stop conditions with the current state.
-
-        A condition returning ``True`` ends the session normally: it records the
-        condition's name and stops the loop. This is *not* a failure — the
-        executor turns the recorded name into an ``ExecutionResult`` reason.
-        """
+        """Evaluate stop conditions with the current state; the first returning ``True`` is
+        recorded and ends the session normally, not as a failure."""
         if not self._stop_conditions:
             return
 

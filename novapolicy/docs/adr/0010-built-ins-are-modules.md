@@ -30,7 +30,9 @@ whole chain in one place, or leave one step out without a dedicated switch.
   session reads joint limits at its start when a `JointClamp` is in its pipeline.
 - A timestep queue in continuous execution without its `TimestepTimeline` is refused at
   construction: every chunk would restart at "now" (since ADR 0011 the queue brings it, with its
-  `Smoothing` and `Bridge`, as `default_modules`).
+  `Smoothing` and `Bridge`, as `default_modules`). Under sequential execution a timestep queue
+  and a `LiveBuffer` are refused: it waits for standstill and observes again, so nothing replaces
+  a plan while it runs, and either would be fed timings that never come (contracts T12).
 
 **Verified.** A capture of what reaches NOVA per scenario (sequential with bridge and ramp,
 continuous one-step and multi-step, joint limits, IO at the first step, a timestep queue, jog

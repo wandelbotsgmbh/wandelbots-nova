@@ -1,8 +1,5 @@
-"""Main PolicyRerunLogger — thin coordinator delegating to submodules.
-
-Initializes DH robots / visualizers, then delegates per-step logging
-to focused submodules (observation, action_chunk, streaming, images).
-"""
+"""``PolicyRerunLogger``: sets up the recording, DH robots and visualizers, then hands per-step
+logging to the submodules (observation, action_chunk, target_tracking, streaming, images)."""
 
 from __future__ import annotations
 
@@ -86,13 +83,8 @@ _WORLD_OVERLAYS = (
 
 
 class PolicyRerunLogger:
-    """Logs policy execution data to Rerun.
-
-    Uses RobotVisualizer from nova_rerun_bridge for 3D mesh rendering,
-    and DH FK for action chunk path visualization (no network calls). Policy
-    data and its blueprint use a dedicated recording so NOVA planning can keep
-    its own recording and blueprint.
-    """
+    """Logs policy execution data to a dedicated Rerun recording (ADR 0020): the robot mesh via
+    ``RobotVisualizer``, overlays via DH forward kinematics."""
 
     def __init__(
         self,
@@ -112,8 +104,7 @@ class PolicyRerunLogger:
             get_viewer_manager,
         )
 
-        # The program's own viewer owns how the robot is drawn, so a policy run
-        # renders the way the rest of the program does.
+        # The program's own viewer decides how the robot is drawn.
         viewer = get_viewer_manager().get_viewer(Rerun)
         # Both flags draw the same URDF collision geometry; see the bridge.
         self._show_collision: bool | None = (
@@ -123,12 +114,10 @@ class PolicyRerunLogger:
         )
         self._dh_robots: dict[str, Any] = {}
         self._tcp_offsets: dict[str, Any] = {}  # mg_id -> 4x4 flange->TCP matrix
-        # mg_id -> 4x4 taking a reported pose into the robot's frame. Shared by
-        # reference with the context, so updating it here reaches the overlays.
+        # mg_id -> 4x4 taking a reported pose into the robot's frame; shared with the context.
         self._pose_frames: dict[str, Any] = {}
         self._visualizers: dict[str, Any] = {}
-        # controller id -> the visualizer built for it, so a cell with several
-        # robots gets one each instead of the first one standing in for all.
+        # controller id -> the visualizer built for it.
         self._by_controller: dict[str | None, Any] = {}
         self._ctx: RerunContext | None = None
         """Set once initialized, cleared when streaming stops: what entries are logged with."""
@@ -141,10 +130,7 @@ class PolicyRerunLogger:
         """The latest observed policy step, which per-packet tracking is logged at."""
         self._observed: list[tuple[WaypointJoggingSession, Callable[..., None]]] = []
         self._recording: RecordingStream | None = None
-        # Rerun writes are handed off rather than paid for on the caller's
-        # thread: for a jogging control loop the caller is the loop producing
-        # the next waypoint chunk, and it cannot afford them.
-        self._sink = AsyncLogSink()
+        self._sink = AsyncLogSink()  # writes off the caller's thread (ADR 0020)
 
     async def _register_visualizer(
         self,
@@ -153,14 +139,7 @@ class PolicyRerunLogger:
         robot_model_geometries: list[Any],
         tcp_geometries: dict[str, Any],
     ) -> None:
-        """Give this motion group a visualizer, sharing one per robot.
-
-        One visualizer per *controller*, not per motion group: a robot is one
-        kinematic chain even where the API splits it up, and an arm cannot be
-        placed without the part it rides on. Not one per recording either, since
-        a cell can hold several robots (two UR5e arms on separate controllers is
-        the common case) and each needs its own.
-        """
+        """Give this motion group its controller's visualizer, built on first use (ADR 0020)."""
         motion_group_id = motion_group.id
         controller_id = getattr(motion_group, "_controller_id", None)
         if controller_id not in self._by_controller:
@@ -173,8 +152,7 @@ class PolicyRerunLogger:
         visualizer = self._by_controller.get(controller_id)
         if visualizer is None:
             return
-        # Every motion group of a robot has its own volumes on its own chain;
-        # the visualizer covers the whole controller, so tell it about each.
+        # Each motion group's volumes sit on its own chain.
         visualizer.add_volumes(
             motion_group_id,
             dh_robot,
@@ -196,12 +174,7 @@ class PolicyRerunLogger:
         robot_model_geometries: list[Any],
         tcp_geometries: dict[str, Any],
     ) -> RobotVisualizer | None:
-        """Build the controller-wide visualizer, or nothing if it cannot be had.
-
-        The robot comes from a URDF, which is the only rendering path. Failing
-        to get one costs the robot in the recording, not the policy run, so it
-        is reported and the overlays carry on without it.
-        """
+        """Build the controller-wide visualizer from its URDF; ``None``, logged, when that fails."""
         from nova_rerun_bridge.robot_visualizer import RobotVisualizer
 
         from nova.cell.controller import Controller
@@ -250,21 +223,10 @@ class PolicyRerunLogger:
         self._anchor_overlays_to_robot_frame()
 
     def _anchor_overlays_to_robot_frame(self) -> None:
-        """Put the policy overlays in the same coordinate frame as the robot.
-
-        A URDF-backed robot lives in Rerun's frame graph and the 3D view targets
-        that graph's root. Anything logged outside that graph gets an implicit
-        frame of its own with no path to the root, so the view drops it -- TCP
-        trails, action chunks, target markers, all of them.
-
-        The frame has to be declared on the entity that carries the geometry:
-        declaring it on the parent path does nothing for the children.
-        """
+        """Declare each motion group's robot frame on every one of its overlay entities, so the
+        3D view draws them (ADR 0020)."""
         import rerun as rr
 
-        # Each motion group takes its own robot's frame: a cell can hold several
-        # robots, and one arm's overlays anchored to another arm's frame land
-        # wherever that other robot happens to be.
         for mg in self._motion_groups:
             visualizer = self._visualizers.get(mg.id)
             frame = getattr(visualizer, "world_frame", None) if visualizer else None
@@ -289,15 +251,8 @@ class PolicyRerunLogger:
         return roots
 
     async def _calibrate_if_needed(self) -> None:
-        """Put every motion group's overlays into the robot's frame.
-
-        A motion group's DH table describes its own segment from its own base,
-        and the controller reports ``mounting = [0, 0, 0]`` for all of them, so
-        everything drawn from a ``DHRobot`` -- TCP trails, action-chunk markers,
-        safety geometry -- otherwise lands in the chain's own base frame rather
-        than the robot's, which is how a TCP marker ends up a metre from the
-        TCP. The visualizer knows where each chain really sits, so ask it.
-        """
+        """Read every motion group's joints and re-base its overlay ``DHRobot`` where the
+        visualizer places the chain (ADR 0020)."""
         joint_values: dict[str, list[float]] = {}
         for mg in self._motion_groups:
             try:
@@ -309,11 +264,8 @@ class PolicyRerunLogger:
         self._place_overlay_bases(joint_values)
 
     def _place_overlay_bases(self, joint_values: dict[str, list[float]]) -> None:
-        """Move each overlay ``DHRobot``'s base to where its chain really sits.
-
-        A child chain rides its parent's end link, so its base is only constant
-        while the parent holds still; call this whenever the poses change.
-        """
+        """Move each overlay ``DHRobot``'s base to where its chain sits; a child chain rides its
+        parent's end link, so call this whenever the poses change."""
         from nova import api
 
         for visualizer in {id(v): v for v in self._visualizers.values()}.values():
@@ -366,22 +318,14 @@ class PolicyRerunLogger:
                 dh_robot = DHRobot(dh_parameters=dh_params, mounting=mounting)
                 self._dh_robots[mg.id] = dh_robot
 
-                # Joint action chunks are drawn at the flange by default. A
-                # policy schema with joint actions does not declare a TCP, so
-                # silently applying the controller's active TCP offset can make
-                # the action marker look displaced from what is actually sent.
+                # Joint chunks are drawn at the flange unless asked otherwise (ADR 0020).
                 if self._use_tcp_offset_for_joint_actions:
                     try:
                         from novapolicy.rerun.kinematics import (
                             tcp_offset_matrix,
                         )
 
-                        # The TCP the caller drives wins over the controller's
-                        # active one. Measured poses come back at the driven TCP,
-                        # so resolving the offset from a different TCP puts the
-                        # commanded and measured sides of every tracking plot in
-                        # different frames — a constant offset the size of the
-                        # tool, which reads as the policy being wildly wrong.
+                        # The driven TCP wins over the active one (ADR 0020).
                         active_tcp = self._tcp or await mg.active_tcp_name()
                         if active_tcp is not None:
                             off = await mg.tcp_offset(active_tcp)
@@ -395,7 +339,6 @@ class PolicyRerunLogger:
                     ) as e:
                         logger.debug("TCP offset query failed for %s: %s", mg.id, e)
 
-                # TCP geometries for visualization
                 tcp_geometries: dict[str, api.models.Collider] = {}
                 if description.safety_tool_colliders is not None:
                     for colliders in description.safety_tool_colliders.values():
@@ -403,7 +346,6 @@ class PolicyRerunLogger:
                             tcp_geometries = dict(colliders)
                             break
 
-                # Safety link chain geometries
                 robot_model_geometries: list[api.models.LinkChain] = []
                 if description.safety_link_colliders is not None:
                     robot_model_geometries = [list(description.safety_link_colliders)]
@@ -417,7 +359,7 @@ class PolicyRerunLogger:
 
             self._send_blueprint()
 
-            # Set coordinate convention: NOVA uses right-handed Z-up
+            # NOVA is right-handed, Z up.
             rr.log(
                 "/",
                 rr.ViewCoordinates.RIGHT_HAND_Z_UP,
@@ -459,12 +401,8 @@ class PolicyRerunLogger:
         """
         moment = time.monotonic() if at is None else at
         if moment < self._start_time:
-            # A caller handed us an instant from before the session began. The
-            # monotonic epoch is machine boot, so a zero-initialised "instant"
-            # lands days in the past and drags the whole timeline with it.
-            # Stamp it now rather than corrupting the axis for every other view.
-            # Correcting the instant itself, not just the derived elapsed value,
-            # is what keeps ``log_time`` below out of the past as well.
+            # Before the session start (e.g. a zero-initialised instant): now (ADR 0020). The
+            # instant itself is corrected, so ``log_time`` below stays out of the past too.
             logger.debug(
                 "Ignoring log timestamp %.3fs before session start",
                 self._start_time - moment,
@@ -472,13 +410,7 @@ class PolicyRerunLogger:
             moment = time.monotonic()
         elapsed = max(0.0, moment - self._start_time)
 
-        # Rerun stamps its built-in ``log_time`` when the write happens, which
-        # with writes handed to a worker is not when the data was produced: a
-        # burst of state packets is written within a millisecond of each other,
-        # so on that timeline they pile into a vertical step followed by a flat
-        # run, where ``policy_time`` shows the same packets evenly spaced.
-        # Stamping it with the produce moment keeps every timeline telling the
-        # same story.
+        # ``log_time`` is set to the same produce moment, not the write (ADR 0020).
         wall = self._wall_clock_at(moment)
         recording = self._recording
 
@@ -558,11 +490,8 @@ class PolicyRerunLogger:
         at: float | None = None,
     ) -> None:
         """Log commanded/actual joints and the derived TCP position error."""
-        # Snapshot before deferring: the caller reuses its target buffers.
-        #
-        # Guarded, because this part runs on the caller's thread — the control
-        # loop, which calls this with no try/except of its own. A state that is
-        # briefly missing its joints must skip one entry, not abort execution.
+        # Snapshot before deferring (the caller reuses its buffers), guarded: this part runs on
+        # the control loop, where a state briefly missing its joints must skip one entry.
         try:
             snapshot = list(target)
             joints = list(actual.joints)
@@ -583,11 +512,8 @@ class PolicyRerunLogger:
         self._log_later(write, at=at)
 
     def log_robot_state(self, mg_id: str, state: RobotState, *, at: float) -> None:
-        """Move the 3D robot and TCP trail to a state packet, stamped when it was generated.
-
-        Meant to be called for every state packet. It logs at most one packet per state sample
-        period of *generation* time, so the robot moves at an even rate however packets arrived.
-        """
+        """Move the 3D robot and TCP trail to a state packet, stamped when it was generated; call
+        it for every packet, it logs at most one per ``STATE_SAMPLE_PERIOD_S`` of generation time."""
         streamer = self._streamer
         if self._ctx is None or streamer is None:
             return
@@ -612,9 +538,7 @@ class PolicyRerunLogger:
         at: float | None = None,
     ) -> None:
         """Log commanded/actual TCP pose and tracking error."""
-        # Snapshot before deferring: the caller reuses its target buffers.
-        # Guarded for the same reason as :meth:`log_joint_tracking` — this runs
-        # on the control loop's own thread.
+        # Snapshot before deferring, guarded, as in :meth:`log_joint_tracking`.
         try:
             pose = getattr(actual, "pose", None)
             if pose is None:
@@ -723,9 +647,7 @@ class PolicyRerunLogger:
             if self._streamer is not None:
                 await self._streamer.stop()
         finally:
-            # Drain before the recording goes away, or the tail of the run is
-            # written to a disconnected stream. Joined off the event loop so
-            # teardown of everything else can proceed meanwhile.
+            # Drain before the recording goes away, joined off the event loop.
             await asyncio.get_running_loop().run_in_executor(None, self._sink.close)
             self._streamer = None
             recording = self._recording

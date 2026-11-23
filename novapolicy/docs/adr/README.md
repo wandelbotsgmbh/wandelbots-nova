@@ -23,3 +23,7 @@ UR10e, with the client inside the NOVA cluster unless a record says otherwise.
 | [0014](0014-providers-fail-before-motion.md) | Providers check the policy before the robot moves, and fail loudly |
 | [0015](0015-clamp-joint-targets.md) | Joint targets are clamped inside the robot's limits |
 | [0016](0016-measured-joint-velocities.md) | Joint velocities are read from the raw state stream |
+| [0017](0017-playback-clock-for-one-step-chunks.md) | One-step chunks are spaced by a playback clock |
+| [0018](0018-liveness-bounds-on-inputs.md) | Stale inputs end the run, with bounds that catch a dead input, not a slow one |
+| [0019](0019-session-stream-and-stop.md) | The session sends without waiting for acknowledgements and ends with a stop request |
+| [0020](0020-rerun-off-the-loop-in-the-robots-frame.md) | Rerun is written off the control loop, stamped when produced, drawn in the robot's frame |
