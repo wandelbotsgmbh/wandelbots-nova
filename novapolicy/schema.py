@@ -22,7 +22,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import logging
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 
@@ -454,6 +454,33 @@ class _ActComputed:
 
 ActionEntry = _ActJoints | _ActTcp | _ActIO | _ActComputed
 
+_FILL_ORDER = (
+    _ObsJoints,
+    _ObsJointVelocities,
+    _ObsTcp,
+    _ObsPose,
+    _ObsIO,
+    _ObsConstant,
+    _ObsComputed,
+)
+"""The order ``build_observation`` fills observation kinds in."""
+
+_Act = TypeVar("_Act", _ActJoints, _ActTcp, _ActIO)
+_Obs = TypeVar("_Obs", _ObsJoints, _ObsTcp, _ObsIO)
+
+
+def _groups(entry: ObservationEntry | ActionEntry) -> list[MotionGroup]:
+    """The motion groups an observation reads or an action drives."""
+    if isinstance(entry, (_ObsJoints, _ObsJointVelocities)):
+        return entry.sources
+    if isinstance(entry, _ActJoints):
+        return entry.targets
+    if isinstance(entry, (_ObsTcp, _ObsIO)):
+        return [entry.source]
+    if isinstance(entry, (_ActTcp, _ActIO)):
+        return [entry.target]
+    return []
+
 
 class Action:
     """Factory for explicit action entries."""
@@ -623,38 +650,31 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
 
     @property
     def _joint_action_ops(self) -> dict[str, list[ValueOp]]:
-        """Motion group id → joint operators to invert on the action path.
-
-        Resolution follows the same explicit-wins rule as ``joint_action_keys``:
-        an explicit ``Action.joint_positions`` supplies its own operators, and
-        otherwise they come from the observation sharing its key.
-        """
-        by_key: dict[str, list[ValueOp]] = {
-            o.key: o.ops for o in self._observations if isinstance(o, _ObsJoints)
+        """Motion group id → joint operators to invert on the action path, from the entry
+        that defines its joint action (see :meth:`_action_entries`)."""
+        return {
+            mg.id: entry.ops
+            for entry in self._action_entries(_ActJoints, _ObsJoints)
+            if entry.ops
+            for mg in _groups(entry)
         }
-        by_key.update({a.key: a.ops for a in self._actions if isinstance(a, _ActJoints)})
-
-        result: dict[str, list[ValueOp]] = {}
-        for key, motion_groups in self.joint_action_keys:
-            ops = by_key.get(key)
-            if ops:
-                for mg in motion_groups:
-                    result[mg.id] = ops
-        return result
 
     @property
     def _tcp_action_specs(self) -> dict[str, _ObsTcp | _ActTcp]:
         """Motion group id → the entry whose units, rotation type and frame its TCP action
         uses: an explicit ``Action.tcp``, else the writable observation sharing its key."""
-        by_key: dict[str, _ObsTcp | _ActTcp] = {
-            o.key: o for o in self._observations if isinstance(o, _ObsTcp)
-        }
-        by_key.update({a.key: a for a in self._actions if isinstance(a, _ActTcp)})
-        return {
-            motion_group.id: by_key[key]
-            for key, motion_group in self.tcp_action_keys
-            if key in by_key
-        }
+        return {_groups(entry)[0].id: entry for entry in self._action_entries(_ActTcp, _ObsTcp)}
+
+    def _action_entries(self, act_type: type[_Act], obs_type: type[_Obs]) -> list[_Act | _Obs]:
+        """The explicit ``act_type`` actions, then each writable ``obs_type`` observation whose
+        key none of them takes: an explicit ``Action`` wins over an ``action=True`` one."""
+        explicit: list[_Act | _Obs] = [a for a in self._actions if isinstance(a, act_type)]
+        keys = {entry.key for entry in explicit}
+        return explicit + [
+            o
+            for o in self._observations
+            if isinstance(o, obs_type) and o.action and o.key not in keys
+        ]
 
     def tcp_action_width(self, motion_group_id: str) -> int:
         """Values per step of a motion group's TCP action: 3 position + 3 or 4 orientation."""
@@ -804,16 +824,8 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         return result
 
     def _iter_all_mgs(self) -> Iterator[MotionGroup]:
-        for o in self._observations:
-            if isinstance(o, (_ObsJoints, _ObsJointVelocities)):
-                yield from o.sources
-            elif isinstance(o, (_ObsTcp, _ObsIO)):
-                yield o.source
-        for a in self._actions:
-            if isinstance(a, _ActJoints):
-                yield from a.targets
-            elif isinstance(a, (_ActTcp, _ActIO)):
-                yield a.target
+        for entry in [*self._observations, *self._actions]:
+            yield from _groups(entry)
 
     # -- Schema introspection (used by executor, GR00T client) --
 
@@ -824,16 +836,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
     @property
     def joint_action_keys(self) -> list[tuple[str, list[MotionGroup]]]:
         """Action-side joint keys: explicit Action.joint_positions() + inferred from action=True."""
-        explicit_keys = {a.key for a in self._actions if isinstance(a, _ActJoints)}
-        result: list[tuple[str, list[MotionGroup]]] = [
-            (a.key, a.targets) for a in self._actions if isinstance(a, _ActJoints)
-        ]
-        result.extend(
-            (o.key, o.sources)
-            for o in self._observations
-            if isinstance(o, _ObsJoints) and o.action and o.key not in explicit_keys
-        )
-        return result
+        return [(e.key, _groups(e)) for e in self._action_entries(_ActJoints, _ObsJoints)]
 
     @property
     def tcp_mappings(self) -> list[_ObsTcp]:
@@ -868,30 +871,14 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
     @property
     def io_action_keys(self) -> list[tuple[str, MotionGroup, str, Mapping]]:
         """Action-side IO keys: explicit Action.io() + inferred from action=True."""
-        explicit_keys = {a.key for a in self._actions if isinstance(a, _ActIO)}
-        result: list[tuple[str, MotionGroup, str, Mapping]] = [
-            (a.key, a.target, a.io, a.mapping) for a in self._actions if isinstance(a, _ActIO)
+        return [
+            (e.key, _groups(e)[0], e.io, e.mapping) for e in self._action_entries(_ActIO, _ObsIO)
         ]
-        result.extend(
-            (o.key, o.source, o.io, o.mapping)
-            for o in self._observations
-            if isinstance(o, _ObsIO) and o.action and o.key not in explicit_keys
-        )
-        return result
 
     @property
     def tcp_action_keys(self) -> list[tuple[str, MotionGroup]]:
         """Action-side TCP keys: explicit Action.tcp() + inferred from action=True."""
-        explicit_keys = {a.key for a in self._actions if isinstance(a, _ActTcp)}
-        result: list[tuple[str, MotionGroup]] = [
-            (a.key, a.target) for a in self._actions if isinstance(a, _ActTcp)
-        ]
-        result.extend(
-            (o.key, o.source)
-            for o in self._observations
-            if isinstance(o, _ObsTcp) and o.action and o.key not in explicit_keys
-        )
-        return result
+        return [(e.key, _groups(e)[0]) for e in self._action_entries(_ActTcp, _ObsTcp)]
 
     @property
     def motion_action_keys(self) -> list[str]:
@@ -924,20 +911,12 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
 
     def relative_motion_groups(self) -> set[str]:
         """Motion group IDs where actions use relative mode."""
-        result: set[str] = set()
-        for o in self._observations:
-            if isinstance(o, (_ObsJoints, _ObsTcp)) and o.mode == "relative":
-                if isinstance(o, _ObsJoints):
-                    result.update(mg.id for mg in o.sources)
-                else:
-                    result.add(o.source.id)
-        for a in self._actions:
-            if isinstance(a, (_ActJoints, _ActTcp)) and a.mode == "relative":
-                if isinstance(a, _ActJoints):
-                    result.update(mg.id for mg in a.targets)
-                else:
-                    result.add(a.target.id)
-        return result
+        return {
+            mg.id
+            for e in [*self._observations, *self._actions]
+            if isinstance(e, (_ObsJoints, _ObsTcp, _ActJoints, _ActTcp)) and e.mode == "relative"
+            for mg in _groups(e)
+        }
 
     def relative_tcp_deltas(self) -> dict[str, TcpDelta]:
         """Motion group ID -> how its relative TCP action steps compose."""
@@ -1057,56 +1036,43 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         states: dict[str, RobotState],
         io_values: dict[str, object] | None = None,
     ) -> dict[str, Any]:
-        """Build a flat feature dict from robot states + IO values."""
+        """Build a flat feature dict from robot states + IO values: joint positions, joint
+        velocities, TCP poses, poses, IOs, constants, then computed values (which see the rest),
+        each kind in the order declared."""
         obs: dict[str, Any] = {}
-        self._fill_joints(obs, states)
-        self._fill_joint_velocities(obs, states)
-        self._fill_tcp(obs, states)
-        await self._fill_poses(obs)
-        self._fill_ios(obs, io_values)
-        self._fill_constants(obs)
-        await self._fill_computed(obs)
+        for kind in _FILL_ORDER:
+            for o in self._observations:
+                if isinstance(o, kind):
+                    await self._fill(obs, o, states, io_values)
         return obs
 
-    def _fill_joints(self, obs: dict[str, Any], states: dict[str, RobotState]) -> None:
-        for o in self._observations:
-            if not isinstance(o, _ObsJoints):
-                continue
-            joints: list[float] = []
+    async def _fill(  # ruff: ignore[complex-structure, too-many-branches]
+        self,
+        obs: dict[str, Any],
+        o: ObservationEntry,
+        states: dict[str, RobotState],
+        io_values: dict[str, object] | None,
+    ) -> None:
+        """Add one observation entry's values to ``obs``."""
+        if isinstance(o, (_ObsJoints, _ObsJointVelocities)):
+            velocities = self._joint_velocities
+            if isinstance(o, _ObsJointVelocities) and velocities is None:
+                return
+            values: list[float] = []
             for mg in o.sources:
                 s = states.get(mg.id)
-                if s is not None:
-                    joints.extend(s.joints)
-            for i, v in enumerate(apply_ops(joints, o.ops), 1):
+                if s is not None and isinstance(o, _ObsJoints):
+                    values.extend(s.joints)
+                elif s is not None and velocities is not None:
+                    values.extend(velocities.read(mg.id, s.joints))
+            for i, v in enumerate(apply_ops(values, o.ops), 1):
                 obs[f"{o.key}_{i}"] = v
-
-    def _fill_joint_velocities(self, obs: dict[str, Any], states: dict[str, RobotState]) -> None:
-        if self._joint_velocities is None:
-            return
-        for o in self._observations:
-            if not isinstance(o, _ObsJointVelocities):
-                continue
-            velocities: list[float] = []
-            for mg in o.sources:
-                s = states.get(mg.id)
-                if s is not None:
-                    velocities.extend(self._joint_velocities.read(mg.id, s.joints))
-            for i, v in enumerate(apply_ops(velocities, o.ops), 1):
-                obs[f"{o.key}_{i}"] = v
-
-    def _fill_tcp(self, obs: dict[str, Any], states: dict[str, RobotState]) -> None:
-        for o in self._observations:
-            if not isinstance(o, _ObsTcp):
-                continue
+        elif isinstance(o, _ObsTcp):
             s = states.get(o.source.id)
             if s is not None and hasattr(s, "pose") and s.pose is not None:
                 values = self.tcp_observation_values(o, s)
                 obs.update(zip(tcp_value_names(o), values, strict=True))
-
-    async def _fill_poses(self, obs: dict[str, Any]) -> None:
-        for o in self._observations:
-            if not isinstance(o, _ObsPose):
-                continue
+        elif isinstance(o, _ObsPose):
             source = o.source
             if isinstance(source, Pose):
                 pose = source
@@ -1116,28 +1082,13 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
                 pose = await source()
             values = _policy_pose_values([*pose.position, *pose.orientation], o)
             obs.update(zip(tcp_value_names(o), values, strict=True))
-
-    def _fill_ios(self, obs: dict[str, Any], io_values: dict[str, object] | None) -> None:
-        if io_values is None:
-            return
-        for o in self._observations:
-            if isinstance(o, _ObsIO):
-                raw = io_values.get(o.io)
-                if raw is not None and isinstance(raw, (bool, int, float)):
-                    obs[o.key] = o.mapping.to_policy(raw)
-                else:
-                    obs[o.key] = 0.0
-
-    def _fill_constants(self, obs: dict[str, Any]) -> None:
-        for o in self._observations:
-            if isinstance(o, _ObsConstant):
-                obs[o.key] = o.value
-
-    async def _fill_computed(self, obs: dict[str, Any]) -> None:
-        for o in self._observations:
-            if isinstance(o, _ObsComputed):
-                extra = await o.fn(obs)
-                obs.update(extra)
+        elif isinstance(o, _ObsIO) and io_values is not None:
+            raw = io_values.get(o.io)
+            obs[o.key] = o.mapping.to_policy(raw) if isinstance(raw, (bool, int, float)) else 0.0
+        elif isinstance(o, _ObsConstant):
+            obs[o.key] = o.value
+        elif isinstance(o, _ObsComputed):
+            obs.update(await o.fn(obs))
 
     def action_columns(self, dof: dict[str, int]) -> list[tuple[str, int]]:
         """The actions as one flat vector, key by key with their widths: joint keys (their
