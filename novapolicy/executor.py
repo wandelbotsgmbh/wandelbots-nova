@@ -12,12 +12,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from novapolicy.cameras.manager import CameraManager
-from novapolicy.chunking import (
-    apply_relative_mode,
-    is_single_step,
-    placement,
-    trim_chunk,
-)
+from novapolicy.chunking import apply_relative_mode, is_single_step, placement, trim_chunk
 from novapolicy.estop import EstopMonitor
 from novapolicy.io import IOStreamManager
 from novapolicy.jogging.lifecycle import SessionLifecycle, move_to_start_joint_position
@@ -39,7 +34,7 @@ from novapolicy.types import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Sequence
+    from collections.abc import Callable, Coroutine, Sequence
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
@@ -211,6 +206,8 @@ class PolicyExecutor:
         self._observed_at_ms: dict[str, ServerMs | None] = {}
         self._observed_clock_ms: dict[str, ServerMs] = {}
         self._gc_frozen = False
+        self._start_time: float | None = None
+        """When the first inference ended, after the policy's preparation; ``None`` before."""
         self._rerun: PolicyRerunLogger | None = None
         self._logged_first_images = False
 
@@ -251,19 +248,10 @@ class PolicyExecutor:
         self.status = ExecutorStatus(phase=Phase.CONNECTING, message="Connecting...")
         try:
             await self._run_episode()
-        except (MotionError, EmergencyStopError) as exc:
-            self.status = ExecutorStatus(
-                phase=Phase.ERROR,
-                step=self.status.step,
-                message=str(exc),
-            )
-            raise
         except Exception as exc:
-            self.status = ExecutorStatus(
-                phase=Phase.ERROR,
-                step=self.status.step,
-                message=f"{type(exc).__name__}: {exc}",
-            )
+            typed = isinstance(exc, (MotionError, EmergencyStopError))
+            message = str(exc) if typed else f"{type(exc).__name__}: {exc}"
+            self.status = ExecutorStatus(phase=Phase.ERROR, step=self.status.step, message=message)
             raise
         finally:
             await self._cleanup()
@@ -369,10 +357,8 @@ class PolicyExecutor:
 
         Raises MotionError, EmergencyStopError directly.
         """
-        step = 0
-        start_time: float | None = None
-        last_obs: dict[str, Any] | None = None
-
+        self._start_time = None
+        self._last_obs = None
         self.status.message = "Preparing policy..."
 
         fixed_rate_period = (
@@ -387,7 +373,7 @@ class PolicyExecutor:
             # Yield every iteration, so stop() runs even when the policy answers synchronously.
             await asyncio.sleep(0)
 
-            termination = self._termination_result(step, start_time, last_obs)
+            termination = self._termination_result()
             if termination is not None:
                 return termination
 
@@ -397,31 +383,32 @@ class PolicyExecutor:
             if not robot_states:
                 await asyncio.sleep(0.01)
                 continue
-            action, start_time = await self._observe_and_infer(robot_states, step, start_time)
-            if step == 0:
-                tick_start = start_time
-            last_obs = robot_states
-            termination = await self._send_policy_action(
-                action,
-                robot_states,
-                step=step,
-                start_time=start_time,
-                last_obs=last_obs,
-            )
+            action = await self._observe_and_infer(robot_states)
+            if self.status.step == 0 and self._start_time is not None:
+                tick_start = self._start_time  # the first tick starts after the preparation
+            termination = await self._send_policy_action(action, robot_states)
             if termination is not None:
                 return termination
-            step += 1
-            self.status.step = step
+            self.status.step += 1
 
             # Raises on a fault; a stop condition firing on a session tick ends the run normally.
             stopped_by = self._lifecycle.check()
             if stopped_by is not None:
-                return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
+                return self._result(f"stop condition: {stopped_by}")
 
             tick_due = tick_start if tick_due is None else tick_due
-            tick_due = await self._wait_after_send(tick_due, start_time, fixed_rate_period)
+            tick_due = await self._wait_after_send(tick_due, fixed_rate_period)
 
-        return _result("stopped", step, start_time or time.monotonic(), last_obs)
+        return self._result("stopped")
+
+    def _result(self, reason: str) -> ExecutionResult:
+        """The run's result, ending now: its steps, the time since :attr:`_start_time` and the
+        last observation."""
+        now = time.monotonic()
+        start = self._start_time if self._start_time is not None else now
+        return ExecutionResult(
+            reason=reason, steps=self.status.step, duration_s=now - start, last_state=self._last_obs
+        )
 
     def _synchronize_policy_action_timestep(self) -> None:
         """Tell a timestep queue which of its steps it may still replace: the one after the step
@@ -440,20 +427,15 @@ class PolicyExecutor:
         return bridges
 
     async def _send_policy_action(
-        self,
-        action: ActionChunk,
-        robot_states: dict[str, RobotState],
-        *,
-        step: int,
-        start_time: float,
-        last_obs: dict[str, Any] | None,
+        self, action: ActionChunk, robot_states: dict[str, RobotState]
     ) -> ExecutionResult | None:
         """Trim, place and send one chunk. Returns a result when the run ends here."""
         trimmed = trim_chunk(action, self._n_action_steps)
         stopped_by = self._check_stop_conditions_pre_send(trimmed, robot_states)
         if stopped_by is not None:
-            return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
+            return self._result(f"stop condition: {stopped_by}")
 
+        step = self.status.step
         if self._rerun is not None:
             self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
         self._send(trimmed, action)
@@ -470,17 +452,11 @@ class PolicyExecutor:
             )
         return None
 
-    async def _observe_and_infer(
-        self,
-        robot_states: dict[str, RobotState],
-        step: int,
-        start_time: float | None,
-    ) -> tuple[ActionChunk, float]:
+    async def _observe_and_infer(self, robot_states: dict[str, RobotState]) -> ActionChunk:
         """Read the cameras, prepare on the first tick, and query the policy.
 
-        Returns ``(action, start_time)``; ``start_time`` is set on the
-        first tick, after policy preparation, so model loading is excluded from
-        the execution timeout.
+        Sets :attr:`_start_time` on the first tick, after policy preparation, so model loading
+        is excluded from the execution timeout.
 
         Raises:
             RuntimeError: A camera frame or the inference missed its deadline.
@@ -498,20 +474,20 @@ class PolicyExecutor:
             self._logged_first_images = True
         self._last_obs = robot_states
         if self._rerun is not None:
-            self._rerun.log_observation(robot_states, step)
+            self._rerun.log_observation(robot_states, self.status.step)
             if images:
                 self._rerun.log_images(images)
 
-        if start_time is None:
+        if self._start_time is None:
             await self._policy.prepare(
                 robot_states, self._schema, images, self._io_streams.all_values or None
             )
             self._freeze_setup_objects()
-            start_time = time.monotonic()
+            self._start_time = time.monotonic()
             self.status.phase = Phase.EXECUTING
             self.status.message = "Running policy..."
 
-        return await self._infer(robot_states, images), start_time
+        return await self._infer(robot_states, images)
 
     def _freeze_setup_objects(self) -> None:
         """Collect, then freeze everything allocated so far out of garbage collection until
@@ -540,41 +516,27 @@ class PolicyExecutor:
             msg = f"Stale policy input (inference exceeded {self._inference_timeout_s:.0f}s)"
             raise RuntimeError(msg) from exc
 
-    def _termination_result(
-        self,
-        step: int,
-        start_time: float | None,
-        last_obs: dict[str, Any] | None,
-    ) -> ExecutionResult | None:
-        if (
-            start_time is not None
-            and self._timeout_s > 0
-            and (time.monotonic() - start_time) >= self._timeout_s
-        ):
-            return _result("timeout", step, start_time, last_obs)
+    def _termination_result(self) -> ExecutionResult | None:
+        if self._timed_out():
+            return self._result("timeout")
         stopped_by = self._lifecycle.stop_condition
         if stopped_by is not None:
-            return _result(
-                f"stop condition: {stopped_by}",
-                step,
-                start_time or time.monotonic(),
-                last_obs,
-            )
+            return self._result(f"stop condition: {stopped_by}")
         return None
 
-    async def _wait_after_send(
-        self,
-        tick_due: float,
-        start_time: float,
-        fixed_rate_period: float,
-    ) -> float:
+    def _timed_out(self) -> bool:
+        """Whether the run has used up ``timeout_s`` since :attr:`_start_time`."""
+        start = self._start_time
+        return start is not None and 0 < self._timeout_s <= time.monotonic() - start
+
+    async def _wait_after_send(self, tick_due: float, fixed_rate_period: float) -> float:
         """Pace the loop after a send; returns when the next tick is due.
 
         Sequential execution waits for the sessions to settle. A fixed rate sleeps until the next
         tick on an absolute grid, which restarts when more than a period behind (ADR 0006).
         """
         if isinstance(self._execution, SequentialExecution):
-            await self._wait_until_sessions_settled(start_time)
+            await self._wait_until_sessions_settled()
             return time.monotonic()
         if fixed_rate_period <= 0:
             return time.monotonic()
@@ -586,7 +548,7 @@ class PolicyExecutor:
             return time.monotonic()
         return next_due
 
-    async def _wait_until_sessions_settled(self, exec_start: float) -> None:
+    async def _wait_until_sessions_settled(self) -> None:
         """Wait until every queued chunk was sent, its last step is past and the robot stands
         still (or reports ``PAUSED_BY_USER``); see executor.md, "Detecting standstill"."""
         target_chunks = {
@@ -595,7 +557,7 @@ class PolicyExecutor:
         while True:
             if self._stop_event.is_set():
                 return
-            if self._timeout_s > 0 and (time.monotonic() - exec_start) >= self._timeout_s:
+            if self._timed_out():
                 return
             if self._lifecycle.check() is not None:
                 return
@@ -670,35 +632,33 @@ class PolicyExecutor:
         :func:`novapolicy.chunking.placement` (the session's modules may still move it).
 
         The IO and computed actions of ``effects`` (the policy's chunk) run when the policy's
-        first step is due; without motion, at once (contracts T7).
+        first step is due: a moving group's IO with its own step, the computed actions with the
+        first moving group's; the rest at once (contracts T7). IO is written before the
+        computed actions.
         """
         place = placement(chunk, execution=self._execution)
-        # No hold padding for a one-step chunk placed ahead (contracts T6).
-        hold = not (
-            place.lead
-            and is_single_step(chunk)
-            and isinstance(self._execution, ContinuousExecution)
-        )
         moving = [*chunk.joints, *chunk.tcp]
         for group_id, steps in [*chunk.joints.items(), *chunk.tcp.items()]:
             session = self._sessions.get(group_id)
             if session is None:
                 logger.warning("Unknown motion group in chunk: %s", group_id)
                 continue
+            run = self._effects(effects, [group_id], computed=group_id == moving[0])
             session.update_chunk(
                 steps=steps,
                 dt_ms=chunk.dt_ms,
                 first_timestamp_ms=place.first_timestamp_ms,
                 action_timestep=chunk.action_timestep,
-                extend_buffer=hold,
+                extend_buffer=place.hold,
                 lead=place.lead,
                 observed_at_ms=self._observed_ms(group_id, chunk) if place.lead else None,
-                when_due=self._effects_when_due(effects, group_id, moving),
+                when_due=None if run is None else (0, run),
                 retained_prefix_steps=chunk.retained_prefix_steps,
             )
-        self._schedule_ios(effects, skip=set(moving))
-        if not moving and self._schema.has_computed_actions:
-            task = asyncio.create_task(self._schema.run_computed_actions(effects))
+        idle = [group_id for group_id in effects.ios or {} if group_id not in moving]
+        run = self._effects(effects, idle, computed=not moving)
+        if run is not None:
+            task = asyncio.create_task(run())
             self._io_tasks.add(task)
             task.add_done_callback(self._io_tasks.discard)
 
@@ -711,32 +671,27 @@ class PolicyExecutor:
             return self._observed_at_ms.get(group_id)
         return self._observed_clock_ms.get(group_id)
 
-    def _effects_when_due(
-        self, effects: ActionChunk, group_id: str, moving: list[str]
-    ) -> tuple[int, Callable[[], Awaitable[None]]] | None:
-        """The session runs this group's IO, and with the first moving group the chunk's
-        computed actions, when the policy's first step is due (interim, ADR 0005)."""
-        ios = (effects.ios or {}).get(group_id)
-        computed = group_id == moving[0] and self._schema.has_computed_actions
-        session = self._sessions[group_id]
+    def _effects(
+        self, effects: ActionChunk, group_ids: list[str], *, computed: bool
+    ) -> Callable[[], Coroutine[Any, Any, None]] | None:
+        """Write the IO of ``group_ids``, then, if ``computed``, run the chunk's computed
+        actions (interim, ADR 0005); ``None`` when there is nothing to run."""
+        writes = [
+            (self._sessions[group_id], ios)
+            for group_id in group_ids
+            if group_id in self._sessions and (ios := (effects.ios or {}).get(group_id))
+        ]
+        computed = computed and self._schema.has_computed_actions
+        if not writes and not computed:
+            return None
 
         async def run() -> None:
-            if ios:
+            for session, ios in writes:
                 await session.write_ios(ios)
             if computed:
                 await self._schema.run_computed_actions(effects)
 
-        return (0, run) if ios or computed else None
-
-    def _schedule_ios(self, chunk: ActionChunk, *, skip: set[str] | None = None) -> None:
-        """Write the chunk's IO at once, except for the groups in ``skip``."""
-        for group_id, ios in (chunk.ios or {}).items():
-            session = self._sessions.get(group_id)
-            if session is None or group_id in (skip or set()):
-                continue
-            task = asyncio.create_task(session.write_ios(ios))
-            self._io_tasks.add(task)
-            task.add_done_callback(self._io_tasks.discard)
+        return run
 
     def _create_session(self, mg: MotionGroup) -> WaypointJoggingSession:
         """Create a waypoint jogging session for a motion group."""
@@ -757,17 +712,3 @@ class PolicyExecutor:
         if self._n_action_steps_cfg is not None:
             return self._n_action_steps_cfg
         return self._policy.n_action_steps or 0
-
-
-def _result(
-    reason: str,
-    step: int,
-    start_time: float,
-    last_obs: dict[str, Any] | None = None,
-) -> ExecutionResult:
-    return ExecutionResult(
-        reason=reason,
-        steps=step,
-        duration_s=time.monotonic() - start_time,
-        last_state=last_obs,
-    )

@@ -1332,7 +1332,8 @@ async def test_the_bridge_a_session_put_in_front_is_logged_to_rerun():
     executor._sessions = {MG_ID: session}
     executor._rerun = MagicMock()
     action = ActionChunk(joints={MG_ID: [[1.0] * 6, [2.0] * 6]}, dt_ms=10.0)
-    await executor._send_policy_action(action, {}, step=3, start_time=0.0, last_obs=None)
+    executor.status.step = 3
+    await executor._send_policy_action(action, {})
     bridge, step = executor._rerun.log_bridge_chunk.call_args.args
     assert step == 3
     assert bridge.joints == {MG_ID: [[0.0] * 6, [0.5] * 6, [1.0] * 6]}

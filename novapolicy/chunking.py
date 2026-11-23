@@ -396,6 +396,9 @@ class Placement:
     first_timestamp_ms: ServerMs | None
     lead: bool = False
     """Placed by the lead rule (contract T1)."""
+    hold: bool = True
+    """Whether ``HoldPadding`` may pad it: not a one-step chunk placed ahead in continuous
+    execution (contract T6)."""
 
 
 def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:
@@ -409,6 +412,7 @@ def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:
         return Placement(ServerMs(chunk.first_timestamp_ms))
     if not isinstance(execution, ContinuousExecution):
         return Placement(None, lead=True)
-    if chunk.action_timestep < 0 and (chunk.dt_ms > 0 or is_single_step(chunk)):
-        return Placement(None, lead=True)
+    single = is_single_step(chunk)
+    if chunk.action_timestep < 0 and (chunk.dt_ms > 0 or single):
+        return Placement(None, lead=True, hold=not single)
     return Placement(None)
