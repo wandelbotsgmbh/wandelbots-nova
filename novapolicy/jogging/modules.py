@@ -219,7 +219,7 @@ class Bridge:
 class TimestepTimeline:
     """Chunk module: keep a timestep queue's chunks on one timeline.
 
-    A queue client (``QueuedPolicyClient``, LeRobot's async queue) numbers its plan's steps by
+    A queue client (``QueuedPolicyClient``) numbers its plan's steps by
     policy timestep. Its first chunk is placed like any other (and bridged); once it is sent,
     the time its policy step ``t0`` is due becomes the origin, and every later chunk starting at
     timestep ``t`` is placed at ``origin + (t - t0) * dt``, so a replacement continues the motion

@@ -107,8 +107,8 @@ def _check_execution_mode(
     """Reject a setup the executor would run wrongly, before anything moves.
 
     Sequential execution waits for standstill and observes again, so nothing in it replaces a
-    plan while it runs: a timestep queue (``QueuedPolicyClient``, LeRobot's async
-    queue) or a live-target buffer would be fed timings that never come. In continuous
+    plan while it runs: a timestep queue (``QueuedPolicyClient``) or a
+    live-target buffer would be fed timings that never come. In continuous
     execution a timestep queue needs its ``TimestepTimeline``, or every chunk restarts at "now".
     """
     queue = any(isinstance(m, TimestepTimeline) for m in policy.default_modules)

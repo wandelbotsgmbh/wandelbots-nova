@@ -159,6 +159,20 @@ serve), `prepare` (setup before the timeout starts), `n_action_steps` (the polic
 chunk-per-observation provider in `QueuedPolicyClient` to make it a timestep queue
 ([ADR 0011](adr/0011-providers-own-their-wire.md)).
 
+What a provider costs, measured in code lines (without docstrings, comments and blank lines). The
+executor, the session and the jogger name no provider: adding one touches none of them.
+
+| Provider | `get_actions` | client | its wire | its own extras |
+| --- | --- | --- | --- | --- |
+| the snippet above | 3 | 15 | yours | none |
+| LEAPP (onnxruntime, in process) | 37 | 154 | 146 (`pipeline.py`) | the ONNX pipeline's ports |
+| GR00T (ZMQ, msgpack) | 26 | 277 | 155 | server modality keys, checkpoint statistics, rot6d TCP |
+| LeRobot (gRPC, pickle) | 30 | 259 | 96 | checkpoint feature contract (`schema.py`, `config.py`: 403) |
+| NATS (request/reply) | 33 | 352 | 189 | proprioception blocks and the protocol's error codes |
+
+Everything beyond `get_actions` is the provider's wire and the checks its checkpoint format allows;
+mapping, decoding, placement and streaming come from the package.
+
 ## Where things live
 
 | Concern | Module |
