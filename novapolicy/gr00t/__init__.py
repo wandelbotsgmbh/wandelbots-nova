@@ -1,12 +1,6 @@
-"""GR00T ZeroMQ transport for policy inference.
+"""``Gr00tPolicyClient`` for NVIDIA GR00T ZeroMQ inference servers.
 
-Built against **NVIDIA Isaac GR00T N1.7** (``Isaac-GR00T`` commit ``v1.7.0``).
-The ZMQ REQ/REP protocol, msgpack+numpy serialization, and observation/action
-array shapes match that version.  If NVIDIA changes the wire format in a
-future release, this package will need updating.
-
-Provides ``Gr00tPolicyClient`` for NVIDIA GR00T inference servers,
-plus the ``Gr00tMsgSerializer`` and ``Gr00tZmqTransport`` internals.
+Wire format, serialization and array shapes match Isaac GR00T N1.7 (``Isaac-GR00T`` ``v1.7.0``).
 """
 
 from novapolicy.gr00t.client import Gr00tPolicyClient

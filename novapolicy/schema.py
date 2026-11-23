@@ -1,19 +1,7 @@
-"""PolicySchema — declares what the policy observes and controls.
+"""PolicySchema: declares what the policy observes and controls (docs/schema.md).
 
-Example::
-
-    schema = PolicySchema(observations=[
-        Observation.joint_positions("left_joints", source=mg_left),
-        Observation.joint_positions("right_joints", source=mg_right),
-        Observation.io("gripper", source=mg_left, io="digital_out[0]",
-                       mapping=BoolMapping(on=100.0)),
-        Observation.image("cam", source=cameras.device("12345")),
-        Observation.constant("language", value="Pick up the box."),
-        Observation.computed(read_force_sensor),
-    ])
-
-Writable observations (default) automatically infer matching actions.
-Use explicit ``Action`` entries only when the action key differs.
+Writable observations (default) infer matching actions; an explicit ``Action`` is needed only
+when the action key differs.
 """
 
 from __future__ import annotations
@@ -57,15 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 class Mapping:
-    """Identity mapping — passes values through unchanged.
-
-    Distinct from :class:`~novapolicy.ops.ValueOp` on purpose. A ``Mapping``
-    crosses a *type* boundary — hardware bools and analogue levels on one side,
-    the policy's floats on the other — and is applied by each policy client as
-    it decodes its own wire format. A ``ValueOp`` is a float-to-float *units*
-    transform applied by the schema itself, in both directions, at one seam.
-    Merging them would make either job worse.
-    """
+    """Identity mapping between a hardware IO value and the policy's float."""
 
     def to_policy(  # ruff: ignore[no-self-use]
         self,
@@ -241,10 +221,7 @@ class Observation:
             source: One motion group, or several whose joints concatenate.
             action: Whether the policy also writes this channel.
             mode: ``"absolute"`` targets or ``"relative"`` deltas.
-            ops: Unit conversions applied to every joint, front-to-back on the
-                observation and inverted back-to-front on the action. Use when
-                the training dataset was not recorded in NOVA's radians, e.g.
-                ``ops=[Rad2Deg()]``.
+            ops: Unit conversions, inverted on the action (contract M1), e.g. ``[Rad2Deg()]``.
         """
         return _ObsJoints(key=key, source=source, action=action, mode=mode, ops=list(ops or []))
 
@@ -255,12 +232,9 @@ class Observation:
         *,
         ops: list[ValueOp] | None = None,
     ) -> _ObsJointVelocities:
-        """Observe joint velocities in rad/s, as ``key_1 .. key_n``.
+        """Observe joint velocities in rad/s, as ``key_1 .. key_n`` (contract M9).
 
-        The controller's measured velocities are used where it sends them; otherwise they are
-        finite-differenced from consecutive joint positions (see
-        :mod:`novapolicy.joint_velocities`). The executor starts the measurement with the run;
-        outside it, ``await schema.start_sources()`` first.
+        Outside the executor, ``await schema.start_sources()`` first.
 
         Args:
             key: Observation name the policy sees.
@@ -284,16 +258,10 @@ class Observation:
     ) -> _ObsTcp:
         """Observe TCP pose [x, y, z, rx, ry, rz] in mm / rad (Nova native).
 
-        Set action=True to control via TCP waypoint jogging.
-
-        Position and orientation carry different units, so they take separate
-        operator lists: ``position_ops=[Scale(0.001)]`` converts millimetres to
-        metres without touching the rotation vector.
-
-        ``orientation_type`` (NOVA's ``OrientationType``) gives the orientation as the
-        policy was trained on it: a quaternion ``[qx, qy, qz, qw]`` or Euler angles
-        instead of a rotation vector. ``coordinate_system`` (a coordinate system of the
-        controller) expresses the pose relative to it instead of the world.
+        ``action=True`` makes it a TCP action. ``position_ops`` and ``orientation_ops``
+        convert the two parts apart; ``orientation_type`` gives a quaternion
+        ``[qx, qy, qz, qw]`` or Euler angles instead of a rotation vector;
+        ``coordinate_system`` (of the controller) replaces the world frame.
         """
         _check_orientation_ops(orientation_type, orientation_ops, f"Observation.tcp({key!r})")
         return _ObsTcp(
@@ -320,19 +288,8 @@ class Observation:
         """Observe the pose of something that is not a motion group: an object, a target.
 
         ``source`` gives a NOVA ``Pose`` (mm, rotation vector): a fixed ``Pose``, an async
-        callable returning one (a CNN, FoundationPose), or a :class:`PoseSource` read in the
-        background, such as ``OmniverseScene(api_url).prim(path)``. The policy sees it as
-        ``Observation.tcp`` shows a TCP: ``orientation_type`` gives the rotation as the policy
-        was trained on it, ``position_ops=[Scale(0.001)]`` turns mm into metres.
-
-        Example::
-
-            Observation.pose(
-                "ee_pose",
-                source=Pose((850.0, -225.0, 200.0, math.pi, 0.0, 0.0)),
-                orientation_type=OrientationType.QUATERNION,
-                position_ops=[Scale(0.001)],
-            )
+        callable returning one, or a :class:`PoseSource` read in the background. The policy
+        sees it as ``Observation.tcp`` shows a TCP.
         """
         _check_orientation_ops(orientation_type, orientation_ops, f"Observation.pose({key!r})")
         return _ObsPose(
@@ -362,9 +319,8 @@ class Observation:
         Args:
             key: Observation name the policy sees.
             source: Anything implementing ``CameraSource``.
-            max_age_s: Oldest frame this channel may contribute, in seconds.
-                Defaults to the executor's ``camera_max_age_s``. Set it per
-                channel when one camera runs at a different rate than the rest.
+            max_age_s: Oldest frame this channel may contribute, in seconds; defaults to the
+                executor's ``camera_max_age_s``.
         """
         return _ObsImage(key=key, source=source, max_age_s=max_age_s)
 
@@ -377,19 +333,8 @@ class Observation:
     def computed(fn: ComputedObsFn, *, keys: Sequence[str] = ()) -> _ObsComputed:
         """Async function called each step to add external data to the observation.
 
-        ``keys`` names the observation keys the function returns, so a policy client
-        can check before the run that the schema feeds every input its model expects.
-
-        Example::
-
-            async def read_force_sensor(obs: dict) -> dict:
-                force = await sensor.read()
-                return {"force_x": force[0], "force_y": force[1], "force_z": force[2]}
-
-            schema = PolicySchema(observations=[
-                Observation.joint_positions("arm", source=mg),
-                Observation.computed(read_force_sensor),
-            ])
+        ``fn`` is ``async (obs_so_far) -> dict``. ``keys`` names the keys it returns, so a
+        client can check before the run that every model input is fed.
         """
         return _ObsComputed(fn=fn, keys=tuple(keys))
 
@@ -493,11 +438,7 @@ class Action:
         mode: ActionMode = "absolute",
         ops: list[ValueOp] | None = None,
     ) -> _ActJoints:
-        """Joint action with a key different from the observation.
-
-        ``ops`` are inverted on the way to the robot. An explicit action's
-        operators win over those of an observation sharing its key.
-        """
+        """Joint action with a key different from the observation; its ``ops`` win (M1)."""
         return _ActJoints(key=key, target=target, mode=mode, ops=list(ops or []))
 
     @staticmethod
@@ -513,23 +454,14 @@ class Action:
         orientation_type: poses.OrientationType | None = None,
         coordinate_system: str = "",
     ) -> _ActTcp:
-        """TCP pose action — executor uses Cartesian waypoint jogging.
+        """TCP pose action, sent as Cartesian waypoints.
 
-        ``mode="relative"``: the policy returns offsets ``[dx, dy, dz, rx, ry, rz]``
-        (position, rotation vector) that the executor composes with the pose at
-        inference time. ``accumulate=True`` applies each step to the pose the previous
-        step reached instead (per-step deltas). As in NOVA's TCP jogging,
-        ``use_tool_coordinate_system=True`` expresses the offsets in the tool coordinate
-        system given by the TCP instead of the world coordinate system the TCP pose is
-        reported in. Rotations turn the tool about the TCP.
-
-        ``position_ops`` / ``orientation_ops`` convert units on the way back, before the
-        offsets are composed: ``position_ops=[Scale(0.001)]`` for a policy in metres.
-
-        ``orientation_type`` (NOVA's ``OrientationType``) is the orientation the policy
-        outputs: a quaternion ``[qx, qy, qz, qw]`` or Euler angles instead of a rotation
-        vector. ``coordinate_system`` (a coordinate system of the controller) is the frame
-        the targets, and relative offsets, are expressed in instead of the world.
+        ``mode="relative"``: offsets ``[dx, dy, dz, rx, ry, rz]`` composed with the pose at
+        inference time (contract M5); ``accumulate=True`` applies each step to the pose the
+        previous one reached; ``use_tool_coordinate_system=True`` takes the offsets in the
+        tool frame. Rotations turn the tool about the TCP. The ops convert units before the
+        offsets compose; ``orientation_type`` and ``coordinate_system`` as on
+        ``Observation.tcp``.
         """
         _check_orientation_ops(orientation_type, orientation_ops, f"Action.tcp({key!r})")
         if mode != "relative" and (accumulate or use_tool_coordinate_system):
@@ -560,19 +492,8 @@ class Action:
     def computed(fn: ComputedActFn, *, keys: Sequence[str] = ()) -> _ActComputed:
         """Async side effect run after each policy call, with the returned chunk.
 
-        ``keys`` names policy action outputs the hook consumes that drive nothing in NOVA
-        (a gripper on its own bus, say); every policy client puts them in
-        ``chunk.values[key]``, one row per step.
-
-        Example::
-
-            async def journal(chunk: ActionChunk) -> None:
-                await db.write(chunk.joints)
-
-            schema = PolicySchema(
-                observations=[Observation.joint_positions("arm", source=mg)],
-                actions=[Action.computed(journal)],
-            )
+        ``keys`` names action outputs the hook consumes that drive nothing in NOVA; every
+        client puts them in ``chunk.values[key]``, one row per step.
         """
         return _ActComputed(fn=fn, keys=tuple(keys))
 
@@ -626,13 +547,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
                 seen_act.add(k)
 
     def _validate_ops(self) -> None:
-        """Refuse operators that cannot be inverted on a channel the policy writes.
-
-        Direction is a property of the operator class, so nothing is probed:
-        library-owned operators are invertible by construction, and any that
-        declare themselves forward-only have no reverse for the executor to
-        send back to the robot.
-        """
+        """Refuse forward-only operators on a channel the policy writes."""
         for o in self._observations:
             if isinstance(o, _ObsJoints) and o.action:
                 reject_forward_only(o.ops, f"Observation.joint_positions({o.key!r})")
@@ -650,8 +565,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
 
     @property
     def _joint_action_ops(self) -> dict[str, list[ValueOp]]:
-        """Motion group id → joint operators to invert on the action path, from the entry
-        that defines its joint action (see :meth:`_action_entries`)."""
+        """Motion group id -> joint operators to invert on the action path."""
         return {
             mg.id: entry.ops
             for entry in self._action_entries(_ActJoints, _ObsJoints)
@@ -661,13 +575,11 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
 
     @property
     def _tcp_action_specs(self) -> dict[str, _ObsTcp | _ActTcp]:
-        """Motion group id → the entry whose units, rotation type and frame its TCP action
-        uses: an explicit ``Action.tcp``, else the writable observation sharing its key."""
+        """Motion group id -> the entry that defines its TCP action's units and frame."""
         return {_groups(entry)[0].id: entry for entry in self._action_entries(_ActTcp, _ObsTcp)}
 
     def _action_entries(self, act_type: type[_Act], obs_type: type[_Obs]) -> list[_Act | _Obs]:
-        """The explicit ``act_type`` actions, then each writable ``obs_type`` observation whose
-        key none of them takes: an explicit ``Action`` wins over an ``action=True`` one."""
+        """Explicit ``act_type`` actions, then writable ``obs_type`` observations of other keys."""
         explicit: list[_Act | _Obs] = [a for a in self._actions if isinstance(a, act_type)]
         keys = {entry.key for entry in explicit}
         return explicit + [
@@ -684,11 +596,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
     # -- Coordinate systems --
 
     async def load_coordinate_systems(self) -> None:
-        """Fetch the pose in world of every coordinate system a TCP entry declares.
-
-        The executor calls it before a run; call it yourself before
-        ``build_observation`` or ``resolve_actions`` outside the executor.
-        """
+        """Fetch the world pose of every declared coordinate system; the executor calls it."""
         entries: list[_ObsTcp | _ActTcp] = [o for o in self._observations if isinstance(o, _ObsTcp)]
         entries += [a for a in self._actions if isinstance(a, _ActTcp)]
         for entry in entries:
@@ -702,9 +610,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
                 )
 
     async def start_sources(self) -> None:
-        """Start the observation sources that read in the background (measured joint
-        velocities). The executor calls it before a run and ``stop_sources`` after; call
-        them yourself around ``build_observation`` outside the executor."""
+        """Start the background observation sources; the executor calls it before a run."""
         if self._joint_velocities is not None:
             await self._joint_velocities.start()
         for source in self._background_pose_sources:
@@ -713,8 +619,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
     def observe_state(
         self, motion_group_id: str, joints: Sequence[float], sample_time_s: float
     ) -> None:
-        """One streamed state packet, stamped with its measurement time. The executor calls it
-        for every packet, so joint velocities are differenced on the stream's own clock."""
+        """Feed one streamed state packet, stamped with its measurement time."""
         if self._joint_velocities is not None:
             self._joint_velocities.feed(motion_group_id, joints, sample_time_s)
 
@@ -748,17 +653,14 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         return self._frames[key]
 
     def tcp_observation_values(self, entry: _ObsTcp, state: RobotState) -> list[float]:
-        """The observed TCP pose as the policy sees it: in the entry's coordinate system,
-        orientation as its ``orientation_type`` (rotation vector by default), then its
-        operators."""
+        """The observed TCP pose as the policy sees it (contract M3)."""
         pose = poses.world_to_frame(
             [*state.pose.position, *state.pose.orientation], self.frame(entry)
         )
         return _policy_pose_values(pose, entry)
 
     def policy_frame_states(self, states: dict[str, RobotState]) -> dict[str, Any]:
-        """``states`` with each TCP action group's pose in its action's coordinate system,
-        for composing relative targets there. Groups in the world are passed through."""
+        """``states`` with each TCP action group's pose in its action's coordinate system."""
         result: dict[str, Any] = dict(states)
         for group_id, entry in self._tcp_action_specs.items():
             frame = self.frame(entry)
@@ -786,12 +688,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         return chunk.model_copy(update={"tcp": tcp}) if changed else chunk
 
     def apply_inverse_ops(self, chunk: ActionChunk) -> ActionChunk:
-        """Convert a policy's action chunk back into NOVA's own units.
-
-        Must run **before** relative targets are resolved: a delta expressed in
-        degrees added to a state in radians is exactly the error these operators
-        exist to prevent.
-        """
+        """Convert an action chunk back into NOVA units; runs before relative targets (M4)."""
         joint_ops = self._joint_action_ops
         tcp_specs = self._tcp_action_specs
         if not joint_ops and not tcp_specs:
@@ -927,20 +824,14 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         }
 
     def tcp_action_groups(self) -> dict[str, str]:
-        """Motion group IDs that use TCP waypoint jogging → tcp name.
-
-        Returns dict mapping motion group ID to TCP name.
-        """
+        """Motion group ID -> TCP name, for groups with a TCP action."""
         result: dict[str, str] = {}
-        # Explicit Action.tcp()
         for a in self._actions:
             if isinstance(a, _ActTcp):
                 result[a.target.id] = ""
-        # Writable Observation.tcp()
         for o in self._observations:
             if isinstance(o, _ObsTcp) and o.action and o.source.id not in result:
                 result[o.source.id] = o.tcp
-        # Fill in tcp names from observations
         for o in self._observations:
             if isinstance(o, _ObsTcp) and o.source.id in result and o.tcp:
                 result[o.source.id] = o.tcp
@@ -965,9 +856,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         return None
 
     def observation_kind(self, key: str) -> str | None:
-        """What observation ``key`` is: ``"joint_positions"``, ``"joint_velocities"``,
-        ``"tcp"``, ``"pose"``, ``"io"``, ``"image"``, ``"constant"`` or ``"computed"`` (a key
-        an ``Observation.computed(..., keys=...)`` returns); ``None`` when there is none."""
+        """The kind of observation ``key`` (``"joint_positions"`` .. ``"computed"``), or None."""
         kinds: dict[type, str] = {
             _ObsJoints: "joint_positions",
             _ObsJointVelocities: "joint_velocities",
@@ -1001,10 +890,11 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         return [float(v) for v in value]
 
     def observation_groups(self, observation: dict[str, Any]) -> dict[str, list[float]]:
-        """A built observation regrouped into one vector per key, for clients whose wire
-        takes arrays: each joint, joint velocity, TCP, pose and IO observation under its key
-        (left out when its robot state is missing), then every other numeric value (a
-        ``Observation.computed`` one) under its own name. Constants and text stay out."""
+        """A built observation as one vector per key; constants and text are left out.
+
+        Entries whose robot state is missing are skipped; other numeric values (computed
+        observations) keep their own names.
+        """
         groups: dict[str, list[float]] = {}
         taken = {o.key for o in self._observations if isinstance(o, _ObsConstant)}
         for o in self._observations:
@@ -1036,9 +926,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
         states: dict[str, RobotState],
         io_values: dict[str, object] | None = None,
     ) -> dict[str, Any]:
-        """Build a flat feature dict from robot states + IO values: joint positions, joint
-        velocities, TCP poses, poses, IOs, constants, then computed values (which see the rest),
-        each kind in the order declared."""
+        """Build the flat feature dict, kind by kind; computed values come last and see the rest."""
         obs: dict[str, Any] = {}
         for kind in _FILL_ORDER:
             for o in self._observations:
@@ -1091,9 +979,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
             obs.update(await o.fn(obs))
 
     def action_columns(self, dof: dict[str, int]) -> list[tuple[str, int]]:
-        """The actions as one flat vector, key by key with their widths: joint keys (their
-        motion groups' joints side by side, ``dof`` per group), TCP keys, IO keys (one value
-        each), then ``Action.computed`` keys (one value each)."""
+        """The flat action vector as ``(key, width)``: joints, TCP, IO, then computed keys."""
         columns = [(k, sum(dof.get(g.id, 0) for g in gs)) for k, gs in self.joint_action_keys]
         columns += [(k, self.tcp_action_width(mg.id)) for k, mg in self.tcp_action_keys]
         columns += [(k, 1) for k, *_ in self.io_action_keys]
@@ -1104,8 +990,7 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
     def split_actions(
         rows: list[list[float]], columns: list[tuple[str, int]], *, source: str = "The policy"
     ) -> dict[str, list[list[float]]]:
-        """Flat action rows (one per step) split into outputs by key, for
-        :meth:`decode_actions`; a row narrower than the columns raises."""
+        """Split flat action rows into outputs by key; a row narrower than the columns raises."""
         width = sum(n for _, n in columns)
         outputs: dict[str, list[list[float]]] = {}
         offset = 0
@@ -1129,13 +1014,13 @@ class PolicySchema:  # ruff: ignore[too-many-public-methods]
     ) -> ActionChunk:
         """A policy's outputs, by action key, as an :class:`ActionChunk` in the policy's units.
 
-        Each output is an array of shape ``(steps, width)`` (``(width,)`` for one step). A joint
-        key shared by several motion groups carries their joints side by side, in the order the
-        observation concatenated them, so each group takes the next ``dof[group]`` columns (a
-        last group of unknown dof the rest); an answer too narrow for them raises. An IO key takes its first step's value through its mapping: IO fires
-        when the chunk's first step is due (contract T7). ``Action.computed`` keys land in
-        ``values``. A key the outputs lack is skipped; an answer with none of the expected joint
-        or TCP keys, IO or values raises ``ValueError`` naming ``source``.
+        Each output has shape ``(steps, width)`` (``(width,)`` for one step). A joint key shared
+        by several groups splits into ``dof[group]`` columns each, in observation order (a last
+        group of unknown dof takes the rest). An IO key takes its first step's value (M8);
+        ``Action.computed`` keys land in ``values``; missing keys are skipped.
+
+        Raises:
+            ValueError: the answer is too narrow, or has none of the expected actions.
         """
         joints: dict[str, list[list[float]]] = {}
         for key, groups in self.joint_action_keys:
@@ -1194,8 +1079,7 @@ def _steps(output: object) -> list[list[float]]:
 
 
 def _inverse_tcp_step(step: list[float], entry: _ObsTcp | _ActTcp) -> list[float]:
-    """One policy TCP target back to NOVA's ``[x, y, z, rx, ry, rz]`` (mm, rotation vector):
-    operators inverted, position and orientation apart, then the orientation converted."""
+    """One policy TCP target back to NOVA's ``[x, y, z, rx, ry, rz]`` (mm, rotation vector)."""
     orientation_type = entry.orientation_type or poses.ROTATION_VECTOR
     if len(step) != 3 + poses.orientation_width(orientation_type):
         return step
@@ -1206,8 +1090,7 @@ def _inverse_tcp_step(step: list[float], entry: _ObsTcp | _ActTcp) -> list[float
 
 
 def _policy_pose_values(pose: Sequence[float], entry: _ObsTcp | _ObsPose) -> list[float]:
-    """A NOVA pose ``[x, y, z, rx, ry, rz]`` as the policy sees it: orientation as the entry's
-    ``orientation_type`` (rotation vector by default), then its operators."""
+    """A NOVA pose ``[x, y, z, rx, ry, rz]`` as the policy sees it."""
     orientation_type = entry.orientation_type or poses.ROTATION_VECTOR
     orientation = poses.from_rotvec(pose[3:6], orientation_type)
     return apply_ops(list(pose[:3]), entry.position_ops) + apply_ops(
@@ -1216,8 +1099,7 @@ def _policy_pose_values(pose: Sequence[float], entry: _ObsTcp | _ObsPose) -> lis
 
 
 def tcp_value_names(entry: _ObsTcp | _ActTcp | _ObsPose) -> list[str]:
-    """Feature names of a TCP entry's values: ``key_x .. key_rz`` for a rotation vector,
-    ``key_qx .. key_qw`` for a quaternion, ``key_e1 .. key_e3`` for Euler angles."""
+    """Feature names: ``key_x .. key_rz``, or ``key_qx .. key_qw`` / ``key_e1 .. key_e3``."""
     orientation_type = entry.orientation_type or poses.ROTATION_VECTOR
     if orientation_type == poses.ROTATION_VECTOR:
         suffixes = _TCP_SUFFIXES

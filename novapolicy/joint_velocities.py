@@ -1,13 +1,7 @@
-"""Joint velocities for ``Observation.joint_velocities``.
+"""Joint velocities for ``Observation.joint_velocities`` (contract M9, ADR 0016).
 
-The controller's measured ``joint_velocity`` is the source of truth where it is sent: it is on the
-raw state stream, which :mod:`novapolicy.state_stream` reads because the typed SDK drops the field.
-Not every controller sends it (UR10e controllers do not today), so where it is missing the
-velocities are finite-differenced from consecutive joint positions. That is noisier (see
-:mod:`novapolicy.state_stream`), which is why it is reported once per motion group.
-
-NOVA's state stream is expected to carry joint velocities in the future; the observation then uses
-them without any change for its users.
+Measured where the controller sends them, otherwise finite-differenced, which is reported once per
+motion group.
 """
 
 from __future__ import annotations
@@ -31,8 +25,7 @@ _MIN_DT_S = 1e-4
 """Below this, two positions are the same sample; the previous velocity is kept."""
 
 DIFFERENCE_WINDOW_S = 0.02
-"""Streamed positions are differenced across at least this much sample time (about one 60 Hz
-step): consecutive packets a few milliseconds apart turn position quantization into noise."""
+"""Least sample time, in s, streamed positions are differenced across (against quantization)."""
 
 _REPEAT_HOLD_S = 0.1
 """A repeated sample keeps the last velocity this long; positions unchanged for longer read as
@@ -42,8 +35,7 @@ _FED_STALE_S = 0.2
 """A velocity from streamed packets older than this is not used."""
 
 _FIRST_SAMPLE_GRACE_S = 0.5
-"""How long after start a missing measurement is not yet reported: the first frame may be on its
-way."""
+"""Seconds after start before a missing measurement is reported."""
 
 
 class JointVelocities:
@@ -84,11 +76,7 @@ class JointVelocities:
         self._fed.clear()
 
     def feed(self, motion_group_id: str, joints: Sequence[float], sample_time_s: float) -> None:
-        """One streamed state packet, stamped with when it was measured.
-
-        Differencing packets on their own timestamps is far less noisy than differencing
-        whatever state an observation happens to read at its own time.
-        """
+        """Feed one streamed state packet, stamped with when it was measured."""
         joints = [float(q) for q in joints]
         packets = self._packets.setdefault(motion_group_id, deque(maxlen=64))
         if packets and sample_time_s <= packets[-1][0]:
@@ -125,10 +113,7 @@ class JointVelocities:
     def _difference(self, motion_group_id: str, joints: list[float], now: float) -> list[float]:
         """Positions differenced against the last sample that differed from them.
 
-        Observations can repeat a state sample (the tick is faster than the stream, or the
-        stream skipped); differencing a repeat would read as standstill, so a repeated
-        sample keeps the last velocity, for up to ``_REPEAT_HOLD_S``: positions that stay
-        unchanged longer than that are standstill.
+        A repeated sample keeps the last velocity for up to ``_REPEAT_HOLD_S``.
         """
         sample = self._sample.get(motion_group_id)
         if sample is None or len(sample[1]) != len(joints):

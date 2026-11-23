@@ -1,10 +1,7 @@
-"""Run a LEAPP export with ``onnxruntime``, without torch.
+"""Run a LEAPP export (YAML beside its ONNX models) with ``onnxruntime`` and numpy, without torch.
 
-A LEAPP export (``isaaclab leapp export``) is a YAML file next to its ONNX models: the models' ports,
-how outputs feed other models' inputs (``data_flow``) and the next step's inputs (``feedback_flow``,
-e.g. the last action), the feedback inputs' initial values, and the policy frequency. LEAPP's own
-``InferenceManager`` imports torch; this runs the same pipeline with ``onnxruntime`` and numpy, in
-the same way: models in YAML order, each output copied to the inputs it feeds.
+As LEAPP's ``InferenceManager``: models in YAML order, each output copied to the inputs it feeds
+(``data_flow``) and to the next step's (``feedback_flow``).
 """
 
 from __future__ import annotations

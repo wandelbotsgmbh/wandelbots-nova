@@ -54,3 +54,20 @@ conditions see a queue's plan unsmoothed. A LeRobot async queue run with an `n_a
 its plan length (the checkpoint's value, unless `n_action_steps=0` is passed as its README says) is
 trimmed before it is smoothed, so its last kept steps are filtered against a replicated end
 instead of the steps after them.
+
+**Why each module does what it does** (recorded 2026-11-23 from the module docstrings).
+`HoldPadding` gives a short chunk a horizon the controller can brake within; it skips one-step
+chunks placed ahead, which the next step replaces before they are due and which a hold would make
+the controller brake towards, and it ends a chunk in a hold, which leaves
+`delay_until_braking_ms` no velocity to keep. `JointClamp`: see ADR 0015. `EndpointRamp` adds
+points at the chunk's own spacing, so the robot gets real time to accelerate and brake.
+`Smoothing` with two passes removes the waypoint-scale kinks where a queue blends overlapping
+predictions, at the cost of rounding intended corners by about two steps; it goes first because
+the bridge has to end on the smoothed first step. `Bridge` starts with a hold on the measured
+position, so sending the request does not use up the first interval; `always_anchor` gives a
+continuously refreshed queue one full step before its first target; rotations are unwrapped
+first, since interpolating rotation vectors between `v` and `-v` (a tool pointing down, near π)
+passes through the identity, a real half-turn of the wrist. `DropLate`: a chunk is stamped when
+it is queued and sent a little later, so its first waypoints can already be due; when all are
+late, the robot keeps following the previous chunk. Leave it out only to see late waypoints on
+the wire.

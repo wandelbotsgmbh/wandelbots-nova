@@ -229,7 +229,10 @@ policy chunk.
 
 A camera can freeze and a policy service can hang. Freshness is declared per channel; a frame
 older than its bound, or an inference past `inference_timeout_s`, ends the run with
-`RuntimeError("Stale policy input ...")`.
+`RuntimeError("Stale policy input ...")`. Frames for the Rerun view are held to a far looser
+bound: visualization needs no control-loop freshness, and a stale-frame error from the logging
+task would end a run that is otherwise fine. The e-stop monitor ends the run when it has seen no
+controller state for 2 s, since an e-stop it cannot see must not leave the robot moving.
 
 ```python
 from novapolicy import Observation, PolicyExecutor

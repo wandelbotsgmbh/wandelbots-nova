@@ -20,12 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class PolicyClient(ABC):
-    """Base class for every policy action source used by ``PolicyExecutor``.
-
-    Lifecycle and optional continuous-execution hooks have explicit no-op
-    defaults. Concrete clients only need to implement :meth:`get_actions` and
-    override the hooks they support.
-    """
+    """Base class for every policy action source; only :meth:`get_actions` is required."""
 
     async def connect(self, motion_group_ids: list[str]) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
         """Establish a policy-service connection."""
@@ -60,18 +55,12 @@ class PolicyClient(ABC):
 
     @property
     def default_modules(self) -> list[object]:
-        """Send-pipeline modules this policy needs in front in continuous execution, which the
-        executor's default pipeline starts with: a timestep queue returns
-        :func:`~novapolicy.jogging.modules.timestep_queue_modules`. None by default."""
+        """Send-pipeline modules this policy needs first in continuous execution."""
         return []
 
     @property
     def n_action_steps(self) -> int | None:
-        """Steps to execute per chunk when the policy declares its own horizon.
-
-        ``None`` leaves the choice to the executor. Clients that read a
-        checkpoint report its value here so the caller does not have to copy it.
-        """
+        """Steps to execute per chunk when the policy declares its own horizon, else ``None``."""
         return None
 
 
@@ -84,10 +73,9 @@ def resolve_control_freq(
 ) -> float:
     """A policy's control frequency in Hz, the rate of its steps.
 
-    ``control_freq`` is the training data's frame rate; ``recorded`` a rate the policy itself
-    states (an export's frequency), used when none is passed and warned about when it differs.
-    Without either the rate is :data:`DEFAULT_CONTROL_FREQ`, with a warning: a policy played at a
-    rate it was not trained at moves too fast or too slow.
+    ``control_freq`` (the training data's frame rate) wins over ``recorded`` (a rate the policy
+    states), with a warning when they differ; without either, :data:`DEFAULT_CONTROL_FREQ`, with a
+    warning.
     """
     if control_freq is not None and recorded is not None and control_freq != recorded:
         logger.warning(

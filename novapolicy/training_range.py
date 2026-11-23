@@ -1,10 +1,6 @@
-"""Hold a live observation against the range a policy was trained on.
+"""Hold a live observation against the range a policy was trained on (ADR 0014).
 
-Declared units are an assertion by whoever wrote the schema; a checkpoint's statistics can
-settle it. Two thresholds, deliberately different in kind: sitting outside the
-demonstrated *range* only warns, because a robot parked somewhere the demonstrations never
-visited is normal; being an order of *magnitude* larger than anything in training raises,
-because that is not a pose, it is a unit (radians read as degrees is ~57x).
+Outside the training range warns; :data:`FAIL_SCALE` times larger than anything in training raises.
 """
 
 from __future__ import annotations
@@ -21,8 +17,7 @@ WARN_MARGIN = 1.0
 """A value this many training spans outside the range is worth mentioning."""
 
 FAIL_SCALE = 5.0
-"""A value this many times larger than anything in training is a unit error. Scaled by
-magnitude, not span: a joint that barely moved in training would flag its own park pose."""
+"""A value this many times larger in magnitude than anything in training is a unit error."""
 
 
 def classify(values: Iterable[tuple[str, float, float, float]]) -> tuple[list[str], list[str]]:
@@ -68,10 +63,11 @@ def check_vectors(
     ranges: Mapping[str, Sequence[tuple[float, float] | None]],
     labels: Mapping[str, Sequence[str]] | None = None,
 ) -> None:
-    """:func:`check` over observation vectors keyed like the checkpoint's ranges, each
-    dimension named ``labels[key][i]`` or ``key[i]``. A vector as wide as its range only (a
-    width that disagrees is the schema check's failure, not this one's); a dimension without
-    bounds or without a numeric value is skipped."""
+    """:func:`check` over observation vectors keyed like the checkpoint's ranges.
+
+    Dimensions are named ``labels[key][i]`` or ``key[i]``; vectors of another width than their
+    range, and dimensions without bounds or a numeric value, are skipped.
+    """
     bounded: list[tuple[str, float, float, float]] = []
     for key, vector in values.items():
         bounds = ranges.get(key)

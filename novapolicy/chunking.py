@@ -1,10 +1,4 @@
-"""Pure action-chunk transforms used by :class:`~novapolicy.executor.PolicyExecutor`.
-
-These are deliberately free functions with no executor state: they take a
-chunk (and whatever context they need) and return a new chunk or a scalar.
-Keeping them here keeps the executor focused on orchestration and makes the
-transforms trivially unit-testable.
-"""
+"""Pure action-chunk transforms used by the executor and the pipeline modules."""
 
 from __future__ import annotations
 
@@ -43,11 +37,9 @@ def _max_steps(chunk: ActionChunk) -> int:
 
 
 def trim_chunk(chunk: ActionChunk, n: int) -> ActionChunk:
-    """Trim an action chunk to its first ``n`` steps (receding horizon).
+    """Trim an action chunk to its first ``n`` steps; ``n <= 0`` keeps all (contract M6).
 
-    Returns the chunk unmodified if ``n <= 0`` (execute all) or if it is
-    already shorter than ``n``. Warns if the policy returned fewer steps than
-    requested.
+    Warns when the policy returned fewer steps than ``n``.
     """
     if n <= 0:
         return chunk
@@ -79,9 +71,10 @@ def trim_chunk(chunk: ActionChunk, n: int) -> ActionChunk:
 def smooth_steps(
     steps: list[list[float]], *, passes: int = 2, retained_prefix_steps: int = 0
 ) -> list[list[float]]:
-    """One motion group's steps through ``passes`` of the filter ``[1, 2, 1] / 4`` with replicated
-    ends (two passes equal ``[1, 4, 6, 4, 1] / 16`` inside), the first ``retained_prefix_steps``
-    kept exactly. Fewer than three steps pass unchanged."""
+    """One motion group's steps through ``passes`` of ``[1, 2, 1] / 4`` with replicated ends.
+
+    The first ``retained_prefix_steps`` stay exact; fewer than three steps pass unchanged.
+    """
     if passes < 0 or retained_prefix_steps < 0:
         raise ValueError("passes and retained_prefix_steps must be non-negative")
     if passes == 0:
@@ -119,12 +112,8 @@ def _smooth_steps(
 def ramp_steps(
     steps: list[list[float]], *, interpolation_steps: int = 3, tcp: bool = False
 ) -> tuple[list[list[float]], tuple[int, ...]]:
-    """One motion group's steps eased in and out, and the new index of every original step.
-
-    The first interval is split into ``interpolation_steps`` with a quadratic ease-in, the last
-    with a quadratic ease-out (a smoothstep when they are the same interval); every original step
-    is kept. TCP poses have their rotation vectors unwrapped first, so no interval interpolates
-    across a sign flip."""
+    """One motion group's steps eased in and out (see ``EndpointRamp``), and the new index of
+    every original step; TCP rotation vectors are unwrapped first."""
     if interpolation_steps < _MIN_RAMP_STEPS:
         raise ValueError("interpolation_steps must be at least 2")
     if tcp and steps:
@@ -192,13 +181,9 @@ _TCP_WIDTH = 6
 def unwrap_tcp_rotations(steps: list[list[float]], reference: list[float]) -> list[list[float]]:
     """Rewrite each TCP step's rotation vector as the equivalent one nearest its predecessor.
 
-    A rotation vector ``angle * axis`` describes the same orientation as
-    ``(angle + 2 pi k) * axis`` for any integer ``k``. Near pi, e.g. a tool pointing
-    straight down, measurements jump between ``v`` and roughly ``-v`` from one read
-    to the next. Bridges and ramps interpolate rotation vectors component-wise,
-    and between ``v`` and ``-v`` that passes through the identity: a real
-    half-turn of the wrist instead of no motion. Unwrapping first keeps every
-    interpolation on the short path. ``reference`` anchors the first step.
+    ``angle * axis`` equals ``(angle + 2 pi k) * axis``; near pi measurements flip between ``v``
+    and about ``-v``, and interpolating across that would turn the wrist half a turn.
+    ``reference`` anchors the first step.
     """
     out: list[list[float]] = []
     previous = list(reference)
@@ -235,11 +220,11 @@ def bridge_steps(
     tcp: bool = False,
     always_anchor: bool = False,
 ) -> list[list[float]]:
-    """One motion group's bridge from ``current`` to ``steps[0]``: a hold on ``current``, then
-    steps at the policy's own spacing up to its first step; empty when one step of the policy's
-    largest spacing reaches it. ``always_anchor`` keeps ``[current, steps[0]]`` even then. Joint
-    spacing is Euclidean in joint space; TCP spacing compares translation and rotation separately,
-    after unwrapping the rotations against ``current``. Needs two policy steps for a spacing."""
+    """One motion group's bridge from ``current`` to ``steps[0]`` (see ``Bridge``).
+
+    Empty when one step of the policy's largest spacing reaches it, unless ``always_anchor``.
+    Joint spacing is Euclidean; TCP spacing compares translation and rotation separately.
+    """
     if tcp and steps:
         steps = unwrap_tcp_rotations(steps, current[3:6])
     return _interpolated_bridge(list(current), steps, tcp=tcp, always_anchor=always_anchor)
@@ -315,12 +300,9 @@ class TcpDelta:
     """How a relative TCP action's steps apply (see ``Action.tcp``)."""
 
     accumulate: bool = False
-    """False: every step is an offset from the pose at inference time. True: every step
-    applies to the pose the previous step reached."""
+    """True: each step applies to the pose the previous step reached, not the observed one."""
     use_tool_coordinate_system: bool = False
-    """As in NOVA's TCP jogging: True expresses the offset in the tool coordinate system
-    (given by the TCP) at the pose the step starts from; False in the coordinate system
-    the TCP pose is reported in (world)."""
+    """True: offsets in the tool coordinate system at the step's start pose; False: in world."""
 
 
 def apply_relative_mode(
@@ -329,13 +311,9 @@ def apply_relative_mode(
     relative_mgs: Iterable[str],
     tcp_deltas: dict[str, TcpDelta] | None = None,
 ) -> ActionChunk:
-    """Convert relative (delta) action targets to absolute positions.
+    """Convert relative action targets of ``relative_mgs`` to absolute ones (contract M5).
 
-    For motion groups in ``relative_mgs``, joint deltas accumulate across steps.
-    TCP steps compose with the pose at inference time as ``tcp_deltas`` declares
-    (default: each an offset from that pose, in world axes): positions add, rotations
-    compose as rotations about the TCP, and the result is unwrapped onto the starting
-    rotation vector. Returns the chunk unmodified when ``relative_mgs`` is empty.
+    TCP steps compose as ``tcp_deltas`` declares and are unwrapped onto the starting rotation.
     """
     relative_mgs = list(relative_mgs)
     if not relative_mgs:
@@ -349,8 +327,7 @@ def apply_relative_mode(
         if state is None:
             continue
 
-        # Relative joint actions: each step is a delta from the previous,
-        # so step[i] target = current + sum(deltas[0..i]).
+        # Joint deltas accumulate: step i is current + sum(deltas[0..i]).
         if mg_id in new_joints:
             running = list(state.joints)
             abs_steps = []
@@ -359,7 +336,6 @@ def apply_relative_mode(
                 abs_steps.append(list(running))
             new_joints[mg_id] = abs_steps
 
-        # Relative TCP actions.
         if mg_id in new_tcp and hasattr(state, "pose") and state.pose is not None:
             start = [*state.pose.position, *state.pose.orientation]
             delta = (tcp_deltas or {}).get(mg_id, TcpDelta())
@@ -382,8 +358,7 @@ def compose_tcp_deltas(
     """Absolute TCP targets ``[x, y, z, rx, ry, rz]`` (mm, rotation vector) from offsets.
 
     A rotation offset turns the tool about the TCP: pre-multiplied in world axes,
-    post-multiplied in the tool coordinate system. A rotation vector is not additive, so adding them
-    component-wise would turn a tool-down pose (rotation near pi) the wrong way.
+    post-multiplied in the tool coordinate system.
     """
     widths = sorted({len(step) for step in steps if len(step) != _TCP_WIDTH})
     if widths:
@@ -416,29 +391,19 @@ def is_single_step(chunk: ActionChunk) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class Placement:
-    """Where a chunk's first step sits on one session's server timeline: an exact raw NOVA
-    timestamp, or ``None`` to resolve server "now" at the send."""
+    """Where a chunk's first step sits on the session clock: a timestamp, or ``None`` for now."""
 
     first_timestamp_ms: ServerMs | None
     lead: bool = False
-    """Placed by the lead rule (contract T1): the session dates step ``k``
-    ``WaypointConfig.max_expected_latency_ms + k * dt`` after the observation, or after the send
-    in sequential execution."""
+    """Placed by the lead rule (contract T1)."""
 
 
 def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:
-    """Decide how a chunk is anchored on one session's timeline.
+    """Decide how a chunk is anchored on one session's timeline (contracts T1, T2).
 
-    One rule for both modes: step ``k`` is due ``max_expected_latency_ms + k * dt`` after a
-    reference, and steps already too close to send are dropped (``Placement.lead``; the session
-    applies it). The reference is the observation in continuous execution, and the send in
-    sequential execution, where the robot was at rest when it was observed.
-
-    Exceptions, each a timeline of the policy's own:
-
-    * an explicit ``chunk.first_timestamp_ms`` (>=0): used verbatim;
-    * in continuous execution a chunk that carries a timestep of its own, or several steps
-      without a spacing: "now" at the send (a ``TimestepTimeline`` then places a queue's).
+    The lead rule, except: an explicit ``first_timestamp_ms`` is used verbatim, and in
+    continuous execution a chunk with its own timestep, or several steps without a spacing,
+    starts at "now" at the send.
     """
     if chunk.first_timestamp_ms >= 0:
         return Placement(ServerMs(chunk.first_timestamp_ms))

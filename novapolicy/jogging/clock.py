@@ -1,14 +1,7 @@
-"""Server jogger-clock tracking for waypoint jogging.
+"""Session-clock estimation for waypoint jogging (ADR 0012).
 
-The NOVA server exposes ``jogger_session_timestamp_ms`` in the state stream.
-``JoggingTimeClock`` observes it alongside the client monotonic clock so server
-"now" can be extrapolated between state samples.
-
-Server jogger milliseconds are treated as **real milliseconds**: waypoint
-intervals are never rescaled. Deriving a server/client rate ratio and scaling by
-it is the tempting alternative, and it is wrong — on a UR10e that ratio settles
-near 1.09 and stretches the timeline, slowing all motion by that proportion,
-where an unscaled timeline executes at exactly the commanded speed.
+``JoggingTimeClock`` extrapolates NOVA's ``jogger_session_timestamp_ms`` between state samples.
+One server millisecond is one millisecond of motion: intervals are never rescaled.
 """
 
 from __future__ import annotations
@@ -24,31 +17,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 ServerMs = NewType("ServerMs", int)
-"""A time on the jogger session's clock: milliseconds since the server started executing the
-session's first chunk (``jogger_session_timestamp_ms``). Every waypoint timestamp is one. Not
-the client's ``time.monotonic()`` and not wall-clock time; convert only through
-:class:`JoggingTimeClock`."""
+"""Milliseconds on the session clock (``jogger_session_timestamp_ms``, ADR 0008); convert
+from client time only through :class:`JoggingTimeClock`."""
 
-# Number of continuously advancing state-envelope timestamps observed before
-# freezing the server/client UTC skew estimate. At a 10ms state rate this adds
-# about 200ms to startup and ensures a late first packet cannot bias every
-# waypoint timestamp in the session.
+# State timestamps observed before the server/client UTC skew estimate is frozen (ADR 0012).
 _STATE_CLOCK_CALIBRATION_SAMPLES = 20
 
-# Longest calibration may hold startup up: at a slow ``state_rate_ms`` the sample count above
-# would outlast ``wait_ready``'s timeout. Past it the estimate is frozen with what it has.
+# Longest calibration may hold startup up; past it the estimate is frozen with what it has.
 _STATE_CLOCK_CALIBRATION_WINDOW_S = 1.0
 
-# Largest delivery delay that may be attributed to a single state packet. The delay comes
-# from wall-clock readings, so an NTP step or an oddly stamped packet inflates it and pushes
-# estimated server time ahead, where the never-backwards trajectory clock latches it and the
-# robot holds still; bounding it bounds that stall. Kept under ``max_lookahead_ms``.
+# Largest delivery delay attributed to one state packet (ADR 0012); under max_lookahead_ms.
 _MAX_DELIVERY_DELAY_MS = 200.0
 
 _PLACEHOLDER_YEAR = 2000
-"""State timestamps before this year are placeholders: controllers that send no timestamp
-(FANUC, Staubli, Techman, Yaskawa) arrive stamped 1970-01-01. Taken at face value, a constant
-stamp looks older with every packet and is read as ever more delivery delay."""
+"""State timestamps before this year are placeholders (controllers that send none) and are
+ignored."""
 
 
 def _usable(state_timestamp: datetime | None) -> datetime | None:
@@ -62,14 +45,8 @@ def _usable(state_timestamp: datetime | None) -> datetime | None:
 class JoggingTimeClock:
     """Tracks and extrapolates the server's jogger session clock.
 
-    The server exposes ``jogger_session_timestamp_ms`` in the state stream
-    (field on ``JoggingDetails``). It starts at 0 after
-    ``InitializeActionChunksRequest`` and increments while waypoints are being
-    executed.
-
-    This class observes that timestamp alongside client monotonic time so that
-    server "now" can be extrapolated between state samples. Timestamps are used
-    as-is: one server millisecond is one millisecond of motion.
+    ``jogger_session_timestamp_ms`` (on ``JoggingDetails``) starts at 0 after
+    ``InitializeActionChunksRequest`` and advances while waypoints execute.
     """
 
     synced: bool = False
@@ -91,9 +68,8 @@ class JoggingTimeClock:
     def state_clock_calibrated(self) -> bool:
         """Whether server/client wall-clock skew has been measured and frozen.
 
-        Satisfied by :data:`_STATE_CLOCK_CALIBRATION_SAMPLES` samples, or by
-        :data:`_STATE_CLOCK_CALIBRATION_WINDOW_S` elapsing with at least one, so
-        that a slow state rate cannot hold startup past its own timeout.
+        After :data:`_STATE_CLOCK_CALIBRATION_SAMPLES` samples, or
+        :data:`_STATE_CLOCK_CALIBRATION_WINDOW_S` with at least one.
         """
         if self._state_age_samples >= _STATE_CLOCK_CALIBRATION_SAMPLES:
             return True
@@ -116,17 +92,10 @@ class JoggingTimeClock:
 
     @property
     def last_sample_wall(self) -> float | None:
-        """Monotonic instant the latest state was *generated*, or ``None``.
+        """Monotonic instant the latest state was *generated* (not received), or ``None``.
 
-        Receipt time is not it: packets arrive in bursts, so a dozen states
-        generated 8ms apart can land within 3ms of each other. Anything placing
-        a state on a time axis has to use this, or a burst is drawn as a spike
-        preceded by a gap.
-
-        ``None`` until the first jogger timestamp arrives. Callers must not
-        substitute the raw field for it: it is zero-initialised, and zero in the
-        monotonic domain is machine boot, which lands a good week before the
-        session started.
+        ``None`` until the first jogger timestamp arrives; do not substitute the raw,
+        zero-initialised field for it.
         """
         if not self.synced:
             return None
@@ -146,12 +115,7 @@ class JoggingTimeClock:
 
     @property
     def estimated_server_timestamp_ms(self) -> ServerMs:
-        """Estimate the server clock at the current wall-clock instant.
-
-        The latest state-stream timestamp is extrapolated with the measured
-        server-clock rate. This avoids treating an already-aged state sample as
-        server "now" when timestamping a waypoint request.
-        """
+        """Estimate the server clock now, extrapolated from the latest state timestamp."""
         if not self.synced:
             # Before the first server timestamp, the server clock starts with the first send.
             return ServerMs(self.client_elapsed_ms)
@@ -162,28 +126,17 @@ class JoggingTimeClock:
 
     @property
     def acknowledged_elapsed_ms(self) -> int:
-        """Estimated session "now" based on the latest acknowledged server state.
+        """Estimated session "now": the latest jogger timestamp plus the time since its state
+        was generated; client elapsed time before the first one.
 
-        The latest jogger timestamp is extrapolated from the state generation
-        time, not from when its packet reached this process. Before the first
-        server timestamp arrives, the clock falls back to client elapsed time.
-
-        The name notwithstanding, the value extrapolates *beyond* the last
-        acknowledgement: ``max_lookahead_ms`` is a stall-warning threshold, not a
-        cap on it. Capping it deadlocks startup, because the jogger timer only
-        advances once waypoints execute, and waypoints can only be placed once
-        this advances.
+        Not capped by ``max_lookahead_ms``, which only warns (ADR 0012).
         """
         if not self.synced:
             return self.client_elapsed_ms
         return self.estimated_server_timestamp_ms
 
     def _note_stall(self, drift_ms: float) -> None:
-        """Warn once when the server timer stops advancing (edge-triggered).
-
-        Fires when no fresh ``jogger_session_timestamp_ms`` has arrived for
-        longer than one lookahead window. Recovery is logged from :meth:`update`.
-        """
+        """Warn once when no fresh jogger timestamp arrived for one lookahead window."""
         if not self._stalled:
             self._stalled = True
             logger.warning(
@@ -194,27 +147,12 @@ class JoggingTimeClock:
             )
 
     def update(self, timestamp_ms: int, state_timestamp: datetime | None = None) -> None:
-        """Feed a jogger timestamp and its server-generated state timestamp.
+        """Feed a jogger timestamp and the time its state was generated.
 
-        ``state_timestamp`` identifies when the state was generated. State
-        messages can arrive appreciably late — over 100ms on the deployment this
-        was developed against; treating receipt time as generation time drags the
-        estimated jogger clock backwards by that delay, which the trajectory clock
-        can only absorb by freezing (visible as a ramp-and-snap tracking error).
-
-        Server and client UTC clocks can have a constant offset. The smallest
-        observed ``local UTC - state UTC`` is the least-delayed sample and thus
-        our clock-skew estimate; any excess age on this sample is delivery delay.
-        We backdate the monotonic reference by that delay, capped at
-        :data:`_MAX_DELIVERY_DELAY_MS` so a non-monotonic wall clock cannot push
-        the estimate arbitrarily far ahead. No bound is placed on future
-        extrapolation, so a session that has not started cannot deadlock.
-
-        Calibration is *not* driven from here: the caller must pass every state
-        packet through :meth:`observe_state_timestamp`, including the ones with
-        no jogger timestamp yet. Observing again here would count each packet
-        twice and declare the skew estimate frozen after half the samples it is
-        meant to see.
+        The monotonic reference is backdated by the packet's delivery delay (its age beyond the
+        smallest ``local UTC - state UTC`` seen), capped at :data:`_MAX_DELIVERY_DELAY_MS`.
+        Callers pass every packet through :meth:`observe_state_timestamp` separately; this does
+        not calibrate.
         """
         if timestamp_ms <= 0:
             return
@@ -235,9 +173,7 @@ class JoggingTimeClock:
                 timestamp_ms,
             )
         elif timestamp_ms <= self._last_server_ts_ms:
-            # Repeated or out-of-order state samples do not move the clock
-            # reference forward. Aging the reference here would make the
-            # estimated server clock lag behind reality.
+            # Repeated or out-of-order samples leave the reference alone.
             return
 
         if self._stalled:
@@ -247,9 +183,6 @@ class JoggingTimeClock:
                 "server time advancing again.",
                 timestamp_ms,
             )
-        # Record both domains from the same sample. Future server "now" values
-        # are extrapolated from this pair rather than assuming that the client
-        # and server clocks started at the same instant.
         self._last_server_ts_ms = timestamp_ms
         self._last_server_wall = sample_wall
 
@@ -269,5 +202,4 @@ class JoggingTimeClock:
 
 
 SINGLE_STEP_MARGIN_MS = 67.0
-"""What the controller needs, beyond the network, to plan a smooth approach to a one-step
-waypoint (33 ms ahead was rough on a virtual UR10e, 67 ms smooth)."""
+"""Lead the controller needs, beyond the network, for a smooth one-step waypoint (ADR 0002)."""

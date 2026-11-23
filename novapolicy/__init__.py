@@ -1,13 +1,7 @@
-"""policy — real-time robot control from action chunks via waypoint jogging.
+"""novapolicy: run trained robot policies on NOVA through action chunk streaming.
 
 .. warning::
-    **EXPERIMENTAL** — This package is under active development and not ready
-    for production use. The API will have breaking changes between releases.
-    Do not depend on it for stable deployments.
-
-This package enables AI policies to stream joint position targets (+ optional IO commands)
-to one or more motion groups. Timestamped waypoints are sent via NOVA action chunk
-streaming; the server handles velocity profiling, interpolation, and IK internally.
+    **EXPERIMENTAL**: the API will have breaking changes between releases.
 """
 
 from __future__ import annotations

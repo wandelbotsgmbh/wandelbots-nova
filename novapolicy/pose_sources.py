@@ -1,13 +1,4 @@
-"""Where ``Observation.pose`` gets an object's pose from.
-
-A pose source hands the schema a NOVA :class:`~nova.types.Pose` (mm, rotation vector). Three kinds
-are accepted by ``Observation.pose``:
-
-- a ``Pose``: a fixed target;
-- an async callable returning a ``Pose``: an estimator such as a CNN or FoundationPose;
-- a :class:`PoseSource`: read in the background and started with the run, such as a prim of an
-  Isaac Sim scene (:class:`OmniverseScene`).
-"""
+"""Background pose sources for ``Observation.pose`` (docs/schema.md#object-poses)."""
 
 from __future__ import annotations
 
@@ -41,16 +32,10 @@ class PoseSource(Protocol):
 
 
 class OmniverseScene:
-    """An Isaac Sim scene, read through the Wandelbots NOVA extension API.
+    """An Isaac Sim scene, read through the Wandelbots NOVA extension API, one scene for any prims.
 
-    ``api_url`` is the extension's base URL, e.g. ``http://isaac-host:8011/omniservice/api/v2``:
-    Isaac Sim often runs on another machine, and the extension's port is shown in Isaac Sim's
-    Wandelbots NOVA menu. One scene serves any number of prims::
-
-        scene = OmniverseScene("http://isaac-host:8011/omniservice/api/v2")
-        Observation.pose("cube", source=scene.prim("/World/Cube", relative_to="/World/UR10e/base"))
-
-    Poses come back in mm and radians as a rotation vector, NOVA's own format.
+    ``api_url`` is the extension's full base URL (``http://<host>:8011/omniservice/api/v2``).
+    Poses come back in mm and as a rotation vector.
     """
 
     def __init__(
@@ -74,8 +59,7 @@ class OmniverseScene:
         self._users = 0
 
     def prim(self, prim_path: str, *, relative_to: str | None = None) -> OmniversePrimPose:
-        """A pose source for ``prim_path``: in the stage's world, or relative to the prim
-        ``relative_to`` (e.g. the robot's base prim, to get the object in the robot's frame)."""
+        """A pose source for ``prim_path``, in world or relative to prim ``relative_to``."""
         return OmniversePrimPose(self, prim_path, relative_to=relative_to)
 
     async def get_pose(self, prim_path: str, *, relative_to: str | None = None) -> Pose:

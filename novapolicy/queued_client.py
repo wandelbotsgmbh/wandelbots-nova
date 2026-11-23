@@ -1,17 +1,7 @@
 """Continuous execution for policies that answer each observation with a fresh chunk.
 
-A policy that predicts a whole chunk per observation (GR00T, a callback, ...) has no
-notion of the chunk NOVA is executing. Replacing that lookahead with each new chunk
-makes the arm jump at every seam. :class:`QueuedPolicyClient` wraps such a client and
-keeps one plan on the executor's timestep timeline, as the LeRobot async queue does:
-
-- each chunk is resolved to absolute NOVA targets (:func:`~novapolicy.resolve_actions`),
-- the steps that executed while it was computed, plus a margin, stay exactly as published,
-- later overlapping steps are blended old/new (0.3/0.7),
-- the plan is smoothed with the frozen head retained, and handed to the executor with its
-  first absolute timestep.
-
-Use it with ``ContinuousExecution()`` and ``PolicyExecutor(..., n_action_steps=0)``.
+See docs/executor.md#continuous-execution-for-chunk-per-observation-policies. Use it with
+``ContinuousExecution()`` and ``PolicyExecutor(..., n_action_steps=0)``.
 """
 
 from __future__ import annotations
@@ -39,16 +29,12 @@ _TCP_DIM = 6
 
 
 class QueuedPolicyClient(PolicyClient):
-    """Merge a chunk-per-observation policy's chunks into one continuous plan.
+    """Merge a chunk-per-observation policy's chunks into one continuous plan, unsmoothed.
 
     Args:
         policy: The wrapped client.
         margin_steps: Steps kept frozen beyond those that executed during inference.
         aggregation: How a new prediction for a step already queued is merged with it.
-
-    The merged plan is returned as it is; the executor's default pipeline smooths it in the
-    session (:class:`~novapolicy.jogging.modules.Smoothing`), keeping the
-    ``retained_prefix_steps`` this client reports exact.
     """
 
     def __init__(
@@ -133,9 +119,7 @@ class QueuedPolicyClient(PolicyClient):
     def _merge_values(
         self, values: dict[str, list[list[float]]], first: int, frozen: int, timesteps: list[int]
     ) -> dict[str, list[list[float]]]:
-        """``chunk.values`` rows on the plan's timesteps: rows already published for the steps
-        before ``first + frozen`` stay as they were, later ones are this chunk's. Values such
-        as a gripper command are not blended."""
+        """``chunk.values`` rows on the plan's timesteps, frozen rows kept, none blended."""
         merged: dict[str, list[list[float]]] = {}
         for key, rows in values.items():
             if not rows:
@@ -154,8 +138,7 @@ class QueuedPolicyClient(PolicyClient):
     def _flatten(
         self, chunk: ActionChunk, predecessor: NDArray[np.float32] | None
     ) -> list[NDArray[np.float32]]:
-        """One vector per step: every joint group, then every TCP group, its rotations unwrapped
-        against the step before the chunk, or the chunk's own first step."""
+        """One vector per step: joint groups, then TCP groups with unwrapped rotations."""
         if not self._layout:
             self._layout = [("j", g, len(s[0])) for g, s in sorted(chunk.joints.items()) if s]
             self._layout += [("t", g, _TCP_DIM) for g, s in sorted(chunk.tcp.items()) if s]

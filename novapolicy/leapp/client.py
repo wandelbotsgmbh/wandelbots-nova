@@ -37,19 +37,12 @@ def _is_joint_target(port: Port) -> bool:
 class LeappPolicyClient(PolicyClient):
     """Runs a LEAPP export locally, one inference per step, with ``onnxruntime``.
 
-    The export carries the observation processing, the network and the action processing of
-    the training environment, so its joint output is the final joint target: declare the joint
-    action absolute. The schema's names are the mapping. Each input of the export is fed from
-    the observation named like the input's port (``robot_joint_vel``), or like the last part of
-    its Isaac Lab connection (``state:robot:joint_vel`` -> ``joint_vel``) when no other input
-    shares that name.
-
-    The joint target is the export's output of kind ``joint/position`` or with an Isaac Lab
-    ``write:<robot>:set_joint_position_target...`` connection; where that is ambiguous, the
-    output named like the joint action. An output named like a key of an ``Action.computed``
-    hook lands in ``chunk.values``; other outputs, such as exported gains, are not used.
-    Feedback inputs such as the last action are carried from step to step and start from the
-    export's initial values with every run.
+    The export's joint output is the final joint target: declare the joint action absolute.
+    Each input is fed from the observation named like its port (``robot_joint_vel``), or like
+    the last part of its Isaac Lab connection (``joint_vel``) when unambiguous. The joint
+    target is the output of kind ``joint/position`` or with a ``set_joint_position_target``
+    connection, else the one named like the joint action; outputs named like ``Action.computed``
+    keys land in ``chunk.values``. Feedback inputs restart from the export's values every run.
 
     Args:
         pipeline: The export's ``.yaml`` file.
@@ -118,8 +111,7 @@ class LeappPolicyClient(PolicyClient):
             raise ValueError(msg)
 
     def _names_for(self, port: Port) -> list[str]:
-        """Observation names that feed ``port``: its port name, and its connection name when
-        no other input shares it (two robots' ``joint_pos`` would be ambiguous)."""
+        """Observation names that feed ``port``: its port name, and its unshared connection name."""
         names = [port.name]
         shared = [p for p in self._pipeline.inputs if p.connection_name == port.connection_name]
         if port.connection_name and len(shared) == 1 and port.connection_name != port.name:

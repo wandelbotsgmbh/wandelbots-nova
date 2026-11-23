@@ -1,10 +1,4 @@
-"""IO streaming and writing for policy execution.
-
-Provides:
-- ``IOStreamCache``: background WebSocket that caches latest IO values
-- ``IOStreamManager``: owns the per-controller stream caches for one episode
-- ``IOWriter``: deduplicated IO writes with serialized access
-"""
+"""IO streaming (``IOStreamCache``, ``IOStreamManager``) and writing (``IOWriter``)."""
 
 from __future__ import annotations
 
@@ -96,12 +90,7 @@ class IOStreamCache:
 
 
 class IOStreamManager:
-    """Owns the per-controller IO stream caches for one execution episode.
-
-    Deduplicates by controller (one stream per controller, even with multiple
-    motion groups), exposes a merged latest-value view, and wires each cache
-    into its session so guards can read live IO.
-    """
+    """Owns one IO stream cache per controller for one episode, and a merged view of them."""
 
     def __init__(
         self, motion_groups: list[MotionGroup], io_by_controller: Mapping[str, list[str]]
@@ -148,17 +137,9 @@ class IOStreamManager:
 
 
 class IOWriter:
-    """Writes IO values with deduplication and serialized access.
+    """Writes changed IO values through nova's ``IOAccess``, one write at a time (NOVA rate-limits).
 
-    Only writes values that have actually changed, and serializes writes
-    per instance to avoid 429 rate-limit errors from the NOVA API. The
-    value→model dispatch and write are delegated to nova's ``IOAccess``.
-
-    TODO(core): ``IOAccess.write`` performs a per-controller
-    ``list_io_descriptions`` validation roundtrip (cached after the first
-    call). For a real-time policy loop a roundtrip-free write path in core
-    would be preferable — tracked as a follow-up task; switch to it once
-    available.
+    TODO(core): switch to a write path without ``IOAccess``'s validation roundtrip.
     """
 
     def __init__(self, motion_group: MotionGroup) -> None:

@@ -1,20 +1,6 @@
-"""Measured joint velocities, read from the raw state stream.
+"""Measured joint velocities, read from the raw state stream as JSON (ADR 0016).
 
-A policy trained on measured joint velocities needs them at inference, and they
-cannot be had through the typed SDK path: ``MotionGroupState`` has no
-``joint_velocity`` field and pydantic drops unknown ones, so the field the
-controller does put on the wire is discarded before any caller sees it. The
-SDK's ``RobotState`` carries only pose, TCP and joints for the same reason.
-
-Finite-differencing joint positions at the request cadence is the obvious
-substitute and a poor one. Measured against the controller's own values on a
-7-dof arm at a 20ms cadence, the difference was twice the true magnitude, three
-times as noisy sample to sample, and wrong by up to 4.8 rad/s on individual
-samples. A residual policy fed that produces correspondingly large and erratic
-residuals, so this reads the stream as raw JSON instead and keeps the finite
-difference only as a fallback for when no measurement is available.
-
-Do not "simplify" this onto the typed stream. That is the bug it exists for.
+The typed ``MotionGroupState`` drops ``joint_velocity``; do not move this onto the typed stream.
 """
 
 from __future__ import annotations
@@ -42,12 +28,10 @@ _STREAM_PATH = (
 """Relative to the gateway's configured base, which already carries ``/api/v2``."""
 
 DEFAULT_RESPONSE_RATE_MS = 20
-"""Requested stream period. At or below the controller cycle the server streams
-every cycle anyway, which measured ~8ms on a live instance at this value."""
+"""Requested stream period in ms; at or below the controller cycle it streams every cycle."""
 
 DEFAULT_STALE_AFTER_S = 0.2
-"""How long a sample stays usable. Past this the stream is treated as absent and
-the caller falls back, rather than feeding the policy a stale velocity."""
+"""Seconds a sample stays usable; past it the caller falls back to finite differences."""
 
 
 _RETRY_MIN_S = 1.0
@@ -70,11 +54,7 @@ class VelocitySource(Protocol):
 
 
 class StateStreamVelocities:
-    """One raw state-stream reader per motion group, latest value wins.
-
-    Read-only: it opens its own stream and commands nothing, so it can run
-    alongside a jogging session's own state stream and anything else.
-    """
+    """One read-only raw state-stream reader per motion group, latest value wins."""
 
     def __init__(
         self,
@@ -140,9 +120,7 @@ class StateStreamVelocities:
                 raise
             except (OSError, RuntimeError, ValueError, WebSocketException) as exc:
                 reason = str(exc) or type(exc).__name__
-            # A missing measurement is survivable: the caller falls back to
-            # finite differencing, which is worse but not fatal, until the
-            # stream is back.
+            # Until the stream is back the caller falls back to finite differences.
             logger.warning(
                 "Measured-velocity stream lost for %s (%s); reconnecting in %.0f s",
                 mg.id,

@@ -1,20 +1,6 @@
-"""Invertible value operators for the observation and action path.
+"""Invertible, element-wise unit operators for the observation and action path (contract M1).
 
-NOVA speaks radians and millimetres. A dataset does not necessarily: a policy
-trained on degrees normalizes cleanly against its own statistics and then moves
-the arm to the wrong place, because those statistics are in the *recording*
-robot's units. Declaring the conversion makes it explicit and, crucially,
-reversible — the same declaration that scales an observation on the way in
-un-scales the action on the way out.
-
-Operators are element-wise by construction, so a declaration covering several
-motion groups applies identically whether the values arrive concatenated (an
-observation) or split per group (an action chunk).
-
-This is *not* normalization. LeRobot's policy server applies the checkpoint's
-own normalization and unnormalization; duplicating it here would corrupt the
-values twice over. What is unguarded, and what these operators are for, is units
-and scale.
+Units and scale only, not normalization (docs/schema.md#units).
 """
 
 from __future__ import annotations
@@ -35,13 +21,10 @@ class OpDirection(StrEnum):
     """Exactly reversible: ``inverse(forward(v)) == v``. Safe on an action."""
 
     BIDIRECTIONAL = "bidirectional"
-    """Not reversible, but meaningful applied in both directions — a clamp
-    shapes the observation on the way in and limits the command on the way out.
-    Safe on an action."""
+    """Not reversible, but meaningful in both directions (a clamp). Safe on an action."""
 
     FORWARD_ONLY = "forward_only"
-    """Has no meaningful reverse. Rejected on a channel that is also an action,
-    because the executor would have nothing to send back to the robot."""
+    """Has no meaningful reverse. Rejected on a channel that is also an action."""
 
 
 class ValueOp(ABC):
@@ -94,16 +77,9 @@ class Scale(ValueOp):
 
 
 class Clamp(ValueOp):
-    """Bound values to ``[low, high]`` in both directions.
+    """Bound values to ``[low, high]``: the observation forward, the command in reverse.
 
-    Applied forward it bounds what the policy observes; applied in reverse it
-    bounds the command before it reaches the robot, which is the safety-relevant
-    direction. Clamping is monotone, so its position in an operator list is
-    preserved by the reversal: ``[Rad2Deg(), Clamp(-90, 90)]`` clamps in degrees
-    on the way in *and* on the way out.
-
-    This is a software limit in the executor's own value path, not a safety
-    system. Joint limits belong on the robot controller.
+    A software limit in the value path, not a safety system.
     """
 
     direction: ClassVar[OpDirection] = OpDirection.BIDIRECTIONAL
@@ -137,11 +113,7 @@ def apply_ops(values: Sequence[float], ops: Sequence[ValueOp]) -> list[float]:
 
 
 def apply_ops_inverse(values: Sequence[float], ops: Sequence[ValueOp]) -> list[float]:
-    """Run every operator back-to-front, inverting each.
-
-    The reversal matters: ``[Scale(0.001), Clamp(-1, 1)]`` clamps in metres, so
-    the inverse must clamp in metres *before* scaling back to millimetres.
-    """
+    """Run every operator back-to-front, inverting each."""
     if not ops:
         return list(values)
     result = list(values)
@@ -151,12 +123,7 @@ def apply_ops_inverse(values: Sequence[float], ops: Sequence[ValueOp]) -> list[f
 
 
 def reject_forward_only(ops: Iterable[ValueOp], where: str) -> None:
-    """Raise when a writable channel declares an operator with no reverse.
-
-    Direction is a property of the operator class, so this is the whole
-    load-time check — a library-owned ``Rad2Deg`` or ``Scale`` is invertible by
-    construction, and ``Scale`` validates its factor in ``__init__``.
-    """
+    """Raise when a writable channel declares an operator with no reverse."""
     offenders = [repr(op) for op in ops if op.direction is OpDirection.FORWARD_ONLY]
     if offenders:
         msg = (

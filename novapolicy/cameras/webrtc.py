@@ -1,11 +1,7 @@
-"""WebRTC camera implementation.
+"""WebRTC cameras: the ``WebRTCCameras`` factory and its ``WebRTCDevice`` camera sources.
 
-Provides ``WebRTCCameras`` factory and ``WebRTCDevice`` — a ``CameraSource``
-implementation that connects to cameras via WebRTC signaling.
-
-The policy never starts or stops hardware streams — it only creates WebRTC
-sessions to receive frames.  If the stream is not running, an exception is
-raised after the connect timeout.
+Only receives frames; the camera server starts and stops the streams. A stream that is not
+running raises after the connect timeout.
 """
 
 from __future__ import annotations
@@ -32,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 ResizeMode = Literal["stretch", "crop"]
 
-# Optional imports — aiortc is heavy and not always needed
+# aiortc is optional
 _aiortc: ModuleType | None
 try:
     _aiortc = importlib.import_module("aiortc")
@@ -40,7 +36,6 @@ try:
 
     av.logging.set_level(av.logging.ERROR)
 except ImportError:
-    # aiortc is an optional dependency; WebRTC camera support stays disabled.
     _aiortc = None
 
 
@@ -78,12 +73,7 @@ class WebRTCCameraConfig:
 
 
 class WebRTCConnection:
-    """Manages a single WebRTC peer connection with background frame reception.
-
-    Only performs WebRTC signaling (offer/answer).  Never calls
-    ``stream/start`` or ``stream/stop`` — the hardware stream is managed
-    externally by the camera server.
-    """
+    """One WebRTC peer connection (signaling only), receiving frames in the background."""
 
     def __init__(self, name: str, config: WebRTCCameraConfig) -> None:
         self._name = name
@@ -240,10 +230,7 @@ def _resize_frame(
 
 
 class WebRTCDevice:
-    """A single WebRTC camera device implementing the CameraSource protocol.
-
-    Created by ``WebRTCCameras.device()``.  Do not instantiate directly.
-    """
+    """One WebRTC camera, a ``CameraSource``; created by ``WebRTCCameras.device()``."""
 
     def __init__(
         self,
@@ -324,29 +311,10 @@ class WebRTCDevice:
 
 
 class WebRTCCameras:
-    """Factory for WebRTC camera sources.
+    """Factory for WebRTC camera sources; the camera server sets resolution and fps.
 
-    The camera server controls resolution, fps, and stream lifecycle.
-    This factory only creates WebRTC sessions to receive frames.
-
-    If ``resize`` is set, frames are resized on read (Lanczos). ``resize_mode="crop"``
-    first centre-crops each frame to the target aspect ratio, so a 16:9 camera feeds a
-    policy trained on 4:3 images without stretching them; ``"stretch"`` (default)
-    resizes as is.
-
-    Usage::
-
-        cameras = WebRTCCameras(
-            api_url="http://192.168.1.22:9100",
-            resize=(256, 256),
-        )
-
-        schema = PolicySchema(
-            observations=[
-                Observation.image("cam_left", source=cameras.device("315122271048")),
-                Observation.image("cam_right", source=cameras.device("319522063360")),
-            ],
-        )
+    ``resize=(w, h)`` resizes frames on read (Lanczos); ``resize_mode="crop"`` centre-crops to
+    the target aspect ratio first, ``"stretch"`` (default) does not.
     """
 
     def __init__(

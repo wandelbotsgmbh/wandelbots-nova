@@ -39,3 +39,14 @@ build the observation with the schema, call the policy, decode with the schema
 ([adding a provider](../architecture.md#adding-a-policy-provider)). Porting a provider touches no
 executor code. RTC was removed rather than moved (its seams needed the executor to backdate
 placement); a provider-side equivalent would bring its own module.
+
+**Codec details** (recorded 2026-11-23 from the code). IO values arrive at the executor already
+in hardware units, unlike joint and TCP targets: only the client knows where in its wire format
+a value sits, so it applies the schema's `Mapping` while decoding, and a chunk built by hand
+carries hardware values (`True`, `100.0`) that nothing converts again. A `Mapping` crosses a type
+boundary and stays separate from the float-to-float `ValueOp`s (see
+[schema.md](../schema.md#units)). An operator's direction is a property of its class, so the
+schema refuses a forward-only operator on a writable channel without probing it. Relative TCP
+rotations compose as rotations: rotation vectors are not additive, and adding them component-wise
+turns a tool-down pose (near π) the wrong way. Pure chunk transforms are free functions in
+`chunking.py`, outside the executor, so each is testable alone.

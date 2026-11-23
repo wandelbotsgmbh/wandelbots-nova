@@ -4,7 +4,8 @@ Status: accepted, 2026-11-18. The loud stop (the late-acknowledgement guard) was
 2026-11-23 with the other diagnostics; the fixed lead stands.
 
 **Context.** A waypoint must reach the controller about 67 ms before it is due, plus the
-network round trip. Over a VPN the round trip ranged from 40 to 220 ms.
+network round trip (`SINGLE_STEP_MARGIN_MS`: 33 ms ahead was rough on a virtual UR10e, 67 ms
+smooth). Over a VPN the round trip ranged from 40 to 220 ms.
 
 **Decision.** Waypoints are due `WaypointConfig.max_expected_latency_ms` (default 100 ms) after
 their reference, as MoveIt Servo's `max_expected_latency`. The measured round trip is only a

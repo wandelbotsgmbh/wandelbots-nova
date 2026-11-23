@@ -1,12 +1,6 @@
-"""The built-in send-pipeline modules, and the default list.
+"""The built-in send-pipeline modules and :func:`default_pipeline` (contracts T13, ADR 0010).
 
-An explicit ``pipeline=[...]`` is exactly what runs; ``None`` (the default on
-:class:`~novapolicy.PolicyExecutor`, the joggers and the session) runs
-:func:`default_pipeline`. To keep the defaults and add a module, extend that list::
-
-    pipeline=[LiveBuffer(window_ms=500), *default_pipeline()]
-
-See :mod:`novapolicy.jogging.pipeline` for the order and the contract of each module kind.
+An explicit ``pipeline=[...]`` is exactly what runs; ``None`` runs :func:`default_pipeline`.
 """
 
 from __future__ import annotations
@@ -31,13 +25,8 @@ if TYPE_CHECKING:
 class HoldPadding:
     """Chunk module: extend a short chunk by holding its last target up to ``min_horizon_ms``.
 
-    Gives the controller a horizon it can brake within, so a chunk that ends early does not
-    end in an abrupt stop. Only chunks queued with ``extend_buffer=True`` are padded: the
-    executor's chunks except one-step chunks placed ahead (the next step replaces them before
-    they are due, and a hold would make the controller brake towards every step), and the
-    jogger's chunks; live targets are not. Padding ends a chunk in a hold, which leaves
-    ``WaypointConfig.delay_until_braking_ms`` no velocity to keep: leave this module out to use
-    that instead. Put it after the modules that set their own horizon, such as ``LiveBuffer``.
+    Pads only chunks queued with ``extend_buffer=True`` (contract T6). Leave it out to use
+    ``WaypointConfig.delay_until_braking_ms``; put it after modules that set their own horizon.
     """
 
     min_horizon_ms: float = 500.0
@@ -62,14 +51,10 @@ class HoldPadding:
 
 @dataclass(frozen=True, slots=True)
 class JointClamp:
-    """Chunk module: hold every joint target inside the robot's position limits.
+    """Chunk module: hold every joint target ``margin_rad`` inside the robot's limits (M7).
 
-    NOVA pauses the motion on an out-of-range waypoint, so a target a policy only slightly
-    overshoots would end the run. The session reads the limits from the motion group's
-    description when it starts, ``margin_rad`` inside each bound (see
-    :mod:`novapolicy.joint_limits`), and each joint's first clip is logged once. TCP waypoints
-    pass unchanged: their limit is the workspace, not a per-axis bound. A robot that reports no
-    limits is sent unclamped, with a warning.
+    TCP waypoints pass unchanged; a robot that reports no limits is sent unclamped, with a
+    warning.
     """
 
     margin_rad: float = DEFAULT_MARGIN_RAD
@@ -88,12 +73,9 @@ class JointClamp:
 class EndpointRamp:
     """Chunk module: ease into and out of each chunk by subdividing its first and last interval.
 
-    The first interval gets a quadratic ease-in and the last a quadratic ease-out (a
-    smoothstep when they are the same), each split into ``interpolation_steps`` intervals of
-    the chunk's own spacing, so the added points give the robot real time to accelerate and
-    brake. Every original step is kept; IO due at a step stays with it. Meant for sequential
-    execution, where each chunk starts and ends at rest; in the executor's default pipeline
-    only there.
+    Each endpoint interval becomes ``interpolation_steps`` intervals of the chunk's spacing,
+    quadratic ease-in / ease-out (a smoothstep when they coincide). Every original step and its
+    IO is kept. For sequential execution, where chunks start and end at rest.
     """
 
     interpolation_steps: int = 3
@@ -127,14 +109,9 @@ class EndpointRamp:
 class Smoothing:
     """Chunk module: smooth a plan's motion with ``passes`` of the filter ``[1, 2, 1] / 4``.
 
-    Two passes equal ``[1, 4, 6, 4, 1] / 16`` away from the ends, which removes the
-    waypoint-scale kinks where a queue blends overlapping predictions, at the cost of rounding
-    intended corners by about two steps. Steps a queue client already sent
-    (``retained_prefix_steps``: its predecessor and frozen head) keep exactly the values this
-    module sent for their timesteps, so a replacement continues the motion already running. Joint
-    and TCP values are filtered component by component; IO, timing and values for computed
-    actions are untouched. Chunks shorter than three steps pass unchanged. Put it first: the
-    bridge has to end on the smoothed first step.
+    Steps already sent (``retained_prefix_steps``) keep the values sent for their timesteps.
+    Joint and TCP values are filtered per component; IO, timing and computed-action values are
+    untouched; chunks under three steps pass unchanged. Put it before the ``Bridge``.
     """
 
     passes: int = 2
@@ -168,18 +145,13 @@ class Smoothing:
 
 @dataclass(frozen=True, slots=True)
 class Bridge:
-    """Chunk module: move from where the robot is to the policy's first step at the chunk's
-    own spacing, instead of jumping there in one step.
+    """Chunk module: bridge from the measured position to the policy's first step.
 
-    The bridge starts with a hold on the measured position, so sending the request does not use
-    up the first interval, and ends exactly on the policy's first step; it is subdivided as far
-    as the chunk's largest step needs (contract T4). With ``always_anchor`` the hold is
-    prepended even when no subdivision is needed, which gives a continuously refreshed queue one
-    full step before its first target. A chunk on a timeline of its own (``first_timestamp_ms``)
-    is not bridged, and neither is one the robot is already at. A bridged chunk starts where
-    the robot is now, so in continuous execution it is dated at the send rather than by its
-    observation. IO stays with the policy's first step. TCP rotations are unwrapped against the
-    measured pose first, so no interval crosses a sign flip.
+    A hold on the measured position, then steps at the chunk's spacing, subdivided as far as its
+    largest step needs; ``always_anchor`` adds the hold even without subdivision. Chunks with
+    ``first_timestamp_ms`` or already at the robot pass unchanged. In continuous execution a
+    bridged chunk is dated at the send (T2). IO stays with the policy's first step; TCP
+    rotations are unwrapped against the measured pose.
     """
 
     always_anchor: bool = False
@@ -217,14 +189,11 @@ class Bridge:
 
 @dataclass
 class TimestepTimeline:
-    """Chunk module: keep a timestep queue's chunks on one timeline.
+    """Chunk module: keep a timestep queue's chunks on one timeline (contract T2).
 
-    A queue client (``QueuedPolicyClient``) numbers its plan's steps by
-    policy timestep. Its first chunk is placed like any other (and bridged); once it is sent,
-    the time its policy step ``t0`` is due becomes the origin, and every later chunk starting at
-    timestep ``t`` is placed at ``origin + (t - t0) * dt``, so a replacement continues the motion
-    already running instead of starting again at "now" (contract T2). A chunk without timesteps
-    passes unchanged. Put it before the ``Bridge``: a chunk on the timeline is not bridged.
+    The first chunk is placed like any other; once sent, the time its step ``t0`` is due is the
+    origin, and a later chunk starting at timestep ``t`` is placed at
+    ``origin + (t - t0) * dt``. Chunks without timesteps pass. Put it before the ``Bridge``.
     """
 
     _origin: tuple[int, int] | None = field(default=None, init=False, repr=False)
@@ -248,20 +217,15 @@ class TimestepTimeline:
 
 
 MIN_LEAD_MS = 20.0
-"""Smallest lead a waypoint may still be sent with. A waypoint closer than this to the robot's
-session time is unreachable, and commanding it makes the server jump to catch up."""
+"""Smallest lead, in ms, a waypoint may still be sent with (contract T3)."""
 
 
 @dataclass(frozen=True, slots=True)
 class DropLate:
     """Filter: drop the waypoints due within ``min_lead_ms`` of now; the rest keep their times.
 
-    A chunk is stamped when it is queued but sent a little later, and the robot is already past
-    a waypoint whose moment has gone: sending it makes the server jump back to it (contract T3,
-    ADR 0004). A chunk stamped at the send itself (no ``first_timestamp_ms`` and not placed
-    ahead) cannot be late and passes whole. When every waypoint is late, nothing is sent and the
-    robot keeps following the previous chunk. Leave this module out only to see late waypoints
-    on the wire.
+    Contract T3, ADR 0004. A chunk stamped at the send passes whole; when every waypoint is late,
+    nothing is sent.
     """
 
     min_lead_ms: float = MIN_LEAD_MS
@@ -276,22 +240,17 @@ class DropLate:
 
 
 def timestep_queue_modules() -> list[object]:
-    """What a timestep queue needs in front: smoothing of its merged plan, its timeline, and a
-    measured-state bridge for its first chunk."""
+    """A timestep queue's modules: ``Smoothing``, ``TimestepTimeline``, anchored ``Bridge``."""
     return [Smoothing(), TimestepTimeline(), Bridge(always_anchor=True)]
 
 
 def default_pipeline(
     *, execution: object | None = None, policy: object | None = None
 ) -> list[object]:
-    """The modules that run when no ``pipeline`` is given, in order.
+    """The modules that run when no ``pipeline`` is given, in order (contracts T13).
 
-    Without ``execution``: the joggers' list. With the ``PolicyExecutor``'s execution mode and
-    policy: the executor's, which also clamps joint targets to the robot's limits and bridges
-    from where the robot is to the policy's first step; in sequential execution it bridges
-    every chunk and eases each in and out; in continuous execution the policy's own
-    :attr:`~novapolicy.PolicyClient.default_modules` come first (a timestep queue's timeline,
-    smoothing and bridge).
+    Without ``execution``: the joggers' list; with the executor's execution mode and policy:
+    the executor's for that mode.
     """
     if execution is None:
         return [HoldPadding(), Timestamps(), DropLate()]

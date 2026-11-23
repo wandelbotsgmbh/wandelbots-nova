@@ -1,10 +1,4 @@
-"""Waypoint request construction for action chunk streaming.
-
-Pure helpers that turn raw action steps + timing into NOVA API request models
-(``ActionChunkRequest``, carrying joint- or pose-flavoured waypoints), plus the
-small pending-chunk record. No session state lives here — the session passes in
-its :class:`~novapolicy.jogging.clock.JoggingTimeClock` and mode.
-"""
+"""Pure helpers that build NOVA ``ActionChunkRequest`` models, and the ``PendingChunk`` record."""
 
 from __future__ import annotations
 
@@ -23,22 +17,14 @@ if TYPE_CHECKING:
 
 
 class ActionChunkRequest(api.models.ActionChunkRequest):
-    """``ActionChunkRequest`` with ``delay_until_braking`` [ms].
-
-    The pinned API client (26.7.0) predates the field, while NOVA 26.8.0-112
-    accepts it. Drop this once the client is 26.8.0 or newer.
-    """
+    """``ActionChunkRequest`` with ``delay_until_braking`` [ms]; drop with API client >= 26.8.0."""
 
     delay_until_braking: Annotated[int, Field(ge=0)] | None = None
 
 
 @dataclass(slots=True, frozen=True)
 class PendingChunk:
-    """A queued action chunk awaiting send on the next jogging-loop iteration.
-
-    Raw steps/timing are stored here; the request is built at yield time so
-    timestamps are computed as late as possible, at the send.
-    """
+    """A queued action chunk; its request and timestamps are built at the send."""
 
     steps: list[list[float]]
     dt_ms: float
@@ -48,34 +34,24 @@ class PendingChunk:
     """The policy timestep of the caller's first step (``steps[start_step]``); ``-1`` without."""
     sequence: int = 0
     caller_step_count: int = 0
-    """How many leading entries of ``steps`` the caller actually asked for.
-
-    ``steps`` may have been padded (``HoldPadding``) by repeating its final target. That padding is a braking horizon for the server, not motion
-    the caller requested, so anything waiting for the commanded motion to finish
-    has to stop at this many steps rather than at the end of ``steps``.
-
-    ``0`` means "the whole list", for records built without padding.
-    """
+    """How many leading entries of ``steps`` the caller asked for, before ``HoldPadding``;
+    ``0`` means all."""
     final: bool = False
-    """The last target of a run: sent with ``delay_until_braking`` 0 so the robot
-    stops on it instead of keeping its velocity past it."""
+    """The last target of a run: sent with ``delay_until_braking`` 0 so the robot stops on it."""
     lead: bool = False
     """Placed by the lead rule: step ``k`` due ``max_expected_latency_ms + k * dt`` after
     ``observed_at_ms``, or after the send when that is ``None``."""
     observed_at_ms: ServerMs | None = None
-    """When the state the chunk was computed from was measured, on the session clock; for a live
-    target, when it was produced (the jogger's loop time), which a ``LiveBuffer`` times it by."""
+    """When the chunk's state was measured (a live target: when it was produced), session clock."""
     extend_buffer: bool = True
-    """Let ``HoldPadding`` pad the chunk with its last target (contract T6). A chunk module that
-    sets its own horizon (``LiveBuffer``) turns it off."""
+    """Let ``HoldPadding`` pad the chunk (contract T6); ``LiveBuffer`` turns it off."""
     when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None
     """``(step, action)``: run ``action`` when the caller's ``step`` is due, see
     :meth:`~novapolicy.jogging.waypoint_session.WaypointJoggingSession.update_chunk`."""
     retained_prefix_steps: int = 0
     """Leading steps already sent in an earlier chunk, which ``Smoothing`` keeps exact."""
     start_step: int = 0
-    """Index of the caller's first step in ``steps``: a chunk module that puts steps in front of
-    it (``Bridge``) or moves it (``EndpointRamp``) keeps this on it."""
+    """Index of the caller's first step in ``steps``, kept on it by chunk modules."""
 
     @property
     def last_caller_step(self) -> int:
@@ -89,11 +65,7 @@ def anchor_timestamp_ms(
 ) -> int:
     """Where step zero lands, given a base timestamp and a whole-step offset.
 
-    Shared with the session's trimming pass, which has to resolve the same
-    absolute anchor before it can tell which waypoints are already in the past.
-    Deliberately unclamped: the ``max(0, ...)`` floor belongs to request
-    building, and applying it here would change which waypoints trimming
-    considers reachable.
+    Not clamped at 0: trimming has to see the anchor before request building's ``max(0, ...)``.
     """
     return first_timestamp_ms + int(timestamp_offset_steps * step_dt_ms)
 
@@ -124,11 +96,7 @@ def _joint_coordinates(
 
 
 def _pose_coordinates(steps: list[list[float]]) -> list[api.models.WaypointCoordinates]:
-    """Wrap TCP pose steps as ``POSE`` waypoint coordinates.
-
-    Each step is [x, y, z, rx, ry, rz] where position is in mm and
-    orientation is a rotation vector in radians.
-    """
+    """Wrap TCP pose steps [x, y, z, rx, ry, rz] (mm, rotation vector) as ``POSE`` coordinates."""
     return [
         api.models.PoseWaypoint(
             pose=api.models.Pose(position=tuple(step[:3]), orientation=tuple(step[3:6]))

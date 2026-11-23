@@ -1,19 +1,7 @@
-"""Rolling buffer of measured live targets, replayed as a continuous horizon.
+"""Rolling buffer of measured live targets, replayed as a horizon on a fixed grid (ADR 0013).
 
-A live target says only where the target is **now**, and a lone waypoint is a
-*terminal* target the server decelerates to a standstill at. So a caller that
-replaces one target per tick makes the robot stop and restart continuously. This
-buffer removes that: it holds the last ``window_ms`` of targets and replays them
-as a waypoint horizon, so the server always has somewhere to be going next.
-
-Nothing here is invented. Every waypoint replayed is a target that was really
-measured, handed over late rather than extrapolated forward, which is why the
-cost is latency: the robot trails the live target by about the window.
-
-The replay grid is phase-locked to absolute multiples of the step, the trajectory-time to
-server-time mapping uses a **constant** lead, and resampling interpolates each sample at the
-instant it was taken. So a measured target keeps the same absolute timestamp however often the
-window is re-sent; moving commanded points to new times is executed as a lurch.
+The robot trails the live target by about ``window_ms``; a target keeps its absolute timestamp
+however often the window is re-sent.
 """
 
 from __future__ import annotations
@@ -35,34 +23,23 @@ TimedPoint: TypeAlias = tuple[float, list[float]]
 """One measured target and the trajectory time it was produced at."""
 
 LIVE_LEAD_MS = 100.0
-"""How far ahead of current motion a replacement horizon starts: the room the controller has
-to blend onto it every tick. Too little shows as brief stalls and catch-ups."""
+"""How far ahead of current motion a replacement horizon starts, in ms."""
 
 TIMELINE_GRID_MS = 10.0
-"""Quantisation of the session timeline, so successive pushes land on ONE absolute grid
-rather than each at a new phase."""
+"""Quantisation of the session timeline, in ms: every push lands on one absolute grid."""
 
 MIN_BUFFER_SAMPLES = 2
 """A rolling buffer needs at least two samples to define a spacing."""
 
 MAX_LIVE_SAMPLES = 256
-"""Hard cap on retained samples, on top of the time window.
-
-The window is measured against a trajectory clock that holds at zero until the
-robot reports it is executing motion, so while a caller pushes targets into a
-session that has not started (or whose state stream has stalled), the oldest
-sample's age is always 0 and nothing is ever evicted. The cap is far above what
-any real rate needs: a 100Hz caller fills a 500ms buffer with ~50 samples.
-"""
+"""Hard cap on retained samples, on top of the time window, for a clock that does not advance
+(a session not started yet or a stalled state stream)."""
 
 
 def trajectory_elapsed_ms(now_ms: float, anchor_ms: float, previous_ms: float) -> float:
-    """Trajectory time on the **server** clock: quantised, and never backwards.
+    """Trajectory time on the **server** clock: quantised, never backwards, forward jumps kept.
 
-    ``now_ms`` must come from the server jogger clock the robot executes against: wall time
-    drifts from it. Never runs backwards (a backward step commands the robot to reverse), but
-    forward jumps are kept: they are the clock correcting after a late state read, and limiting
-    them lets the timeline fall behind until every waypoint lands in the past.
+    ``now_ms`` must come from the server jogger clock, not wall time.
     """
     elapsed_ms = math.floor(max(0.0, now_ms - anchor_ms) / TIMELINE_GRID_MS) * TIMELINE_GRID_MS
     return max(previous_ms, elapsed_ms)
@@ -71,29 +48,17 @@ def trajectory_elapsed_ms(now_ms: float, anchor_ms: float, previous_ms: float) -
 def resample_evenly(
     samples: list[TimedPoint], step_s: float, *, start: float | None = None
 ) -> list[list[float]]:
-    """Put irregularly-timed samples on an evenly spaced grid.
+    """Linearly interpolate irregularly timed samples onto an evenly spaced grid.
 
-    Linear interpolation at each grid instant, using the time every sample was
-    actually taken. The values stay the caller's own — only the instants they
-    are read at change — so this resamples a recording rather than predicting
-    anything.
-
-    ``start`` pins the grid to an absolute phase; without it the grid begins at
-    the oldest sample.
+    ``start`` pins the grid to an absolute phase; without it the grid begins at the oldest
+    sample. Grid points past the newest sample hold its value.
     """
     start = samples[0][0] if start is None else start
     end = samples[-1][0]
     if end < start:
         return []
-    # Round the span UP so the grid reaches the newest sample. Truncating drops
-    # the last partial interval, and that interval is the leading edge of the
-    # horizon — the freshest thing the buffer knows. A grid point landing past
-    # the newest sample holds its value (``fraction`` is clamped below), which
-    # states the target has stopped rather than guessing where it went next.
-    #
-    # The epsilon absorbs float division: a span of exactly two steps comes out
-    # as 1.9999999999999996 often enough to matter, and truncating that loses a
-    # whole waypoint.
+    # Round the span up so the grid reaches the newest sample; the epsilon absorbs float
+    # division (two steps can come out as 1.9999999999999996).
     span_steps = math.ceil((end - start) / step_s - 1e-9)
     count = max(MIN_BUFFER_SAMPLES, span_steps + 1)
     grid: list[list[float]] = []
@@ -113,11 +78,7 @@ def resample_evenly(
 def append_and_prune(
     buffer: list[TimedPoint], moment: float, values: list[float], *, window_ms: float
 ) -> None:
-    """Add a target and drop what has aged out of the window.
-
-    A sample is dropped once it is older than ``window_ms``, so the window's
-    length is bounded by time rather than by call rate.
-    """
+    """Add a target and drop samples older than ``window_ms``."""
     buffer.append((moment, list(values)))
     cutoff = moment - window_ms / 1000.0
     while len(buffer) > MIN_BUFFER_SAMPLES and (
@@ -131,18 +92,14 @@ def horizon(
 ) -> tuple[list[list[float]], float, float] | None:
     """The buffer as ``(steps, grid_start_s, step_dt_ms)``, or ``None`` if too short.
 
-    ``None`` means there is not enough history yet to define a spacing; the
-    caller should send the bare target instead rather than wait for the window
-    to fill, which would otherwise never move at all.
+    On ``None`` the caller sends the bare target instead of waiting for the window to fill.
     """
     span_s = buffer[-1][0] - buffer[0][0]
     if len(buffer) < MIN_BUFFER_SAMPLES or span_s <= 0:
         return None
 
-    # Interpolate the samples at their own timestamps onto ONE absolute grid (not one starting
-    # at the oldest surviving sample, which changes with every prune). The spacing comes from
-    # config, but never coarser than half the window, so a short buffer keeps more than its
-    # endpoints.
+    # One absolute grid, not one starting at the oldest sample (that changes with every
+    # prune); the spacing is never coarser than half the window.
     step_dt_s = min(single_step_dt_ms / 1000.0, span_s / 2.0)
     grid_start = math.ceil(buffer[0][0] / step_dt_s) * step_dt_s
     steps = resample_evenly(buffer, step_dt_s, start=grid_start)
@@ -154,22 +111,12 @@ def horizon(
 def timeline_timestamp_ms(
     anchor_ms: float, trajectory_time_s: float, *, lead_ms: float = LIVE_LEAD_MS
 ) -> int:
-    """Absolute server timestamp for content generated at ``trajectory_time_s``.
-
-    One fixed timeline: content generated at trajectory time ``T`` always maps to
-    ``anchor + T + lead``, whenever it is sent.
-    """
+    """Absolute server timestamp ``anchor + T + lead`` for content generated at time ``T``."""
     return int(anchor_ms + trajectory_time_s * 1000.0 + lead_ms)
 
 
 def horizon_end_time_s(grid_start_s: float, window_ms: float) -> float:
-    """Trajectory time the replayed window reaches up to, and no further.
-
-    The window is the whole horizon: it ends at "now" because nothing beyond it
-    has been measured yet. That is why ``window_ms`` sets the horizon the server
-    profiles against, and why it has to be a few hundred milliseconds — the
-    server caps its speed at whatever it can still brake to a stop within.
-    """
+    """Trajectory time the replayed window reaches up to: ``window_ms`` is the whole horizon."""
     return grid_start_s + window_ms / 1000.0
 
 
@@ -181,21 +128,15 @@ class Replay:
     step_ms: float
     """Spacing of ``steps``."""
     end_time_s: float
-    """Trajectory time the horizon reaches up to; the caller maps it onto the session clock
-    (plus its lead) as the horizon's first timestamp, a timeline of its own (contract T2)."""
+    """Trajectory time the horizon reaches up to; mapped (plus lead) to its first timestamp."""
 
 
 @dataclass
 class LiveBuffer:
     """Chunk module: replay the last ``window_ms`` of live targets as a horizon on an even grid.
 
-    For dense streams of live targets, jogging at the loop rate: their waypoints are milliseconds
-    apart, which the follower turns into speed spikes, and each one alone is a terminal target.
-    This thins them to an even grid of real, measured targets, ``window_ms`` late, on its own
-    timeline (contract T2). Not for policy steps: a one-step policy tracks better on the lead
-    path.
-
-    A chunk of several steps carries its own horizon: it passes through and clears the buffer.
+    For dense live targets (jogging), not policy steps (ADR 0004). Its own timeline (T2); a
+    chunk of several steps passes through and clears the buffer.
     """
 
     window_ms: float = 500.0
@@ -217,11 +158,8 @@ class LiveBuffer:
                     "buffer refills. Prefer one target form per motion group."
                 )
             return chunk
-        # The buffer's own timeline, from the first target, on a fixed grid and never backwards,
-        # so a target keeps its timestamp however often it is re-sent. A live target is timed by
-        # when it was produced (observed_at_ms: the jogger passes its loop time, one timeline for
-        # all arms); a chunk for the lead rule (a policy step, whose observed_at_ms is its
-        # state's timestamp) and one without it by the session clock now.
+        # A live target is timed by observed_at_ms (the jogger's loop time); a lead chunk and
+        # one without it by the session clock now (contracts T13).
         produced = chunk.observed_at_ms if not chunk.lead else None
         produced_ms = float(produced if produced is not None else context.now_ms)
         if self._anchor_ms is None:

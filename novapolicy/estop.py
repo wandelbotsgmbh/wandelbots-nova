@@ -24,29 +24,24 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Safety states in which the robot is still operational. Anything else (e-stop,
-# protective stop, fault, violation, ...) is treated as a safety stop. Mirrors
-# nova's ProgramRunner estop check (single source of truth: SafetyStateType).
+# Safety states in which the robot is still operational; anything else is a safety stop
+# (as nova's ProgramRunner checks SafetyStateType).
 _OPERATIONAL_SAFETY_STATES = frozenset({
     api.models.SafetyStateType.SAFETY_STATE_NORMAL,
     api.models.SafetyStateType.SAFETY_STATE_REDUCED,
 })
 _RECONNECT_DELAY_S = 0.05
 _BLIND_LIMIT_S = 2.0
-"""How long the monitor may go without a controller state before it stops the run: an e-stop
-it cannot see must not leave the robot moving on."""
+"""Seconds the monitor may go without a controller state before it stops the run."""
 
 
 # ---------------------------------------------------------------------------
-# Shared failure checks (used by both jogger and executor)
+# Shared failure checks
 # ---------------------------------------------------------------------------
 
 
 def check_sessions(sessions: Mapping[Any, WaypointJoggingSession]) -> None:
-    """Check all sessions for failures. Re-raises the original exception.
-
-    Stop conditions are *not* failures — they end the run normally; see
-    :func:`triggered_stop_condition`.
+    """Re-raise the first session failure; a fired stop condition is not one.
 
     Raises:
         MotionError: Joint limit, self-collision, or singularity.
@@ -62,11 +57,7 @@ def check_sessions(sessions: Mapping[Any, WaypointJoggingSession]) -> None:
 
 
 def triggered_stop_condition(sessions: Mapping[Any, WaypointJoggingSession]) -> str | None:
-    """Return the name of the first stop condition that fired, else ``None``.
-
-    A fired stop condition ends the run normally (no exception); the caller
-    turns this into ``ExecutionResult`` with the name in its reason.
-    """
+    """Return the name of the first stop condition that fired, else ``None``."""
     for session in sessions.values():
         name = session.stop_condition_triggered
         if name is not None:
@@ -90,11 +81,7 @@ def check_estop(monitor: EstopMonitor | None) -> None:
 
 
 class EstopMonitor:
-    """Streams controller state and detects safety stops.
-
-    Runs one background WebSocket per unique controller. Sets ``error``
-    when any controller enters a non-operational safety state.
-    """
+    """Streams each controller's state and sets ``error`` on a safety stop."""
 
     def __init__(self, motion_groups: list[MotionGroup]) -> None:
         self._motion_groups = motion_groups
@@ -134,10 +121,8 @@ class EstopMonitor:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _watch(self, controller_id: str, api_client: ApiGateway) -> None:
-        # A state the SDK model cannot parse (an enum value it does not know yet, e.g. mode
-        # MODE_UNDEFINED while a client takes control), a dropped connection or a stream that
-        # simply ends all close the generator. Reopen it: the rest of the run must stay
-        # monitored. If no state arrives for _BLIND_LIMIT_S, stop the run instead.
+        # An unparsable state (e.g. MODE_UNDEFINED), a dropped connection or an ended stream
+        # closes the generator: reopen it, and stop the run after _BLIND_LIMIT_S without state.
         self._last_state[controller_id] = time.monotonic()
         while True:
             try:

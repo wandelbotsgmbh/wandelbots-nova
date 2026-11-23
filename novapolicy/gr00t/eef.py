@@ -1,8 +1,4 @@
-"""End-effector pose conversion for GR00T.
-
-Converts Nova's rotation-vector poses to the representations
-expected by GR00T models (quaternion, rot6d).
-"""
+"""Convert NOVA rotation-vector poses to the TCP formats GR00T models take (quaternion, rot6d)."""
 
 from __future__ import annotations
 
@@ -32,27 +28,15 @@ class TcpFormat(StrEnum):
 def pose_to_eef(  # ruff: ignore[too-many-locals]
     pose: Pose, fmt: TcpFormat | str, *, position_scale: float = 0.001
 ) -> list[float]:
-    """Convert a Nova Pose to TCP values in the requested format.
+    """Convert a NOVA pose (mm, rotation vector) to TCP values in the requested format.
 
-    Parameters
-    ----------
-    pose:
-        A Nova ``Pose`` object with ``.position`` (x, y, z in mm) and
-        ``.orientation`` (rotation vector in radians).
-    fmt:
-        A ``TcpFormat`` enum value or one of
-        ``"rotation_vector"``, ``"quaternion"``, ``"rot6d"``.
-    position_scale:
-        Multiply position values by this factor.
-        Default ``0.001`` converts Nova's mm to meters.
-        Use ``1.0`` to keep mm.
+    Args:
+        pose: The pose.
+        fmt: A ``TcpFormat`` or its value.
+        position_scale: Factor on the position; ``0.001`` (default) gives metres.
 
-    Returns
-    -------
-    list[float]
-        - ``rotation_vector``: [x, y, z, rx, ry, rz] — 6 values
-        - ``quaternion``: [x, y, z, qx, qy, qz, qw] — 7 values
-        - ``rot6d``: [x, y, z, r1x, r1y, r1z, r2x, r2y, r2z] — 9 values
+    Returns:
+        The position, then 3, 4 or 6 orientation values (see ``TcpFormat``).
     """
     pos = pose.position
     ori = pose.orientation
@@ -82,18 +66,15 @@ def pose_to_eef(  # ruff: ignore[too-many-locals]
     if angle < _ANGLE_EPSILON:
         return [x, y, z, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
-    # Rodrigues rotation formula → rotation matrix
     kx, ky, kz = ax / angle, ay / angle, az / angle
     c = math.cos(angle)
     s = math.sin(angle)
     v = 1.0 - c
 
-    # First column of rotation matrix
     r00 = kx * kx * v + c
     r10 = ky * kx * v + kz * s
     r20 = kz * kx * v - ky * s
 
-    # Second column of rotation matrix
     r01 = kx * ky * v - kz * s
     r11 = ky * ky * v + c
     r21 = kz * ky * v + kx * s

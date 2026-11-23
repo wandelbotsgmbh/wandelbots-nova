@@ -1,31 +1,7 @@
-"""NATS policy client.
+"""NATS policy client: robot states to the protocol's per-block proprioceptive vectors and back.
 
-Converts between the executor's observation format (``RobotState`` dicts) and
-the NATS policy protocol's per-block proprioceptive vectors, using the
-``PolicySchema`` for motion-group binding.
-
-The wire protocol lives in ``protocol.py``; the model lives in a separate
-policy-service container reached over the same broker.
-
-Motion group binding
-    The policy declares its spaces in ``PolicyInfo``. Two layouts are
-    understood:
-
-    * **legacy single block** — one action named ``joint_target`` with one
-      observation ``proprio``: the client drives exactly one motion group.
-    * **named blocks** — actions ``joint_target.<block>`` each paired with an
-      observation ``proprio.<block>``: the i-th motion group binds to the i-th
-      declared action.
-
-    The declared order **is** the binding contract. The executor passes motion
-    groups in ``PolicySchema.get_motion_groups()`` order, which is the schema's
-    declaration order, so declare the arms in the policy's block order.
-
-Joint velocities
-    ``RobotState`` carries positions only, so velocities are finite-differenced
-    from consecutive observations against a monotonic clock. All derived state
-    resets per episode; a stale velocity or last action across episodes would
-    feed the policy a discontinuity it never saw in training.
+The wire protocol is ``protocol.py``; the model runs in a separate policy service on the same
+broker. Velocities and the last action reset per episode (ADR 0014).
 """
 
 from __future__ import annotations
@@ -96,9 +72,8 @@ class _Block:
 def _derive_blocks(info: PolicyInfo) -> tuple[list[_Block], list[str]]:
     """Map the advertised spaces into bindable motion blocks and extra action heads.
 
-    An ``action.<key>`` head without a matching observation drives nothing in NOVA; it is
-    kept for an ``Action.computed(..., keys=[<key>])`` hook, which ``validate_schema``
-    requires. Ambiguous layouts are rejected.
+    A head without a matching observation is kept for an ``Action.computed(..., keys=[...])``
+    hook. Ambiguous layouts are rejected.
     """
     if not info.actions:
         raise PolicyProtocolError("Policy declares no action space.")
@@ -135,24 +110,18 @@ def _derive_blocks(info: PolicyInfo) -> tuple[list[_Block], list[str]]:
 class NatsPolicyClient(PolicyClient):
     """Policy client for policy services on the NATS policy protocol.
 
-    Observation and action spaces are negotiated at connect time, so a DOF or
-    layout mismatch fails during connect rather than as unexpected motion.
+    Spaces are negotiated at connect. A single-block policy (``joint_target`` / ``proprio``)
+    drives one motion group; with named blocks (``joint_target.<block>`` /
+    ``proprio.<block>``) the i-th motion group of the schema binds to the i-th declared
+    block, so declare the arms in the policy's block order.
 
-    Parameters
-    ----------
-    policy_id:
-        Identity in the subject tree, e.g. ``grasp`` →
-        ``policy.grasp.predict``.
-    servers:
-        NATS URL(s). ``ws://<host>/api/nats`` for a LAN Nova instance (needs
-        ``aiohttp``), ``nats://<host>:4222`` in-cluster.
-    subject_prefix:
-        Root of the subject tree; must match the policy service.
-    request_timeout_s:
-        Per-request deadline. A timeout aborts the episode — better a clean
-        failure than targets applied late to a moving robot.
-    connect_timeout_s:
-        Deadline for the initial broker connection.
+    Args:
+        policy_id: Identity in the subject tree, e.g. ``grasp`` -> ``policy.grasp.predict``.
+        servers: NATS URL(s): ``ws://<host>/api/nats`` on a LAN (needs ``aiohttp``),
+            ``nats://<host>:4222`` in-cluster.
+        subject_prefix: Root of the subject tree; must match the policy service.
+        request_timeout_s: Per-request deadline; a timeout aborts the episode.
+        connect_timeout_s: Deadline for the initial broker connection.
     """
 
     def __init__(
@@ -200,8 +169,7 @@ class NatsPolicyClient(PolicyClient):
     # -- PolicyClient ------------------------------------------------------
 
     async def connect(self, motion_group_ids: list[str]) -> None:
-        """Open the broker connection, fetch :class:`PolicyInfo`, bind motion
-        groups to declared blocks, start a session.
+        """Connect, fetch :class:`PolicyInfo`, bind motion groups to blocks, start a session.
 
         Raises:
             ValueError: Motion group count does not match the declared block count.
@@ -244,13 +212,10 @@ class NatsPolicyClient(PolicyClient):
         await self._begin_episode()
 
     async def validate_schema(self, schema: PolicySchema) -> None:
-        """Fail *before* the robot moves if the schema and the policy disagree.
+        """Fail before the robot moves if the schema and the policy disagree.
 
-        Checks that the schema declares one joint action target per block, each
-        bound to exactly one motion group, and that the bound motion group set
-        matches the connected one. Actual joint counts are re-checked per step in
-        :meth:`_build_proprio` — a schema can be right while the bound robot
-        still has the wrong number of axes.
+        One joint action per block, each bound to one motion group of the connected set; joint
+        counts are re-checked every step.
         """
         unsent = [o.key for o in (*schema.joint_velocity_mappings, *schema.pose_mappings)]
         if unsent:
@@ -299,12 +264,7 @@ class NatsPolicyClient(PolicyClient):
         images: dict[str, NDArray[Any]] | None = None,  # ruff: ignore[unused-method-argument]
         io_values: dict[str, object] | None = None,  # ruff: ignore[unused-method-argument]
     ) -> ActionChunk:
-        """One inference round trip: robot state in, ``ActionChunk`` out.
-
-        The observation layout is the policy's, not the schema's: each block
-        gets its own ``proprio`` vector keyed by the name the policy declared.
-        ``images``/``io_values`` go unused — this protocol declares neither.
-        """
+        """One inference round trip, in the policy's layout; images and IO are not sent."""
         now = time.monotonic()
         observation: dict[str, Any] = {}
         joints_by_group: dict[str, NDArray[np.float32]] = {}
@@ -336,10 +296,7 @@ class NatsPolicyClient(PolicyClient):
         return self._to_chunk(response)
 
     async def close(self) -> None:
-        """Release the session, the velocity streams and the broker connection.
-
-        Safe to call twice.
-        """
+        """Release the session, the velocity streams and the broker connection; idempotent."""
         await self._velocities.stop()
         if self._nc is None:
             return
@@ -408,8 +365,7 @@ class NatsPolicyClient(PolicyClient):
             ),
             expect="reset",
         )
-        # The service may report a refreshed spec on reset (e.g. after a hot model
-        # swap); trust the newer one so later checks reflect what will actually run.
+        # A refreshed spec on reset (a hot model swap) replaces the old one.
         self._info = ResetResponse.model_validate(body).info
         self._bind_blocks(self._motion_group_ids)
         logger.info("Policy session %s open on %s", self._session_id, self._motion_group_ids)
@@ -458,8 +414,6 @@ class NatsPolicyClient(PolicyClient):
                     f"Action '{block.action_name}' has {targets.shape[1]} values per "
                     f"step, spec declares dof={block.spec.dof}."
                 )
-            # Remember what we commanded so the next observation's `last_action`
-            # block reflects reality rather than a guess.
             self._last_action[block.motion_group_id] = targets[-1].astype(np.float32)
             joints[block.motion_group_id] = targets.tolist()
 
@@ -474,13 +428,9 @@ class NatsPolicyClient(PolicyClient):
         return ActionChunk(joints=joints, values=values, dt_ms=dt_ms)
 
     async def _request(self, subject: str, payload: bytes, *, expect: str) -> dict[str, Any]:
-        """One request/reply round trip, with broker failures mapped to
-        :class:`PolicyProtocolError` so callers only handle one exception type.
+        """One request/reply round trip; broker failures raise :class:`PolicyProtocolError`.
 
-        The two no-answer cases are distinct and worth telling apart: *nobody is
-        subscribed* (service down or wrong ``policy_id``/``subject_prefix``) fails
-        instantly, while *subscribed but too slow* means the policy is there and
-        missing its deadline — a different thing to go fix.
+        "Nobody subscribed" and "too slow" are reported apart.
         """
         if self._nc is None:
             raise PolicyProtocolError("Not connected to NATS.")

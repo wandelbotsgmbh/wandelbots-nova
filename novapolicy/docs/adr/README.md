@@ -18,3 +18,8 @@ UR10e, with the client inside the NOVA cluster unless a record says otherwise.
 | [0009](0009-opt-in-pre-send-modules.md) | One send pipeline of opt-in modules (defaults superseded by 0010) |
 | [0010](0010-built-ins-are-modules.md) | The built-ins are pipeline modules, and the list is everything |
 | [0011](0011-providers-own-their-wire.md) | Providers own their wire protocol; the package owns the codec and NOVA |
+| [0012](0012-session-clock-estimate.md) | The session clock is estimated from generation time and never rescaled |
+| [0013](0013-live-buffer-replays-measured-targets.md) | The live buffer replays measured targets on a fixed grid |
+| [0014](0014-providers-fail-before-motion.md) | Providers check the policy before the robot moves, and fail loudly |
+| [0015](0015-clamp-joint-targets.md) | Joint targets are clamped inside the robot's limits |
+| [0016](0016-measured-joint-velocities.md) | Joint velocities are read from the raw state stream |

@@ -88,7 +88,8 @@ The TCP must be known: nothing in the data recovers it unless the training tool 
 Rotations pivot about it, so a TCP d mm off shifts the position by about d × angle while rotating.
 
 Pass the checkpoint's `statistics.json` as `statistics=` so the first observation is held against
-the training range: a degrees-for-radians mix-up then stops before the robot moves.
+the training range: a degrees-for-radians mix-up then stops before the robot moves. The
+server does not serve the file, so the client needs a local copy.
 
 ### 3. Check the cell against the training scene
 

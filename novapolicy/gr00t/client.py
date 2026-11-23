@@ -1,11 +1,4 @@
-"""GR00T ZeroMQ policy client.
-
-Converts between the executor's observation format (RobotState dicts + numpy
-images) and GR00T's fixed numpy-based format, using the ``PolicySchema`` for
-key naming and DOF handling.
-
-ZMQ transport and msgpack serialization live in ``transport.py``.
-"""
+"""GR00T ZeroMQ policy client; the ZMQ transport and msgpack codec are in ``transport.py``."""
 
 from __future__ import annotations
 
@@ -47,40 +40,21 @@ _PROTOCOL_HINT = (
 class Gr00tPolicyClient(PolicyClient):
     """Policy client for NVIDIA GR00T N1.7 ZeroMQ inference servers.
 
-    Receives the same raw ``(states, schema, images, io_values)`` as every
-    other policy client. Internally converts to GR00T's numpy format using
-    the schema's joint/TCP/IO mappings, sends over ZMQ, and decodes the
-    response back to an ``ActionChunk``.
+    Targets GR00T protocol version :data:`~novapolicy.gr00t.GROOT_PROTOCOL_VERSION`.
 
-    This implementation targets GR00T protocol version
-    :data:`~novapolicy.gr00t.GROOT_PROTOCOL_VERSION`.
-
-    Parameters
-    ----------
-    host:
-        Hostname of the GR00T ZMQ server.
-    port:
-        ZMQ port (default 5555).
-    timeout_ms:
-        ZMQ send/recv timeout in milliseconds.
-    api_token:
-        Optional API token for authenticated servers.
-    control_freq:
-        The policy's control frequency in Hz, the rate of its action steps (not the
-        controller's servo rate): the training data's frame rate (``fps`` in the
-        dataset's ``meta/info.json``), or a reinforcement-learning policy's control frequency. Default 30 Hz;
-        GR00T servers do not report it. A ``dt_ms`` in a server's action info still wins.
-    tcp_format:
-        TCP pose representation format sent to the server, unless the
-        ``Observation.tcp`` declares an ``orientation_type``.
-    statistics:
-        Path to the checkpoint's ``statistics.json``. The first observation is held
-        against its state ranges: a value five times larger than anything in training
-        (a unit mismatch, such as degrees for radians) raises before the robot moves;
-        one merely outside the range warns. The server does not serve the file.
-    embodiment:
-        The embodiment tag in ``statistics.json``; by default the one whose state keys
-        are exactly the server's.
+    Args:
+        host: Hostname of the GR00T ZMQ server.
+        port: ZMQ port.
+        timeout_ms: ZMQ send/recv timeout in milliseconds.
+        api_token: Optional API token for authenticated servers.
+        control_freq: Rate of the policy's action steps in Hz (the dataset's ``fps``), default
+            30; a ``dt_ms`` in the server's action info wins.
+        tcp_format: TCP format sent unless the ``Observation.tcp`` declares an
+            ``orientation_type``.
+        statistics: Path to the checkpoint's ``statistics.json``; the first observation is
+            checked against it (``training_range``).
+        embodiment: Embodiment tag in ``statistics.json``; default: the one whose state keys
+            are exactly the server's.
     """
 
     def __init__(
@@ -122,16 +96,14 @@ class Gr00tPolicyClient(PolicyClient):
         await asyncio.to_thread(self._transport.connect)
 
     async def validate_schema(self, schema: PolicySchema) -> None:
-        """Check that the schema satisfies the GR00T server's expected modalities.
+        """Check that the schema has every state, video and language key the server expects.
 
-        Queries ``get_modality_config()`` from the server and verifies that all
-        required state, video, and language keys are present in the schema.
-        Raises ``ValueError`` with a clear message listing any missing keys.
+        Raises:
+            ValueError: listing the missing keys.
         """
         config = await self.get_modality_config()
         errors: list[str] = []
 
-        # Check state keys (joint_positions, etc.)
         server_state_keys = _extract_modality_keys(config, "state")
         schema_state_keys = {m.key for m in schema.joint_mappings}
         schema_state_keys |= {m.key for m in schema.tcp_mappings}
@@ -152,14 +124,12 @@ class Gr00tPolicyClient(PolicyClient):
         if missing_state:
             errors.append(f"Missing state observations: {sorted(missing_state)}")
 
-        # Check video keys (camera images)
         server_video_keys = _extract_modality_keys(config, "video")
         schema_image_keys = set(schema.image_sources.keys())
         missing_video = server_video_keys - schema_image_keys
         if missing_video:
             errors.append(f"Missing image observations: {sorted(missing_video)}")
 
-        # Check language keys
         server_lang_keys = _extract_modality_keys(config, "language")
         if len(server_lang_keys) == 1:
             self._language_key = next(iter(server_lang_keys))
@@ -178,8 +148,7 @@ class Gr00tPolicyClient(PolicyClient):
             raise ValueError(msg)
 
     def _ranges_for(self, server_state_keys: set[str]) -> dict[str, list[tuple[float, float]]]:
-        """Per state key, the trained ``(min, max)`` of each dimension, from the embodiment
-        named in ``embodiment`` or the one whose state keys are exactly the server's."""
+        """Per state key, the trained ``(min, max)`` of each dimension."""
         if self._embodiment is not None:
             if self._embodiment not in self._statistics:
                 msg = f"statistics.json has no embodiment {self._embodiment!r} ({sorted(self._statistics)})"
@@ -254,15 +223,11 @@ class Gr00tPolicyClient(PolicyClient):
         return require_dict(response, name="GR00T get_modality_config response")
 
     async def get_server_info(self) -> dict[str, object]:
-        """Fetch a human-readable summary of the server's configuration.
+        """A summary of the server's configuration.
 
-        Returns a dict with:
-            - ``state_keys``: list of expected state observation keys
-            - ``action_keys``: list of action output keys
-            - ``video_keys``: list of expected camera/video keys
-            - ``language_keys``: list of language instruction keys
-            - ``action_horizon``: number of action steps per chunk
-            - ``action_configs``: per-key action type/representation
+        Returns:
+            ``state_keys``, ``action_keys``, ``video_keys``, ``language_keys``,
+            ``action_horizon`` (steps per chunk) and ``action_configs`` (per action key).
         """
         config = await self.get_modality_config()
 
@@ -271,7 +236,6 @@ class Gr00tPolicyClient(PolicyClient):
         video_keys = sorted(_extract_modality_keys(config, "video"))
         language_keys = sorted(_extract_modality_keys(config, "language"))
 
-        # Extract action horizon from delta_indices
         action_horizon = 0
         action_configs: list[dict[str, str]] = []
         action_metadata = _modality_metadata(config, "action")
@@ -306,8 +270,7 @@ class Gr00tPolicyClient(PolicyClient):
         images: dict[str, Any] | None,
         io_values: dict[str, object] | None,
     ) -> dict[str, Any]:
-        """The robot state as GR00T's (1, 1, D) arrays, through the schema's mapping. A TCP
-        declared without units or frame takes GR00T's own default: metres and ``tcp_format``."""
+        """The robot state as GR00T's (1, 1, D) arrays; a plain TCP in metres, ``tcp_format``."""
         groups = schema.observation_groups(await schema.build_observation(states, io_values))
         for tm in schema.tcp_mappings:
             pose = getattr(states.get(tm.source.id), "pose", None)
@@ -362,10 +325,7 @@ def _action_array(
 ) -> np.ndarray[Any, np.dtype[np.float32]] | None:
     """The ``(batch, horizon, dof)`` array under ``key``, or ``None`` if the key is absent.
 
-    A model may leave out an action it was not trained on, so an absent key is
-    skipped. A key that is present but holds no such array raises instead: that
-    is what a server that changed its array serialization looks like, and
-    skipping it once left the robot standing still with nothing in the log.
+    A present key that holds no such array raises (ADR 0014).
     """
     if key not in action:
         return None

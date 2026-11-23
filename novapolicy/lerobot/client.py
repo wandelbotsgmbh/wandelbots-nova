@@ -26,28 +26,13 @@ logger = logging.getLogger(__name__)
 
 
 class LeRobotPolicyClient(PolicyClient):
-    """Adapt NOVA observations and actions to LeRobot's trusted gRPC protocol.
+    """Adapt NOVA observations and actions to LeRobot's trusted gRPC protocol (lerobot/README.md).
 
-    The client supports sequential inference and LeRobot's asynchronous action
-    queue. Observation/action ordering is derived from ``PolicySchema``. Flat
-    actions contain joint targets, then TCP targets, then optional IO values.
-
-    Settings the checkpoint already declares are read from it rather than asked
-    for: ``policy_type``, ``actions_per_chunk`` and ``n_action_steps``. Pass one
-    explicitly only to override it — an override that contradicts the checkpoint
-    is reported rather than silently accepted. ``control_freq`` (default 30 Hz) cannot
-    be derived: the frame rate is a property of the dataset (its ``fps``), not the
-    policy. Camera frame size is not derived either; a mismatch is reported and left to the camera stream.
-
-    A checkpoint that conditions on a language instruction - its preprocessor
-    pipeline tokenizes one, as SmolVLA, pi0, pi0.5 and X-VLA do - needs ``task``.
-    ``connect`` refuses to start such a checkpoint without it: LeRobot's server
-    fails on every inference instead, and reports that only in its own log.
-
-    Derivation needs a checkpoint the *client* can read. When
-    ``pretrained_name_or_path`` is a server-local absolute path, pass
-    ``config_path`` pointing at a client-local copy of the checkpoint directory
-    or its ``config.json``.
+    Flat actions are joint targets, then TCP targets, then IO values, in schema order.
+    ``policy_type``, ``actions_per_chunk`` and ``n_action_steps`` are read from the checkpoint
+    (which the client must be able to read); an override it cannot satisfy raises, one that
+    differs from it warns.
+    ``connect`` refuses an instruction-conditioned checkpoint without ``task``.
 
     Args:
         server_address: LeRobot server address in ``host:port`` form.
@@ -63,15 +48,11 @@ class LeRobotPolicyClient(PolicyClient):
         task: Language instruction sent with every observation, such as
             ``"pick up the cube"``. Required by instruction-conditioned
             checkpoints and ignored by the others.
-        control_freq: The policy's step rate in Hz, the rate actions are played at: the dataset's
-            frame rate (``fps`` in its ``meta/info.json``). Default 30 Hz.
+        control_freq: The policy's step rate in Hz: the dataset's ``fps``. Default 30 Hz.
         device: Torch device used by the inference server.
         timeout_s: Deadline for individual gRPC calls.
 
-        For continuous execution wrap it in :class:`~novapolicy.QueuedPolicyClient`, as any
-        chunk-per-observation policy: ``QueuedPolicyClient(LeRobotPolicyClient(...),
-        aggregation=AsyncQueueAggregation.AVERAGE)`` (average measured lower peak path curvature
-        on a UR3 plug task and a UR10e pick-and-place than LeRobot's weighted average).
+    For continuous execution wrap it in :class:`~novapolicy.QueuedPolicyClient`.
 
     Note:
         LeRobot's protocol uses pickle and must only be used on trusted networks.
@@ -140,12 +121,9 @@ class LeRobotPolicyClient(PolicyClient):
         self._lerobot_schema.validate_schema(schema)
 
     def _resolve_settings(self) -> None:
-        """Derive execution settings from the checkpoint, reconciling overrides.
+        """Derive execution settings from the checkpoint once, reconciling overrides.
 
-        Blocking: reads the checkpoint config, which may download from the Hub.
-        Called from a worker thread, and only once — ``connect`` may run again
-        on a reconnect, and re-reading a Hub checkpoint each time would be
-        wasted work.
+        Blocking (may download from the Hub): run it in a worker thread.
         """
         if self._settings_resolved:
             return
@@ -177,9 +155,7 @@ class LeRobotPolicyClient(PolicyClient):
             self._settings_resolved = True
             return
 
-        # Reconcile before storing, so a contradicting override leaves the
-        # client unresolved and raises again rather than running on half-applied
-        # settings.
+        # Reconcile before storing: a contradicting override leaves the client unresolved.
         policy_type = self._resolved_policy_type(settings)
         if settings.requires_task and self._task is None:
             msg = (
@@ -290,8 +266,7 @@ class LeRobotPolicyClient(PolicyClient):
         if images:
             observation.update(images)
         if self._task is not None:
-            # LeRobot's robot client puts the instruction here too; the server
-            # copies it through to the policy's tokenizer step.
+            # As LeRobot's robot client does; the server passes it to the tokenizer step.
             observation["task"] = self._task
         state_names, columns = self._layout(states, schema)
         self._check_observation_range(observation, state_names)
@@ -328,11 +303,7 @@ class LeRobotPolicyClient(PolicyClient):
         observation: dict[str, Any],
         state_names: list[str],
     ) -> None:
-        """Hold the first live observation against the checkpoint's statistics.
-
-        Once per run: the point is to catch a units or ordering mistake before
-        the robot moves, not to police every tick.
-        """
+        """Hold the first live observation of a run against the checkpoint's statistics."""
         if self._range_checked or self._settings is None:
             return
         self._range_checked = True

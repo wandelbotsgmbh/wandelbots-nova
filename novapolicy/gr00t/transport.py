@@ -1,9 +1,4 @@
-"""GR00T ZMQ transport and msgpack serialization.
-
-Handles the low-level ZMQ REQ/REP protocol and msgpack encoding/decoding
-with numpy array support. This module is an implementation detail —
-users interact with ``Gr00tPolicyClient``.
-"""
+"""GR00T ZMQ REQ/REP transport and msgpack serialization with numpy arrays (internal)."""
 
 from __future__ import annotations
 
@@ -118,10 +113,7 @@ def _decode_msgpack_numpy(obj: dict[Any, Any]) -> object:
 
 
 class Gr00tZmqTransport:
-    """Manages a ZMQ REQ socket for GR00T server communication.
-
-    Handles connect, send/receive with timeout, and reconnection on timeout.
-    """
+    """A ZMQ REQ socket to a GR00T server, reconnected after a timeout."""
 
     def __init__(
         self,
@@ -197,7 +189,7 @@ class Gr00tZmqTransport:
             socket.send(Gr00tMsgSerializer.to_bytes(request))
             message = socket.recv()
         except zmq_module.error.Again as exc:
-            self.connect()  # Reconnect on timeout
+            self.connect()
             msg = f"Timed out calling GR00T endpoint '{endpoint}'"
             raise TimeoutError(msg) from exc
 

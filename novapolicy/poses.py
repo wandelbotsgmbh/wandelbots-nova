@@ -1,11 +1,7 @@
 """TCP poses as a policy sees them: in its coordinate system and rotation representation.
 
-NOVA reports and commands TCP poses as ``[x, y, z, rx, ry, rz]`` (mm, rotation vector) in
-the controller's world coordinate system. A policy may have been trained on another
-rotation representation (NOVA's ``OrientationType``: rotation vector, quaternion
-``[x, y, z, w]`` or one of the Euler conventions) and on poses in another coordinate
-system. Every observation builder and the action path use these functions, so the
-conversion is the same for every policy client.
+NOVA poses are ``[x, y, z, rx, ry, rz]`` (mm, rotation vector) in world; quaternions are
+``[x, y, z, w]``. Shared by every client's observation and action path.
 """
 
 from __future__ import annotations
@@ -102,8 +98,7 @@ def frame_to_world(pose: Sequence[float], frame: np.ndarray | None) -> list[floa
 
 
 async def coordinate_system_in_world(mg: MotionGroup, coordinate_system: str) -> np.ndarray:
-    """The pose in world (4x4) of a controller's coordinate system, following its
-    references to the world (``""``, or ``"world"`` as virtual controllers name it)."""
+    """The pose in world (4x4) of a controller's coordinate system, following its references."""
     api_client = mg._api_client
     controller = get_controller_id(mg)
     frame = pose_matrix([0.0] * 6)

@@ -1,33 +1,7 @@
-"""The send pipeline: the modules between the policy's chunk and NOVA.
+"""The send pipeline: the module kinds between the policy's chunk and NOVA (contracts T13).
 
-Everything that reaches NOVA passes one ordered list, per motion group::
-
-    common chunk -> [chunk modules] -> Timestamps() -> [filters] -> [waypoint modules] -> sender
-
-* **Common chunk.** What a policy, a jogger target or a replay produced, already mapped to NOVA
-  (joints in rad or TCP poses in mm and rad, one motion group): a
-  :class:`~novapolicy.jogging.waypoints.PendingChunk`.
-* **Chunk modules** (``on_chunk``) run when the chunk is queued, on every chunk, before the session
-  keeps only the newest one. They may change steps and timing: ``Smoothing``, ``TimestepTimeline``, ``Bridge``,
-  ``EndpointRamp``, ``JointClamp``, ``LiveBuffer``, ``HoldPadding``.
-* **Timestamps()** is the placement step (contracts T1 and T2): each step gets its time on the
-  session clock. It is in every pipeline; list it to say where, or it goes after the last chunk
-  module.
-* **Filters** (``keep``) run at the send and decide which waypoints go out; they never retime one:
-  ``DropLate`` (T3). The final target of a run passes them all.
-* **Waypoint modules** (``on_waypoints``) run at the send, on every request, after the filters:
-  they get ``(timestamp, values)`` and return the values, so they cannot touch timing. A re-sent
-  waypoint reaches them with its raw value again, so they must give a timestamp the same result:
-  ``EaseIn``.
-* **The sender** is always last: the rolling window, IO at the policy's first step, the request
-  (T5, T7).
-
-The list is exactly what runs: ``pipeline=None`` (the default on ``PolicyExecutor``, ``jog_joints``,
-``jog_tcp`` and the session) runs :func:`~novapolicy.jogging.modules.default_pipeline`, and an
-explicit list replaces it, so extend the defaults to add a module, e.g.
-``[LiveBuffer(window_ms=500), *default_pipeline()]``. Each motion group runs its own copy, so arms
-never share state; a misordered list is refused at construction; a chunk module that adds or
-removes steps keeps ``when_due`` and ``start_step`` on the steps they belong to.
+``Timestamps()`` goes after the last chunk module unless listed. A waypoint module sees a
+re-sent waypoint's raw value again and must give a timestamp the same result.
 """
 
 from __future__ import annotations
@@ -54,8 +28,7 @@ class ModuleContext:
     now_ms: ServerMs
     """The session clock now."""
     position: list[float] | None
-    """The robot's latest measured position, in the waypoints' form; ``None`` before the first
-    state arrived."""
+    """The robot's latest measured position, in the waypoints' form; ``None`` before one."""
     step_ms: float
     """The session's grid for steps without their own spacing (``single_step_dt_ms``)."""
     motion_group_id: str = ""
@@ -63,11 +36,9 @@ class ModuleContext:
     mode: JoggingMode = "joint"
     """What the waypoints are: joint positions, or TCP poses (``"cartesian"``)."""
     joint_limits: JointLimits | None = None
-    """The robot's joint position limits, read at the session's start when a ``JointClamp`` is
-    in the pipeline; ``None`` otherwise, for TCP waypoints, or when the robot reports none."""
+    """The robot's joint limits, read at start for a ``JointClamp``; else ``None``."""
     scheduled_start: tuple[int, ServerMs] | None = None
-    """For the latest chunk sent that carried policy timesteps: the timestep of its policy's first
-    step and when that step is due. ``None`` before one."""
+    """``(timestep, due)`` of the policy's first step of the latest chunk sent with timesteps."""
 
 
 @runtime_checkable
@@ -97,8 +68,7 @@ class WaypointFilter(Protocol):
     def keep(
         self, waypoints: list[TimedWaypoint], chunk: PendingChunk, context: ModuleContext
     ) -> list[TimedWaypoint]:
-        """The waypoints to send: some of ``waypoints``, in order, unchanged. ``chunk`` is the
-        chunk they were stamped from."""
+        """The waypoints to send: some of ``waypoints``, in order, unchanged."""
         ...
 
 
@@ -118,9 +88,9 @@ class SplitPipeline(NamedTuple):
 def split_pipeline(pipeline: Sequence[object]) -> SplitPipeline:
     """The modules of ``pipeline`` by kind, in order.
 
-    Raises ``ValueError`` when the kinds are out of order (chunk modules, ``Timestamps()``,
-    filters, waypoint modules) or ``Timestamps()`` appears twice, and ``TypeError`` for an item
-    that is none of them.
+    Raises:
+        ValueError: kinds out of order, or ``Timestamps()`` twice.
+        TypeError: an item of no kind.
     """
     split = SplitPipeline([], [], [])
     stamped = False
@@ -151,14 +121,10 @@ def split_pipeline(pipeline: Sequence[object]) -> SplitPipeline:
 
 @dataclass
 class EaseIn:
-    """Waypoint module: blend the commanded values in from where the robot stood, over the first
-    ``duration_s``.
+    """Waypoint module: blend from where the robot stood over the first ``duration_s``.
 
-    The blend is a smootherstep (``6x^5 - 15x^4 + 10x^3``) of the time since the first waypoint
-    it saw, so velocity and acceleration start and end at zero; a straight ramp steps the velocity
-    when it completes, and a smoothstep the acceleration. Each waypoint is blended by its own
-    timestamp, so overlapping chunks agree on every moment. TCP poses blend their rotation vector
-    component by component, which is fine for the small rotations at a start.
+    A smootherstep of each waypoint's own timestamp since the first one (docs/jogging.md); TCP
+    rotation vectors blend per component.
     """
 
     duration_s: float

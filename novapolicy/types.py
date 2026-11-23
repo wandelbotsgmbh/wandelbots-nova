@@ -23,89 +23,47 @@ JoggingMode = Literal["joint", "cartesian"]
 
 
 class ActionChunk(pydantic.BaseModel, frozen=True):
-    """Action chunk streamed to a waypoint jogging session.
-
-    Single-step (teleoperation at 30 Hz)::
-
-        ActionChunk(joints={"0@ur5e": [[0.1, -1.5, ...]]})
-
-    TCP targets::
-
-        ActionChunk(tcp={"0@ur5e": [[x, y, z, rx, ry, rz]]})
-
-    Multi-step (policy inference, e.g. ACT outputs 16 steps at 33ms)::
-
-        ActionChunk(
-            joints={"0@ur5e": [[...], [...], [...], ...]},
-            dt_ms=33.0,
-        )
-    """
+    """Action chunk streamed to a waypoint jogging session, one or more steps per motion group."""
 
     joints: dict[str, list[list[float]]] = pydantic.Field(default_factory=dict)
     """Motion group id → sequence of joint targets (radians)."""
 
     tcp: dict[str, list[list[float]]] = pydantic.Field(default_factory=dict)
-    """Motion group id → sequence of TCP targets [x, y, z, rx, ry, rz]."""
+    """Motion group id → sequence of TCP targets [x, y, z, rx, ry, rz] (mm, rotation vector)."""
 
     ios: dict[str, dict[str, bool | int | float | str]] | None = None
-    """Motion group id → {io_key: value}, in **hardware** units. Fired once on send().
+    """Motion group id → {io_key: value}, in **hardware** units, written once (contract M8).
 
-    Unlike joint and TCP targets, IO values arrive already converted: a policy
-    client applies the schema's ``Mapping`` when it decodes its own wire format,
-    because only the client knows where in that format the value sits. A chunk
-    built by hand therefore carries hardware values directly — ``True``, or
-    ``100.0`` for an analogue output — and nothing converts them again.
-
-    Joint and TCP targets are the other way round: they arrive in the policy's
-    units and the executor inverts them through
-    :meth:`PolicySchema.apply_inverse_ops` before they reach the robot.
+    Already mapped by the policy client; joint and TCP targets are in the policy's units.
     """
 
     values: dict[str, list[list[float]]] = pydantic.Field(default_factory=dict)
     """Policy outputs for the keys ``Action.computed(..., keys=[...])`` hooks consume, one row
-    per step: actuators outside NOVA, such as a gripper on its own bus. Every policy client
-    fills it the same way, so a hook reads ``chunk.values[key]`` whatever the policy."""
+    per step."""
 
     dt_ms: float = 0.0
     """Time spacing between steps in milliseconds. 0 = single-step."""
 
     first_timestamp_ms: int = -1
-    """Where this chunk's first waypoint sits, in ms on the session clock
-    (``jogger_session_timestamp_ms``, see :data:`novapolicy.jogging.clock.ServerMs`); not
-    ``time.monotonic()`` and not wall-clock time.
+    """Where this chunk's first waypoint sits, in ms on the session clock (``ServerMs``).
 
-    * ``>= 0``: the policy's own timeline. Step ``k`` is due ``first_timestamp_ms + k*dt``,
-      exactly; steps already past are dropped. The chunk is never bridged.
-    * ``-1`` (default): the executor places it (contract T1 in ``docs/contracts.md``): step ``k``
-      is due ``max_expected_latency_ms + k*dt`` after the observation (continuous execution) or
-      the send (sequential execution)."""
+    ``>= 0``: the policy's own timeline, never bridged (contract T2); ``-1`` (default): placed
+    by the executor (contract T1)."""
 
     action_timestep: int = -1
-    """Absolute policy-queue timestep of the first action, or ``-1`` if absent.
-
-    Fixed-rate queue clients use this to preserve one action timeline across
-    NOVA chunk replacements. The executor maps timestep zero to the initial
-    bridge boundary, then places later lookaheads at the corresponding absolute
-    session timestamps instead of re-anchoring each replacement to ``now``."""
+    """Absolute policy-queue timestep of the first action, or ``-1`` if absent; a
+    ``TimestepTimeline`` keeps a queue's chunks on one timeline by it."""
 
     retained_prefix_steps: int = 0
-    """Leading steps a queue client already published to the controller: smoothing keeps them
-    exactly as they were sent (the queue's predecessor and frozen head). ``0`` for any other
-    chunk."""
+    """Leading steps a queue client already sent; ``Smoothing`` keeps them exact."""
 
     resolved: bool = False
-    """The targets are already in NOVA units and absolute (the schema's operators and
-    relative modes applied), as :class:`~novapolicy.queued_client.QueuedPolicyClient`
-    returns them; the executor sends them as they are."""
+    """The targets are already absolute and in NOVA units; the executor sends them as they are."""
 
 
 @dataclass(frozen=True, slots=True)
 class SequentialExecution:
-    """Execute one complete chunk, reach standstill, then infer again.
-
-    The executor's default pipeline eases each chunk in and out here
-    (:class:`~novapolicy.jogging.modules.EndpointRamp`).
-    """
+    """Execute one complete chunk, reach standstill, then infer again."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,60 +83,27 @@ ExecutionMode: TypeAlias = SequentialExecution | ContinuousExecution
 
 @dataclass(frozen=True, slots=True)
 class WaypointConfig:
-    """Configuration for NOVA waypoint jogging.
-
-    Sends timestamped joint or TCP pose waypoints directly to the server,
-    which handles velocity profiling, interpolation, and IK internally.
-
-    New chunks override previous ones, so the server always tracks the
-    freshest prediction.
-    """
+    """Configuration for NOVA waypoint jogging; a new chunk replaces the queued ones."""
 
     state_rate_ms: int = 10
-    """State stream update rate."""
+    """State stream update rate in ms."""
 
     single_step_dt_ms: float = 50.0
-    """Spacing used when a live jog target is sent as a single point.
-
-    Which spacing executes most smoothly is a property of the controller rather
-    than a universal constant, which is why this is config and not hardcoded.
-
-    Must be positive: it is the divisor that turns the horizon length into a
-    waypoint count, and it is the fallback spacing whenever a caller passes
-    ``dt_ms=0``. ``0`` here has no "single step" meaning — it just leaves the
-    live path with no timeline to lay waypoints on.
-    """
+    """Spacing in ms for a live jog target sent as a single point, and the fallback for
+    ``dt_ms=0``. Must be positive."""
 
     max_expected_latency_ms: float = 100.0
-    """How far after its observation a chunk's first waypoint is due, in continuous execution.
+    """How far after its reference a chunk's first waypoint is due, in ms (contract T1).
 
-    Step ``k`` follows ``k`` policy steps later. One-step chunks are spaced one policy step apart,
-    and every request re-sends the earlier waypoints that are not due yet, so the controller
-    always has the next few queued. Each one must
-    reach the controller at least about 67 ms before it is due, so this covers that margin plus
-    the network round trip. Set it for the worst latency of the deployment, as MoveIt Servo's
-    ``max_expected_latency`` (default 0.1 s) does: 100 ms fits a policy running on the NOVA
-    instance; over a remote network raise it. The arm then follows the policy by this much.
-    When acknowledgements show the waypoints arriving too late for it, the session stops with a
-    ``MotionError`` instead of letting the motion degrade.
+    Covers the controller's ~67 ms margin plus the network round trip: set it for the
+    deployment's worst latency (ADR 0002). The arm follows the policy by this much.
     """
 
     delay_until_braking_ms: int | None = None
-    """How long the robot keeps its velocity after a chunk's last waypoint before braking.
+    """How long, in ms, the robot keeps its velocity after a chunk's last waypoint before braking.
 
-    ``None`` leaves the field out of the request, so the server brakes at the end
-    of every chunk as before. With a delay, a chunk that arrives in time continues
-    the motion instead of starting it again from standstill, and every chunk
-    restarts the countdown. This lets the server do what ``HoldPadding`` does on the
-    client: leave that module out of the pipeline for this to apply, because a padded
-    chunk ends in a hold that leaves no velocity to keep.
-
-    Meant for short chunks streamed at the policy rate, down to one waypoint.
-    About 200 ms rode through 100-150 ms network stalls in teleoperation. At the
-    end of a run, :meth:`WaypointJoggingSession.drain` sends the last target once
-    more without the delay, so the robot stops on it rather than running past it.
-
-    Needs NOVA 26.8.0-112 or newer; older servers ignore the field.
+    ``None`` brakes at the end of every chunk. Leave ``HoldPadding`` out for it to apply. Needs
+    NOVA 26.8.0-112 or newer (docs/jogging.md).
     """
 
     def __post_init__(self) -> None:
@@ -192,10 +117,8 @@ class WaypointConfig:
 
 @dataclass(slots=True)
 class StopContext:
-    """State passed to stop-condition callbacks.
+    """State passed to stop-condition callbacks, which run on every tick and must not block.
 
-    Stop conditions run on every jogging tick. Return ``True`` to stop the
-    policy. They must be fast (microseconds) — no network calls or blocking I/O.
     Use ``Observation.computed()`` for async data, then read it here.
     """
 
@@ -207,8 +130,7 @@ class StopContext:
     """Latest IO values from the stream cache (if available)."""
 
     target_joints: list[list[float]] | None = None
-    """Intended joint/TCP targets the policy wants to execute.
-    Full chunk at inference time, single interpolated step during jogging ticks."""
+    """Intended joint/TCP targets: the full chunk at inference, one step during ticks."""
 
     target_ios: dict[str, bool | int | float | str] | None = None
     """Intended IO writes (populated at inference time, before IOs fire)."""
@@ -221,9 +143,7 @@ StopCondition = Callable[[StopContext], bool]
 class EmergencyStopError(Exception):
     """Raised when the robot controller enters a non-operational safety state.
 
-    Covers e-stop, protective stop, cell door, safety violation, fault, etc.
-    The Nova SDK does not have an equivalent — it handles e-stop at the
-    controller level, not as a Python exception.
+    E-stop, protective stop, cell door, safety violation, fault and the like.
     """
 
     def __init__(self, controller_id: str, safety_state: str = "") -> None:
@@ -236,11 +156,9 @@ class EmergencyStopError(Exception):
 
 
 class MotionError(Exception):
-    """Raised when jogging detects a motion-blocking condition.
+    """Raised when the session sees the robot paused (joint limit, self-collision, singularity).
 
-    This happens when the waypoint jogging session detects that the robot is
-    paused (joint limit, self-collision, singularity). Distinct from Nova SDK's
-    ``RobotMotionError`` which covers trajectory planning/execution failures.
+    Not the SDK's ``RobotMotionError`` (planning and execution failures).
     """
 
     def __init__(self, motion_group_id: str, message: str) -> None:
@@ -251,12 +169,7 @@ class MotionError(Exception):
 class JoggingNotSupportedError(Exception):
     """Raised when the NOVA instance does not expose action chunk streaming.
 
-    The action chunk streaming websocket endpoint (``executeActionChunks``) only
-    exists on api-gateway ``>= 26.6``; on ``26.5`` the same feature was reached
-    through ``executeWaypointJogging``, which 26.6 removed. Gateways without the
-    endpoint reject the upgrade with HTTP 404; we surface that as this actionable
-    error instead of a generic connection failure, so callers know to upgrade
-    NOVA rather than chase a network problem.
+    ``executeActionChunks`` needs api-gateway ``>= 26.6``; older gateways answer HTTP 404.
     """
 
     def __init__(self, motion_group_id: str) -> None:

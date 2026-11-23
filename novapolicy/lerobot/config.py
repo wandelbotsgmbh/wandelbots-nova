@@ -1,12 +1,7 @@
 """Read execution settings stored in a LeRobot policy checkpoint.
 
-Everything here is read through LeRobot's own ``PreTrainedConfig`` rather than
-by parsing ``config.json`` field by field. Policies do not agree on what the
-chunk length is called — ACT says ``chunk_size``, diffusion says ``horizon``,
-fastwam says ``action_horizon``, and vqbet names it nothing at all — but every
-policy config must implement the abstract ``action_delta_indices`` property, so
-its length is the chunk length for all of them. Deriving it that way means a new
-or renamed LeRobot policy needs no change here.
+Read through LeRobot's ``PreTrainedConfig``; the chunk length is ``len(action_delta_indices)``
+for every policy type (ADR 0014).
 """
 
 from __future__ import annotations
@@ -28,28 +23,20 @@ logger = logging.getLogger(__name__)
 _CONFIG_NAME = "config.json"
 _PREPROCESSOR_NAME = "policy_preprocessor.json"
 _NORMALIZER_STEP = "normalizer_processor"
-# LeRobot's registered name for the step that tokenizes the language instruction.
-# A checkpoint whose pipeline contains it reads ``observation["task"]`` on every
-# inference, whichever policy family it belongs to.
+# LeRobot's registered name for the step that tokenizes the language instruction; a
+# checkpoint whose pipeline contains it reads ``observation["task"]``.
 _TOKENIZER_STEP = "tokenizer_processor"
 
 # Width of the plausible band derived from mean/std statistics.
 _STD_SIGMA = 4.0
 
-# Feature types the NOVA observation builder can produce. A checkpoint may
-# declare others (LANGUAGE for task-conditioned models, ENV for simulators);
-# those are carried but never demanded of the schema.
+# Feature types the NOVA observation builder can produce; others are carried, not demanded.
 _COMPARABLE_FEATURE_TYPES = (FeatureType.STATE, FeatureType.VISUAL)
 
 
 @dataclass(frozen=True, slots=True)
 class FeatureStats:
-    """Per-dimension training statistics for one feature.
-
-    Which fields are populated depends on the checkpoint's ``NormalizationMode``:
-    ``MIN_MAX`` fills min/max, ``MEAN_STD`` fills mean/std. Either is enough to
-    say roughly where the training data lay.
-    """
+    """Per-dimension training statistics for one feature: min/max or mean/std, by mode."""
 
     minimum: tuple[float, ...] | None = None
     maximum: tuple[float, ...] | None = None
@@ -85,9 +72,8 @@ class LeRobotExecutionSettings:
         input_features: Observation features the policy expects. Empty when the
             checkpoint infers them from the dataset at train time.
         output_features: Action features the policy produces.
-        requires_task: Whether the checkpoint conditions on a language
-            instruction. Read from its preprocessor pipeline, so it is ``False``
-            for a checkpoint that ships no ``policy_preprocessor.json``.
+        requires_task: Whether the checkpoint conditions on a language instruction
+            (``False`` without a ``policy_preprocessor.json``).
     """
 
     policy_type: str
@@ -121,13 +107,9 @@ class LeRobotExecutionSettings:
 def load_execution_settings(
     pretrained_name_or_path: str | Path,
 ) -> LeRobotExecutionSettings:
-    """Load execution settings from a local checkpoint or a Hugging Face model id.
+    """Load execution settings from a checkpoint directory, its ``config.json``, or a Hub id.
 
-    The source can be a checkpoint directory, the ``config.json`` inside one, or
-    a Hugging Face model id. LeRobot's own loader is used, and it reads a file
-    named ``config.json`` from a checkpoint directory — a JSON file under any
-    other name is not accepted. Server-local absolute paths cannot be inspected
-    by the NOVA client; supply a client-local copy or set the values explicitly.
+    A JSON file under another name is not accepted; the path must exist on this machine.
 
     Raises:
         FileNotFoundError: The checkpoint is not reachable from this machine.
@@ -147,12 +129,9 @@ def load_execution_settings(
 def try_load_execution_settings(
     pretrained_name_or_path: str | Path | None,
 ) -> LeRobotExecutionSettings | None:
-    """Load execution settings, or return ``None`` when the checkpoint is unusable.
+    """Load execution settings, or ``None`` when the checkpoint cannot be read here.
 
-    Used on the derivation path, where an unreadable checkpoint is an expected
-    outcome: the client falls back to explicit arguments. A checkpoint LeRobot
-    itself rejects still raises — that is a real configuration error, not a
-    missing file.
+    A checkpoint LeRobot rejects still raises.
     """
     if pretrained_name_or_path is None:
         return None
@@ -171,18 +150,12 @@ def try_load_execution_settings(
 
 
 def _resolve_source(pretrained_name_or_path: str | Path) -> str | Path:
-    """Resolve to something ``PreTrainedConfig.from_pretrained`` accepts.
-
-    It takes a directory or a Hub model id, not a path to ``config.json``, so a
-    file is mapped to its parent directory.
-    """
+    """Resolve to a directory or Hub id: a ``config.json`` path maps to its directory."""
     source = Path(pretrained_name_or_path).expanduser()
     if source.is_dir():
         return source
     if source.is_file():
-        # Only the checkpoint's own config.json maps to its directory. Accepting
-        # any file would silently read the config.json beside it instead, which
-        # is worse than refusing.
+        # Only config.json maps to its directory; any other file would read the one beside it.
         if source.name != _CONFIG_NAME:
             msg = (
                 f"LeRobot checkpoint must be a directory or its {_CONFIG_NAME}, "
@@ -200,13 +173,8 @@ def _resolve_source(pretrained_name_or_path: str | Path) -> str | Path:
 
 
 def _load_policy_config(source: str | Path) -> PreTrainedConfig:
-    """Load the checkpoint's typed LeRobot config.
-
-    Imported lazily: pulling in the policy registry costs seconds and loads
-    torch, which callers who never touch a checkpoint should not pay for.
-    """
-    # Importing the policies package registers every policy config choice; without
-    # it draccus cannot resolve the checkpoint's ``type``.
+    """Load the checkpoint's typed LeRobot config (imported lazily: it loads torch)."""
+    # Importing the policies package registers the config choices draccus resolves ``type`` by.
     from draccus.utils import ParsingError  # ruff: ignore[import-outside-top-level]
     from lerobot.configs.policies import PreTrainedConfig  # ruff: ignore[import-outside-top-level]
     import lerobot.policies  # ruff: ignore[import-outside-top-level,unused-import]
@@ -217,8 +185,7 @@ def _load_policy_config(source: str | Path) -> PreTrainedConfig:
     try:
         return PreTrainedConfig.from_pretrained(source)
     except ParsingError as exc:
-        # draccus raises its own exception type, which is not a ValueError and
-        # would leak an internal dependency through this module's contract.
+        # Keep draccus' exception type out of this module's contract.
         msg = f"LeRobot rejected the checkpoint config at {source}: {exc}"
         raise ValueError(msg) from exc
 
@@ -229,8 +196,6 @@ def _from_policy_config(config: PreTrainedConfig) -> LeRobotExecutionSettings:
 
     return LeRobotExecutionSettings(
         policy_type=config.type,
-        # Length of the action window the policy predicts. Uniform across
-        # policies; the field it is computed from is not.
         chunk_size=len(action_indices) if action_indices else None,
         n_action_steps=n_action_steps if isinstance(n_action_steps, int) else None,
         input_features=dict(config.input_features or {}),
@@ -239,14 +204,7 @@ def _from_policy_config(config: PreTrainedConfig) -> LeRobotExecutionSettings:
 
 
 def _checkpoint_file(source: str | Path, filename: str) -> Path | None:
-    """Locate one file in the checkpoint, downloading it when the source is a Hub id.
-
-    Statistics live beside ``config.json``, so a Hub checkpoint has to fetch them
-    the same way the config itself was fetched — a local-directory check alone
-    would silently skip the range check for every Hub model. Returns ``None``
-    when the file is simply not there, which is a normal way to ship a
-    checkpoint.
-    """
+    """Locate one file in the checkpoint, downloading it for a Hub id; ``None`` if absent."""
     if isinstance(source, Path):
         candidate = source / filename
         return candidate if candidate.is_file() else None
@@ -264,11 +222,7 @@ def _checkpoint_file(source: str | Path, filename: str) -> Path | None:
 
 
 def _preprocessor_steps(source: str | Path) -> list[dict[str, Any]]:
-    """The steps of the checkpoint's preprocessor pipeline, or none if it ships none.
-
-    A checkpoint may be distributed as ``config.json`` alone, so an absent or
-    unreadable pipeline is not an error.
-    """
+    """The steps of the checkpoint's preprocessor pipeline; none if absent or unreadable."""
     preprocessor = _checkpoint_file(source, _PREPROCESSOR_NAME)
     if preprocessor is None:
         return []
@@ -282,12 +236,7 @@ def _preprocessor_steps(source: str | Path) -> list[dict[str, Any]]:
 
 
 def _load_stats(source: str | Path, steps: list[dict[str, Any]]) -> dict[str, FeatureStats]:
-    """Read the checkpoint's normalization statistics, if they are present.
-
-    They live beside ``config.json`` as the normalizer step's safetensors state,
-    keyed ``"<feature>.<stat>"``. Absent statistics are normal, so this never
-    raises; the range check simply does not run.
-    """
+    """Read the normalizer step's safetensors statistics beside ``config.json``; never raises."""
     state_files = [
         step["state_file"]
         for step in steps

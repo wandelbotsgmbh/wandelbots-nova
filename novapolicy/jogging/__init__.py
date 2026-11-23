@@ -1,10 +1,7 @@
-"""Jogging — waypoint-based motion control via NOVA action chunk streaming.
+"""Jogging: waypoint motion through NOVA action chunk streaming (docs/jogging.md).
 
-This subpackage owns all jogging functionality: the low-level
-``WaypointJoggingSession`` that streams timestamped waypoints, the
-``JoggingStateTracker`` that detects blocking pauses, and the high-level
-``jog_joints`` / ``jog_tcp`` context managers (plus their ``JointJogger`` /
-``TcpJogger`` implementations) for manual jogging.
+``WaypointJoggingSession`` streams timestamped waypoints; ``jog_joints`` / ``jog_tcp`` are the
+high-level context managers.
 """
 
 from novapolicy.jogging.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp

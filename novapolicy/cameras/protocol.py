@@ -1,8 +1,4 @@
-"""Camera sources for policy observations.
-
-Defines the ``CameraSource`` protocol for plugging any camera backend
-(USB, ROS, RealSense, dataset replay, WebRTC, etc.) into the policy executor.
-"""
+"""The ``CameraSource`` protocol: any camera backend that feeds policy observations."""
 
 from __future__ import annotations
 
@@ -28,30 +24,7 @@ class LatestFrameSource(Protocol):
 
 @runtime_checkable
 class CameraSource(Protocol):
-    """Protocol for camera sources used by the PolicyExecutor.
-
-    Any object implementing these three methods can provide images to the
-    executor.
-
-    Example (minimal OpenCV implementation)::
-
-        class USBCamera:
-            def __init__(self, device_index: int):
-                self._index = device_index
-                self._cap = None
-
-            async def connect(self) -> None:
-                import cv2
-                self._cap = cv2.VideoCapture(self._index)
-
-            def read(self, max_age_s: float = 5.0) -> NDArray:
-                ret, bgr = self._cap.read()
-                return bgr[:, :, ::-1].copy()  # BGR→RGB
-
-            async def disconnect(self) -> None:
-                if self._cap:
-                    self._cap.release()
-    """
+    """Protocol for camera sources used by the PolicyExecutor: these three methods."""
 
     async def connect(self) -> None:
         """Connect to camera hardware. Called once before execution starts."""
@@ -60,12 +33,10 @@ class CameraSource(Protocol):
         """Read the latest frame from this camera.
 
         Args:
-            max_age_s: Maximum acceptable frame age in seconds.
-                Implementations should raise if a frame is older than this.
+            max_age_s: Maximum acceptable frame age in seconds; older frames raise.
 
         Returns:
-            Numpy array, typically ``(H, W, 3)`` uint8 RGB.
-            May be ``(T, H, W, 3)`` if frame history is enabled.
+            ``(H, W, 3)`` uint8 RGB, or ``(T, H, W, 3)`` with frame history.
 
         Raises:
             RuntimeError: If no frame available or frame is stale.

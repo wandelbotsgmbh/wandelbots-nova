@@ -1,14 +1,7 @@
-"""NATS transport for remote policy inference.
+"""``NatsPolicyClient`` for policy services on the NATS policy protocol.
 
-Provides ``NatsPolicyClient`` for policy services that speak the NATS policy
-protocol — plain core-NATS request/reply over ``policy.<id>.{info,reset,predict,close}``,
-msgpack-encoded with numpy array support.
-
-The protocol is defined in :mod:`novapolicy.nats.protocol`, whose source of
-truth lives outside this repository; see that module's warning before editing it.
-
-``examples/nats_mock_server.py`` serves the same protocol with fixed analytic motion, a dummy
-policy for debugging a client without a trained policy in the loop.
+The protocol, :mod:`novapolicy.nats.protocol`, is a copy of an external source of truth: read
+its warning before editing it. ``examples/nats_mock_server.py`` serves it with a dummy policy.
 """
 
 from novapolicy.nats.client import NatsPolicyClient

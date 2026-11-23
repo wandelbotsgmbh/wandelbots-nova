@@ -27,8 +27,7 @@ _IMAGE_NDIM = 3
 
 ImageSizeDiff = tuple[str, tuple[int, ...], tuple[int, ...]]
 
-# Fractional aspect-ratio difference treated as the same aspect. Covers rounding
-# in odd frame sizes without letting 4:3 pass as 16:9.
+# Fractional aspect-ratio difference treated as the same aspect (rounding, not 4:3 vs 16:9).
 _ASPECT_TOLERANCE = 0.01
 
 
@@ -40,9 +39,8 @@ class LeRobotSchema:
 
     @staticmethod
     def state_names(states: dict[str, RobotState], schema: PolicySchema) -> list[str]:
-        """The flat observation.state, in a fixed order: joint positions, joint velocities, TCP
-        poses, object poses, IOs, then the keys of ``Observation.computed`` (one value each).
-        The checkpoint matches it by position."""
+        """The flat observation.state names, in the fixed order the checkpoint matches by position:
+        joints, joint velocities, TCP poses, object poses, IOs, computed keys."""
         names: list[str] = []
         for mapping in [*schema.joint_mappings, *schema.joint_velocity_mappings]:
             dof = sum(
@@ -100,30 +98,11 @@ class LeRobotSchema:
         images: dict[str, Any] | None,
         action_width: int,
     ) -> None:
-        """Check the schema against what the checkpoint expects.
+        """Check the schema against the checkpoint's ``input_features`` / ``output_features``.
 
-        Compares the feature set this client is about to declare against the
-        checkpoint's own ``input_features`` / ``output_features``: the key set,
-        the shape behind each key, and the width of the flat action vector.
-
-        Both sides are normalized through LeRobot's ``dataset_to_policy_features``
-        so images are compared channel-first, the way the checkpoint stores them.
-
-        Only ``STATE`` and ``VISUAL`` inputs are compared. A checkpoint may also
-        declare ``LANGUAGE`` or ``ENV`` features that a ``PolicySchema`` never
-        emits as observations; demanding those would fail every task-conditioned
-        checkpoint spuriously.
-
-        A **camera frame size** that disagrees only warns, and says something
-        different for a resolution difference than for an aspect-ratio one. The
-        frame size belongs to the camera stream, not to the schema, and hardware
-        cannot always deliver an arbitrary resolution — so it stays the user's
-        call. Everything else — a missing or unexpected observation key, a wrong
-        state width, a wrong action width — raises.
-
-        A checkpoint that declares no comparable features (they are inferred from
-        the dataset at train time) is warned about once and skipped, never
-        silently passed.
+        Compares the key set, each key's shape (images channel-first) and the action width, for
+        ``STATE`` and ``VISUAL`` inputs. A camera frame size that differs only warns; a
+        checkpoint without comparable features is warned about and skipped (lerobot/README.md).
 
         Raises:
             ValueError: The schema cannot satisfy the checkpoint's contract.
@@ -204,11 +183,9 @@ def _compare_features(
 ) -> tuple[list[str], list[ImageSizeDiff]]:
     """Describe every way ``actual`` fails to satisfy ``expected``.
 
-    Returns ``(structural, image_sizes)``. Structural problems are the ones the
-    schema alone can fix — a missing key, an unexpected key, a wrong state width
-    — and are returned as fatal message lines. Image-size differences are
-    returned as ``(key, actual_shape, expected_shape)`` instead, because they are
-    fixed at the camera stream and the caller decides how loudly to say so.
+    Returns:
+        ``(structural, image_sizes)``: fatal message lines, and
+        ``(key, actual_shape, expected_shape)`` per differing camera frame.
     """
     structural: list[str] = [
         f"{key!r} is missing from the schema (checkpoint shape {expected[key].shape})"
@@ -249,14 +226,7 @@ def _log_image_size_difference(
     actual_shape: tuple[int, ...],
     expected_shape: tuple[int, ...],
 ) -> None:
-    """Warn about a camera frame that differs from the checkpoint's.
-
-    Separates the two cases deliberately. A different *resolution* at the same
-    aspect ratio rescales cleanly, so it costs bandwidth and detail — worth
-    saying, not alarming. A different *aspect ratio* cannot be corrected by
-    rescaling: the image is stretched, and a policy without internal padding
-    (ACT among them) sees geometry that never appeared in training.
-    """
+    """Warn about a camera frame that differs from the checkpoint's: resolution or aspect ratio."""
     actual_size = _frame_size(actual_shape)
     expected_size = _frame_size(expected_shape)
     if actual_size is None or expected_size is None:
@@ -298,8 +268,8 @@ def check_observation_range(
     observation: dict[str, Any],
     state_names: list[str],
 ) -> None:
-    """Hold the first live observation, after the schema's operators, against the
-    checkpoint's ``observation.state`` statistics (see :mod:`novapolicy.training_range`).
+    """Hold the first observation against the checkpoint's ``observation.state`` statistics.
+
     Silent without statistics or when the state width disagrees with them.
 
     Raises:

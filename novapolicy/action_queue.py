@@ -75,8 +75,7 @@ class TimestampedActionQueue:
         frozen_steps: int = 0,
     ) -> bool:
         """Merge a timestamped prediction into the replaceable future queue; the first
-        ``frozen_steps`` after the last executed step keep their published values (they
-        executed while the prediction was being computed)."""
+        ``frozen_steps`` after the last executed step keep their published values."""
         decoded = list(predictions)
         current = dict(self._actions)
         future: dict[int, NDArray[np.float32]] = {}

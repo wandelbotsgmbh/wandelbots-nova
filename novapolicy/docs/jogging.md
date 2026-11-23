@@ -304,3 +304,9 @@ brakes at the end of the last waypoint. Since NOVA 26.6 `PAUSED_BY_USER` follows
 a Pause/Stop request only, and this SDK never sends one, so anything that needs
 to know the robot came to rest measures it from the joint positions instead (see
 [executor.md](executor.md)).
+
+A NOVA instance without action chunk streaming raises `JoggingNotSupportedError` when the
+session opens. The endpoint, `executeActionChunks`, exists on api-gateway 26.6 and newer; 26.5
+reached the same feature through `executeWaypointJogging`, which 26.6 removed. Older gateways
+answer the websocket upgrade with HTTP 404, which is reported as this error rather than as a
+connection failure, so the fix (upgrade NOVA) is clear.
