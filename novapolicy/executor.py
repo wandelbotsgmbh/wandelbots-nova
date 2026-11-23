@@ -324,8 +324,12 @@ class PolicyExecutor:
             await self._io_streams.stop()
 
     async def _start(self) -> None:
-        """Move to the start position, connect cameras, IO, sources and the policy, and start
-        the sessions with their monitoring; returns once the server acknowledged them."""
+        """Connect the policy and let it check the schema, move to the start position, connect
+        cameras, IO and sources, and start the sessions with their monitoring; returns once the
+        server acknowledged them. A schema the policy refuses fails before anything moves
+        (ADR 0014)."""
+        await self._policy.connect(self.mg_ids)
+        await self._policy.validate_schema(self._schema)
         await move_to_start_joint_position(self._start_joint_position)
         image_sources = self._schema.image_sources
         if image_sources:
@@ -337,8 +341,6 @@ class PolicyExecutor:
         self._io_streams.wire_to_sessions(self._sessions)
         await self._schema.load_coordinate_systems()
         await self._schema.start_sources()
-        await self._policy.connect(self.mg_ids)
-        await self._policy.validate_schema(self._schema)
         self._rerun = await self._lifecycle.start_monitoring(
             camera_names=self._cameras.names,
             tcp=self._schema.tcp,

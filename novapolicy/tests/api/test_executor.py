@@ -1362,3 +1362,32 @@ async def test_the_bridge_a_session_put_in_front_is_logged_to_rerun():
     bridge, step = executor._rerun.log_bridge_chunk.call_args.args
     assert step == 3
     assert bridge.joints == {MG_ID: [[0.0] * 6, [0.5] * 6, [1.0] * 6]}
+
+
+@pytest.mark.asyncio
+async def test_a_schema_the_policy_refuses_fails_before_the_start_move(robot: _Robot):
+    """ADR 0014: connect and validate_schema run before anything moves, so a schema the
+    policy cannot serve never sends the robot to its start position."""
+
+    class _RefusingPolicy(CallbackPolicyClient):
+        async def validate_schema(self, schema: PolicySchema) -> None:
+            raise ValueError("Missing state observations: ['gripper']")
+
+    mg = MagicMock()
+    mg.active_tcp_name = AsyncMock(return_value="Flange")
+    mg.get_setup = AsyncMock(return_value=SimpleNamespace(collision_setups={}))
+    mg.plan = AsyncMock(return_value="trajectory")
+    mg.execute = AsyncMock()
+
+    executor = PolicyExecutor(
+        _schema(),
+        _RefusingPolicy(_hold_action),
+        timeout_s=0.1,
+        start_joint_position={mg: [0.1] * 6},
+    )
+    with pytest.raises(ValueError, match="Missing state observations"):
+        await executor.run()
+
+    mg.plan.assert_not_awaited()
+    mg.execute.assert_not_awaited()
+    robot.session.start.assert_not_awaited()
