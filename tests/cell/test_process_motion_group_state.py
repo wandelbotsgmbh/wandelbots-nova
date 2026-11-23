@@ -63,7 +63,7 @@ def _make_response(inner) -> api.models.ExecuteTrajectoryResponse:
 
 
 def _make_context(
-    state_sequence: list[api.models.MotionGroupState], motion_id: str = "test-motion"
+    state_sequence: list[api.models.MotionGroupState], motion_id: str = "traj-123"
 ) -> MovementControllerContext:
     """Create a MovementControllerContext that yields a fixed sequence of states."""
     return MovementControllerContext(
@@ -170,7 +170,7 @@ class TestMoveForwardStateMonitor:
 
         context = MovementControllerContext(
             combined_actions=CombinedActions(items=()),
-            motion_id="test-motion",
+            motion_id="traj-123",
             start_on_io=None,
             motion_group_state_stream_gen=counting_states,
         )
@@ -262,7 +262,7 @@ class TestMoveForwardStateMonitor:
 
         context = MovementControllerContext(
             combined_actions=CombinedActions(items=()),
-            motion_id="test-motion",
+            motion_id="traj-123",
             start_on_io=None,
             motion_group_state_stream_gen=lambda: infinite_states(),
         )

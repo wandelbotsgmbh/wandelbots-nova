@@ -676,7 +676,7 @@ class TrajectoryCursor:
         self._target_location = self._current_location
         self._detach_on_standstill = detach_on_standstill
 
-        self._state_machine = TrajectoryExecutionMachine()
+        self._state_machine = TrajectoryExecutionMachine(trajectory=motion_id)
         self._operation_handler = OperationHandler()
 
         self._initialize_task = asyncio.create_task(self.ainitialize())
@@ -1377,6 +1377,11 @@ class TrajectoryCursor:
                         result.current_state_id or "-",
                         result.state_changed,
                     )
+                if result.other_trajectory:
+                    # The previous trajectory, still reported after ours was
+                    # initialized: not our state, and not our robot's motion either.
+                    continue
+
                 if result.has_execute:
                     self._enqueue_state(motion_group_state)
                     if result.location is not None:

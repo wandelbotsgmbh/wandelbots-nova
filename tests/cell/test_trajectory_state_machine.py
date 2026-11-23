@@ -271,6 +271,69 @@ class TestArmed:
 # ---------------------------------------------------------------------------
 
 
+def _of_trajectory(
+    state: api.models.MotionGroupState, trajectory: str
+) -> api.models.MotionGroupState:
+    """The same frame, reported for another trajectory id."""
+    assert state.execute is not None and isinstance(
+        state.execute.details, api.models.TrajectoryDetails
+    )
+    details = state.execute.details.model_copy(update={"trajectory": trajectory})
+    return state.model_copy(
+        update={"execute": state.execute.model_copy(update={"details": details})}
+    )
+
+
+class TestFramesOfAnotherTrajectory:
+    """Right after a new trajectory is initialized the controller can still report the
+    previous one (NOVA 26.8), moving or braking. Those frames say nothing about the
+    tracked execution: neither their state nor their ``standstill`` counts."""
+
+    @staticmethod
+    def _tracking() -> TrajectoryExecutionMachine:
+        machine = TrajectoryExecutionMachine(trajectory="traj-123")
+        machine.arm()
+        return machine
+
+    def test_running_frame_of_the_previous_trajectory_does_not_start_executing(self):
+        machine = self._tracking()
+        result = machine.process_motion_state(_of_trajectory(_running(0.4), "previous"))
+        assert machine.is_armed
+        assert result.other_trajectory
+        assert not result.has_execute
+        assert result.location is None
+
+    def test_braking_frames_of_the_previous_trajectory_are_not_our_motion(self):
+        """The robot still decelerating from a cancelled execution must not count as
+        our trajectory having moved, or our parked frame reads as a user pause."""
+        machine = self._tracking()
+        for _ in range(3):
+            machine.process_motion_state(
+                _of_trajectory(_paused_by_user(0.4, standstill=False), "previous")
+            )
+        machine.process_motion_state(_paused_by_user(0.0))
+        assert machine.is_armed
+        assert machine.pause_reason is None
+        machine.process_motion_state(_running(0.5))
+        assert machine.is_executing
+
+    def test_frames_of_another_trajectory_do_not_end_or_pause_our_execution(self):
+        machine = self._tracking()
+        machine.process_motion_state(_running(0.5))
+        machine.process_motion_state(_of_trajectory(_ended(2.0), "previous"))
+        machine.process_motion_state(_of_trajectory(_paused_by_user(1.0), "previous"))
+        assert machine.is_executing
+        machine.process_motion_state(_ended(2.0))
+        assert machine.is_ended
+
+    def test_without_a_trajectory_id_every_frame_counts(self):
+        """Callers that do not pass the id keep the previous behaviour."""
+        machine = _armed()
+        result = machine.process_motion_state(_of_trajectory(_running(0.4), "previous"))
+        assert machine.is_executing
+        assert not result.other_trajectory
+
+
 class TestStaleTerminalFramesAfterResume:
     """Level-based publishing (robotics/wbr!2262) keeps re-publishing the
     previous stop's terminal state until the controller takes up the new

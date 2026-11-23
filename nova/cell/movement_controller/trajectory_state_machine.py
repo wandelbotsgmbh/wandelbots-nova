@@ -145,6 +145,8 @@ class StateUpdate:
             different state during this processing step.
         previous_state_id: Identifier of the state *before* this step.
         current_state_id: Identifier of the state *after* this step.
+        other_trajectory: ``True`` when the frame reports a trajectory other than
+            the tracked one; it was ignored entirely.
     """
 
     location: float | None = None
@@ -152,6 +154,7 @@ class StateUpdate:
     state_changed: bool = False
     previous_state_id: str = ""
     current_state_id: str = ""
+    other_trajectory: bool = False
 
     @property
     def skip(self) -> bool:
@@ -259,7 +262,15 @@ class TrajectoryExecutionMachine(StateMachine):
 
     # -- Instance state -------------------------------------------------------
 
-    def __init__(self) -> None:
+    def __init__(self, trajectory: str | None = None) -> None:
+        """
+        Args:
+            trajectory: Id of the tracked trajectory.  Frames that report another
+                trajectory are ignored entirely — neither their execute state nor
+                their ``standstill`` says anything about this execution.  ``None``
+                treats every frame as the tracked trajectory's.
+        """
+        self._trajectory = trajectory
         self.location: float | None = None
         self.pause_reason: PauseReason | None = None
         self.failure_reason: str | None = None
@@ -310,6 +321,14 @@ class TrajectoryExecutionMachine(StateMachine):
         """
         self._pause_requested = True
 
+    def _is_other_trajectory(self, state: api.models.MotionGroupState) -> bool:
+        details = state.execute.details if state.execute is not None else None
+        return (
+            self._trajectory is not None
+            and isinstance(details, api.models.TrajectoryDetails)
+            and details.trajectory != self._trajectory
+        )
+
     def process_motion_state(self, state: api.models.MotionGroupState) -> StateUpdate:
         """Feed a :class:`~nova.api.models.MotionGroupState` into the machine.
 
@@ -326,6 +345,17 @@ class TrajectoryExecutionMachine(StateMachine):
             transition information.
         """
         previous_state_id: str = self._active_configuration_id()
+        if self._is_other_trajectory(state):
+            # Since NOVA 26.8 the first frames after a new trajectory is initialized
+            # can still report the previous one — running, or braking from a cancelled
+            # execution.  Read as ours, they put the machine into `executing` (or
+            # marked it as moved) before our trajectory parked at its start, and that
+            # parked frame then concluded a pause by user.
+            return StateUpdate(
+                other_trajectory=True,
+                previous_state_id=previous_state_id,
+                current_state_id=previous_state_id,
+            )
         has_execute = state.execute is not None
         location: float | None = None
 

@@ -116,12 +116,23 @@ def motion_group(
     """A motion group as the executor sees it: an address, a loader and a stream."""
     queue = states if states is not None else asyncio.Queue()
 
+    def own_trajectory(frame: api.models.MotionGroupState) -> api.models.MotionGroupState:
+        # The frame helpers stamp the placeholder "traj-1"; a real controller reports the
+        # id this group's trajectory was loaded under, which the cursor filters on.
+        details = frame.execute.details if frame.execute is not None else None
+        if isinstance(details, api.models.TrajectoryDetails) and details.trajectory == "traj-1":
+            execute = frame.execute.model_copy(
+                update={"details": details.model_copy(update={"trajectory": trajectory_id})}
+            )
+            return frame.model_copy(update={"execute": execute})
+        return frame
+
     async def stream():
         # A real motion-group stream is always live; an idle state satisfies the
         # cursor's startup handshake before any trajectory progress arrives.
         yield state(True)
         while True:
-            yield await queue.get()
+            yield own_trajectory(await queue.get())
 
     group = MagicMock()
     group._cell = cell
