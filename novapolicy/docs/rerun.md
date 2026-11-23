@@ -103,5 +103,5 @@ to read for whether tracking is steady.
 
 Robot state (the 3D mesh, TCP trail, joint plots and commanded-vs-measured tracking) is logged
 once per state packet the session receives, for the executor and the jogger alike; it does not
-change the policy or jogging command cadence. `trajectory_sample_interval_ms` controls sampling of
-planned trajectories.
+change the policy or jogging command cadence. Planned trajectories are sampled by NOVA's viewer,
+`nova.viewers.Rerun(trajectory_sample_interval_ms=...)`.
