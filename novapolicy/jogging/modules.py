@@ -23,26 +23,35 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class HoldPadding:
-    """Chunk module: extend a short chunk by holding its last target up to ``min_horizon_ms``.
+    """Chunk module: hold a chunk's last target until it spans ``min_horizon_ms``, and at
+    least ``after_ms`` past its last step.
 
-    Pads only chunks queued with ``extend_buffer=True`` (contract T6). Leave it out to use
+    Pads only chunks queued with ``extend_buffer=True`` (contract T6). ``after_ms`` lets an
+    arm still moving at the last step settle on it: NOVA brakes after the last waypoint and
+    does not return to it (ADR 0010). Leave it out to use
     ``WaypointConfig.delay_until_braking_ms``; put it after modules that set their own horizon.
     """
 
     min_horizon_ms: float = 500.0
+    after_ms: float = 0.0
 
     def __post_init__(self) -> None:
-        if not math.isfinite(self.min_horizon_ms) or self.min_horizon_ms < 0:
-            raise ValueError("HoldPadding needs a non-negative finite min_horizon_ms")
+        for name in ("min_horizon_ms", "after_ms"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"HoldPadding needs a non-negative finite {name}")
 
     def on_chunk(
         self,
         chunk: PendingChunk,
         context: ModuleContext,  # ruff: ignore[unused-method-argument] (the protocol's)
     ) -> PendingChunk:
-        if not chunk.extend_buffer or self.min_horizon_ms <= 0 or chunk.dt_ms <= 0:
+        if not chunk.extend_buffer or chunk.dt_ms <= 0:
             return chunk
-        min_steps = max(1, math.ceil(self.min_horizon_ms / chunk.dt_ms))
+        min_steps = max(
+            math.ceil(self.min_horizon_ms / chunk.dt_ms),
+            len(chunk.steps) + math.ceil(self.after_ms / chunk.dt_ms),
+        )
         if len(chunk.steps) >= min_steps:
             return chunk
         held = [list(chunk.steps[-1]) for _ in range(min_steps - len(chunk.steps))]
@@ -244,6 +253,10 @@ def timestep_queue_modules() -> list[object]:
     return [Smoothing(), TimestepTimeline(), Bridge(always_anchor=True)]
 
 
+SEQUENTIAL_HOLD_MS = 300.0
+"""How long sequential execution holds each chunk's final target after its last step."""
+
+
 def default_pipeline(
     *, execution: object | None = None, policy: object | None = None
 ) -> list[object]:
@@ -256,6 +269,8 @@ def default_pipeline(
         return [HoldPadding(), Timestamps(), DropLate()]
     if isinstance(execution, SequentialExecution):
         front: list[object] = [Bridge(), EndpointRamp()]
+        hold = HoldPadding(after_ms=SEQUENTIAL_HOLD_MS)
     else:
         front = list(getattr(policy, "default_modules", []))
-    return [*front, JointClamp(), HoldPadding(), Timestamps(), DropLate()]
+        hold = HoldPadding()
+    return [*front, JointClamp(), hold, Timestamps(), DropLate()]

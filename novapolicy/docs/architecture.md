@@ -65,7 +65,7 @@ PolicyExecutor(..., pipeline=[m for m in defaults if not isinstance(m, HoldPaddi
 | Who | Default pipeline |
 | --- | --- |
 | `jog_joints`, `jog_tcp` | `HoldPadding` → `Timestamps` → `DropLate` |
-| `PolicyExecutor`, `SequentialExecution` | `Bridge` → `EndpointRamp` → `JointClamp` → `HoldPadding` → `Timestamps` → `DropLate` |
+| `PolicyExecutor`, `SequentialExecution` | `Bridge` → `EndpointRamp` → `JointClamp` → `HoldPadding(after_ms=300)` → `Timestamps` → `DropLate` |
 | `PolicyExecutor`, `ContinuousExecution` | the policy's `default_modules` → `JointClamp` → `HoldPadding` → `Timestamps` → `DropLate` |
 | a timestep queue's `default_modules` | `Smoothing` → `TimestepTimeline` → `Bridge(always_anchor=True)` |
 
@@ -90,7 +90,7 @@ flowchart TB
 | `Bridge` | a policy's first step far from the robot would be a jump | leaving it out |
 | `EndpointRamp` | each sequential chunk starts and ends at rest | leaving it out |
 | `JointClamp` | an out-of-range target pauses the motion | leaving it out |
-| `HoldPadding` | a short chunk ends without a braking horizon | leaving it out (use `delay_until_braking_ms`) |
+| `HoldPadding` | a short chunk ends without a braking horizon; in sequential execution, an arm still moving at the last step brakes past it (held 300 ms after it) | leaving it out (use `delay_until_braking_ms`) |
 | `DropLate` | a waypoint already due makes the controller jump back | leaving it out |
 | `Smoothing` | blending overlapping plans leaves kinks | leaving it out |
 | `TimestepTimeline` | a queue's replacements must continue its timeline | (required for a queue) |

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import itertools
 import math
 import os
 import time
@@ -83,6 +82,9 @@ class _Recording:
         self.states: list[tuple[int, float]] = []
         self.requests = 0
         self.spans: list[tuple[int, int]] = []
+        self.at_send: list[
+            tuple[int, float] | None
+        ] = []  # the latest state when each request went out
         self.chunks: list[Any] = []  # every chunk as queued, after the chunk modules
 
 
@@ -99,6 +101,7 @@ def recording(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Recording]:
         record.chunks.append(pending)
         if scheduled.request is not None:
             record.requests += 1
+            record.at_send.append(record.states[-1] if record.states else None)
             waypoints = scheduled.request.waypoints
             record.spans.append((waypoints[0].timestamp, waypoints[-1].timestamp))
             record.sent.extend(
@@ -202,18 +205,18 @@ async def test_a_dummy_vla_runs_sequentially(ur10e, recording):
     assert recording.requests >= 5
     rms, peak = _tracking_deg(recording, skip_ms=0.0)
     assert rms < 1.0 and peak < 5.0, (rms, peak)
-    # Each chunk runs to standstill, and the next one starts where the arm rests (its bridge
-    # begins at the measured joints). The arm rests 0.3-0.5 deg from the previous chunk's final
-    # target on a virtual UR10e; the 0.2 deg bound this test started with failed 1 run in 4
-    # already on the commit that added it. Cause not established. (The timeout can end the last
-    # chunk anywhere, so it is not checked.)
+    # Each chunk runs to standstill on its final target (sequential execution holds it
+    # SEQUENTIAL_HOLD_MS past the last step), and the next one starts where the arm rests: its
+    # bridge begins at the measured joints. The rest is read when the next request goes out;
+    # from then on NOVA is already moving towards it. (The timeout can end the last chunk
+    # anywhere, so it is not checked.)
     latest = dict(recording.sent)
-    states = sorted(set(recording.states))
-    for (_, previous_end), (next_start, _) in itertools.pairwise(recording.spans):
-        resting = [q for t, q in states if previous_end + LAG_MS < t < next_start]
-        assert resting, "no state between two chunks"
-        assert math.degrees(abs(resting[-1] - latest[previous_end])) < 1.0
-        assert math.degrees(abs(latest[next_start] - resting[-1])) < 0.1
+    for (_, previous_end), (next_start, _), rest in zip(
+        recording.spans, recording.spans[1:], recording.at_send[1:], strict=False
+    ):
+        assert rest is not None, "no state before a chunk"
+        assert math.degrees(abs(rest[1] - latest[previous_end])) < 0.2, (rest, latest[previous_end])
+        assert math.degrees(abs(latest[next_start] - rest[1])) < 0.1
 
 
 @pytest.mark.integration

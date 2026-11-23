@@ -52,6 +52,13 @@ def test_hold_padding_leaves_chunks_that_asked_for_none_or_are_long_enough() -> 
     assert module.on_chunk(long, _context()) is long
 
 
+def test_hold_padding_holds_after_the_last_step_however_long_the_chunk() -> None:
+    long = _chunk([[float(i)] for i in range(5)])  # already spans the 500 ms horizon
+    padded = HoldPadding(min_horizon_ms=500.0, after_ms=200.0).on_chunk(long, _context())
+    assert padded.steps == [*long.steps, [4.0], [4.0]]
+    assert padded.caller_step_count == 5
+
+
 def test_joint_clamp_holds_targets_inside_the_limits() -> None:
     clamped = JointClamp().on_chunk(_chunk([[2.0, -3.0, 0.5]]), _context(LIMITS))
     assert clamped.steps == [[1.0, -1.0, 0.5]]

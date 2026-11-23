@@ -73,3 +73,12 @@ passes through the identity, a real half-turn of the wrist. `DropLate`: a chunk 
 it is queued and sent a little later, so its first waypoints can already be due; when all are
 late, the robot keeps following the previous chunk. Leave it out only to see late waypoints on
 the wire.
+
+**Sequential chunks end in a hold (2026-11-23).** `HoldPadding` pads up to a total length, so a
+sequential chunk of 15 steps or more at 30 Hz got no hold at all. When the arm was still swinging
+at the last waypoint (behind after a sharp bridge-to-policy turn), NOVA braked from that speed and
+left it 0.3–0.5° from the final target: it brakes after the last waypoint and does not return.
+Sequential execution therefore holds every chunk's final target `SEQUENTIAL_HOLD_MS` (300 ms) past
+its last step (`HoldPadding(after_ms=...)`). On a virtual UR10e, a 200 ms hold with `EndpointRamp`
+left at most 0.05° (without the ramp, 0.68°; 100 ms, 0.26°). Each sequential cycle gets up to
+300 ms longer.

@@ -282,3 +282,11 @@ per key (`observation_groups`), as every other client maps it. Two visible effec
   to clear them.
 - **Teardown** drains every arm in parallel, before Rerun, the e-stop monitor, cameras, pose
   sources and IO streams stop; sessions are stopped even if one of those fails.
+
+## Sequential chunks end in a 300 ms hold
+
+`SequentialExecution`'s default pipeline holds every chunk's final target 300 ms past its last
+step (`HoldPadding(after_ms=300)`, `SEQUENTIAL_HOLD_MS`). Before, a chunk of 15 steps or more at
+30 Hz got no hold, and an arm still moving at its last step came to rest up to 0.5° past it. Each
+sequential cycle can take up to 300 ms longer; pass your own `pipeline=[...]` with `HoldPadding()`
+for the old ending.
