@@ -124,23 +124,21 @@ def test_a_filter_after_a_waypoint_module_or_a_chunk_module_after_a_filter_is_re
         split_pipeline([DropLate(), LiveBuffer(window_ms=100.0)])
 
 
-def test_a_chunk_module_after_a_waypoint_module_is_refused():
-    with pytest.raises(ValueError, match="before Timestamps"):
-        split_pipeline([EaseIn(duration_s=1.0), LiveBuffer(window_ms=100.0)])
-
-
 def test_a_chunk_module_after_the_timestamps_is_refused():
     with pytest.raises(ValueError, match="before Timestamps"):
         split_pipeline([Timestamps(), LiveBuffer(window_ms=100.0)])
 
 
-def test_timestamps_twice_is_refused():
-    with pytest.raises(ValueError, match="appears twice"):
-        split_pipeline([Timestamps(), Timestamps()])
-
-
-def test_something_that_is_not_a_module_is_refused():
-    with pytest.raises(TypeError, match="not a pipeline module"):
-        split_pipeline([object()])
-    with pytest.raises(TypeError, match="not a pipeline module"):
-        split_pipeline([lambda waypoints, context: waypoints])  # the old stage form
+@pytest.mark.parametrize(
+    ("pipeline", "error", "match"),
+    [
+        ([EaseIn(duration_s=1.0), LiveBuffer(window_ms=100.0)], ValueError, "before Timestamps"),
+        ([Timestamps(), Timestamps()], ValueError, "appears twice"),
+        ([object()], TypeError, "not a pipeline module"),
+        ([lambda waypoints, context: waypoints], TypeError, "not a pipeline module"),  # old form
+    ],
+    ids=["chunk-module-after-waypoint-module", "timestamps-twice", "not-a-module", "old-stage"],
+)
+def test_a_misordered_or_foreign_pipeline_is_refused(pipeline, error, match):
+    with pytest.raises(error, match=match):
+        split_pipeline(pipeline)

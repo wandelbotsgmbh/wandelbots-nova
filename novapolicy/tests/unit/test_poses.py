@@ -14,6 +14,7 @@ from novapolicy import poses
 from novapolicy.executor import resolve_actions
 from novapolicy.ops import Scale
 from novapolicy.schema import Action, Observation, PolicySchema
+from novapolicy.tests.doubles import mg as _mg
 from novapolicy.types import ActionChunk
 
 OT = poses.OrientationType
@@ -46,14 +47,6 @@ def test_intrinsic_and_extrinsic_euler_differ():
     intrinsic = poses.from_rotvec(rotvec, OT.EULER_ANGLES_INTRINSIC_XYZ)
     assert extrinsic == pytest.approx([0.1, 0.2, 0.3])
     assert intrinsic != pytest.approx(extrinsic)
-
-
-def _mg(mg_id: str = "0@ur10e") -> MagicMock:
-    mg = MagicMock()
-    mg.id = mg_id
-    mg._controller_id = "ur10e"
-    mg._cell = "cell"
-    return mg
 
 
 def _state(pose: list[float]) -> SimpleNamespace:

@@ -164,6 +164,11 @@ def test_stall_logs_a_warning_once_and_recovers(caplog, manual_time):
     clock.start()
     manual_time.advance(0.3)
     clock.update(300)
+    # A fresh ack within the lookahead window never trips the stall warning.
+    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
+        for _ in range(10):
+            _ = clock.acknowledged_elapsed_ms
+    assert not [r for r in caplog.records if "stalled" in r.message]
     manual_time.advance(5.0)
 
     with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
@@ -185,20 +190,6 @@ def test_stall_logs_a_warning_once_and_recovers(caplog, manual_time):
     with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
         _ = clock.acknowledged_elapsed_ms
     assert any("stalled" in r.message for r in caplog.records)
-
-
-def test_healthy_link_does_not_warn(caplog, manual_time):
-    """Fresh acks within the lookahead window must never trip the stall warning."""
-    import logging
-
-    clock = JoggingTimeClock(max_lookahead_ms=300.0)
-    clock.start()
-    manual_time.advance(0.5)
-    clock.update(500)
-    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
-        for _ in range(10):
-            _ = clock.acknowledged_elapsed_ms
-    assert not [r for r in caplog.records if "stalled" in r.message]
 
 
 # ===========================================================================

@@ -10,7 +10,6 @@ import math
 from pathlib import Path
 import shutil
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -21,6 +20,7 @@ from novapolicy.leapp import LeappPipeline, LeappPolicyClient
 from novapolicy.ops import Scale
 from novapolicy.poses import QUATERNION
 from novapolicy.schema import Action, Observation, PolicySchema
+from novapolicy.tests.doubles import mg as _mg
 
 EXPORT = Path(__file__).parents[1] / "unit" / "data" / "leapp_reach" / "reach_ur10e.yaml"
 MG_ID = "0@ur10e"
@@ -29,12 +29,6 @@ HOME = (0.0, -1.57, 1.57, -1.57, -1.57, 0.0)
 # and the second one, which sees the first step's action as its last action.
 T1 = [-0.000327257, -1.591848850, 1.582729697, -1.546835423, -1.578919410, -0.003035118]
 T2 = [0.000401501, -1.594622254, 1.584608555, -1.546020508, -1.577775002, -0.000319857]
-
-
-def _mg() -> MagicMock:
-    mg = MagicMock()
-    mg.id = MG_ID
-    return mg
 
 
 def _schema(mg, *, joint_vel_key: str = "joint_vel", relative: bool = False) -> PolicySchema:

@@ -134,7 +134,8 @@ def test_bridge_leaves_a_chunk_on_its_own_timeline_or_one_the_robot_is_at() -> N
     assert Bridge().on_chunk(timed, _at([0.0])) is timed
     near = _chunk([[0.5], [1.0]], dt_ms=10.0)
     assert Bridge().on_chunk(near, _at([0.0])) is near
-    assert Bridge(always_anchor=True).on_chunk(near, _at([0.0])).steps[0] == [0.0]
+    # anchored, the robot's position is held before even a near first step
+    assert Bridge(always_anchor=True).on_chunk(near, _at([0.0])).steps == [[0.0], [0.5], [1.0]]
 
 
 def test_a_bridged_chunk_dated_by_its_observation_is_dated_at_the_send_instead() -> None:

@@ -113,20 +113,6 @@ def test_ramp_interpolation_steps_must_be_at_least_two():
 # ---------------------------------------------------------------------------
 
 
-def test_bridge_uses_policy_spacing_and_ends_at_first_joint_waypoint():
-    bridge = bridge_steps([0.0, 0.0], [[3.0, 0.0], [4.0, 0.0], [5.0, 0.0]])
-    assert bridge == [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]]
-
-
-def test_bridge_is_omitted_when_first_waypoint_is_within_normal_spacing():
-    assert bridge_steps([0.0, 0.0], [[0.5, 0.0], [1.5, 0.0]]) == []
-
-
-def test_always_anchored_bridge_holds_current_state_before_a_near_waypoint():
-    bridge = bridge_steps([0.0, 0.0], [[0.5, 0.0], [1.5, 0.0]], always_anchor=True)
-    assert bridge == [[0.0, 0.0], [0.5, 0.0]]
-
-
 def test_bridge_supports_tcp_translation_without_mixing_rotation_units():
     bridge = bridge_steps(
         [0.0] * 6,

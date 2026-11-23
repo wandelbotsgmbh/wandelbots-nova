@@ -5,7 +5,6 @@ from __future__ import annotations
 from itertools import pairwise
 import math
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -13,6 +12,7 @@ from novapolicy.jogging.modules import TimestepTimeline
 from novapolicy.policy_client import PolicyClient
 from novapolicy.queued_client import QueuedPolicyClient
 from novapolicy.schema import Action, Observation, PolicySchema
+from novapolicy.tests.doubles import mg as _mg
 from novapolicy.types import ActionChunk
 
 DT = 1000.0 / 30.0
@@ -27,14 +27,6 @@ class _Chunks(PolicyClient):
 
     async def get_actions(self, states, schema, images=None, io_values=None) -> ActionChunk:
         return self.chunks.pop(0)
-
-
-def _mg() -> MagicMock:
-    mg = MagicMock()
-    mg.id = "0@ur10e"
-    mg._controller_id = "ur10e"
-    mg._cell = "cell"
-    return mg
 
 
 def _setup(chunks: list[list[list[float]]], **kwargs: object):

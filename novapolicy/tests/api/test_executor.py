@@ -37,6 +37,7 @@ from novapolicy.ops import Rad2Deg
 from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
 from novapolicy.queued_client import QueuedPolicyClient
 from novapolicy.schema import Action, Observation, ObservationEntry, PolicySchema
+from novapolicy.tests.doubles import fake_session as _fake_session, mg as _mg
 from novapolicy.types import (
     ActionChunk,
     ActionMode,
@@ -61,15 +62,6 @@ MG_ID = "0@ur10e"
 # ---------------------------------------------------------------------------
 # Test doubles: a single-arm schema and a fake robot transport.
 # ---------------------------------------------------------------------------
-
-
-def _mg(mg_id: str = MG_ID) -> MagicMock:
-    mg = MagicMock()
-    mg.id = mg_id
-    mg._controller_id = mg_id.split("@")[1]
-    mg._cell = "cell"
-    mg._api_client = MagicMock(close=AsyncMock())
-    return mg
 
 
 def _schema(mode: ActionMode = "absolute") -> PolicySchema:
@@ -152,60 +144,6 @@ class _SlowSetupPolicy(PolicyClient):
         pass
 
 
-def _fake_session() -> MagicMock:
-    """A stand-in for a live WaypointJoggingSession (the robot transport)."""
-    session = MagicMock()
-    session.motion_group = MagicMock()
-    session.motion_group_id = MG_ID
-    session.has_failed = False
-    session.failure_reason = ""
-    session.failure_exception = None
-    session.stop_condition_triggered = None
-    session.session_elapsed_ms = 0
-    session.is_running = False
-    session.jogging_state = None
-    # Explicit, not left to auto-attribute: a bare MagicMock attribute is
-    # truthy, which would silently satisfy the settle check's standstill term
-    # and stop these tests exercising it at all.
-    session.is_at_standstill = False
-    session.standstill_ms = 0.0
-    session.queued_chunk_count = 0
-    session.queued_chunk = None  # no Bridge module in front
-    session.executing_action_timestep = -1
-    session.scheduled_chunk_count = 0
-    session.scheduled_until_server_ms = 0
-    session.scheduled_waypoint_timestamps = ()
-    session.last_server_timestamp_ms = 0
-
-    def scheduled_timestamp_for_step(step: int) -> int | None:
-        """Mirror the real session: caller step index -> absolute timestamp.
-
-        Nothing is trimmed in these tests, so the caller's steps and the sent
-        waypoints are the same list.
-        """
-        timestamps = session.scheduled_waypoint_timestamps
-        if 0 <= step < len(timestamps):
-            return timestamps[step]
-        return None
-
-    session.scheduled_timestamp_for_step = MagicMock(side_effect=scheduled_timestamp_for_step)
-    session.start = AsyncMock()
-    session.stop = AsyncMock()
-    session.drain = AsyncMock(return_value=True)
-    session.wait_ready = AsyncMock()
-    session.write_ios = AsyncMock()
-
-    def update_chunk(*_args: object, **_kwargs: object) -> None:
-        session.queued_chunk_count += 1
-
-    session.update_chunk = MagicMock(side_effect=update_chunk)
-    state = MagicMock()
-    state.joints = (0.0,) * 6
-    state.pose = state.tcp = None
-    session.current_state = state
-    return session
-
-
 def _unsmoothed_queue_defaults() -> list[object]:
     """A timestep queue's continuous default pipeline without smoothing."""
 
@@ -277,6 +215,18 @@ def _disable_rerun() -> Iterator[None]:
         yield
 
 
+@contextlib.contextmanager
+def _patched_robot(**session_class: object) -> Iterator[MagicMock]:
+    """Patch the executor's robot transport (configured by ``session_class``) and e-stop
+    monitor; yields the e-stop monitor."""
+    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
+    with (
+        patch("novapolicy.executor.WaypointJoggingSession", **session_class),
+        patch("novapolicy.executor.EstopMonitor", return_value=estop),
+    ):
+        yield estop
+
+
 @pytest.fixture
 def robot() -> Iterator[_Robot]:
     """Patch the executor's robot transport and e-stop monitor for the test.
@@ -286,12 +236,32 @@ def robot() -> Iterator[_Robot]:
     ``has_failed``) or ``robot.estop.error`` before calling ``run()``.
     """
     session = _fake_session()
-    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
-    with (
-        patch("novapolicy.executor.WaypointJoggingSession", return_value=session),
-        patch("novapolicy.executor.EstopMonitor", return_value=estop),
-    ):
+    with _patched_robot(return_value=session) as estop:
         yield _Robot(session=session, estop=estop)
+
+
+async def _send_once(
+    robot: _Robot,
+    chunk: ActionChunk,
+    *,
+    schema: PolicySchema | None = None,
+    requires_bridge: bool = False,
+    delay_s: float = 0.0,
+    **kwargs: Any,
+) -> tuple[PolicyExecutor, dict[str, Any]]:
+    """Run until the policy (answering ``chunk`` once, after ``delay_s``) is sent; returns the
+    executor and the keyword arguments of its first ``update_chunk``."""
+    executor: PolicyExecutor
+
+    async def policy(_obs: object) -> ActionChunk:
+        await asyncio.sleep(delay_s)
+        executor.stop()
+        return chunk
+
+    client = _TestPolicy(policy, requires_bridge=True) if requires_bridge else _callback(policy)
+    executor = PolicyExecutor(schema or _schema(), client, **{"timeout_s": 1.0, **kwargs})
+    await executor.run()
+    return executor, robot.session.update_chunk.call_args_list[0].kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -381,46 +351,29 @@ async def test_sequential_mode_waits_out_the_braking_ramp_after_the_deadline(rob
     assert inference_count() == 2
 
 
+@pytest.mark.parametrize(
+    ("jogging_state", "at_standstill"),
+    [("RUNNING", True), ("PAUSED_BY_USER", False)],
+    ids=["standstill_while_only_running", "server_reported_pause"],
+)
 @pytest.mark.asyncio
-async def test_sequential_mode_settles_while_the_state_stream_only_reports_running(
-    robot: _Robot,
+async def test_sequential_mode_settles_on_a_standstill_or_a_server_reported_pause(
+    robot: _Robot, jogging_state: str, at_standstill: bool
 ):
-    """A jogger that never leaves RUNNING must not stall sequential execution.
+    """A jogger that never leaves RUNNING must not stall sequential execution, and a
+    server-reported ``PAUSED_BY_USER`` still ends the wait on its own.
 
-    Regression test for NOVA 26.6. ``PAUSED_BY_USER`` is now reported only in
-    response to a Pause/Stop request, which this executor never sends, so a
-    drained waypoint queue reports ``RUNNING`` forever. Requiring that state
-    made every episode execute exactly one chunk and then hang until the
-    timeout.
+    Regression test for NOVA 26.6: ``PAUSED_BY_USER`` is reported only in response to a
+    Pause/Stop request, which this executor never sends, so a drained queue reports
+    ``RUNNING`` forever; requiring that state hung every episode after one chunk.
     """
     run_task, second_inference, inference_count = await _sequential_second_inference(robot)
 
     robot.session.scheduled_chunk_count = 1
     robot.session.scheduled_until_server_ms = 100
     robot.session.last_server_timestamp_ms = 100
-    robot.session.jogging_state = "RUNNING"  # and it never becomes anything else
-    robot.session.is_at_standstill = True
-
-    await asyncio.wait_for(second_inference.wait(), timeout=0.5)
-    _ = await run_task
-    assert inference_count() == 2
-
-
-@pytest.mark.asyncio
-async def test_sequential_mode_still_accepts_a_server_reported_pause(robot: _Robot):
-    """``PAUSED_BY_USER`` remains a valid settle signal on its own.
-
-    The standstill measurement replaced this state as the *primary* signal, but
-    a server that does report it has genuinely brought the robot to rest, and
-    that must keep ending the wait.
-    """
-    run_task, second_inference, inference_count = await _sequential_second_inference(robot)
-
-    robot.session.scheduled_chunk_count = 1
-    robot.session.scheduled_until_server_ms = 100
-    robot.session.last_server_timestamp_ms = 100
-    robot.session.is_at_standstill = False
-    robot.session.jogging_state = "PAUSED_BY_USER"
+    robot.session.jogging_state = jogging_state
+    robot.session.is_at_standstill = at_standstill
 
     await asyncio.wait_for(second_inference.wait(), timeout=0.5)
     _ = await run_task
@@ -472,30 +425,6 @@ async def test_bridge_and_policy_are_sent_as_one_continuous_chunk(robot: _Robot)
     assert [s[0] for s in bridged.steps[: bridged.start_step + 1]] == [0.0, 1.0, 2.0, 3.0]
 
 
-@pytest.mark.asyncio
-async def test_continuous_mode_does_not_bridge_chunks(robot: _Robot):
-    """Non-negative policy rates replace chunks directly without a settled bridge."""
-    executor: PolicyExecutor
-
-    async def policy(_obs: object) -> ActionChunk:
-        executor.stop()
-        return ActionChunk(
-            joints={MG_ID: [[3.0] * 6, [4.0] * 6, [5.0] * 6]},
-            dt_ms=10.0,
-        )
-
-    executor = PolicyExecutor(
-        _schema(),
-        _callback(policy),
-        timeout_s=1.0,
-        execution=ContinuousExecution(),
-    )
-    await executor.run()
-
-    first_send = robot.session.update_chunk.call_args_list[0].kwargs
-    assert first_send["steps"] == [[3.0] * 6, [4.0] * 6, [5.0] * 6]
-
-
 @pytest.mark.parametrize(
     ("steps", "hold"),
     [
@@ -507,20 +436,12 @@ async def test_continuous_mode_does_not_bridge_chunks(robot: _Robot):
 async def test_continuous_chunks_are_dated_by_their_observation(
     robot: _Robot, steps: list[list[float]], hold: bool
 ):
-    executor: PolicyExecutor
-
-    async def policy(_obs: object) -> ActionChunk:
-        executor.stop()
-        return ActionChunk(joints={MG_ID: steps}, dt_ms=1000 / 30)
-
     robot.session.current_state_server_ms = 1_000  # when the state was measured
     robot.session.estimated_server_timestamp_ms = 1_006  # server clock at observation
-    executor = PolicyExecutor(
-        _schema(), _callback(policy), timeout_s=1.0, execution=ContinuousExecution()
-    )
-    await executor.run()
+    chunk = ActionChunk(joints={MG_ID: steps}, dt_ms=1000 / 30)
+    _, first_send = await _send_once(robot, chunk, execution=ContinuousExecution())
 
-    first_send = robot.session.update_chunk.call_args_list[0].kwargs
+    assert first_send["steps"] == steps  # handed over as is: the session bridges, if anything
     assert first_send["lead"] is True
     assert first_send["extend_buffer"] is hold
     # One step: the state's own timestamp. A chunk: the clock estimate at observation time.
@@ -530,26 +451,13 @@ async def test_continuous_chunks_are_dated_by_their_observation(
 @pytest.mark.asyncio
 async def test_continuous_async_queue_policy_requests_a_measured_state_bridge(robot: _Robot):
     """Async ACT lookahead connects to the robot even though its executor rate is continuous."""
-    executor: PolicyExecutor
-
-    async def get_actions(_obs: object) -> ActionChunk:
-        executor.stop()
-        return ActionChunk(
-            joints={MG_ID: [[0.5] * 6, [1.5] * 6, [2.5] * 6]},
-            dt_ms=10.0,
-        )
-
-    policy = _TestPolicy(get_actions, requires_bridge=True)
-    executor = PolicyExecutor(
-        _schema(),
-        policy,
-        timeout_s=1.0,
+    executor, first_send = await _send_once(
+        robot,
+        ActionChunk(joints={MG_ID: [[0.5] * 6, [1.5] * 6, [2.5] * 6]}, dt_ms=10.0),
+        requires_bridge=True,
         execution=ContinuousExecution(rate_hz=20),
         pipeline=_unsmoothed_queue_defaults(),
     )
-    await executor.run()
-
-    first_send = robot.session.update_chunk.call_args_list[0].kwargs
     assert first_send["steps"] == [[0.5] * 6, [1.5] * 6, [2.5] * 6]
     # The session's Bridge puts a measured-state hold in front.
     assert _after_chunk_modules(executor, first_send).steps[:4] == [
@@ -662,7 +570,6 @@ async def test_a_bridged_chunk_hands_its_io_and_computed_action_to_the_policys_f
 ):
     """The session runs the side effects when policy waypoint zero is due, behind the bridge."""
     computed_fired = asyncio.Event()
-    executor: PolicyExecutor
 
     async def computed(_chunk: ActionChunk) -> None:
         computed_fired.set()
@@ -671,23 +578,17 @@ async def test_a_bridged_chunk_hands_its_io_and_computed_action_to_the_policys_f
         observations=[Observation.joint_positions("arm", source=_mg())],
         actions=[Action.computed(computed)],
     )
-
-    async def policy(_obs: object) -> ActionChunk:
-        executor.stop()
-        return ActionChunk(
-            joints={MG_ID: [[3.0] * 6, [4.0] * 6, [5.0] * 6]},
-            ios={MG_ID: {"digital_out[0]": True}},
-            dt_ms=10.0,
-        )
-
-    executor = PolicyExecutor(schema, _callback(policy), timeout_s=1.0)
-    await executor.run()
+    chunk = ActionChunk(
+        joints={MG_ID: [[3.0] * 6, [4.0] * 6, [5.0] * 6]},
+        ios={MG_ID: {"digital_out[0]": True}},
+        dt_ms=10.0,
+    )
+    executor, first_send = await _send_once(robot, chunk, schema=schema)
 
     robot.session.write_ios.assert_not_awaited()  # not at send
     assert not computed_fired.is_set()
     # The executor hands the IO to the policy's first step; the session's Bridge puts
     # [current, 1, 2] in front (index 3) and its EndpointRamp moves it with its step (to 5).
-    first_send = robot.session.update_chunk.call_args_list[0].kwargs
     step, run = first_send["when_due"]
     assert step == 0
     queued = _after_chunk_modules(executor, first_send)
@@ -787,73 +688,44 @@ async def test_policy_prepare_time_does_not_count_towards_execution_timeout(robo
 # ---------------------------------------------------------------------------
 
 
+def joints_out_of_bounds(ctx: StopContext) -> bool:
+    return bool(ctx.target_joints) and any(j > 5.0 for step in ctx.target_joints for j in step)
+
+
+def forbids_output_7(ctx: StopContext) -> bool:
+    return bool(ctx.target_ios and ctx.target_ios.get("digital_out[7]"))
+
+
+@pytest.mark.parametrize(
+    ("chunk", "condition"),
+    [
+        (ActionChunk(joints={MG_ID: [[9.0] * 6]}), joints_out_of_bounds),
+        (
+            ActionChunk(joints={MG_ID: [[0.1] * 6]}, ios={MG_ID: {"digital_out[7]": True}}),
+            forbids_output_7,
+        ),
+        (ActionChunk(ios={MG_ID: {"digital_out[7]": True}}), forbids_output_7),  # IO-only tick
+    ],
+    ids=["commanded_joints", "io_write", "io_only_chunk"],
+)
 @pytest.mark.asyncio
-async def test_a_stop_condition_halts_the_run_before_any_motion_is_sent(robot: _Robot):
-    """A condition that vetoes the commanded joints stops without moving."""
+async def test_a_stop_condition_vetoes_a_chunk_before_anything_is_sent(
+    robot: _Robot, chunk: ActionChunk, condition: Callable[[StopContext], bool]
+):
+    """A condition that inspects the commanded joints or the intended IO (also of an IO-only
+    queue tick) stops the run before any motion is streamed or any output is set."""
 
-    async def reach_far(_obs: object) -> ActionChunk:
-        return ActionChunk(joints={MG_ID: [[9.0] * 6]})
-
-    def joints_out_of_bounds(ctx: StopContext) -> bool:
-        return bool(ctx.target_joints) and any(j > 5.0 for step in ctx.target_joints for j in step)
+    async def policy(_obs: object) -> ActionChunk:
+        return chunk
 
     executor = PolicyExecutor(
-        _schema(),
-        _callback(reach_far),
-        motion=WaypointConfig(),
-        timeout_s=5.0,
-        stop_conditions=[joints_out_of_bounds],
+        _schema(), _callback(policy), timeout_s=5.0, stop_conditions=[condition]
     )
     result = await executor.run()
 
-    assert result.reason == "stop condition: joints_out_of_bounds"
+    assert result.reason == f"stop condition: {condition.__name__}"
     robot.session.update_chunk.assert_not_called()  # nothing was streamed to the robot
-
-
-@pytest.mark.asyncio
-async def test_a_stop_condition_can_veto_an_io_write_before_it_fires(robot: _Robot):
-    """A condition that inspects the intended IO stops before the output is set."""
-
-    async def set_forbidden_output(_obs: object) -> ActionChunk:
-        return ActionChunk(joints={MG_ID: [[0.1] * 6]}, ios={MG_ID: {"digital_out[7]": True}})
-
-    def forbids_output_7(ctx: StopContext) -> bool:
-        return bool(ctx.target_ios and ctx.target_ios.get("digital_out[7]"))
-
-    executor = PolicyExecutor(
-        _schema(),
-        _callback(set_forbidden_output),
-        motion=WaypointConfig(),
-        timeout_s=5.0,
-        stop_conditions=[forbids_output_7],
-    )
-    result = await executor.run()
-
-    assert result.reason == "stop condition: forbids_output_7"
     robot.session.write_ios.assert_not_awaited()  # IO never written
-
-
-@pytest.mark.asyncio
-async def test_a_stop_condition_can_veto_an_io_only_chunk(robot: _Robot):
-    """IO-only queue ticks receive the same pre-send guard checks as motion chunks."""
-
-    async def set_forbidden_output(_obs: object) -> ActionChunk:
-        return ActionChunk(ios={MG_ID: {"digital_out[7]": True}})
-
-    def forbids_output_7(ctx: StopContext) -> bool:
-        return bool(ctx.target_ios and ctx.target_ios.get("digital_out[7]"))
-
-    executor = PolicyExecutor(
-        _schema(),
-        _callback(set_forbidden_output),
-        timeout_s=5.0,
-        stop_conditions=[forbids_output_7],
-    )
-    result = await executor.run()
-
-    assert result.reason == "stop condition: forbids_output_7"
-    robot.session.update_chunk.assert_not_called()
-    robot.session.write_ios.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -878,33 +750,26 @@ async def test_a_stop_condition_fired_mid_run_ends_the_run_and_names_itself(robo
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    ("source", "error"),
+    [
+        ("session", MotionError(MG_ID, "joint_limit")),  # self-collision / joint limit
+        ("estop", EmergencyStopError(MG_ID, "protective_stop")),  # seen by the e-stop monitor
+        ("session", RuntimeError("jogging connection lost")),
+    ],
+    ids=["joint_limit", "protective_stop", "lost_connection"],
+)
 @pytest.mark.asyncio
-async def test_a_joint_limit_raises_motion_error(robot: _Robot):
-    """A self-collision / joint-limit fault surfaces as MotionError out of run()."""
-    robot.session.has_failed = True
-    robot.session.failure_exception = MotionError(MG_ID, "joint_limit")
+async def test_a_fault_raises_out_of_run(robot: _Robot, source: str, error: Exception):
+    if source == "estop":
+        robot.estop.error = error
+    else:
+        robot.session.has_failed = True
+        robot.session.failure_exception = error
     executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=5.0)
-    with pytest.raises(MotionError):
+    with pytest.raises(type(error)) as raised:
         await executor.run()
-
-
-@pytest.mark.asyncio
-async def test_a_protective_stop_raises_emergency_stop_error(robot: _Robot):
-    """An e-stop / protective stop detected by the monitor raises out of run()."""
-    robot.estop.error = EmergencyStopError(MG_ID, "protective_stop")
-    executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=5.0)
-    with pytest.raises(EmergencyStopError):
-        await executor.run()
-
-
-@pytest.mark.asyncio
-async def test_a_lost_connection_raises_runtime_error(robot: _Robot):
-    """A dropped jogging connection surfaces as RuntimeError out of run()."""
-    robot.session.has_failed = True
-    robot.session.failure_exception = RuntimeError("jogging connection lost")
-    executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=5.0)
-    with pytest.raises(RuntimeError, match="connection lost"):
-        await executor.run()
+    assert raised.value is error
 
 
 # ---------------------------------------------------------------------------
@@ -946,11 +811,7 @@ async def test_send_routes_joint_and_tcp_targets_to_their_own_sessions():
         sessions[motion_group.id] = s  # type: ignore[attr-defined]
         return s
 
-    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
-    with (
-        patch("novapolicy.executor.WaypointJoggingSession", side_effect=make_session),
-        patch("novapolicy.executor.EstopMonitor", return_value=estop),
-    ):
+    with _patched_robot(side_effect=make_session):
         await PolicyExecutor(schema, _callback(mixed_policy), timeout_s=0.05).run()
 
     # Joint arm: joint mode, six joint radians, routed via the joints branch.
@@ -984,11 +845,7 @@ async def test_a_resolved_chunk_is_sent_without_resolving_it_again():
     session.current_state.pose = SimpleNamespace(
         position=[400.0, 200.0, 300.0], orientation=[0.0, 3.14, 0.0]
     )
-    estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
-    with (
-        patch("novapolicy.executor.WaypointJoggingSession", return_value=session),
-        patch("novapolicy.executor.EstopMonitor", return_value=estop),
-    ):
+    with _patched_robot(return_value=session):
         await PolicyExecutor(schema, _callback(resolved_policy), timeout_s=0.05).run()
     assert session.update_chunk.call_args.kwargs["steps"][-1] == target
 
@@ -1050,20 +907,11 @@ def test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejecte
 @pytest.mark.asyncio
 async def test_a_chunk_with_its_own_timestamp_is_not_bridged(robot: _Robot):
     """A bridge would rebuild the chunk without the policy's timestamp; it keeps it instead."""
-    executor: PolicyExecutor
-
-    async def policy(_obs: object) -> ActionChunk:
-        executor.stop()
-        return ActionChunk(
-            joints={MG_ID: [[3.0] * 6, [3.1] * 6]}, dt_ms=1000 / 30, first_timestamp_ms=5_000
-        )
-
-    executor = PolicyExecutor(
-        _schema(), _callback(policy), timeout_s=1.0, execution=SequentialExecution()
+    chunk = ActionChunk(
+        joints={MG_ID: [[3.0] * 6, [3.1] * 6]}, dt_ms=1000 / 30, first_timestamp_ms=5_000
     )
-    await executor.run()
+    _, first_send = await _send_once(robot, chunk, execution=SequentialExecution())
 
-    first_send = robot.session.update_chunk.call_args_list[0].kwargs
     assert first_send["first_timestamp_ms"] == 5_000
     assert first_send["steps"][0] == [3.0] * 6
 
@@ -1071,21 +919,13 @@ async def test_a_chunk_with_its_own_timestamp_is_not_bridged(robot: _Robot):
 @pytest.mark.asyncio
 async def test_io_of_a_continuous_chunk_goes_with_its_first_step(robot: _Robot):
     """The motion runs one lead after the send; the chunk's IO goes with step 0, not the send."""
-    executor: PolicyExecutor
-
-    async def policy(_obs: object) -> ActionChunk:
-        executor.stop()
-        return ActionChunk(
-            joints={MG_ID: [[0.0] * 6] * 4}, dt_ms=1000 / 30, ios={MG_ID: {"digital_out[0]": True}}
-        )
-
-    executor = PolicyExecutor(
-        _schema(), _callback(policy), timeout_s=1.0, execution=ContinuousExecution()
+    chunk = ActionChunk(
+        joints={MG_ID: [[0.0] * 6] * 4}, dt_ms=1000 / 30, ios={MG_ID: {"digital_out[0]": True}}
     )
-    await executor.run()
+    _, first_send = await _send_once(robot, chunk, execution=ContinuousExecution())
 
     robot.session.write_ios.assert_not_awaited()
-    step, run = robot.session.update_chunk.call_args_list[0].kwargs["when_due"]
+    step, run = first_send["when_due"]
     assert step == 0
     await run()
     robot.session.write_ios.assert_awaited_once_with({"digital_out[0]": True})
@@ -1171,20 +1011,15 @@ async def test_setup_objects_are_frozen_only_while_the_loop_runs(robot: _Robot):
 async def test_a_sequential_chunk_is_dated_from_its_send_and_keeps_its_hold(robot: _Robot):
     """The robot was at rest when observed, so inference time cannot cost a sequential chunk
     any steps: it is due one lead after the send, padded with a hold as before."""
-    executor: PolicyExecutor
-
-    async def slow_policy(_obs: object) -> ActionChunk:
-        await asyncio.sleep(0.3)  # longer than the 100 ms lead plus the chunk
-        executor.stop()
-        return ActionChunk(joints={MG_ID: [[0.0] * 6]}, dt_ms=1000 / 30)
-
     robot.session.current_state_server_ms = 1_000
-    executor = PolicyExecutor(
-        _schema(), _callback(slow_policy), timeout_s=2.0, execution=SequentialExecution()
+    _, first_send = await _send_once(
+        robot,
+        ActionChunk(joints={MG_ID: [[0.0] * 6]}, dt_ms=1000 / 30),
+        delay_s=0.3,  # longer than the 100 ms lead plus the chunk
+        timeout_s=2.0,
+        execution=SequentialExecution(),
     )
-    await executor.run()
 
-    first_send = robot.session.update_chunk.call_args_list[0].kwargs
     assert first_send["lead"] is True
     assert first_send["observed_at_ms"] is None  # the send is the reference
     assert first_send["extend_buffer"] is True
@@ -1230,30 +1065,24 @@ async def test_the_policys_declared_horizon_is_used_when_none_is_given(robot: _R
     assert len(steps) == 2
 
 
+@pytest.mark.parametrize(
+    ("declared", "kwargs", "sent"),
+    [
+        # 0 means 'all steps' and overrides a declared horizon: the continuous asynchronous-queue
+        # setup passes it deliberately, and deriving over it would start trimming that path.
+        (2, {"n_action_steps": 0}, 4),
+        (2, {"n_action_steps": 3}, 3),  # an explicit horizon overrides the policy's
+        (None, {}, 4),  # a policy declaring none executes every step
+    ],
+    ids=["explicit_zero", "explicit_horizon", "none_declared"],
+)
 @pytest.mark.asyncio
-async def test_an_explicit_zero_keeps_the_full_horizon(robot: _Robot):
-    """`n_action_steps=0` means 'all steps' and must override a declared horizon.
+async def test_an_explicit_horizon_wins_and_none_executes_every_step(
+    robot: _Robot, declared: int | None, kwargs: dict[str, int], sent: int
+):
+    steps = await _first_sent_steps(_HorizonPolicy(declared), robot, **kwargs)
 
-    The continuous asynchronous-queue setup passes 0 deliberately; deriving
-    over it would silently start trimming that path.
-    """
-    steps = await _first_sent_steps(_HorizonPolicy(2), robot, n_action_steps=0)
-
-    assert len(steps) == 4
-
-
-@pytest.mark.asyncio
-async def test_an_explicit_horizon_overrides_the_policys(robot: _Robot):
-    steps = await _first_sent_steps(_HorizonPolicy(2), robot, n_action_steps=3)
-
-    assert len(steps) == 3
-
-
-@pytest.mark.asyncio
-async def test_a_policy_declaring_no_horizon_executes_every_step(robot: _Robot):
-    steps = await _first_sent_steps(_HorizonPolicy(None), robot)
-
-    assert len(steps) == 4
+    assert len(steps) == sent
 
 
 # ---------------------------------------------------------------------------

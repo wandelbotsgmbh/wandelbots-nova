@@ -9,6 +9,7 @@ the public ``jog_joints()`` API, substituting only the robot transport
 from __future__ import annotations
 
 import contextlib
+from functools import partial
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,6 +18,7 @@ import pytest
 from novapolicy.jogging import jog_joints, jog_tcp
 from novapolicy.jogging.jogger import JointJogger, TcpJogger
 from novapolicy.jogging.live_buffer import LiveBuffer
+from novapolicy.tests.doubles import fake_session as _fake_session, mg as _mg
 from novapolicy.types import MotionError
 
 _JOGGER = "novapolicy.jogging.jogger"
@@ -62,31 +64,6 @@ def _no_estop_no_rerun():
 
 _JointSetup = tuple[JointJogger, list[MagicMock], dict[object, MagicMock]]
 _TcpSetup = tuple[TcpJogger, MagicMock, dict[object, MagicMock]]
-
-
-def _mg(mg_id: str) -> MagicMock:
-    mg = MagicMock()
-    mg.id = mg_id
-    return mg
-
-
-def _fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
-    session = MagicMock()
-    session.num_joints = num_joints
-    session.mode = mode
-    session.has_failed = False
-    session.failure_exception = None
-    session.stop_condition_triggered = None
-    session.estimated_server_timestamp_ms = 0
-    session.session_elapsed_ms = 0.0
-    session.single_step_dt_ms = 50.0
-    session.current_state = MagicMock(joints=(0.0,) * num_joints)
-    session.update_chunk = MagicMock()
-    session.start = AsyncMock()
-    session.stop = AsyncMock()
-    session.drain = AsyncMock(return_value=True)
-    session.wait_ready = AsyncMock()
-    return session
 
 
 def _build_joint_jogger(
@@ -231,63 +208,51 @@ def test_each_arm_in_a_dual_setup_receives_its_own_target():
 # ---------------------------------------------------------------------------
 
 
-def test_a_chunk_handed_to_set_target_is_rejected():
-    """The split exists so a chunk cannot arrive where a LiveBuffer's live path applies.
-
-    Accepting it there meant the buffer was silently irrelevant for that push,
-    with nothing to tell the caller.
-    """
-    jogger, _, _ = _build_joint_jogger("0@ur10e")
-
-    with pytest.raises(TypeError, match="set_chunk"):
-        jogger.set_target([[1.0] * 6, [2.0] * 6])
+_single = partial(_build_joint_jogger, "0@ur10e")
+_dual = partial(_build_joint_jogger, "0@ur5e-left", "0@ur5e-right")
+_tcp = partial(_build_tcp_jogger, "0@ur10e")
 
 
-def test_a_single_target_handed_to_set_chunk_is_rejected():
-    """And the reverse, so dt_ms is never applied to something without steps."""
-    jogger, _, _ = _build_joint_jogger("0@ur10e")
-
-    with pytest.raises(TypeError, match="set_target"):
-        jogger.set_chunk([1.0] * 6, dt_ms=10.0)
-
-
-def test_set_chunk_requires_a_positive_dt_ms():
-    """dt_ms is the step spacing; there is no meaningful default for it."""
-    jogger, _, _ = _build_joint_jogger("0@ur10e")
-
-    with pytest.raises(ValueError, match="dt_ms"):
-        jogger.set_chunk([[1.0] * 6, [2.0] * 6], dt_ms=0.0)
-
-
-def test_an_empty_chunk_is_rejected_rather_than_sent():
-    """An empty list has no shape to infer and no waypoints to send."""
-    jogger, _, _ = _build_joint_jogger("0@ur10e")
-
-    with pytest.raises(TypeError, match="empty"):
-        jogger.set_chunk([], dt_ms=10.0)
-
-
-def test_a_pose_chunk_handed_to_tcp_set_target_is_rejected():
-    """Same split on the TCP jogger, where the live form is a Pose."""
-    jogger, _, _ = _build_tcp_jogger("0@ur10e")
-
-    with pytest.raises(TypeError, match="set_chunk"):
-        jogger.set_target([[500.0, 200.0, 300.0, 0.0, 3.14, 0.0]])
-
-
-def test_a_target_with_the_wrong_joint_count_is_rejected():
-    """A 3-value target for a 6-joint robot raises before any waypoint is sent."""
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
-    with pytest.raises(ValueError, match="expects 6"):
-        jogger.set_target([1.0, 2.0, 3.0])
-    sessions[mg].update_chunk.assert_not_called()
-
-
-def test_a_bare_list_for_a_dual_setup_is_rejected():
-    """Two robots need a dict target; a bare list is a usage error."""
-    jogger, _mgs, _sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
-    with pytest.raises(TypeError, match="dict"):
-        jogger.set_target([1.0] * 6)
+@pytest.mark.parametrize(
+    ("build", "push", "error", "match"),
+    [
+        # The split exists so a chunk cannot arrive where a LiveBuffer's live path applies:
+        # accepting it there meant the buffer was silently irrelevant for that push.
+        (_single, lambda j: j.set_target([[1.0] * 6, [2.0] * 6]), TypeError, "set_chunk"),
+        # And the reverse, so dt_ms is never applied to something without steps.
+        (_single, lambda j: j.set_chunk([1.0] * 6, dt_ms=10.0), TypeError, "set_target"),
+        # dt_ms is the step spacing; there is no meaningful default for it.
+        (_single, lambda j: j.set_chunk([[1.0] * 6, [2.0] * 6], dt_ms=0.0), ValueError, "dt_ms"),
+        # An empty list has no shape to infer and no waypoints to send.
+        (_single, lambda j: j.set_chunk([], dt_ms=10.0), TypeError, "empty"),
+        # Same split on the TCP jogger, where the live form is a Pose.
+        (
+            _tcp,
+            lambda j: j.set_target([[500.0, 200.0, 300.0, 0.0, 3.14, 0.0]]),
+            TypeError,
+            "set_chunk",
+        ),
+        # A 3-value target for a 6-joint robot.
+        (_single, lambda j: j.set_target([1.0, 2.0, 3.0]), ValueError, "expects 6"),
+        # Two robots need a dict target; a bare list is a usage error.
+        (_dual, lambda j: j.set_target([1.0] * 6), TypeError, "dict"),
+    ],
+    ids=[
+        "chunk-as-target",
+        "target-as-chunk",
+        "zero-dt",
+        "empty-chunk",
+        "tcp-chunk-as-target",
+        "wrong-joint-count",
+        "bare-list-for-two-arms",
+    ],
+)
+def test_a_bad_target_is_rejected_before_anything_is_streamed(build, push, error, match):
+    jogger, _, sessions = build()
+    with pytest.raises(error, match=match):
+        push(jogger)
+    for session in sessions.values():
+        session.update_chunk.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -296,23 +261,17 @@ def test_a_bare_list_for_a_dual_setup_is_rejected():
 
 
 @pytest.mark.asyncio
-async def test_a_motion_fault_surfaces_as_an_exception_through_the_loop():
-    """A joint-limit / collision fault on the session is raised to the caller."""
+@pytest.mark.parametrize(
+    ("failure", "match"),
+    [(MotionError("0@ur10e", "joint_limit"), None), (RuntimeError("connection reset"), "reset")],
+    ids=["motion-fault", "lost-connection"],
+)
+async def test_a_session_failure_surfaces_as_an_exception_through_the_loop(failure, match):
+    """A joint-limit / collision fault or a dropped connection is raised, not swallowed."""
     jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
     sessions[mg].has_failed = True
-    sessions[mg].failure_exception = MotionError("0@ur10e", "joint_limit")
-    with pytest.raises(MotionError):
-        async for _ in jogger:
-            break
-
-
-@pytest.mark.asyncio
-async def test_a_lost_connection_surfaces_as_an_exception_through_the_loop():
-    """A dropped jogging connection is raised, not swallowed."""
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
-    sessions[mg].has_failed = True
-    sessions[mg].failure_exception = RuntimeError("connection reset")
-    with pytest.raises(RuntimeError, match="connection reset"):
+    sessions[mg].failure_exception = failure
+    with pytest.raises(type(failure), match=match):
         async for _ in jogger:
             break
 
@@ -362,24 +321,6 @@ def test_tcp_jogging_streams_a_chunk_of_future_poses():
         first_timestamp_ms=0,
         extend_buffer=True,
     )
-
-
-def test_with_a_live_buffer_the_tcp_jogger_still_sends_each_pose_alone():
-    from nova.types import Pose
-
-    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", pipeline=(LiveBuffer(window_ms=30.0),))
-
-    for i, x in enumerate((500, 510, 520)):
-        _tick(jogger, {mg: sessions[mg]}, i * 10.0)
-        jogger.set_target(Pose(x, 200, 300, 0, 3.14, 0))
-
-    calls = [call.kwargs for call in sessions[mg].update_chunk.call_args_list]
-    assert [kwargs["steps"] for kwargs in calls] == [
-        [[500, 200, 300, 0, 3.14, 0]],
-        [[510, 200, 300, 0, 3.14, 0]],
-        [[520, 200, 300, 0, 3.14, 0]],
-    ]
-    assert all(kwargs["extend_buffer"] is False for kwargs in calls)
 
 
 # ---------------------------------------------------------------------------

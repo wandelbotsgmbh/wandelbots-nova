@@ -19,6 +19,7 @@ import pytest
 
 from nova import api
 from novapolicy.estop import EstopMonitor, check_estop, check_sessions
+from novapolicy.tests.doubles import mg as _mg
 from novapolicy.types import EmergencyStopError, MotionError
 
 _SafetyState = api.models.SafetyStateType
@@ -79,12 +80,6 @@ class _FakeStream:
 
     async def aclose(self) -> None:
         pass
-
-
-def _mg(controller_id: str = "ur10e") -> MagicMock:
-    mg = MagicMock()
-    mg.id = f"0@{controller_id}"
-    return mg
 
 
 def _patched_monitor(states: list[object]) -> EstopMonitor:

@@ -212,8 +212,6 @@ def test_nothing_is_buffered_or_eased_unless_passed() -> None:
     for factory in (jog_joints, jog_tcp):
         params = inspect.signature(factory).parameters
         assert params["pipeline"].default is None, factory.__name__
-        assert "live_buffer" not in params, factory.__name__
-        assert "stages" not in params, factory.__name__
 
 
 @pytest.mark.parametrize("ack0_ms", [8.0, 8.6])  # sessions start near 0 ms

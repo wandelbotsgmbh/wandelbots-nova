@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
+from nats.errors import NoRespondersError
 import numpy as np
 import pytest
 
@@ -24,20 +25,13 @@ from novapolicy.nats.protocol import (
     decode,
 )
 from novapolicy.schema import Action, Observation, PolicySchema
+from novapolicy.tests.doubles import mg as _mg
 from novapolicy.types import ActionChunk
 
 DOF = 6
 MG_ID = "0@ur10e"
 LEFT_ID, RIGHT_ID = "1@dualarm", "2@dualarm"
 HOME = [0.0, -1.571, 1.571, 0.0, 1.42, 3.142]
-
-
-def _mg(mg_id: str) -> MagicMock:
-    mg = MagicMock()
-    mg.id = mg_id
-    mg._controller_id = mg_id.split("@")[1]
-    mg._cell = "cell"
-    return mg
 
 
 class _FakeState:
@@ -288,54 +282,45 @@ def test_action_heads_disagreeing_on_dt_are_rejected() -> None:
 # -- guards ----------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_robot_dof_mismatch_fails_before_commanding_anything() -> None:
-    client = _client()
-    _stub_request(client, _reply(np.zeros((1, DOF), dtype=np.float32)))
-
-    with pytest.raises(PolicyProtocolError, match="7 axes but policy") as exc:
-        await client.get_actions({MG_ID: _FakeState((0.0,) * 7)}, _schema(_mg(MG_ID)))
-    assert exc.value.code == "dof_mismatch"
-
-
-@pytest.mark.asyncio
-async def test_declared_proprio_width_is_enforced() -> None:
-    """Catches a policy trained on a different proprio layout (e.g. no velocities)."""
+def _narrow_proprio() -> PolicyInfo:
+    """A policy trained on a different proprio layout (e.g. no velocities)."""
     info = _info()
     info.observations = [FieldSpec(name=PROPRIO_KEY, kind="state", shape=[2 * DOF])]
+    return info
+
+
+_AT_HOME = {MG_ID: _FakeState(tuple(HOME))}
+_ZEROS = np.zeros((1, DOF), dtype=np.float32)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("info", "reply", "states", "match", "code"),
+    [
+        (
+            None,
+            _reply(_ZEROS),
+            {MG_ID: _FakeState((0.0,) * 7)},
+            "7 axes but policy",
+            "dof_mismatch",
+        ),
+        (_narrow_proprio(), _reply(_ZEROS), _AT_HOME, "width mismatch", "obs_mismatch"),
+        (None, _reply(_ZEROS), {"0@other": _FakeState(tuple(HOME))}, "No robot state", None),
+        (None, _reply(_ZEROS, name="wrong_key"), _AT_HOME, "missing action 'joint_target'", None),
+        (None, _reply(np.zeros((1, 4), dtype=np.float32)), _AT_HOME, "4 values per step", None),
+    ],
+    ids=["robot-dof", "proprio-width", "missing-state", "missing-action", "reply-dof"],
+)
+async def test_a_mismatched_state_or_reply_fails_before_commanding_anything(
+    info, reply, states, match, code
+) -> None:
     client = _client(info)
-    _stub_request(client, _reply(np.zeros((1, DOF), dtype=np.float32)))
+    _stub_request(client, reply)
 
-    with pytest.raises(PolicyProtocolError, match="width mismatch") as exc:
-        await client.get_actions({MG_ID: _FakeState(tuple(HOME))}, _schema(_mg(MG_ID)))
-    assert exc.value.code == "obs_mismatch"
-
-
-@pytest.mark.asyncio
-async def test_missing_state_for_the_bound_motion_group_is_rejected() -> None:
-    client = _client()
-    _stub_request(client, _reply(np.zeros((1, DOF), dtype=np.float32)))
-
-    with pytest.raises(PolicyProtocolError, match="No robot state"):
-        await client.get_actions({"0@other": _FakeState(tuple(HOME))}, _schema(_mg(MG_ID)))
-
-
-@pytest.mark.asyncio
-async def test_reply_missing_the_declared_action_is_rejected() -> None:
-    client = _client()
-    _stub_request(client, _reply(np.zeros((1, DOF), dtype=np.float32), name="wrong_key"))
-
-    with pytest.raises(PolicyProtocolError, match="missing action 'joint_target'"):
-        await client.get_actions({MG_ID: _FakeState(tuple(HOME))}, _schema(_mg(MG_ID)))
-
-
-@pytest.mark.asyncio
-async def test_reply_with_the_wrong_dof_per_step_is_rejected() -> None:
-    client = _client()
-    _stub_request(client, _reply(np.zeros((1, 4), dtype=np.float32)))
-
-    with pytest.raises(PolicyProtocolError, match="4 values per step"):
-        await client.get_actions({MG_ID: _FakeState(tuple(HOME))}, _schema(_mg(MG_ID)))
+    with pytest.raises(PolicyProtocolError, match=match) as exc:
+        await client.get_actions(states, _schema(_mg(MG_ID)))
+    if code is not None:
+        assert exc.value.code == code
 
 
 def test_binding_more_motion_groups_than_declared_blocks_is_rejected() -> None:
@@ -347,38 +332,33 @@ def test_binding_more_motion_groups_than_declared_blocks_is_rejected() -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_subscriber_is_reported_as_such_not_as_a_raw_nats_error() -> None:
+@pytest.mark.parametrize(
+    ("error", "match", "code", "hint"),
+    [
+        (NoRespondersError, "Nothing is subscribed", "no_responders", "policy id"),
+        (TimeoutError, "did not answer in time", "timeout", ""),
+    ],
+    ids=["no-subscriber", "slow-policy"],
+)
+async def test_a_transport_error_is_reported_by_its_cause_not_as_a_raw_nats_error(
+    error, match, code, hint
+) -> None:
     """`NoRespondersError` is the common misconfiguration (service down, or a
     mismatched policy id / subject prefix) and NATS raises it *instantly* rather
     than timing out — so it needs its own branch, naming both things to check.
+    A slow but present policy is a timeout.
     """
-    from nats.errors import NoRespondersError
-
     client = _client()
 
-    async def no_responders(*_args, **_kwargs):
-        raise NoRespondersError
+    async def fail(*_args, **_kwargs):
+        raise error
 
-    client._nc = type("NC", (), {"request": staticmethod(no_responders)})()
+    client._nc = type("NC", (), {"request": staticmethod(fail)})()
 
-    with pytest.raises(PolicyProtocolError, match="Nothing is subscribed") as exc:
+    with pytest.raises(PolicyProtocolError, match=match) as exc:
         await client.get_actions({MG_ID: _FakeState(tuple(HOME))}, _schema(_mg(MG_ID)))
-    assert exc.value.code == "no_responders"
-    assert "policy id" in str(exc.value)
-
-
-@pytest.mark.asyncio
-async def test_a_slow_but_present_policy_is_reported_as_a_timeout() -> None:
-    client = _client()
-
-    async def too_slow(*_args, **_kwargs):
-        raise TimeoutError
-
-    client._nc = type("NC", (), {"request": staticmethod(too_slow)})()
-
-    with pytest.raises(PolicyProtocolError, match="did not answer in time") as exc:
-        await client.get_actions({MG_ID: _FakeState(tuple(HOME))}, _schema(_mg(MG_ID)))
-    assert exc.value.code == "timeout"
+    assert exc.value.code == code
+    assert hint in str(exc.value)
 
 
 def test_info_before_connect_is_a_clear_error() -> None:
@@ -412,46 +392,37 @@ async def test_validate_schema_rejects_joint_operators() -> None:
 
 
 @pytest.mark.asyncio
-async def test_validate_schema_rejects_the_wrong_number_of_joint_targets() -> None:
-    client = _client()  # single-block policy
-
-    with pytest.raises(ValueError, match="declares 1 joint action block"):
-        await client.validate_schema(_schema(_mg(MG_ID), _mg("0@other")))
-
-
-@pytest.mark.asyncio
-async def test_validate_schema_rejects_a_joint_target_bound_to_two_arms() -> None:
-    client = _client()
-    schema = PolicySchema(
-        observations=[Observation.joint_positions("both", source=[_mg(MG_ID), _mg("0@other")])]
-    )
-
-    with pytest.raises(ValueError, match="bind exactly one motion group"):
-        await client.validate_schema(schema)
-
-
-@pytest.mark.asyncio
-async def test_validate_schema_rejects_a_wrongly_bound_motion_group() -> None:
-    client = _client()
-
-    with pytest.raises(ValueError, match="Schema binds motion groups"):
-        await client.validate_schema(_schema(_mg("0@other")))
-
-
-@pytest.mark.asyncio
-async def test_validate_schema_refuses_observations_it_does_not_send() -> None:
-    client = _client()
-    mg = _mg(MG_ID)
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.joint_velocities("qd", source=mg),
-            Observation.pose("goal", Pose((500, 0, 300, 0, 0, 0))),
-        ]
-    )
-
-    with pytest.raises(ValueError, match=r"\['qd', 'goal'\] are not sent"):
-        await client.validate_schema(schema)
+@pytest.mark.parametrize(
+    ("schema", "match"),
+    [
+        (lambda: _schema(_mg(MG_ID), _mg("0@other")), "declares 1 joint action block"),
+        (
+            lambda: PolicySchema(
+                observations=[
+                    Observation.joint_positions("both", source=[_mg(MG_ID), _mg("0@other")])
+                ]
+            ),
+            "bind exactly one motion group",
+        ),
+        (lambda: _schema(_mg("0@other")), "Schema binds motion groups"),
+        (
+            lambda: PolicySchema(
+                observations=[
+                    Observation.joint_positions("arm", source=_mg(MG_ID)),
+                    Observation.joint_velocities("qd", source=_mg(MG_ID)),
+                    Observation.pose("goal", Pose((500, 0, 300, 0, 0, 0))),
+                ]
+            ),
+            r"\['qd', 'goal'\] are not sent",
+        ),
+    ],
+    ids=["two-joint-targets", "target-on-two-arms", "wrong-motion-group", "unsent-observations"],
+)
+async def test_validate_schema_rejects_what_a_single_block_policy_cannot_serve(
+    schema, match
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        await _client().validate_schema(schema())
 
 
 @pytest.mark.asyncio

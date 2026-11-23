@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import time
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
 from novapolicy.joint_velocities import JointVelocities
 from novapolicy.ops import Rad2Deg
 from novapolicy.schema import Observation, PolicySchema
+from novapolicy.tests.doubles import mg as _mg
 
 MG_ID = "0@ur10e"
 
@@ -30,12 +30,6 @@ class _FakeMeasured:
 
     def velocities(self, motion_group_id: str) -> tuple[float, ...] | None:
         return self.values if motion_group_id == MG_ID else None
-
-
-def _mg(mg_id: str = MG_ID) -> MagicMock:
-    mg = MagicMock()
-    mg.id = mg_id
-    return mg
 
 
 @pytest.mark.asyncio
