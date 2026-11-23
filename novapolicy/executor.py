@@ -330,7 +330,9 @@ class PolicyExecutor:
         ``session.stop`` cancels immediately, which is the point.
         """
         if self.status.phase is not Phase.ERROR:
-            await self._drain_sessions()
+            for session in self._sessions.values():
+                with contextlib.suppress(MotionError, EmergencyStopError, OSError, RuntimeError):
+                    await session.drain()
 
         # In parallel: each stop waits for its server to settle.
         results = await asyncio.gather(
@@ -433,7 +435,10 @@ class PolicyExecutor:
             for session in self._sessions.values():
                 await session.wait_ready()
             self.result = await self._execute()
-            self._log_completion()
+            if self._rerun is not None:
+                self._rerun.log_completion(
+                    self.result.reason, self.result.steps, self.result.duration_s
+                )
             self.status.phase = Phase.COMPLETED
         finally:
             # Release only what this method started; sessions + policy are
@@ -521,27 +526,6 @@ class PolicyExecutor:
 
         return _result("stopped", step, start_time or time.monotonic(), last_obs)
 
-    async def _get_policy_actions(
-        self,
-        robot_states: dict[str, RobotState],
-        images: dict[str, Any] | None,
-    ) -> ActionChunk:
-        """Synchronize a queue, request its action, and apply relative targets."""
-        self._synchronize_policy_action_timestep()
-        async with asyncio.timeout(self._inference_timeout_s or None):
-            action = await self._policy.get_actions(
-                robot_states,
-                self._schema,
-                images,
-                self._all_io_values or None,
-            )
-        # Units first: a relative target is a delta in the policy's units, and
-        # adding a degree-space delta to a radian state is exactly the error the
-        # operators exist to prevent.
-        if action.resolved:
-            return action
-        return resolve_actions(self._schema, action, robot_states)
-
     def _synchronize_policy_action_timestep(self) -> None:
         """Tell a timestep queue which of its steps it may still replace: the one after the step
         the sessions are executing now (read from the controller's clock)."""
@@ -557,11 +541,6 @@ class PolicyExecutor:
             if queued is not None and queued.start_step > 0:
                 bridges[group_id] = queued.steps[: queued.start_step + 1]
         return bridges
-
-    def _log_policy_action(self, action: ActionChunk, step: int) -> None:
-        """Log the policy's full prediction."""
-        if self._rerun is not None:
-            self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
 
     async def _send_policy_action(
         self,
@@ -580,8 +559,7 @@ class PolicyExecutor:
 
         if self._rerun is not None:
             self._rerun.log_target_tracking(trimmed, robot_states, step)
-
-        self._log_policy_action(action, step)
+            self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
         self._send(trimmed, action)
         # The sessions' Bridge module, if any, put a bridge in front of the policy's steps.
         bridges = self._bridges_in_queue()
@@ -611,13 +589,27 @@ class PolicyExecutor:
         Raises:
             RuntimeError: A camera frame or the inference missed its deadline.
         """
-        images = self._read_policy_images()
-        self._log_first_image_shapes(images)
+        images = None
+        if self._cameras.active:
+            try:
+                images = self._cameras.read()
+            except RuntimeError as exc:
+                msg = f"Stale policy input (camera: {exc})"
+                raise RuntimeError(msg) from exc
+        if images and not self._logged_first_images:
+            shapes = {key: getattr(image, "shape", None) for key, image in images.items()}
+            logger.info("First policy camera frames: %s", shapes)
+            self._logged_first_images = True
         self._last_obs = robot_states
-        self._log_policy_observation(robot_states, images, step)
+        if self._rerun is not None:
+            self._rerun.log_observation(robot_states, step)
+            if images:
+                self._rerun.log_images(images)
 
         if start_time is None:
-            await self._prepare_policy(robot_states, images)
+            await self._policy.prepare(
+                robot_states, self._schema, images, self._io_streams.all_values or None
+            )
             self._freeze_setup_objects()
             start_time = time.monotonic()
             self.status.phase = Phase.EXECUTING
@@ -637,35 +629,28 @@ class PolicyExecutor:
         gc.freeze()
         self._gc_frozen = True
 
-    def _read_policy_images(self) -> dict[str, Any] | None:
-        """Read one frame per camera, or report the channel as stale."""
-        if not self._cameras.active:
-            return None
-        try:
-            images = self._cameras.read()
-        except RuntimeError as exc:
-            msg = f"Stale policy input (camera: {exc})"
-            raise RuntimeError(msg) from exc
-        return images
-
     async def _infer(
         self,
         robot_states: dict[str, RobotState],
         images: dict[str, Any] | None,
     ) -> ActionChunk:
-        """Query the policy under the executor's inference deadline."""
+        """Synchronize a queue, request its action under the executor's inference deadline, and
+        apply relative targets."""
         try:
-            action = await self._get_policy_actions(robot_states, images)
+            self._synchronize_policy_action_timestep()
+            async with asyncio.timeout(self._inference_timeout_s or None):
+                action = await self._policy.get_actions(
+                    robot_states, self._schema, images, self._io_streams.all_values or None
+                )
+            # Units first: a relative target is a delta in the policy's units, and
+            # adding a degree-space delta to a radian state is exactly the error the
+            # operators exist to prevent.
+            if action.resolved:
+                return action
+            return resolve_actions(self._schema, action, robot_states)
         except TimeoutError as exc:
             msg = f"Stale policy input (inference exceeded {self._inference_timeout_s:.0f}s)"
             raise RuntimeError(msg) from exc
-        return action
-
-    async def _drain_sessions(self) -> None:
-        """Let the waypoints already accepted run out before the sessions stop."""
-        for session in self._sessions.values():
-            with contextlib.suppress(MotionError, EmergencyStopError, OSError, RuntimeError):
-                await session.drain()
 
     def _termination_result(
         self,
@@ -688,41 +673,6 @@ class PolicyExecutor:
                 last_obs,
             )
         return None
-
-    async def _prepare_policy(
-        self,
-        robot_states: dict[str, RobotState],
-        images: dict[str, Any] | None,
-    ) -> None:
-        """Run policy setup before the execution timeout starts."""
-        self._log_first_image_shapes(images)
-        await self._policy.prepare(
-            robot_states,
-            self._schema,
-            images,
-            self._all_io_values or None,
-        )
-
-    def _log_policy_observation(
-        self,
-        robot_states: dict[str, RobotState],
-        images: dict[str, Any] | None,
-        step: int,
-    ) -> None:
-        """Log one policy observation to Rerun when visualization is active."""
-        if self._rerun is None:
-            return
-        self._rerun.log_observation(robot_states, step)
-        if images:
-            self._rerun.log_images(images)
-
-    def _log_first_image_shapes(self, images: dict[str, Any] | None) -> None:
-        """Log camera keys/shapes once, when first frames enter the policy loop."""
-        if self._logged_first_images or not images:
-            return
-        summary = {key: getattr(image, "shape", None) for key, image in images.items()}
-        logger.info("First policy camera frames: %s", summary)
-        self._logged_first_images = True
 
     async def _wait_after_send(
         self,
@@ -834,7 +784,7 @@ class PolicyExecutor:
                 prev_state=None,
                 dt=0.0,
                 motion_group_id=group_id,
-                io_values=self._all_io_values,
+                io_values=self._io_streams.all_values,
                 target_joints=target_joints,
                 target_ios=target_ios,
             )
@@ -925,17 +875,12 @@ class PolicyExecutor:
     def _create_session(self, mg: MotionGroup) -> WaypointJoggingSession:
         """Create a waypoint jogging session for a motion group."""
         tcp_groups = self._schema.tcp_action_groups()
-        mode = "cartesian" if mg.id in tcp_groups else "joint"
-        tcp = self._schema.tcp
-        if mode == "cartesian":
-            tcp = tcp_groups.get(mg.id) or self._schema.tcp
-
         return WaypointJoggingSession(
             motion_group=mg,
             config=self._motion,
-            tcp=tcp,
+            tcp=tcp_groups.get(mg.id) or self._schema.tcp,
             stop_conditions=self._stop_conditions,
-            mode=mode,
+            mode="cartesian" if mg.id in tcp_groups else "joint",
             pipeline=self._pipeline,
         )
 
@@ -950,11 +895,6 @@ class PolicyExecutor:
         if self._n_action_steps_cfg is not None:
             return self._n_action_steps_cfg
         return self._policy.n_action_steps or 0
-
-    @property
-    def _all_io_values(self) -> dict[str, object]:
-        """Merged IO values across all controller streams."""
-        return self._io_streams.all_values
 
     # -------------------------------------------------------------------------
     # Rerun visualization (lazy, zero-cost when viewer not active)
@@ -976,15 +916,6 @@ class PolicyExecutor:
             tcp=self._schema.tcp,
         )
         await self._rerun.initialize()
-
-    def _log_completion(self) -> None:
-        """Log execution result to Rerun."""
-        if self._rerun is not None and self.result is not None:
-            self._rerun.log_completion(
-                self.result.reason,
-                self.result.steps,
-                self.result.duration_s,
-            )
 
 
 def _result(
