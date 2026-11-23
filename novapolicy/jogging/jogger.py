@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, Self, TypeAlias, cast, overload
+from typing import TYPE_CHECKING, Self, TypeAlias, cast, overload, override
 
 from novapolicy.jogging.clock import ServerMs
 from novapolicy.jogging.lifecycle import SessionLifecycle, move_to_start_joint_position
@@ -161,62 +161,37 @@ class _BaseJogger:
             self._log_target(mg.id, chunk, dt_ms)
         return chunk[-1]
 
-    def _dispatch_chunk(
-        self, chunk: _Chunk | dict[MotionGroup, _Chunk], dt_ms: float
-    ) -> dict[MotionGroup, list[float]]:
-        """Validate and send a chunk per motion group; return each one's final step."""
-        if dt_ms <= 0:
-            msg = (
-                "set_chunk needs a positive dt_ms — the spacing between the "
-                f"chunk's steps — but got {dt_ms!r}."
-            )
-            raise ValueError(msg)
-
-        if isinstance(chunk, dict):
-            finals: dict[MotionGroup, list[float]] = {}
-            for mg, steps in chunk.items():
-                self._require_chunk(steps)
-                finals[mg] = self._send_chunk(mg, steps, dt_ms)
-            return finals
-
-        if not isinstance(chunk, list):
-            msg = f"Expected list[list[float]] or dict[MotionGroup, ...], got {type(chunk)}"
+    def _per_group(self, value: object, *, chunk: bool) -> dict[MotionGroup, object]:
+        """``value`` per motion group: a dict as given, a bare value for the only one; each a
+        chunk of future steps (``chunk``) or one live target, else ``TypeError``."""
+        kind = "list[list[float]]" if chunk else self._TARGET
+        if isinstance(value, dict):
+            groups = cast("dict[MotionGroup, object]", value)
+        elif self._multi:
+            msg = f"For multiple motion groups, pass a dict[MotionGroup, {kind}]"
             raise TypeError(msg)
-        self._require_chunk(chunk)
-        if self._multi:
-            msg = "For multiple motion groups, pass a dict[MotionGroup, list[list[float]]]"
-            raise TypeError(msg)
-        mg = self._mg_list[0]
-        final = self._send_chunk(mg, chunk, dt_ms)
-        return {mg: final}
-
-    @staticmethod
-    def _require_chunk(value: object) -> None:
-        """Reject anything but a chunk, on the way into ``set_chunk``."""
-        if _is_chunk(value):
-            return
-        if isinstance(value, list) and not value:
-            msg = "set_chunk got an empty list; a chunk needs at least one step."
-        elif isinstance(value, list):
-            msg = (
-                "set_chunk expects a chunk of future steps (list[list[float]]) but "
-                "got a single target. Use set_target(...) for one target."
-            )
         else:
-            msg = f"set_chunk expects list[list[float]], got {type(value)}"
-        raise TypeError(msg)
-
-    @staticmethod
-    def _reject_chunk(value: object) -> None:
-        """Reject a chunk, on the way into ``set_target``."""
-        if not _is_chunk(value):
-            return
-        msg = (
-            "set_target takes one live target, not a chunk of future steps. Pass "
-            "it to set_chunk(chunk, dt_ms=...) instead — a chunk carries its own "
-            "horizon, so a LiveBuffer does not apply to it."
-        )
-        raise TypeError(msg)
+            groups = {self._mg_list[0]: value}
+        for item in groups.values():
+            if _is_chunk(item) == chunk:
+                continue
+            if not chunk:
+                msg = (
+                    "set_target takes one live target, not a chunk of future steps. Pass "
+                    "it to set_chunk(chunk, dt_ms=...) instead — a chunk carries its own "
+                    "horizon, so a LiveBuffer does not apply to it."
+                )
+            elif isinstance(item, list) and not item:
+                msg = "set_chunk got an empty list; a chunk needs at least one step."
+            elif isinstance(item, list):
+                msg = (
+                    "set_chunk expects a chunk of future steps (list[list[float]]) but "
+                    "got a single target. Use set_target(...) for one target."
+                )
+            else:
+                msg = f"set_chunk expects list[list[float]], got {type(item)}"
+            raise TypeError(msg)
+        return groups
 
     def _log_target(self, mg_id: str, steps: list[list[float]], dt_ms: float) -> None:
         """Log jogging target to Rerun as an action chunk; the tracking error is logged per
@@ -327,23 +302,12 @@ class _BaseJogger:
             TypeError: If given a chunk of future steps (use :meth:`set_chunk`), a value of the
                 wrong kind, or one value for several motion groups.
         """
-        if isinstance(target, dict):
-            targets = target
-        else:
-            self._reject_chunk(target)
-            try:
-                self._values(target)
-            except TypeError:
-                msg = f"Expected {self._TARGET} or dict[MotionGroup, {self._TARGET}], got {type(target)}"
-                raise TypeError(msg) from None
-            if self._multi:
-                msg = f"For multiple motion groups, pass a dict[MotionGroup, {self._TARGET}]"
-                raise TypeError(msg)
-            targets = {self._mg_list[0]: target}
-        for mg, value in targets.items():
-            self._reject_chunk(value)
-            self._set_live_target(mg, self._values(value))
-        self._target = {**(self._target or {}), **targets} if isinstance(target, dict) else targets
+        targets = self._per_group(target, chunk=False)
+        values = {mg: self._values(value) for mg, value in targets.items()}
+        for mg, value in values.items():
+            self._set_live_target(mg, value)
+        updated = cast("dict[MotionGroup, _Target]", targets)
+        self._target = {**(self._target or {}), **updated} if isinstance(target, dict) else updated
 
     def set_chunk(
         self,
@@ -365,7 +329,14 @@ class _BaseJogger:
             TypeError: If given a single target. Use :meth:`set_target`.
             ValueError: If ``dt_ms`` is not positive.
         """
-        finals = self._dispatch_chunk(chunk, dt_ms)
+        if dt_ms <= 0:
+            msg = (
+                "set_chunk needs a positive dt_ms — the spacing between the "
+                f"chunk's steps — but got {dt_ms!r}."
+            )
+            raise ValueError(msg)
+        chunks = cast("dict[MotionGroup, _Chunk]", self._per_group(chunk, chunk=True))
+        finals = {mg: self._send_chunk(mg, steps, dt_ms) for mg, steps in chunks.items()}
         # A dict updates only the groups it names; a bare chunk replaces outright.
         kept: dict[MotionGroup, _Target] = (
             dict(self._target or {}) if isinstance(chunk, dict) else {}
@@ -375,23 +346,6 @@ class _BaseJogger:
 
 class JointJogger(_BaseJogger):
     """Joint position jogger. Do not instantiate directly — use :func:`jog_joints`."""
-
-    def __init__(
-        self,
-        motion_groups: list[MotionGroup],
-        *,
-        config: WaypointConfig | None = None,
-        stop_conditions: list[StopCondition] | None = None,
-        start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
-        pipeline: Sequence[object] | None = None,
-    ) -> None:
-        super().__init__(
-            dict.fromkeys(motion_groups, ""),
-            config=config,
-            stop_conditions=stop_conditions,
-            start_joint_position=start_joint_position,
-            pipeline=pipeline,
-        )
 
 
 class TcpJogger(_BaseJogger):
@@ -403,11 +357,11 @@ class TcpJogger(_BaseJogger):
     def _expected_dims(self, mg: MotionGroup) -> int | None:  # ruff: ignore[unused-method-argument, no-self-use]
         return _CARTESIAN_DIMS
 
+    @override
     def _values(self, target: object) -> list[float]:
         from nova.types import Pose  # ruff: ignore[import-outside-top-level]
 
         if not isinstance(target, Pose):
-            self._reject_chunk(target)
             msg = f"Expected Pose per motion group, got {type(target)}"
             raise TypeError(msg)
         return [*target.position, *target.orientation]
@@ -483,7 +437,7 @@ def jog_joints(
         else [motion_groups]
     )
     return JointJogger(
-        groups,
+        dict.fromkeys(groups, ""),
         config=config,
         stop_conditions=stop_conditions,
         start_joint_position=start_joint_position,

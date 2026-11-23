@@ -171,6 +171,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._current_tcp_name: str | None = None
         self._num_joints: int | None = None
         self._current_state_server_ms: int | None = None
+        self._state: RobotState | None = None  # the latest of them, built once per packet
         self._state_observers: list[Callable[[RobotState, int, float], None]] = []
 
         # Stop-condition state
@@ -231,9 +232,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
 
     @property
     def current_state(self) -> RobotState | None:
-        if self._current_joints is None or self._current_tcp_pose is None:
-            return None
-        return self._build_robot_state()
+        return self._state
 
     def add_state_observer(self, observer: Callable[[RobotState, int, float], None]) -> None:
         """Call ``observer(state, jogger_session_timestamp_ms, generated_monotonic)`` once per
@@ -442,6 +441,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._current_joints = list(initial_state.joints)
         self._current_tcp_pose = initial_state.pose
         self._current_tcp_name = initial_state.tcp
+        self._state = self._build_robot_state()
         self._num_joints = len(initial_state.joints)
         clamp = next((m for m in self._chunk_modules if isinstance(m, JointClamp)), None)
         if clamp is not None and self._mode == "joint" and self._joint_limits is None:
@@ -547,6 +547,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                     self._current_tcp_pose = Pose(state.tcp_pose)
                 if state.tcp is not None:
                     self._current_tcp_name = state.tcp
+                self._state = self._build_robot_state()
                 self._jog_tracker.update_from_state(state)
                 details = jogging_details(state)
                 # Only a state after the stop was acknowledged counts (ADR 0019).
@@ -596,7 +597,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """Hand this packet to every observer, stamped when it was generated."""
         if not self._state_observers:
             return
-        state = self._build_robot_state()
+        state = self._state
         if state is None:
             return
         # No generation instant before the first server timestamp: use now (ADR 0012).
@@ -986,7 +987,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         if not self._stop_conditions:
             return
 
-        current_state = self._build_robot_state()
+        current_state = self._state
         if current_state is None:
             return
 
