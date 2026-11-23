@@ -127,8 +127,9 @@ the caller's last step. Tests: `test_hold_padding_holds_the_last_target_up_to_th
 **T7 IO and computed actions run when the policy's first step is due**, on every path and
 without blocking the loop: policy waypoint zero of what is sent (behind a bridge too). A chunk
 replaced before it is sent runs neither; one pending when the session stops is cancelled; a hook
-that raises ends the run, and none runs once its motion was stopped (stop condition, failure).
-IO without motion runs at once. A group's IO is written before the chunk's computed actions,
+that raises ends the run with its error, and none runs once its motion was stopped (stop
+condition, failure). IO without motion runs at once; its error ends the run too, also when it
+was the run's last tick. A group's IO is written before the chunk's computed actions,
 which run with the first moving group's step. IO is a separate
 write, so it reaches the controller one network delay later; NOVA's action chunks are to carry
 it.
@@ -137,7 +138,9 @@ Tests: `test_io_of_a_continuous_chunk_goes_with_its_first_step`,
 `test_a_chunk_without_motion_writes_its_io_before_its_computed_action`,
 `test_a_chunk_action_runs_when_its_step_is_due_or_at_once_when_past`,
 `test_a_replaced_chunk_never_runs_its_action_and_stop_cancels_the_rest`, `test_a_chunk_action_fails_the_session_when_it_raises`,
-`test_a_chunk_action_is_skipped_when_the_motion_stopped_before_it_was_due`.
+`test_a_chunk_action_is_skipped_when_the_motion_stopped_before_it_was_due`,
+`test_a_failed_io_write_without_motion_ends_the_run_with_its_error`,
+`test_a_failed_computed_action_without_motion_ends_the_run_with_its_error`.
 
 **T8 Pacing.** Sequential: the next observation waits until the chunk's last step is due
 (`scheduled.until_server_ms`, acknowledged) and the robot stands still (`is_at_standstill`). Continuous with `rate_hz`: ticks on an absolute grid; more than one period

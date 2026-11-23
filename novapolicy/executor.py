@@ -203,6 +203,8 @@ class PolicyExecutor:
         self._last_obs: dict[str, Any] | None = None
         self._io_streams = IOStreamManager(self._motion_groups, schema.io_keys_by_controller())
         self._io_tasks: set[asyncio.Task[None]] = set()
+        self._effect_error: BaseException | None = None
+        """The first error of an IO write or computed action run without motion; ends the run."""
         self._observed_at_ms: dict[str, ServerMs | None] = {}
         self._observed_clock_ms: dict[str, ServerMs] = {}
         self._gc_frozen = False
@@ -245,6 +247,7 @@ class PolicyExecutor:
         """
         self._stop_event.clear()
         self.result = None
+        self._effect_error = None
         self.status = ExecutorStatus(phase=Phase.CONNECTING, message="Connecting...")
         try:
             await self._run_episode()
@@ -304,12 +307,7 @@ class PolicyExecutor:
         failed = False
         try:
             await self._start()
-            self.result = await self._execute()
-            if self._rerun is not None:
-                self._rerun.log_completion(
-                    self.result.reason, self.result.steps, self.result.duration_s
-                )
-            self.status.phase = Phase.COMPLETED
+            await self._complete(await self._execute())
         except Exception:
             failed = True
             raise
@@ -322,6 +320,16 @@ class PolicyExecutor:
                 await self._cameras.disconnect()
             await self._schema.stop_sources()
             await self._io_streams.stop()
+
+    async def _complete(self, result: ExecutionResult) -> None:
+        """End a run that ended normally: let the effects already started finish (one that
+        raises ends the run with its error after all, and no result), then keep the result and
+        report completion."""
+        await self._finish_effects()
+        self.result = result
+        if self._rerun is not None:
+            self._rerun.log_completion(result.reason, result.steps, result.duration_s)
+        self.status.phase = Phase.COMPLETED
 
     async def _start(self) -> None:
         """Connect the policy and let it check the schema, move to the start position, connect
@@ -373,6 +381,7 @@ class PolicyExecutor:
             # Yield every iteration, so stop() runs even when the policy answers synchronously.
             await asyncio.sleep(0)
 
+            self._check_effects()
             termination = self._termination_result()
             if termination is not None:
                 return termination
@@ -392,6 +401,7 @@ class PolicyExecutor:
             self.status.step += 1
 
             # Raises on a fault; a stop condition firing on a session tick ends the run normally.
+            self._check_effects()
             stopped_by = self._lifecycle.check()
             if stopped_by is not None:
                 return self._result(f"stop condition: {stopped_by}")
@@ -559,7 +569,7 @@ class PolicyExecutor:
                 return
             if self._timed_out():
                 return
-            if self._lifecycle.check() is not None:
+            if self._effect_error is not None or self._lifecycle.check() is not None:
                 return
 
             if all(
@@ -660,7 +670,30 @@ class PolicyExecutor:
         if run is not None:
             task = asyncio.create_task(run())
             self._io_tasks.add(task)
-            task.add_done_callback(self._io_tasks.discard)
+            task.add_done_callback(self._effect_done)
+
+    def _effect_done(self, task: asyncio.Task[None]) -> None:
+        """Forget a finished effects task, keeping its error, the first one only, for
+        :meth:`_check_effects` (contracts T7: a hook that raises ends the run)."""
+        self._io_tasks.discard(task)
+        if task.cancelled() or self._effect_error is not None:
+            return
+        self._effect_error = task.exception()
+
+    def _check_effects(self) -> None:
+        """Raise the error of an IO write or computed action that ran without motion."""
+        if self._effect_error is not None:
+            raise self._effect_error
+
+    async def _finish_effects(self) -> None:
+        """At a normal end, let the effects already started finish and raise the first error,
+        so one of the last tick ends the run like any other."""
+        tasks = list(self._io_tasks)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        for task in tasks:
+            self._effect_done(task)
+        self._check_effects()
 
     def _observed_ms(self, group_id: str, chunk: ActionChunk) -> ServerMs | None:
         """When the observation behind ``chunk`` was taken, on the server's clock; ``None`` in

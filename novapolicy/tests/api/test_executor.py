@@ -1391,3 +1391,52 @@ async def test_a_schema_the_policy_refuses_fails_before_the_start_move(robot: _R
     mg.plan.assert_not_awaited()
     mg.execute.assert_not_awaited()
     robot.session.start.assert_not_awaited()
+
+
+@pytest.mark.parametrize("stop_after_first", [False, True], ids=["mid-run", "last-tick"])
+@pytest.mark.asyncio
+async def test_a_failed_io_write_without_motion_ends_the_run_with_its_error(
+    robot: _Robot, stop_after_first: bool
+):
+    """Contract T7: an IO write or computed action that raises ends the run with that error,
+    also for a chunk without motion, whose effects run at once in a task of their own, and
+    also when it was the run's last tick."""
+    failure = OSError("digital_out[0]: write refused")
+    robot.session.write_ios = AsyncMock(side_effect=failure)
+    executor: PolicyExecutor
+
+    async def io_only(_obs: object) -> ActionChunk:
+        if stop_after_first:
+            executor.stop()
+        await asyncio.sleep(0.01)
+        return ActionChunk(joints={}, ios={MG_ID: {"digital_out[0]": True}})
+
+    executor = PolicyExecutor(_schema(), _callback(io_only), timeout_s=2.0)
+    with pytest.raises(OSError, match="write refused") as raised:
+        await executor.run()
+    assert raised.value is failure
+    assert executor.phase is Phase.ERROR
+    assert executor.result is None  # an error, not a normal end
+    assert robot.session.drain.await_count == 0  # an error drops, it does not drain
+
+
+@pytest.mark.asyncio
+async def test_a_failed_computed_action_without_motion_ends_the_run_with_its_error(
+    robot: _Robot,
+):
+    failure = RuntimeError("gripper did not answer")
+
+    async def computed(_chunk: ActionChunk) -> None:
+        raise failure
+
+    schema = PolicySchema(
+        observations=[Observation.joint_positions("arm", source=_mg())],
+        actions=[Action.computed(computed)],
+    )
+
+    async def no_motion(_obs: object) -> ActionChunk:
+        await asyncio.sleep(0.01)
+        return ActionChunk(joints={})
+
+    with pytest.raises(RuntimeError, match="gripper did not answer"):
+        await PolicyExecutor(schema, _callback(no_motion), timeout_s=2.0).run()
