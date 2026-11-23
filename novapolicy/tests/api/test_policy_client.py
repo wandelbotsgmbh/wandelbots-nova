@@ -64,7 +64,7 @@ class _EchoWire:
 
     def __init__(self) -> None:
         self.opened = self.closed = False
-        self.seen: dict[str, object] = {}
+        self.seen: dict[str, list[float]] = {}
 
     async def open(self) -> None:
         self.opened = True
