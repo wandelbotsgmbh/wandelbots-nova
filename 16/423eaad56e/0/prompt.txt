@@ -1,0 +1,176 @@
+Have a look at https://code.wabo.run/customer-projects/audi/cell-plc-simulation/-/blob/main/nova/sdk_fix/interlock_release_fix.py?ref_type=heads which is a wrapper some user build to fix an issue with the interlocks can you verify and compare this to the current state
+
+---
+
+put it into feat/zone-interlock-nats
+
+---
+
+what is the current state of affairs in this session?
+
+---
+
+push it and merge into lab/pause-auto-resume
+
+---
+
+Yes, do the analysis but also maybe have a look at the existing sessions and whether is one where we already did that.
+
+---
+
+pr #516 is close to being merged
+let's continue with step 2 in the list
+
+---
+
+did you find https://github.com/linuxcontainers/alpine
+
+---
+
+go with the composite action
+
+---
+
+rebase #516 and #544 on main
+
+---
+
+show me the table of steps again
+
+---
+
+create pr for #1 now
+
+---
+
+check how his commits would apply to main
+there is a client version already specified in PR #538 which has the relevant external tcp additions
+what we need is the same main additions (datasets) we pulled into lab/pause-auto-resume-main
+
+---
+
+prepare lab/pause-auto-resume-main with main and his branch merged
+
+---
+
+<task-notification>
+plannotator: its classic.PermissionRequest hook was skipped. "cc-plugin-sec-default" runs first and sent the event on past it.
+</task-notification>
+
+---
+
+yes, fix the #544 findings first
+
+---
+
+<task-notification>
+<task-id>b3xmybk1d</task-id>
+<tool-use-id>toolu_01QWoGTUy6ducVHzbYmHQzr5</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/a7d5adb5-e4f7-4c8c-bc56-5c9b3b0003ec/tasks/b3xmybk1d.output</output-file>
+<status>completed</status>
+<summary>Background command "Run the two-robot interlock example live" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bvu6l8iiz</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/a7d5adb5-e4f7-4c8c-bc56-5c9b3b0003ec/tasks/bvu6l8iiz.output</output-file>
+<status>completed</status>
+<summary>Background command "Rerun the two-robot interlock example live" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+I looked at the rerun visu but there they move inside the zone together quite a lot does this branch have the time rerun time scaling fix ?
+
+---
+
+remove hints and traces regarding the actual customer Audi and regarding the VASS standard from the PR description and maybe comments.
+
+---
+
+Can please answer the comments to the PR for which you build the fixes.
+
+---
+
+the SAST CI job for uv dependencies fails, can you update the relevant dependencies
+
+---
+
+#544 and #547 and #553 are all merged, what are the next steps / open tasks now?
+
+---
+
+analyse the current state of the topics we were working on and reassess the situation and way forward
+
+---
+
+okay, let's start with step 1
+
+---
+
+<task-notification>
+<task-id>bjynccx50</task-id>
+<tool-use-id>toolu_01LsQu1wz5hL1fxTH7tGJNP3</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/a7d5adb5-e4f7-4c8c-bc56-5c9b3b0003ec/tasks/bjynccx50.output</output-file>
+<status>completed</status>
+<summary>Background command "Run ty and the full unit suite again" completed (exit code -1)</summary>
+</task-notification>
+
+---
+
+okay push and check CI now
+
+---
+
+<task-notification>
+<task-id>b5rv6iv94</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/a7d5adb5-e4f7-4c8c-bc56-5c9b3b0003ec/tasks/b5rv6iv94.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for the re-run and report results" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b0ja56rj0</task-id>
+<tool-use-id>toolu_01VboAWY5AnxuvtzwUizEanG</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/a7d5adb5-e4f7-4c8c-bc56-5c9b3b0003ec/tasks/b0ja56rj0.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for the full re-run and report each job" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+merged #564
+
+---
+
+I restarted claude and herdr which it was running in, can you check whether network is now allowed again?
+
+---
+
+try again i restarted the 23224 daemon
+
+---
+
+try again i restarted iterm
+
+---
+
+outside of hertr again
+
+---
+
+can you check network from here again. should be new herdr server
+
+---
+
+so back to the SDK work, how do we proceed
+
+---
+
+what is the CI problem with #569

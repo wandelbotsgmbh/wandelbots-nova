@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "16423eaad56e",
+  "strategy": "manual-commit",
+  "branch": "chore/ci-wait-for-instance-before-nats",
+  "checkpoints_count": 17,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/16/423eaad56e/0/metadata.json",
+      "transcript": "/16/423eaad56e/0/full.jsonl",
+      "compact_transcript": "/16/423eaad56e/0/transcript.jsonl",
+      "content_hash": "/16/423eaad56e/0/content_hash.txt",
+      "prompt": "/16/423eaad56e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 170,
+    "cache_creation_tokens": 63740,
+    "cache_read_tokens": 53284062,
+    "output_tokens": 47316,
+    "api_call_count": 73
+  }
+}
