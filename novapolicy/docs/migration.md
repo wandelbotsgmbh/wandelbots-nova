@@ -268,3 +268,17 @@ per key (`observation_groups`), as every other client maps it. Two visible effec
 
 `PolicySchema.velocity_and_pose_values` is gone; use `build_observation` and
 `observation_groups`.
+
+## One session lifecycle and one tracking path for executor and jogger
+
+- **`WaypointJoggingSession.set_state_observer`** is replaced by `add_state_observer` /
+  `remove_state_observer`: several observers run per state packet, and one that raises does not
+  skip the others. `current_state_generated_at` is gone.
+- **Rerun tracking** (commanded against measured) comes from the waypoints the session actually
+  sent and is logged per state packet, in the executor too (it was once per tick).
+  `PolicyRerunLogger(state_sample_interval_ms=...)`, `log_target_tracking` and
+  `log_joint_tracking(trail=...)` are gone.
+- **The jogger's start move keeps the cell's collision setups**, as the executor's does; it used
+  to clear them.
+- **Teardown** drains every arm in parallel, before Rerun, the e-stop monitor, cameras, pose
+  sources and IO streams stop; sessions are stopped even if one of those fails.

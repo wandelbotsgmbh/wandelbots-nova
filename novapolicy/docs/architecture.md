@@ -178,7 +178,8 @@ mapping, decoding, placement and streaming come from the package.
 | Concern | Module |
 | --- | --- |
 | mapping, units, frames, relative targets, decoding | `novapolicy/schema.py`, `ops.py`, `poses.py`, `chunking.py` |
-| loop, placement, stop conditions, IO, cameras | `novapolicy/executor.py` |
+| loop, placement, IO, cameras | `novapolicy/executor.py` |
+| sessions, start move, stop conditions, drain (executor and jogger) | `novapolicy/jogging/lifecycle.py` |
 | send pipeline, modules | `novapolicy/jogging/pipeline.py`, `modules.py`, `live_buffer.py` |
 | NOVA transport | `novapolicy/jogging/waypoint_session.py`, `clock.py` |
 | jogging API | `novapolicy/jogging/jogger.py` |

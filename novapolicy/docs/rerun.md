@@ -101,8 +101,7 @@ sinusoidal `dx`/`dy`/`dz` with a **constant** `position_norm_mm`, because the er
 vector rotates with the path while its magnitude stays put. The norm is the series
 to read for whether tracking is steady.
 
-`PolicyRerunLogger(state_sample_interval_ms=...)` controls actual robot-state samples used by the 3D mesh,
-TCP trail, and joint plots. It does not change the policy or jogging command cadence;
-configure policy timing or `WaypointConfig` separately when commands themselves need
-a shorter interval. `trajectory_sample_interval_ms` independently controls sampling
-of planned trajectories.
+Robot state (the 3D mesh, TCP trail, joint plots and commanded-vs-measured tracking) is logged
+once per state packet the session receives, for the executor and the jogger alike; it does not
+change the policy or jogging command cadence. `trajectory_sample_interval_ms` controls sampling of
+planned trajectories.
