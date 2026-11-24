@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from novapolicy.mapping.joint_limits import JointLimits
@@ -110,6 +112,19 @@ def test_drop_late_keeps_what_is_still_reachable_and_never_retimes() -> None:
     waypoints = [(ServerMs(t), [float(t)]) for t in (100, 110, 120, 130)]
     context = ModuleContext(now_ms=ServerMs(85), position=None, step_ms=50.0)  # 105 is the edge
     assert DropLate(min_lead_ms=20.0).keep(waypoints, chunk, context) == waypoints[1:]
+
+
+def test_drop_late_sends_no_padding_when_every_caller_step_is_late() -> None:
+    """The padding behind a late chunk holds its last, stale step; sent alone, it pulled the arm
+    back. Nothing goes out, so the previous chunk runs on."""
+    chunk = PendingChunk(steps=[[0.0], [1.0], [1.0], [1.0]], dt_ms=100.0, caller_step_count=2)
+    chunk = replace(chunk, first_timestamp_ms=ServerMs(0))
+    waypoints = [(ServerMs(t), v) for t, v in zip((0, 100, 200, 300), chunk.steps, strict=True)]
+    context = ModuleContext(now_ms=ServerMs(150), position=None, step_ms=50.0)
+    assert DropLate().keep(waypoints, chunk, context) == []
+    # One caller step still reachable: it and the padding after it go out.
+    later = ModuleContext(now_ms=ServerMs(70), position=None, step_ms=50.0)
+    assert DropLate().keep(waypoints, chunk, later) == waypoints[1:]
 
 
 def test_drop_late_passes_a_chunk_stamped_at_the_send() -> None:
