@@ -119,12 +119,13 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.sdist]
 include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "novapolicy"]
-# 20 MB of meshes and scenes that only the bridge's own examples read.
-exclude = ["nova_rerun_bridge/example_data"]
+# 20 MB of meshes and scenes that only the bridge's own examples read; novapolicy's developer
+# docs (decision records, measurements) are for working on the repository, not for users.
+exclude = ["nova_rerun_bridge/example_data", "novapolicy/dev"]
 
 [tool.hatch.build.targets.wheel]
 include = ["nova", "nova_rerun_bridge", "wandelscript", "novax", "novapolicy"]
-exclude = ["nova_rerun_bridge/example_data"]
+exclude = ["nova_rerun_bridge/example_data", "novapolicy/dev"]
 
 
 [tool.pytest.ini_options]

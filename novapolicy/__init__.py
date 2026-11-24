@@ -70,9 +70,12 @@ def __getattr__(name: str) -> object:
         try:
             return importlib.import_module("novapolicy.providers.lerobot").LeRobotPolicyClient
         except ModuleNotFoundError as exc:
+            # pip cannot resolve this extra: LeRobot caps Pillow below the version the core needs.
             msg = (
-                "LeRobotPolicyClient requires the LeRobot policy extra. "
-                "Install with `python -m pip install 'wandelbots-nova[novapolicy-lerobot]'`."
+                "LeRobotPolicyClient requires the LeRobot policy extra. Install it with uv: add "
+                '`override-dependencies = ["pillow>=13.0.0"]` under `[tool.uv]` in your '
+                "pyproject.toml, then run `uv add 'wandelbots-nova[novapolicy-lerobot]'` "
+                "(novapolicy/providers/lerobot/README.md)."
             )
             raise ModuleNotFoundError(msg) from exc
     if name == "LeappPolicyClient":
