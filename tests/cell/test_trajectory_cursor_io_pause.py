@@ -265,10 +265,10 @@ async def test_stale_end_frames_after_an_intermediate_stop_do_not_complete_the_n
             await consumer
 
 
-async def test_a_zero_distance_retarget_is_concluded_by_the_end_after_wait_for_io():
-    """forward_to(X) while standing at X after an intermediate stop: the controller
-    re-publishes the old END (stale), then answers the start with WAIT_FOR_IO and END
-    at the same location again — that second END is the genuine answer."""
+async def test_a_zero_distance_retarget_is_concluded_by_the_repeated_end_frame():
+    """forward_to(X) while standing at X after an intermediate stop: the cursor knows
+    this movement has nowhere to go and arms the machine to accept the repeated END,
+    so the operation completes without waiting for the controller's WAIT_FOR_IO."""
     frames = _Frames()
     frames.feed(_state(True), parked())
     cursor = _cursor(frames, detach_on_standstill=False)
@@ -281,9 +281,6 @@ async def test_a_zero_distance_retarget_is_concluded_by_the_end_after_wait_for_i
 
         again = cursor.forward_to(1.0)
         frames.feed(ended(1.0), ended(1.0))
-        await _settle()
-        assert not again.done(), "the re-published end of the previous stop resolved the retarget"
-        frames.feed(waiting_for_io(1.0), ended(1.0))
         async with asyncio.timeout(5):
             result = await again
         assert result.final_location == 1.0
@@ -295,8 +292,8 @@ async def test_a_zero_distance_retarget_is_concluded_by_the_end_after_wait_for_i
 
 
 async def test_a_cursor_without_a_trajectory_is_concluded_by_the_end_after_wait_for_io():
-    """The stale filter needs no trajectory length: it works by frame identity, so a
-    cursor built without a joint trajectory behaves the same at the real end."""
+    """Without a joint trajectory the cursor cannot claim a movement has nowhere to go,
+    so it relies on the controller's WAIT_FOR_IO to lift the identity filter."""
     frames = _Frames()
     frames.feed(_state(True), parked())
     cursor = _cursor(frames, detach_on_standstill=False, with_trajectory=False)
@@ -317,9 +314,9 @@ async def test_a_cursor_without_a_trajectory_is_concluded_by_the_end_after_wait_
             await consumer
 
 
-async def test_a_start_at_the_real_end_is_concluded_by_the_end_after_wait_for_io():
-    """With nowhere left to move the controller answers WAIT_FOR_IO and then END at
-    the same location again (observed); the operation must not hang on it."""
+async def test_a_start_at_the_real_end_is_concluded_by_the_repeated_end_frame():
+    """forward() at the real end: the cursor arms the machine to accept the repeated
+    END, so the operation completes at once — whether or not WAIT_FOR_IO follows."""
     frames = _Frames()
     frames.feed(_state(True), parked())
     cursor = _cursor(frames, detach_on_standstill=False)
@@ -332,9 +329,6 @@ async def test_a_start_at_the_real_end_is_concluded_by_the_end_after_wait_for_io
 
         again = cursor.forward()
         frames.feed(ended(3.0), ended(3.0))
-        await _settle()
-        assert not again.done(), "the re-published end of the previous stop resolved the restart"
-        frames.feed(waiting_for_io(3.0), ended(3.0))
         async with asyncio.timeout(5):
             assert (await again).final_location == 3.0
     finally:

@@ -8,6 +8,7 @@ from nova.cell.controllers import (
     virtual_controller,
     yaskawa_controller,
 )
+from nova.cell.io_condition import IOConditionWatcher, motion_enable_signal
 from nova.cell.motion_group import MotionGroup
 from nova.cell.motion_group_models import MotionGroupModel
 from nova.cell.multi_motion_group import MultiMotionGroup, MultiMotionGroupBuilder
@@ -26,6 +27,7 @@ __all__ = [
     "Controller",
     "DEFAULT_MAX_DRIFT",
     "GroupArgs",
+    "IOConditionWatcher",
     "IOSyncDriver",
     "MotionGroup",
     "MotionGroupModel",
@@ -42,6 +44,7 @@ __all__ = [
     "fanuc_controller",
     "universal_robots_controller",
     "kuka_controller",
+    "motion_enable_signal",
     "abb_controller",
     "virtual_controller",
 ]

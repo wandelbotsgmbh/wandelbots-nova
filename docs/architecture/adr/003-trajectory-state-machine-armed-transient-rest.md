@@ -101,8 +101,10 @@ that an external pause before motion still looks like the parked frame.
 ## Consequences
 
 - The cursor's `may_complete_as_paused` guard and ADR 002's stale-terminal cursor guard are
-  gone; `armed` owns the parked rule and hosts #521's identity filter. The cursor no longer
-  has to know which terminal is stale or whether a movement has room — frame identity decides.
+  gone; `armed` owns the parked rule and hosts #521's identity filter. Frame identity decides
+  which frames are stale; the cursor only adds a hint when it is certain a movement has nowhere
+  to go (`arm(accept_repeated_terminal=True)`), so a no-op `forward()` at the end completes
+  even if the controller answers with the repeated END alone.
 - `TrajectoryCursor.pause()` tells the machine (`request_pause()`), so a pause issued before
   the robot moved concludes on the parked frame.
 - A trace of a healthy execution reads `armed → executing → ending → ended`; the 22-frame

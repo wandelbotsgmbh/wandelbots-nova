@@ -1152,6 +1152,33 @@ class TrajectoryCursor:
             target_location=target_location,
         )
 
+    def _movement_has_room(
+        self, operation_type: OperationType, target_location: Optional[float]
+    ) -> bool:
+        """Whether the requested movement can move at all — ``True`` when unsure.
+
+        Decides if a re-published terminal state may conclude a fresh operation at
+        once (see :meth:`TrajectoryExecutionMachine.arm`). Claiming "no room" wrongly
+        would complete a movement at its own start, so an unknown trajectory length
+        counts as room; the controller's ``WAIT_FOR_IO`` then lifts the filter.
+        """
+        location = self._current_location
+        match operation_type:
+            case OperationType.PAUSE:
+                return False
+            case (
+                OperationType.BACKWARD
+                | OperationType.BACKWARD_TO
+                | OperationType.BACKWARD_TO_PREVIOUS_ACTION
+            ):
+                return location > 0.0 if target_location is None else target_location < location
+            case _:
+                if target_location is not None:
+                    return target_location > location
+                if self.joint_trajectory is None:
+                    return True
+                return location < self.joint_trajectory.locations[-1]
+
     def _complete_operation(self, error: Optional[Exception] = None, *, paused_on_io: bool = False):
         """Complete the current operation with the given status."""
         self._operation_handler.complete(
@@ -1358,7 +1385,12 @@ class TrajectoryCursor:
                         # A pause issued before any frame armed the machine replaces
                         # the movement it was meant to pause; the parked frame must
                         # still conclude it.
-                        pause_requested=pending_op.operation_type is OperationType.PAUSE
+                        pause_requested=pending_op.operation_type is OperationType.PAUSE,
+                        # A command with nowhere to go is answered by the stop it
+                        # leaves; only claim that when it is certain.
+                        accept_repeated_terminal=not self._movement_has_room(
+                            pending_op.operation_type, pending_op.target_location
+                        ),
                     )
 
                 # Tee every state to consumers of __aiter__ regardless of whether an

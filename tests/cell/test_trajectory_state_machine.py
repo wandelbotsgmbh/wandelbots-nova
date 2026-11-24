@@ -435,6 +435,23 @@ class TestStaleTerminalFramesAfterResume:
         assert machine.is_paused
         assert machine.pause_reason is PauseReason.USER
 
+    def test_accepting_the_repeated_terminal_concludes_a_no_op_start_at_once(self):
+        """The owner knows the command has nowhere to go (forward() at the end):
+        the repeated END is the genuine answer and must not wait for WAIT_FOR_IO."""
+        machine = self._ended_at(3.0)
+        machine.arm(accept_repeated_terminal=True)
+        machine.process_motion_state(_ended(3.0))
+        assert machine.is_ended
+
+    def test_without_the_hint_a_no_op_start_waits_for_a_different_frame(self):
+        machine = self._ended_at(3.0)
+        machine.arm()
+        machine.process_motion_state(_ended(3.0))
+        assert machine.is_armed
+        machine.process_motion_state(_wait_for_io(3.0))
+        machine.process_motion_state(_ended(3.0))
+        assert machine.is_ended
+
     def test_first_start_has_nothing_stale(self):
         """From idle a terminal frame is genuine — a resume filter must not
         appear where nothing was left behind."""

@@ -294,7 +294,7 @@ class TrajectoryExecutionMachine(StateMachine):
 
     # -- Public API -----------------------------------------------------------
 
-    def arm(self, *, pause_requested: bool = False) -> None:
+    def arm(self, *, pause_requested: bool = False, accept_repeated_terminal: bool = False) -> None:
         """Begin or resume execution (sends ``start``).
 
         A start out of ``ended``/``paused`` ignores frames that repeat the terminal
@@ -309,9 +309,16 @@ class TrajectoryExecutionMachine(StateMachine):
             pause_requested: The operation being armed for is itself a pause (the
                 owner paused before the machine ever left rest), so the parked
                 frame concludes it — see :meth:`request_pause`.
+            accept_repeated_terminal: The owner knows the command has nowhere to
+                go (a forward at the end, a backward at the start, a target equal
+                to the current location): the repeated terminal state *is* the
+                genuine outcome, so it concludes the operation at once instead of
+                waiting for the controller's ``WAIT_FOR_IO`` to lift the filter.
         """
         self.send("start")
         self._pause_requested = pause_requested
+        if accept_repeated_terminal:
+            self._stale_terminal = None
 
     def request_pause(self) -> None:
         """Record that the owner sent a pause request.
