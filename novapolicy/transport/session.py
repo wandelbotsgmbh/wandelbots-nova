@@ -463,6 +463,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._running = True
         self._lead_window = []
         self._playback = _PlaybackClock()
+        self._timestamps.on_grid([], 0.0, None)  # forgets the grid's path
         self._pending_request_event.clear()
         # A session can be started again after stop(); the last stop is over.
         self._stop_requested = False
@@ -863,6 +864,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         else:
             self._lead_window = []
             self._playback = _PlaybackClock()
+            self._timestamps.on_grid([], now_ms, None)
             anchor_ms = max(
                 0,
                 anchor_timestamp_ms(

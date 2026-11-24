@@ -291,9 +291,9 @@ observation, as the [worked example](../examples/execute_leapp_two_point_reach/)
 **Pulsing on the virtual robot.** NOVA's follower steers toward the next waypoint from a state one
 8 ms cycle old, and a waypoint due just after a cycle makes the arm pulse around the policy's
 pace. `Timestamps(grid_ms=32)` in the pipeline puts the targets on that cycle grid (the example's
-`--grid-ms 32`); on a virtual UR10e it cut the executed speed ripple by a third
-([ADR 0021](adr/0021-one-step-targets-on-the-cycle-grid.md)). Test it on a physical robot before
-relying on it there.
+`--grid-ms 32`); on a virtual UR10e at a 150 ms lead it halved the largest path deviation and cut
+the speed ripple by about 28% ([ADR 0021](adr/0021-one-step-targets-on-the-cycle-grid.md)). Test
+it on a physical robot, and at a shorter lead, before relying on it there.
 
 **Limitations.** Only ONNX exports run; TorchScript and `pt2` exports need LEAPP's torch runtime.
 One joint target and one joint action are supported; image inputs are not fed yet.

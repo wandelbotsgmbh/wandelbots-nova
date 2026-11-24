@@ -25,22 +25,25 @@ changed nothing, 3 ms off still kept the speed within ±12%.
 - Off by default. It is tuned to the follower of the virtual robot; a physical controller's servo
   differs and needs its own A/B before the default changes. It becomes unnecessary once NOVA's
   follower handles off-grid waypoints.
-- A pre-shift of the values by one cycle, for the follower's delay, was tried and left out: it gave
-  no consistent gain (below).
+- A pre-shift of the values by one cycle, for the follower's delay, was tried and left out: in two
+  runs it was not distinguishable from the grid alone (below).
+- Measured at a lead of 150 ms only. The gridded window ends up to one grid step before the newest
+  target, so the controller holds that much less; check a shorter lead before using it there.
 
 **Measured** on a virtual UR10e over a remote network, the LEAPP two-point reach (A, B, A), lead
-150 ms, two runs each. Ripple is the shoulder joint's executed speed minus its 160 ms average, RMS
+150 ms, five runs each (mean, then the range). Ripple is the shoulder joint's executed speed minus its 160 ms average, RMS
 while moving; path and lag are the flange's distance from the commanded path and from the
 commanded point.
 
-| | executed ripple (rad/s) | path max (mm) | lag max (mm) |
-| --- | --- | --- | --- |
-| `Timestamps()` | 0.168, 0.166 | 13.2, 10.0 | 41, 48 |
-| `Timestamps(grid_ms=32)` | 0.106, 0.117 | 6.6, 3.6 | 40, 19 |
-| grid and an 8 ms pre-shift | 0.167, 0.129 | 6.0, 6.8 | 32, 34 |
+| | runs | executed ripple (rad/s) | path max (mm) | path p99 (mm) | lag max (mm) |
+| --- | --- | --- | --- | --- | --- |
+| `Timestamps()` | 5 | 0.161 (0.134 to 0.187) | 11.1 (8.4 to 13.7) | 7.0 | 45 (41 to 48) |
+| `Timestamps(grid_ms=32)` | 5 | 0.116 (0.089 to 0.140) | 5.8 (3.6 to 7.7) | 3.6 | 32 (19 to 40) |
+| grid and an 8 ms pre-shift | 2 | 0.167, 0.129 | 6.0, 6.8 | 4.4 | 32, 34 |
 
-Every run reached its parts within 2.5 mm at 30 Hz.
+The example's `--grid-ms 32` gave the same (one run: ripple 0.124, path max 4.1 mm, waypoints
+exactly 32 ms apart). Every run reached its parts within 2.5 mm at 30 Hz.
 
-**Consequences.** On the virtual robot the executed ripple drops by a third and the largest path
-deviation by half or more. The policy's own step-to-step speed variation still reaches the arm.
+**Consequences.** On the virtual robot the largest path deviation halves, with no overlap between
+the runs; the executed ripple drops by about 28%, with the runs' ranges touching. The policy's own step-to-step speed variation still reaches the arm.
 The waypoints are 32 ms apart instead of one policy step, so a request carries about as many.
