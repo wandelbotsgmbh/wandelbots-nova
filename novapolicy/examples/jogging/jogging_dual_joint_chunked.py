@@ -1,6 +1,9 @@
 """Dual-arm joint jogging (chunked): mirror-symmetric oscillation for 5 seconds.
 
 Uses 8-step chunks at 33ms for smooth motion with 264ms lookahead.
+
+Sends a chunk per iteration for brevity; jogging_single_joint_chunked.py shows the
+throttled send plus the ramp that finishes the motion at zero velocity.
 """
 
 import math
@@ -46,7 +49,7 @@ async def main(ctx: nova.ProgramContext):
                 step2[0] -= wave
                 chunk1.append(step1)
                 chunk2.append(step2)
-            jogger.set_target({mg1: chunk1, mg2: chunk2}, dt_ms=dt_ms)
+            jogger.set_chunk({mg1: chunk1, mg2: chunk2}, dt_ms=dt_ms)
 
 
 if __name__ == "__main__":

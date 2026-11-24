@@ -45,19 +45,16 @@ class TestVisualizerCaching:
     async def test_model_loaded_only_once_for_same_motion_group(
         self, mock_motion_group, empty_trajectory
     ):
-        """Should only call load_model_data once for the same motion group."""
+        """Should only build the URDF robot once for the same motion group."""
         with (
             patch("nova_rerun_bridge.trajectory.rr"),
             patch("nova_rerun_bridge.trajectory.DHRobot"),
-            patch(
-                "nova_rerun_bridge.trajectory.extract_link_chain_and_tcp", return_value=([], Mock())
-            ),
             patch("nova_rerun_bridge.trajectory.RobotVisualizer") as mock_visualizer_class,
             patch("nova_rerun_bridge.trajectory._visualizer_cache", {}),
             patch("nova_rerun_bridge.trajectory.log_trajectory"),
-            patch("nova_rerun_bridge.trajectory.load_model_data") as mock_load_model,
+            patch("nova_rerun_bridge.trajectory.UrdfRobotVisualizer") as mock_urdf_class,
         ):
-            mock_load_model.return_value = b"fake glb data"
+            mock_urdf_class.for_motion_group = AsyncMock(return_value=Mock())
             mock_visualizer_class.return_value = Mock()
 
             # First call - should load model
@@ -84,14 +81,14 @@ class TestVisualizerCaching:
                 collision_setups={},
             )
 
-            # Model should only be loaded once
-            assert mock_load_model.call_count == 1
+            # The URDF should only be exported once
+            assert mock_urdf_class.for_motion_group.call_count == 1
             # Visualizer should only be created once
             assert mock_visualizer_class.call_count == 1
 
     @pytest.mark.asyncio
     async def test_different_motion_groups_load_separate_models(self, empty_trajectory):
-        """Should load model separately for different motion groups."""
+        """Should build a URDF robot separately for different motion groups."""
 
         # Create two different motion groups
         def create_mock_motion_group(group_id):
@@ -118,15 +115,12 @@ class TestVisualizerCaching:
         with (
             patch("nova_rerun_bridge.trajectory.rr"),
             patch("nova_rerun_bridge.trajectory.DHRobot"),
-            patch(
-                "nova_rerun_bridge.trajectory.extract_link_chain_and_tcp", return_value=([], Mock())
-            ),
             patch("nova_rerun_bridge.trajectory.RobotVisualizer") as mock_visualizer_class,
             patch("nova_rerun_bridge.trajectory._visualizer_cache", {}),
             patch("nova_rerun_bridge.trajectory.log_trajectory"),
-            patch("nova_rerun_bridge.trajectory.load_model_data") as mock_load_model,
+            patch("nova_rerun_bridge.trajectory.UrdfRobotVisualizer") as mock_urdf_class,
         ):
-            mock_load_model.return_value = b"fake glb data"
+            mock_urdf_class.for_motion_group = AsyncMock(return_value=Mock())
             mock_visualizer_class.return_value = Mock()
 
             # First motion group
@@ -145,8 +139,8 @@ class TestVisualizerCaching:
                 collision_setups={},
             )
 
-            # Each motion group should have its own model loaded
-            assert mock_load_model.call_count == 2
+            # Each motion group gets its own URDF robot
+            assert mock_urdf_class.for_motion_group.call_count == 2
             assert mock_visualizer_class.call_count == 2
 
     @pytest.mark.asyncio
@@ -159,14 +153,12 @@ class TestVisualizerCaching:
         with (
             patch("nova_rerun_bridge.trajectory.rr"),
             patch("nova_rerun_bridge.trajectory.DHRobot"),
-            patch(
-                "nova_rerun_bridge.trajectory.extract_link_chain_and_tcp", return_value=([], Mock())
-            ),
             patch("nova_rerun_bridge.trajectory.RobotVisualizer") as mock_visualizer_class,
             patch("nova_rerun_bridge.trajectory._visualizer_cache", test_cache),
             patch("nova_rerun_bridge.trajectory.log_trajectory"),
-            patch("nova_rerun_bridge.trajectory.load_model_data", return_value=b"fake data"),
+            patch("nova_rerun_bridge.trajectory.UrdfRobotVisualizer") as mock_urdf_class,
         ):
+            mock_urdf_class.for_motion_group = AsyncMock(return_value=Mock())
             mock_visualizer = Mock()
             mock_visualizer_class.return_value = mock_visualizer
 
@@ -221,14 +213,10 @@ class TestLogMotionParameterValidation:
         with (
             patch("nova_rerun_bridge.trajectory.rr"),
             patch("nova_rerun_bridge.trajectory.DHRobot"),
-            patch("nova_rerun_bridge.trajectory.extract_link_chain_and_tcp") as mock_extract,
             patch("nova_rerun_bridge.trajectory.RobotVisualizer"),
             patch("nova_rerun_bridge.trajectory._visualizer_cache", {}),
             patch("nova_rerun_bridge.trajectory.log_trajectory") as mock_log_trajectory,
         ):
-            # Configure the extract function to return expected tuple
-            mock_extract.return_value = ([], Mock())  # (link_chain, tcp)
-
             # Should not raise exceptions with valid parameters
             await log_motion(
                 trajectory=joint_trajectory,
@@ -273,14 +261,10 @@ class TestLogMotionParameterValidation:
         with (
             patch("nova_rerun_bridge.trajectory.rr"),
             patch("nova_rerun_bridge.trajectory.DHRobot"),
-            patch("nova_rerun_bridge.trajectory.extract_link_chain_and_tcp") as mock_extract,
             patch("nova_rerun_bridge.trajectory.RobotVisualizer"),
             patch("nova_rerun_bridge.trajectory._visualizer_cache", {}),
             patch("nova_rerun_bridge.trajectory.log_trajectory") as mock_log_trajectory,
         ):
-            # Configure the extract function to return expected tuple
-            mock_extract.return_value = ([], Mock())  # (link_chain, tcp)
-
             # Should handle empty trajectory without errors
             await log_motion(
                 trajectory=empty_trajectory,
@@ -324,14 +308,10 @@ class TestLogMotionParameterValidation:
         with (
             patch("nova_rerun_bridge.trajectory.rr"),
             patch("nova_rerun_bridge.trajectory.DHRobot"),
-            patch("nova_rerun_bridge.trajectory.extract_link_chain_and_tcp") as mock_extract,
             patch("nova_rerun_bridge.trajectory.RobotVisualizer"),
             patch("nova_rerun_bridge.trajectory._visualizer_cache", {}),
             patch("nova_rerun_bridge.trajectory.log_trajectory") as mock_log_trajectory,
         ):
-            # Configure the extract function to return expected tuple
-            mock_extract.return_value = ([], Mock())  # (link_chain, tcp)
-
             # Test with show_safety_link_chain=True (default)
             await log_motion(
                 trajectory=empty_trajectory,

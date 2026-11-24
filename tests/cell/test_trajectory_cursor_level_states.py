@@ -526,3 +526,53 @@ async def test_frame_shows_motion():
     assert not _frame_shows_motion(_state(True, _paused(0.0)))
     assert not _frame_shows_motion(_state(True, _ended(3.0)))
     assert not _frame_shows_motion(_state(True))
+
+
+# ---------------------------------------------------------------------------
+# Frames of the previous trajectory after a cancelled execution (NOVA 26.8)
+# ---------------------------------------------------------------------------
+
+
+def _previous(trajectory_state, location: float) -> api.models.Execute:
+    """A frame the controller still reports for the trajectory before ours."""
+    return api.models.Execute(
+        joint_position=[0.0] * 6,
+        details=api.models.TrajectoryDetails(
+            trajectory="traj-0", location=location, state=trajectory_state
+        ),
+    )
+
+
+def _after_cancelled(previous_state) -> list[api.models.MotionGroupState]:
+    """The robot is still braking from a cancelled execution of ``traj-0`` while the
+    controller already parks ours, ``traj-1``, at its start; then our motion."""
+    return (
+        [_state(False, _previous(previous_state, 0.37))] * 3
+        + [_state(True, _paused(0.0))] * 3
+        + [_state(False, _paused(0.0))]
+        + [_state(False, _running(loc)) for loc in (0.0, 1.0, 2.0)]
+        + [_state(False, _ended(3.0))]
+        + [_state(True, _ended(3.0))] * 2
+    )
+
+
+@pytest.mark.parametrize(
+    "previous_state",
+    [api.models.TrajectoryRunning(time_to_end=500), api.models.TrajectoryPausedByUser()],
+    ids=["previous-running", "previous-paused"],
+)
+async def test_frames_of_the_previous_trajectory_do_not_fail_the_next_execution(previous_state):
+    """Integration failures since NOVA 26.8: right after a cancelled execution the
+    first frames still report the previous trajectory, moving or braking. Read as
+    ours, they made the machine `executing` (or "moved") before our trajectory was
+    parked at 0.0, and that parked frame then failed execute() as a user pause."""
+    cursor = _one_shot_cursor(_after_cancelled(previous_state))
+    operation = cursor.forward()
+    consumer = await _drive(cursor)
+
+    async with asyncio.timeout(5):
+        result = await operation
+        await consumer
+
+    assert result.error is None
+    assert result.final_location == 3.0
