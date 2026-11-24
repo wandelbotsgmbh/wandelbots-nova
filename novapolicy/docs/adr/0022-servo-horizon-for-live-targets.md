@@ -50,9 +50,19 @@ per TCP axis, as an estimate of a real UR:
 On the virtual robot itself (no servoj): 220 ms, 19 mm rms, overshoot median 3 mm, against
 176 ms, 34 mm and 32 mm for each pose alone. One or two runs each; runs scatter by up to 2×.
 
+With the client in a pod on the NOVA instance (no remote network), two runs each:
+
+| | lag | position rms / max | overshoot, median / max | rotation rms |
+| --- | --- | --- | --- | --- |
+| each pose alone | does not settle | 95 to 101 / 282 to 299 mm | 0.1 to 0.9 / 33 to 61 mm | 9 to 12° |
+| `ServoHorizon()` | 188 to 196 ms | 6.8 to 7.0 / 24 to 26 mm | 0 / 0.2 mm | 0.9° |
+
+Each pose alone, the 0.9 m/s zigzag set the arm ringing by about ±60 mm, on for half a second
+after the hand had stopped; over the remote network the targets' jitter had damped that. The
+remote network added about 30 ms of lag to `ServoHorizon` and most of its error.
+
 **Consequences.** Opt-in: the joggers' default pipeline is unchanged. On a real UR the path is
 filtered twice, by `ServoHorizon` and by servoj in NOVA's driver, which adds about a lookahead of
 lag; a servo streaming mode in NOVA, passing the target to servoj directly, would remove one.
-Where the hand moves harder than the arm can, about 85 mm peak error remains, as it would with
-ur_rtde. The lag from a client on the NOVA instance instead of a remote network is measured
-separately.
+Where the hand moves harder than the arm can, error remains (24 mm peak from the instance, 86 mm
+over a remote network), as it would with ur_rtde. Run the client next to NOVA where it can.

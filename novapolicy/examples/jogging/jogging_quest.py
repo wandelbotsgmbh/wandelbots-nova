@@ -19,12 +19,12 @@ Each pose goes out as a live target (``set_target``) through ``ServoHorizon``: U
 spring-damper (gain 300, lookahead 0.115 s) follows the pose, and the spring's path with the pose
 held, braking onto it, goes to NOVA as a 400 ms horizon (ADR 0022). ``--raw`` sends each pose
 alone instead, one waypoint the jogger's lead (100 ms) ahead, as ur_rtde's ``servoL`` streams it.
-Measured on a virtual UR10e over a remote network, the ``within`` part at full speed, with UR's
-servoj applied to the result as a real UR would:
+Measured on a virtual UR10e, the ``within`` part at full speed:
 
-- ``ServoHorizon``: 316 ms behind the controller, 17 mm rms, no overshoot at sudden stops.
-- ``--raw``: 264 ms behind, 30 mm rms, overshooting stops by 19 mm (median) to 114 mm.
-- Where the hand moves harder than the arm can, about 85 mm peak error remains either way.
+- Client on the NOVA instance, ``ServoHorizon``: 190 ms behind the controller, 7 mm rms, 25 mm
+  at most, no overshoot. ``--raw``: the zigzag sets the arm ringing by about 60 mm.
+- Over a remote network, ``ServoHorizon``: 220 ms, 19 mm rms; ``--raw``: 176 ms, 34 mm rms,
+  overshooting sudden stops by 20 to 30 mm.
 """
 
 import argparse
