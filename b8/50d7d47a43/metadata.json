@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "b850d7d47a43",
+  "strategy": "manual-commit",
+  "branch": "fix/nats-reconnect-on-login-expiry",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "nova/core/nova.py",
+    "tests/nova/core/test_nova_nats_expiry_live.py",
+    "tests/nova/core/test_nova_reconnect.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b8/50d7d47a43/0/metadata.json",
+      "transcript": "/b8/50d7d47a43/0/full.jsonl",
+      "compact_transcript": "/b8/50d7d47a43/0/transcript.jsonl",
+      "content_hash": "/b8/50d7d47a43/0/content_hash.txt",
+      "prompt": "/b8/50d7d47a43/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 40,
+    "cache_creation_tokens": 22902,
+    "cache_read_tokens": 1679108,
+    "output_tokens": 8723,
+    "api_call_count": 17
+  }
+}
