@@ -89,6 +89,8 @@ Measured on a virtual UR10e, the ``within`` part at full speed:
 
 ## From the docstring of examples/jogging/jogging_live_buffer_comparison.py
 
+The example was removed with `LiveBuffer` on 2026-11-24 (ADR 0013).
+
 ```text
 * ``buffer``: the 500 ms live buffer replays recent targets as a horizon (the workaround).
 

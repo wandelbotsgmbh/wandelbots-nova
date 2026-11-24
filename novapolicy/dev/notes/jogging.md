@@ -75,6 +75,9 @@ handed to a worker thread rather than paid on the control loop (see
 
 ## LiveBuffer: measurements and timeline
 
+`LiveBuffer` was removed on 2026-11-24 (ADR 0013); this section is kept as a record. The
+trajectory clock it describes stays in `novapolicy/jogging/jogger.py`.
+
 Nothing in that horizon is invented: every waypoint is a target that was really measured,
 replayed late rather than extrapolated forward. Measured on a virtual UR10e with a sine
 target set at about 90 Hz: 0.015° rms against the target with 500 ms, 0.45–0.84° and arm
@@ -124,9 +127,8 @@ then on with the target held. That path, braking onto the target, goes out as th
 - A rotation vector past a half-turn is taken as the equivalent closest to the spring's, so the
   tool does not swing the long way round.
 - It applies to `set_target` only: a chunk of several steps, or a target without its own start
-  time (before the loop has state), passes through and resets the spring. It sits in the same
-  stage as `LiveBuffer` and the two do not compose: each passes the other's multi-step output
-  through, so use one or the other.
+  time (before the loop has state), passes through and resets the spring. It is the only module
+  of the `input` stage since `LiveBuffer` was removed (2026-11-24).
 
 Measured on a virtual UR10e with the Quest mock's fast part (flicks, a 0.9 m/s zigzag, wrist
 rolls, up to 11 m/s²). With the client on the NOVA instance, `ServoHorizon()` tracked within
@@ -144,7 +146,7 @@ follow from that:
 
 - **Sampled once per iteration.** Every target you derive from `elapsed` within
   one pass through the loop is stamped from the same instant.
-- **Quantised** to a 10 ms grid (`live_buffer.TIMELINE_GRID_MS`), so successive chunks
+- **Quantised** to a 10 ms grid (`novapolicy.jogging.jogger.TIMELINE_GRID_MS`), so successive chunks
   anchor on one absolute grid instead of each landing at a new phase.
 - **Never runs backwards.** Server "now" is extrapolated between state samples, so
   a late sample can resolve below an earlier estimate; since content is a function
@@ -161,7 +163,7 @@ absolute timeline and unreachable waypoints are dropped at send time.
 
 ## The send pipeline: stages, contract and EaseIn measurement
 
-Modules before `Timestamps()` work on chunks (`LiveBuffer`, `ServoHorizon`, `HoldPadding`);
+Modules before `Timestamps()` work on chunks (`ServoHorizon`, `HoldPadding`);
 filters after it choose which timed waypoints go out without retiming them (`DropLate`);
 waypoint modules last may change the values only (`EaseIn`). `Timestamps()` may be left out; it
 then sits after the last chunk module. Each motion group runs its own copy. See
@@ -174,7 +176,8 @@ second 54°/s instead of 85°/s.
 ## Examples: keyboard latency
 
 From the examples table, `jogging_keyboard.py`: Over a remote network the TCP starts moving
-about 130 ms after a press; a 500 ms `LiveBuffer` adds its window to that delay.
+about 130 ms after a press; a 500 ms `LiveBuffer` (removed 2026-11-24) added its window to that
+delay.
 
 ## Error detection: drained queue and endpoint history
 

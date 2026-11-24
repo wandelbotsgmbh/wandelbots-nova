@@ -4,9 +4,9 @@
     python jogging_joints.py --chunked          # 8-step chunks
     python jogging_joints.py --dual [--chunked] # two arms, mirror-symmetric
 
-Live targets (``set_target``) go through a 500 ms ``LiveBuffer``: recent targets are replayed as a
-waypoint horizon, so the arm tracks the moving target about 500 ms behind. Without it each target
-goes out alone and the arm brakes towards every one of them.
+Live targets (``set_target``) go through ``ServoHorizon``: a spring-damper follows the target and
+its braking path goes out as a waypoint horizon, so the arm tracks the moving target smoothly, a
+little behind it.
 
 Chunks (``set_chunk``) carry their own horizon. Their motion is shaped by an amplitude envelope so
 it starts and ends at rest; the last chunks look past the end and hold the envelope's end value,
@@ -17,7 +17,7 @@ import math
 import sys
 
 import nova
-from novapolicy import LiveBuffer, default_pipeline, jog_joints
+from novapolicy import ServoHorizon, default_pipeline, jog_joints
 
 DUAL = "--dual" in sys.argv
 CHUNKED = "--chunked" in sys.argv
@@ -55,7 +55,7 @@ async def main(ctx: nova.ProgramContext):
         joints[0] += sign[mg] * offset(t)
         return joints
 
-    pipeline = None if CHUNKED else [LiveBuffer(window_ms=500), *default_pipeline()]
+    pipeline = None if CHUNKED else [ServoHorizon(), *default_pipeline()]
     dt_s = DT_MS / 1000.0
     last_send_t = -math.inf
     async with jog_joints(groups, start_joint_position=homes, pipeline=pipeline) as jogger:

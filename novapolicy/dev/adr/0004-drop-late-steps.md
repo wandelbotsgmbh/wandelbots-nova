@@ -16,7 +16,7 @@ one-step chunks: the playback clock (ADR 0017) and, opt-in since 2026-11-24, the
 acceleration limit (j1 at 853°/s² for 178–229 samples against 88–105), path p90 0.9–2.1 mm
 against 0.3–0.4 mm. A live-target buffer (`LiveBuffer`): worse for one-step policy steps, better
 for dense jogging targets (numbers in ADR 0009), so it stays an opt-in module in front of
-placement; it sets its own time grid.
+placement; it sets its own time grid. (2026-11-24: `LiveBuffer` was removed, ADR 0013.)
 
 **Consequences.** What reaches NOVA is what the policy said, at the time it said it. The remaining
 path deviation (about 9 mm peaks) is the follower's, reported to NOVA.

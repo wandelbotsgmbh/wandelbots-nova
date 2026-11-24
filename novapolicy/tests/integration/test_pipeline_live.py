@@ -23,12 +23,9 @@ import pytest_asyncio
 
 from novapolicy import (
     ContinuousExecution,
-    LiveBuffer,
     PolicyExecutor,
     QueuedPolicyClient,
     SequentialExecution,
-    default_pipeline,
-    jog_joints,
 )
 from novapolicy.mapping.schema import Action, Observation, PolicySchema
 from novapolicy.providers.base import CallbackPolicyClient
@@ -168,20 +165,6 @@ async def _run(mg: Any, policy: Any, execution: Any, duration_s: float = 6.0) ->
         timeout_s=duration_s,
     ).run()
     return result.reason
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio(loop_scope="module")
-async def test_jogging_follows_live_targets_through_a_live_buffer(ur10e, recording):
-    async with jog_joints(
-        ur10e, start_joint_position=START, pipeline=[LiveBuffer(500), *default_pipeline()]
-    ) as jogger:
-        async for _ in jogger:
-            if jogger.elapsed >= 5.0:
-                break
-            jogger.set_target(_target(jogger.elapsed))
-    rms, peak = _tracking_deg(recording)
-    assert rms < 0.1 and peak < 1.0, (rms, peak)
 
 
 @pytest.mark.integration

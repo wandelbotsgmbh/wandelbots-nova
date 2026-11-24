@@ -44,7 +44,7 @@ class PendingChunk:
     observed_at_ms: ServerMs | None = None
     """When the chunk's state was measured (a live target: when it was produced), session clock."""
     extend_buffer: bool = True
-    """Let ``HoldPadding`` pad the chunk (contract T6); ``LiveBuffer`` turns it off."""
+    """Let ``HoldPadding`` pad the chunk (contract T6); live targets turn it off."""
     when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None
     """``(step, action)``: run ``action`` when the caller's ``step`` is due, see
     :meth:`~novapolicy.transport.session.WaypointJoggingSession.update_chunk`."""

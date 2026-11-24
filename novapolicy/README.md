@@ -277,8 +277,8 @@ remove or configure modules, or to add your own. See [docs/pipeline.md](docs/pip
 - [`http_policy.py`](examples/http_policy.py): a new policy client in one class, for a policy
   served over HTTP, with a mock server.
 - [`jogging/`](examples/jogging/): jogging without a policy (single and dual arm, joint and TCP,
-  chunks, `LiveBuffer`); [`jogging_keyboard.py`](examples/jogging/jogging_keyboard.py) jogs the TCP
-  from the keyboard, [`jogging_quest.py`](examples/jogging/jogging_quest.py) follows a mocked
+  live targets and chunks); [`jogging_keyboard.py`](examples/jogging/jogging_keyboard.py) jogs the
+  TCP from the keyboard, [`jogging_quest.py`](examples/jogging/jogging_quest.py) follows a mocked
   Meta Quest controller with `ServoHorizon`.
 - [`pick_and_place_umi_ur10e.py`](examples/pick_and_place_umi_ur10e.py): a pick-and-place written
   out by hand, to prove a cell before a policy runs on it.

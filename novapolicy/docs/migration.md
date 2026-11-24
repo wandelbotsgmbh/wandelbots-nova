@@ -138,7 +138,6 @@ depend on that, instead of running them with timings that never come:
 | Before (ran, wrongly) | Now |
 | --- | --- |
 | `QueuedPolicyClient(...)` or `LeRobotPolicyClient(use_async_queue=True)` with `SequentialExecution()` | use `ContinuousExecution()`, or the wrapped policy without the queue |
-| a `LiveBuffer` in `pipeline=` with `SequentialExecution()` | use `ContinuousExecution()` |
 
 `use_async_queue=` is removed as well: wrap the client in `QueuedPolicyClient` instead (see
 [LeRobot has no async queue of its own](#lerobot-has-no-async-queue-of-its-own)).
@@ -217,43 +216,45 @@ to 300 ms longer; pass your own `pipeline=[...]` with `HoldPadding()` for the ol
 
 ## Send pipeline
 
-### Buffering and ease-in are pipeline modules
+### `LiveBuffer` is removed
 
-`buffer_window_ms` (on `PolicyExecutor`, `jog_joints`, `jog_tcp`) and `ease_in_s` (on the
-joggers) are gone. Both are modules of the send pipeline now, neither in the defaults; add them
-by extending `default_pipeline()`:
+The live-target buffer is gone: the `LiveBuffer` module, and with it `buffer_window_ms`. It
+replayed the last targets as a horizon, but NOVA follows each waypoint without looking ahead, so
+the replayed horizon only delayed the robot by its window. Send live targets alone, or add
+`ServoHorizon()` in front of the defaults for a smooth path that brakes onto the newest target:
 
 | Before | Now |
 | --- | --- |
-| `jog_joints(mg)` (500 ms buffer for `set_target`) | `jog_joints(mg, pipeline=[LiveBuffer(window_ms=500), *default_pipeline()])` |
+| `pipeline=[LiveBuffer(window_ms=500), *default_pipeline()]` | `pipeline=None` (each live target alone), or `pipeline=[ServoHorizon(), *default_pipeline()]` |
+| `jog_joints(mg)` (500 ms buffer for `set_target`) | `jog_joints(mg)`, or `jog_joints(mg, pipeline=[ServoHorizon(), *default_pipeline()])` |
 | `jog_joints(mg, buffer_window_ms=0)` | `jog_joints(mg)` |
+| `PolicyExecutor(..., buffer_window_ms=80)` | `PolicyExecutor(...)` without it |
+| `novapolicy.jogging.live_buffer.LIVE_LEAD_MS` | `novapolicy.jogging.jogger.LEAD_MS` |
+| `novapolicy.jogging.live_buffer.TIMELINE_GRID_MS`, `trajectory_elapsed_ms` | `novapolicy.jogging.jogger.TIMELINE_GRID_MS`, `trajectory_elapsed_ms` |
+
+A live target now goes out as one waypoint, due `LEAD_MS` (100 ms) after the jogger's loop time.
+The joint and TCP jogging examples (`jogging_joints.py`, `jogging_tcp.py`) use `ServoHorizon` for
+their live targets. The executor no longer refuses anything about a buffer.
+
+### Ease-in is a pipeline module
+
+`ease_in_s` (on the joggers) is gone. Ease-in is a module of the send pipeline now, not in the
+defaults; add it by extending `default_pipeline()`:
+
+| Before | Now |
+| --- | --- |
 | `jog_joints(mg, ease_in_s=1.0)` | `jog_joints(mg, pipeline=[*default_pipeline(), EaseIn(duration_s=1.0)])` |
-| `PolicyExecutor(..., buffer_window_ms=80)` | `PolicyExecutor(..., pipeline=[LiveBuffer(window_ms=80), *default_pipeline(execution=..., policy=...)])` |
 
-**A jogging script that relied on the default buffer now sends each live target alone**, and the
-robot brakes toward each target. Add `LiveBuffer(window_ms=500)` in front of the defaults to keep
-the old behaviour; the joint and TCP jogging examples (`jogging_joints.py`, `jogging_tcp.py`) do.
-`EaseIn` now blends by each waypoint's timestamp with a smootherstep. With a buffer, a chunk's
-IO goes with its newest target instead of at once.
-
-Also changed with the buffer in `PolicyExecutor`:
-
-- **Multi-step and TCP chunks are accepted.** The old buffered mode refused them; the module
-  passes a multi-step chunk through unchanged (and clears its window, warning once), so it is
-  placed like any other chunk.
-- **A lone target before the window fills keeps the caller's padding**: it is sent as the caller
-  queued it, with hold padding to the buffer horizon, until the buffer has two points to replay.
-- **It needs `ContinuousExecution`**: a `LiveBuffer` under sequential execution is refused at
-  construction.
+`EaseIn` now blends by each waypoint's timestamp with a smootherstep.
 
 ### The built-ins are pipeline modules, and an explicit pipeline is the whole list
 
 Smoothing, the bridge, the endpoint ramp, the joint clamp, hold padding and dropping late
 waypoints are modules of the send pipeline now. `pipeline=None` (the default) runs
 `default_pipeline()`, which does what the built-ins did; **an explicit list is exactly what runs**.
-A `pipeline=[LiveBuffer(...)]` or `pipeline=[EaseIn(...)]` from the previous release now runs only
-that module: no padding and no dropping of late waypoints, and in `PolicyExecutor` no clamp and
-no bridge. Extend the defaults instead. For `PolicyExecutor`, pass the same execution and policy:
+A `pipeline=[EaseIn(...)]` from the previous release now runs only that module: no padding and no
+dropping of late waypoints, and in `PolicyExecutor` no clamp and no bridge. Extend the defaults
+instead. For `PolicyExecutor`, pass the same execution and policy:
 
 ```python
 pipeline = [*default_pipeline(execution=execution, policy=policy), EaseIn(duration_s=1.0)]
@@ -310,11 +311,11 @@ Also changed:
 
 ### Chunk modules run in a fixed order, and a built-in module only once
 
-`split_pipeline` now refuses chunk modules out of their stages' order (`LiveBuffer` or
-`ServoHorizon`, `Smoothing`, `TimestepTimeline`, `Bridge`, `EndpointRamp`, `HoldPadding`;
-`JointClamp` and your own modules anywhere) and a built-in module listed twice. Such a list used
-to run, wrongly. Reorder the list as the error says. The executor also warns for the joggers'
-default list and for `EndpointRamp` in continuous execution; both still run.
+`split_pipeline` now refuses chunk modules out of their stages' order (`ServoHorizon`,
+`Smoothing`, `TimestepTimeline`, `Bridge`, `EndpointRamp`, `HoldPadding`; `JointClamp` and your
+own modules anywhere) and a built-in module listed twice. Such a list used to run, wrongly.
+Reorder the list as the error says. The executor also warns for the joggers' default list and for
+`EndpointRamp` in continuous execution; both still run.
 
 ### `Timestamps` has a setting, and `SplitPipeline` a fourth field
 
@@ -333,10 +334,6 @@ default list and for `EndpointRamp` in continuous execution; both still run.
 
 Nothing to change in code; what is sent differs slightly:
 
-- **A `LiveBuffer` horizon ends at or before the newest target.** It used to reach up to one step
-  past it, holding the newest value, and the next target rewrote that waypoint under the
-  controller. A replayed horizon can be one waypoint shorter. Its timestamps are rounded instead
-  of truncated, so none is 1 ms off the grid.
 - **A jogger chunk starts on the 10 ms grid.** Its anchor rounds each term instead of
   truncating their sum, which started some chunks 1 ms early. Step zero can move by 1 ms.
 - **New, opt-in: `ServoHorizon`** follows live targets with a spring-damper and sends its braking
@@ -399,7 +396,8 @@ members. Code that only uses `PolicyExecutor`, `jog_joints` and `jog_tcp` needs 
 The modules moved into one folder per part of the package: `mapping/`, `pipeline/` (with one file
 per built-in module in `pipeline/modules/`), `transport/`, `jogging/` (the jogging API) and
 `providers/`. Nothing else changed: no class or function was renamed and none behaves
-differently.
+differently. The live buffer was removed separately (see
+[`LiveBuffer` is removed](#livebuffer-is-removed)).
 
 - **`from novapolicy import ...` is unchanged**, `LeRobotPolicyClient` and `LeappPolicyClient`
   included.
@@ -440,7 +438,7 @@ differently.
 | `novapolicy.jogging.modules.JointClamp` | `novapolicy.pipeline.modules.joint_clamp` |
 | `novapolicy.jogging.modules.HoldPadding` | `novapolicy.pipeline.modules.hold_padding` |
 | `novapolicy.jogging.modules.DropLate`, `MIN_LEAD_MS` | `novapolicy.pipeline.modules.drop_late` |
-| `novapolicy.jogging.live_buffer` | `novapolicy.pipeline.modules.live_buffer` |
+| `novapolicy.jogging.live_buffer` | removed ([`LiveBuffer` is removed](#livebuffer-is-removed)) |
 | `novapolicy.jogging.waypoint_session` | `novapolicy.transport.session` |
 | `novapolicy.jogging.clock` | `novapolicy.transport.clock` |
 | `novapolicy.jogging.waypoints` | `novapolicy.transport.waypoints` |
@@ -478,11 +476,13 @@ up a GR00T policy on a real robot.
 | --- | --- |
 | `TypeError` for `dt_ms=`, `fps=` or `playback_speed=` | pass `control_freq=` ([Step rate](#step-rate-control_freq)) |
 | a LeRobot policy plays twice as fast | pass `control_freq=15` (or the dataset's `fps`); the default is now 30 |
-| `TypeError` for `buffer_window_ms=` or `ease_in_s=` | add `LiveBuffer` or `EaseIn` to the pipeline ([Buffering and ease-in](#buffering-and-ease-in-are-pipeline-modules)) |
+| `TypeError` for `buffer_window_ms=` | remove it ([`LiveBuffer` is removed](#livebuffer-is-removed)) |
+| `TypeError` for `ease_in_s=` | add `EaseIn` to the pipeline ([Ease-in](#ease-in-is-a-pipeline-module)) |
+| `ImportError` for `LiveBuffer` or `LIVE_LEAD_MS` | see [`LiveBuffer` is removed](#livebuffer-is-removed) |
 | `TypeError` for `use_async_queue=` on `LeRobotPolicyClient` | wrap it in `QueuedPolicyClient` ([LeRobot](#lerobot-has-no-async-queue-of-its-own)) |
 | `TypeError` for `rtc=` on `Gr00tPolicyClient` | remove it ([RTC is removed](#gr00t-real-time-chunking-rtc-is-removed)) |
 | `TypeError` for `plant=`, `min_chunk_horizon_ms=`, `clamp_to_joint_limits=`, `endpoint_ramp=` or `smoothing_passes=` | see the tables under [Send pipeline](#send-pipeline) and [Execution](#execution) |
-| jogging live targets got jerky | add `LiveBuffer(window_ms=500)` in front of the defaults |
+| jogging live targets overshoot or are not smooth | add `ServoHorizon()` in front of the defaults |
 | after adding one module, padding, clamping or late-step dropping stopped | an explicit pipeline is the whole list; extend `default_pipeline(...)` |
 | `ValueError` at construction about `ContinuousExecution` | see [Sequential execution refuses setups](#sequential-execution-refuses-setups-it-would-run-wrongly) |
 | `ValueError` at construction about a `TimestepTimeline` | build the pipeline from `default_pipeline(execution=..., policy=...)` |

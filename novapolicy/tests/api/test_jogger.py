@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from functools import partial
-import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -19,7 +18,7 @@ import pytest
 
 from novapolicy.jogging import jog_joints, jog_tcp
 from novapolicy.jogging.jogger import JointJogger, TcpJogger
-from novapolicy.pipeline.modules.live_buffer import LiveBuffer
+from novapolicy.pipeline.modules.servo_horizon import ServoHorizon
 from novapolicy.tests.doubles import fake_session as _fake_session, mg as _mg
 from novapolicy.types import MotionError, WaypointConfig
 
@@ -143,18 +142,17 @@ def test_setting_a_single_target_streams_it_to_the_robot():
         dt_ms=0.0,
         first_timestamp_ms=None,
         timestamp_offset_steps=1,
-        observed_at_ms=None,  # the loop has not started: no shared time yet
         extend_buffer=False,
     )
     assert jogger.target == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
 
 
 def test_the_pipeline_is_handed_to_every_session():
-    """Opt-in modules (e.g. LiveBuffer, EaseIn) run in the sessions; the jogger does not shape
+    """Opt-in modules (e.g. ServoHorizon, EaseIn) run in the sessions; the jogger does not shape
     targets itself, and a live target goes out unchanged by default."""
     from novapolicy import EaseIn
 
-    pipeline = (LiveBuffer(window_ms=30.0), EaseIn(duration_s=1.0))
+    pipeline = (ServoHorizon(), EaseIn(duration_s=1.0))
     jogger, mgs, sessions = _build_joint_jogger("0@left", "0@right", pipeline=pipeline)
     assert all(sessions[mg].pipeline == pipeline for mg in mgs)
     _, tcp_mg, tcp_sessions = _build_tcp_jogger("0@ur10e", pipeline=pipeline)
@@ -176,31 +174,6 @@ def test_setting_a_chunk_streams_every_step_and_tracks_the_last():
         extend_buffer=True,
     )
     assert jogger.target == chunk[-1]
-
-
-def test_with_a_live_buffer_the_jogger_still_sends_each_live_target_alone(caplog):
-    """The buffering moved into the session's pipeline (see the LiveBuffer tests in
-    test_waypoint_session.py): the jogger sends every live target as it came, one waypoint,
-    no padding, and a chunk as it came, without clearing or warning about anything."""
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", pipeline=(LiveBuffer(window_ms=30.0),))
-
-    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.jogger"):
-        for i, value in enumerate((1.0, 2.0, 3.0)):
-            _tick(jogger, sessions, i * 10.0)
-            jogger.set_target([value] * 6)
-        jogger.set_chunk([[9.0] * 6, [9.0] * 6], dt_ms=10.0)
-
-    calls = [call.kwargs for call in sessions[mg].update_chunk.call_args_list]
-    assert [kwargs["steps"] for kwargs in calls] == [
-        [[1.0] * 6],
-        [[2.0] * 6],
-        [[3.0] * 6],
-        [[9.0] * 6, [9.0] * 6],
-    ]
-    assert all(kwargs["dt_ms"] == 0.0 for kwargs in calls[:3])
-    assert all(kwargs["extend_buffer"] is False for kwargs in calls[:3])
-    assert calls[3]["extend_buffer"] is True
-    assert [r for r in caplog.records if r.name == "novapolicy.jogging.jogger"] == []
 
 
 def test_each_arm_in_a_dual_setup_receives_its_own_target():
@@ -225,7 +198,7 @@ _tcp = partial(_build_tcp_jogger, "0@ur10e")
 @pytest.mark.parametrize(
     ("build", "push", "error", "match"),
     [
-        # The split exists so a chunk cannot arrive where a LiveBuffer's live path applies:
+        # The split exists so a chunk cannot arrive where a live target's path applies:
         # accepting it there meant the buffer was silently irrelevant for that push.
         (_single, lambda j: j.set_target([[1.0] * 6, [2.0] * 6]), TypeError, "set_chunk"),
         # And the reverse, so dt_ms is never applied to something without steps.
@@ -337,7 +310,6 @@ def test_tcp_jogging_streams_a_pose_as_a_cartesian_waypoint():
         dt_ms=0.0,
         first_timestamp_ms=None,
         timestamp_offset_steps=1,
-        observed_at_ms=None,  # the loop has not started: no shared time yet
         extend_buffer=False,
     )
 

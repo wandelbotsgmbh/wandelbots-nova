@@ -1,7 +1,9 @@
 # 0022 Live targets can follow a spring-damper and go out as a braking horizon (opt-in)
 
 Status: accepted, 2026-11-24. `ServoHorizon` in `pipeline/modules/servo_horizon.py`; the Quest
-teleoperation example (`examples/jogging/jogging_quest.py`) uses it.
+teleoperation example (`examples/jogging/jogging_quest.py`) uses it. Later on 2026-11-24
+`LiveBuffer` was removed (ADR 0013): `ServoHorizon` is the only module of the `input` stage, and
+the joint and TCP jogging examples use it too.
 
 **Context.** Teleoperation sends the hand's pose as a live target, about 70 to 100 times a
 second. Sent alone, each is one waypoint the jogger's lead (100 ms) ahead, and NOVA's follower

@@ -16,7 +16,6 @@ from novapolicy.mapping.relative import apply_relative_mode
 from novapolicy.pipeline.base import split_pipeline
 from novapolicy.pipeline.defaults import default_pipeline
 from novapolicy.pipeline.modules.endpoint_ramp import EndpointRamp
-from novapolicy.pipeline.modules.live_buffer import LiveBuffer
 from novapolicy.pipeline.modules.timeline import TimestepTimeline
 from novapolicy.pipeline.placement import is_single_step, placement, trim_chunk
 from novapolicy.providers.base import PolicyClient
@@ -119,8 +118,6 @@ def _check_execution_mode(
             "ContinuousExecution. For SequentialExecution drop the queue: the policy without "
             "QueuedPolicyClient"
         )
-    if any(isinstance(module, LiveBuffer) for module in pipeline):
-        raise ValueError("LiveBuffer requires ContinuousExecution")
 
 
 def resolve_actions(

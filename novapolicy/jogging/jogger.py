@@ -9,13 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from typing import TYPE_CHECKING, Self, TypeAlias, cast, overload, override
 
-from novapolicy.pipeline.modules.live_buffer import (
-    LIVE_LEAD_MS,
-    trajectory_elapsed_ms,
-)
 from novapolicy.transport.clock import ServerMs
 from novapolicy.transport.lifecycle import SessionLifecycle, move_to_start_joint_position
 from novapolicy.types import WaypointConfig
@@ -45,7 +42,19 @@ def _is_chunk(value: object) -> bool:
 
 # How far ahead of session time step zero is placed, for a chunk and a live target alike [ms];
 # must outlast the interval between pushes plus link latency, and stays constant (ADR 0013).
-LEAD_MS = LIVE_LEAD_MS
+LEAD_MS = 100.0
+"""How far after the loop's time a target or a chunk's first step is due, on the session clock."""
+TIMELINE_GRID_MS = 10.0
+"""Resolution of the jogger's timeline: content produced in one loop iteration shares a time."""
+
+
+def trajectory_elapsed_ms(now_ms: float, anchor_ms: float, previous_ms: float) -> float:
+    """Trajectory time on the **server** clock: quantised, never backwards, forward jumps kept.
+
+    ``now_ms`` must come from the server jogger clock, not wall time.
+    """
+    elapsed_ms = math.floor(max(0.0, now_ms - anchor_ms) / TIMELINE_GRID_MS) * TIMELINE_GRID_MS
+    return max(previous_ms, elapsed_ms)
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +102,7 @@ class _BaseJogger:
         """Seconds of acknowledged motion since the loop first had state; ``0.0`` before.
 
         On the session clock, sampled once per loop iteration, quantised and never backwards
-        (:func:`~novapolicy.pipeline.modules.live_buffer.trajectory_elapsed_ms`).
+        (:func:`trajectory_elapsed_ms`).
         """
         if self._loop_t0 is None:
             return 0.0
@@ -138,19 +147,11 @@ class _BaseJogger:
         if session is not None:
             steps = [list(values)]
             anchor = self._anchor(mg)
-            # When the target was produced, on the loop timeline all arms share. Each term is
-            # rounded on its own: truncating the sum puts some targets a whole grid step early.
-            produced_ms = (
-                ServerMs(round(self._ack0_ms) + round(self.elapsed * 1000.0))
-                if self._loop_t0 is not None
-                else None
-            )
             session.update_chunk(
                 steps=steps,
                 dt_ms=0.0,
                 first_timestamp_ms=anchor,
                 timestamp_offset_steps=0 if anchor is not None else 1,
-                observed_at_ms=produced_ms,
                 extend_buffer=False,
             )
         self._log_target(mg.id, [list(values)], 0.0)
@@ -189,7 +190,7 @@ class _BaseJogger:
                 msg = (
                     "set_target takes one live target, not a chunk of future steps. Pass "
                     "it to set_chunk(chunk, dt_ms=...) instead — a chunk carries its own "
-                    "horizon, so a LiveBuffer does not apply to it."
+                    "horizon."
                 )
             elif isinstance(item, list) and not item:
                 msg = "set_chunk got an empty list; a chunk needs at least one step."
@@ -305,8 +306,8 @@ class _BaseJogger:
         """Set the live target — where the robot should be *now*: joint positions for
         :func:`jog_joints`, a ``Pose`` for :func:`jog_tcp`; a dict per motion group for several.
 
-        Each target goes out as one waypoint; a ``LiveBuffer`` in the pipeline replays recent
-        targets as a horizon instead.
+        Each target goes out as one waypoint; a ``ServoHorizon`` in the pipeline sends a braking
+        horizon toward it instead.
 
         Raises:
             TypeError: If given a chunk of future steps (use :meth:`set_chunk`), a value of the
@@ -331,8 +332,7 @@ class _BaseJogger:
         """Send a chunk of future targets: joint positions, or TCP poses as raw
         ``[x, y, z, rx, ry, rz]`` in mm and rad; a dict per motion group for several.
 
-        A ``LiveBuffer`` passes a chunk unchanged and clears its window; ``HoldPadding`` pads a
-        short one, and ``DropLate`` drops steps whose moment has passed.
+        ``HoldPadding`` pads a short chunk, and ``DropLate`` drops steps whose moment has passed.
 
         Args:
             chunk: The future steps.
@@ -433,7 +433,7 @@ def jog_joints(
             per motion group for several.
         pipeline: The modules between the targets and NOVA, in order, exactly as given;
             ``None`` runs :func:`~novapolicy.pipeline.defaults.default_pipeline`. Extend that list
-            to add one, e.g. ``[LiveBuffer(window_ms=500), *default_pipeline()]``.
+            to add one, e.g. ``[ServoHorizon(), *default_pipeline()]``.
 
     Returns:
         A :class:`JointJogger` async context manager.

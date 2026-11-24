@@ -9,7 +9,7 @@ envelope (right for an oscillation about home, as in jogging_joints.py) would dr
 circle's centre and back. No ``EaseIn`` is needed: the phase warp starts at zero velocity, and
 the circle starts at the arm's own pose.
 
-Live poses go through a 500 ms ``LiveBuffer`` (see jogging_joints.py). Chunks are rebuilt and
+Live poses go through ``ServoHorizon`` (see jogging_joints.py). Chunks are rebuilt and
 re-sent every iteration; that is safe because they sit on one absolute timeline, so the same
 point keeps the same timestamp and successive chunks stitch. ``set_chunk`` takes raw
 ``[x, y, z, rx, ry, rz]`` steps; ``set_target`` takes a ``Pose``.
@@ -20,7 +20,7 @@ import sys
 
 import nova
 from nova.types import Pose
-from novapolicy import LiveBuffer, default_pipeline, jog_tcp
+from novapolicy import ServoHorizon, default_pipeline, jog_tcp
 
 DUAL = "--dual" in sys.argv
 CHUNKED = "--chunked" in sys.argv
@@ -62,7 +62,7 @@ async def main(ctx: nova.ProgramContext):
             *start.orientation,
         ]
 
-    pipeline = None if CHUNKED else [LiveBuffer(window_ms=500), *default_pipeline()]
+    pipeline = None if CHUNKED else [ServoHorizon(), *default_pipeline()]
     dt_s = DT_MS / 1000.0
     async with jog_tcp(tcps, start_joint_position=starts, pipeline=pipeline) as jogger:
         async for state in jogger:

@@ -1,8 +1,16 @@
 # 0013 The live buffer replays measured targets on a fixed grid
 
+Superseded 2026-11-24: `LiveBuffer` was removed; see
+[migration](../../docs/migration.md#livebuffer-is-removed). NOVA's follower does not look ahead,
+so the replayed horizon only added its window as delay; live targets go out alone, or through
+`ServoHorizon` (ADR 0022). The one timeline below stands for the joggers: `LEAD_MS`,
+`TIMELINE_GRID_MS` and `trajectory_elapsed_ms` are in `jogging/jogger.py`. The buffer's tests
+went with it, except `test_chunks_start_on_one_grid_in_exact_steps`.
+
 Status: accepted. Recorded 2026-11-23 from the code (`pipeline/modules/live_buffer.py`);
-the decision is older. What it does and its measurements: [jogging.md](../../docs/jogging.md#live-targets-and-the-replay-buffer-livebuffer),
-ADR 0004 and ADR 0009.
+the decision is older. What it did and its measurements:
+[notes/jogging.md](../notes/jogging.md#livebuffer-measurements-and-timeline), ADR 0004 and
+ADR 0009.
 
 **Context.** A live target says only where the target is now, and a lone waypoint is a terminal
 target the server brakes to, so one target per tick makes the robot stop and restart. Dense
@@ -18,7 +26,7 @@ targets milliseconds apart turn into speed spikes in the follower.
   and a backward step commands a reversal.
 
 How the buffer handles its edges (rounding, too little history, its sample cap, the lead) is in
-[jogging.md](../../docs/jogging.md#live-targets-and-the-replay-buffer-livebuffer).
+[notes/jogging.md](../notes/jogging.md#livebuffer-measurements-and-timeline).
 
 **Consequences.** The window is the whole horizon, and the server caps its speed at what it can
 brake within, so the window has to be a few hundred milliseconds. Too little lead shows as brief

@@ -429,7 +429,6 @@ refuses fails before the robot moves.
 | symptom | what to do |
 | --- | --- |
 | `ValueError` at construction: the policy "requires ContinuousExecution" | use `ContinuousExecution()`, or the policy without `QueuedPolicyClient` |
-| `ValueError` at construction: "LiveBuffer requires ContinuousExecution" | use `ContinuousExecution()`, or remove the `LiveBuffer` |
 | `ValueError` at construction: put the policy's `default_modules` (a `TimestepTimeline`) in the pipeline | build the pipeline from `default_pipeline(execution=..., policy=...)` |
 | a warning that the pipeline is the joggers' default | pass `execution` and `policy` to `default_pipeline` |
 | a warning that `EndpointRamp` stops the arm in continuous execution | remove `EndpointRamp` from the pipeline |

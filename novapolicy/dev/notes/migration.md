@@ -9,7 +9,8 @@ paths). The text is kept as it was, with links fixed for this folder.
 **A jogging script that relied on the default buffer now sends each live target alone:** measured
 at a ~90 Hz loop, 0.45–0.84° from the target instead of 0.015°, with arm peaks up to twice the
 commanded speed. Add `LiveBuffer(window_ms=500)` in front of the defaults to keep the old
-behaviour; the joint and TCP jogging examples (`jogging_joints.py`, `jogging_tcp.py`) do. For a
+behaviour; the joint and TCP jogging examples (`jogging_joints.py`, `jogging_tcp.py`) did until
+`LiveBuffer` was removed on 2026-11-24 (ADR 0013); they use `ServoHorizon` now. For a
 one-step policy in `PolicyExecutor` the buffer measured worse than the default lead path
 ([ADR 0009](../adr/0009-opt-in-pre-send-modules.md)).
 

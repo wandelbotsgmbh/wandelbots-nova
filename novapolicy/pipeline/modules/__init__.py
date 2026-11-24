@@ -6,7 +6,6 @@ from novapolicy.pipeline.modules.ease_in import EaseIn
 from novapolicy.pipeline.modules.endpoint_ramp import EndpointRamp
 from novapolicy.pipeline.modules.hold_padding import HoldPadding
 from novapolicy.pipeline.modules.joint_clamp import JointClamp
-from novapolicy.pipeline.modules.live_buffer import LiveBuffer
 from novapolicy.pipeline.modules.servo_horizon import ServoHorizon
 from novapolicy.pipeline.modules.smoothing import Smoothing
 from novapolicy.pipeline.modules.timeline import TimestepTimeline
@@ -18,7 +17,6 @@ __all__ = [
     "EndpointRamp",
     "HoldPadding",
     "JointClamp",
-    "LiveBuffer",
     "ServoHorizon",
     "Smoothing",
     "TimestepTimeline",

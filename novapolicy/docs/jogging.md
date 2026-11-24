@@ -81,12 +81,13 @@ of steps. For TCP jogging, each step is a raw `[x, y, z, rx, ry, rz]` list in mm
 
 Handing a chunk to `set_target`, or a single target to `set_chunk`, raises `TypeError`.
 
-By default each live target goes out as a single waypoint. NOVA treats a lone waypoint as an end
-point and brakes toward it, so a target that changes every iteration makes the robot brake again
-and again. For smooth live motion, add a
-[`LiveBuffer`](#live-targets-and-the-replay-buffer-livebuffer) or a
-[`ServoHorizon`](#following-a-hand-servohorizon) to the pipeline, or set
-`WaypointConfig.delay_until_braking_ms` (see [Short chunks are padded](#short-chunks-are-padded)).
+By default each live target goes out as a single waypoint, due 100 ms after the current
+`elapsed` (`novapolicy.jogging.jogger.LEAD_MS`). The robot steers toward it without knowing what
+comes next, so a target that stops or reverses suddenly, such as a hand, can make it overshoot.
+For a smooth path that brakes onto the target, add
+[`ServoHorizon`](#following-a-hand-servohorizon) to the pipeline. To keep the robot moving between
+targets, set `WaypointConfig.delay_until_braking_ms` (see
+[Short chunks are padded](#short-chunks-are-padded)).
 
 ## Chunked targets
 
@@ -155,31 +156,6 @@ has already passed cannot be reached, so they are dropped at send time and the r
 chunk whose waypoints have all passed is dropped. The waypoints that are sent keep their
 timestamps, so the trajectory is not distorted.
 
-## Live targets and the replay buffer (`LiveBuffer`)
-
-`LiveBuffer` keeps the last `window_ms` of live targets and sends them again as a waypoint
-horizon, so NOVA always has a next waypoint to move toward. It does not extrapolate: every
-waypoint is a target you set.
-
-```python
-from novapolicy import LiveBuffer, default_pipeline, jog_tcp
-
-pipeline = [LiveBuffer(window_ms=500), *default_pipeline()]
-async with jog_tcp(mg, tcp="Flange", pipeline=pipeline) as jogger:
-    async for state in jogger:
-        jogger.set_target(read_controller_pose())
-```
-
-- The robot follows the live target with a delay of a little more than `window_ms`.
-- Keep the window at a few hundred milliseconds. The window is the whole horizon, and NOVA limits
-  the speed to what it can stop within that horizon. A short window makes the robot stall.
-- Targets do not need a steady call rate: each one is stamped with the time it was set.
-- The buffer applies to `set_target` only. Sending a chunk with `set_chunk` clears the buffer and
-  logs a warning once per motion group.
-
-Use `LiveBuffer` for smooth live targets where some delay is acceptable. For a hand in
-teleoperation, use `ServoHorizon` instead.
-
 ## Following a hand (`ServoHorizon`)
 
 In teleoperation the target is a hand, which can stop and reverse faster than the arm can brake.
@@ -198,7 +174,6 @@ async with jog_tcp(mg, tcp="Flange", pipeline=pipeline) as jogger:
 - With the defaults it settles without overshoot and follows a target at constant speed about
   `lookahead_s` (0.115 s) behind.
 - It applies to `set_target` only. A chunk passes through unchanged and resets it.
-- Use either `ServoHorizon` or `LiveBuffer`, not both.
 - Run the client next to NOVA where you can. Network delay adds to the lag.
 
 Its settings (gain, horizon, speed and acceleration limits) are described in
@@ -213,10 +188,10 @@ same kind `PolicyExecutor` uses. Without `pipeline=` the joggers run `default_pi
 An explicit list is exactly what runs. To add a module, extend the defaults:
 
 ```python
-from novapolicy import EaseIn, LiveBuffer, default_pipeline, jog_joints
+from novapolicy import EaseIn, ServoHorizon, default_pipeline, jog_joints
 
 async with jog_joints(
-    mg, pipeline=[LiveBuffer(window_ms=500), *default_pipeline(), EaseIn(duration_s=1.0)]
+    mg, pipeline=[ServoHorizon(), *default_pipeline(), EaseIn(duration_s=1.0)]
 ) as jogger:
     ...
 ```
@@ -337,7 +312,7 @@ jog_tcp(motion_groups, *, tcp="", config=None, stop_conditions=None,
 | field | default | meaning |
 | --- | --- | --- |
 | `state_rate_ms` | `10` | state stream update rate in ms |
-| `single_step_dt_ms` | `50.0` | spacing for a live target sent as one waypoint; also the grid spacing of a `LiveBuffer` |
+| `single_step_dt_ms` | `50.0` | spacing for a live target sent before the loop has state, and for a chunk with `dt_ms=0` |
 | `max_expected_latency_ms` | `100.0` | how far after its reference a policy chunk's first step is due; see [executor.md](executor.md#setting-the-lead-for-your-network) |
 | `delay_until_braking_ms` | `None` | how long NOVA keeps the velocity after a chunk's last waypoint before it brakes; `None` brakes at the end of every chunk |
 
@@ -356,14 +331,13 @@ schema: TCP waypoints when it contains `Observation.tcp(..., action=True)`.
 ## Examples
 
 In `examples/jogging/`. The joint and TCP examples drive robots already in the cell (`ur5e-left`
-and `ur10e`; `ur5e-left` and `ur5e-right` with `--dual`). The other three create a virtual UR10e
+and `ur10e`; `ur5e-left` and `ur5e-right` with `--dual`). The other two create a virtual UR10e
 of their own.
 
 | script | what it shows |
 | --- | --- |
-| `jogging_joints.py` | joint 0 oscillates as live targets through a 500 ms `LiveBuffer`; `--chunked` sends 8-step chunks with an amplitude envelope, `--dual` drives two arms |
-| `jogging_tcp.py` | the TCP traces a 50 mm circle, eased by its phase, as live poses through a 500 ms `LiveBuffer`; `--chunked` sends 100-step chunks at 10 ms, `--dual` two arms circling in opposite directions |
-| `jogging_live_buffer_comparison.py` | the same oscillation with a `LiveBuffer`, each target alone, and each alone with `delay_until_braking_ms`, with how well the robot followed |
+| `jogging_joints.py` | joint 0 oscillates as live targets through `ServoHorizon`; `--chunked` sends 8-step chunks with an amplitude envelope, `--dual` drives two arms |
+| `jogging_tcp.py` | the TCP traces a 50 mm circle, eased by its phase, as live poses through `ServoHorizon`; `--chunked` sends 100-step chunks at 10 ms, `--dual` two arms circling in opposite directions |
 | `jogging_keyboard.py` | hold a key and the TCP moves: live targets on the default pipeline |
 | `jogging_quest.py` | a mocked Meta Quest controller drives the TCP through `ServoHorizon`; `--script within\|beyond\|seam\|all` picks the motion, `--speed 0.5` plays it at half speed, `--raw` sends each pose alone |
 
@@ -402,15 +376,12 @@ last waypoint and the state stays `RUNNING`.
 | symptom | what to do |
 | --- | --- |
 | `JoggingNotSupportedError` when the session opens | upgrade NOVA: action chunk streaming needs api-gateway 26.6 or newer |
-| the robot brakes toward every live target and moves in jerks | add `LiveBuffer` or `ServoHorizon` to the pipeline, or send chunks |
-| the robot lags far behind live targets | shorten the `LiveBuffer` window, or use `ServoHorizon` |
-| the robot stalls or crawls with a `LiveBuffer` | make the window longer, a few hundred milliseconds |
+| the robot brakes toward every live target and moves in jerks | add `ServoHorizon` to the pipeline, or send chunks |
 | the robot overshoots and rings when a hand stops in teleoperation | use `ServoHorizon` instead of sending each pose alone |
 | the robot lunges at the start of a time-based motion | add `EaseIn(duration_s=1.0)` at the end of the pipeline, or start the motion at zero velocity |
 | the robot keeps moving or stops abruptly at the end | shape the motion to end at rest; see [Closing the session](#closing-the-session) |
 | chunks make the arm swing back and forth around the set speed | send chunks less often, or use live targets; do not replace a long chunk every iteration |
 | the robot stops between chunks | send the next chunk before the previous one ends, or set `delay_until_braking_ms` |
 | `delay_until_braking_ms` has no effect | remove `HoldPadding` from the pipeline, and check the NOVA version (26.8.0-112 or newer) |
-| a warning that sending a chunk cleared the `LiveBuffer` | send either live targets or chunks to one motion group, not both |
 | `MotionError` near a joint limit, collision or singularity | move the target away from that region, or start from another `start_joint_position` |
 | `TypeError` with several motion groups | pass a dict per motion group to `set_target` and `set_chunk` |

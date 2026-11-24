@@ -413,7 +413,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 ``observed_at_ms``, or after the send when ``None`` (contracts T1); the two
                 arguments above are then not used.
             observed_at_ms: Session-clock time of the state the chunk was computed from; for a
-                live target, when it was produced (a ``LiveBuffer`` times targets by it).
+                live target, when it was produced.
             when_due: ``(step, action)``: ``action`` runs when the caller's ``step`` is due, at
                 once if already past, never if the chunk is replaced before it is sent or the
                 session stopped first (contracts T7). Actions run one after another; one that

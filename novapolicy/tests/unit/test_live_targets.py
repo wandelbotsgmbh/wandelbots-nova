@@ -163,9 +163,8 @@ async def test_streaming_observes_every_session_until_it_stops(
 
 
 # ---------------------------------------------------------------------------
-# The live-target push: one waypoint, exactly where the target is. Buffering it into
-# a horizon is the LiveBuffer pipeline module's job, in the session (see the LiveBuffer
-# tests in tests/api/test_waypoint_session.py).
+# The live-target push: one waypoint, exactly where the target is. Turning it into a
+# horizon is a pipeline module's job, in the session (ServoHorizon, test_servo_horizon.py).
 # ---------------------------------------------------------------------------
 
 
@@ -221,31 +220,16 @@ def test_a_live_target_is_sent_alone_and_unmodified() -> None:
 
 
 def test_nothing_is_buffered_or_eased_unless_passed() -> None:
-    """The default pipeline holds only the built-ins: no LiveBuffer, no EaseIn."""
+    """The default pipeline holds only the built-ins: no ServoHorizon, no EaseIn."""
     import inspect
 
-    from novapolicy.jogging import EaseIn, LiveBuffer, default_pipeline
+    from novapolicy.jogging import EaseIn, ServoHorizon, default_pipeline
     from novapolicy.jogging.jogger import jog_joints, jog_tcp
 
-    assert not any(isinstance(m, (LiveBuffer, EaseIn)) for m in default_pipeline())
+    assert not any(isinstance(m, (ServoHorizon, EaseIn)) for m in default_pipeline())
     for factory in (jog_joints, jog_tcp):
         params = inspect.signature(factory).parameters
         assert params["pipeline"].default is None, factory.__name__
-
-
-@pytest.mark.parametrize("ack0_ms", [8.0, 8.6])  # sessions start near 0 ms
-def test_live_targets_carry_the_loop_time_in_exact_grid_steps(ack0_ms: float) -> None:
-    """A LiveBuffer times targets by observed_at_ms on its 10 ms grid: converting the loop time
-    to ms must not land a target 1 ms short (``0.29 * 1000`` truncates to 289), a whole grid
-    step there, whether or not the loop's anchor is a whole ms."""
-    jogger, mg, session = _push_jogger()
-    jogger._loop_t0 = 0.0
-    jogger._ack0_ms = ack0_ms
-    for i in range(1000):  # 10 s: 2.01 s is the first to truncate from 8 ms
-        jogger._tick_ms = ack0_ms + i * 10.0 + 0.3  # server ticks fall anywhere in a grid step
-        jogger._set_live_target(mg, [float(i), 0.0, 0.0, 0.0, 0.0, 0.0])
-    produced = [chunk["observed_at_ms"] for chunk in session.chunks]
-    assert all(b - a == 10 for a, b in pairwise(produced)), produced
 
 
 @pytest.mark.parametrize("ack0_ms", [8.0, 8.6])

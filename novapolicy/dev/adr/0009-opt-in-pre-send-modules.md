@@ -38,3 +38,6 @@ the final code (2026-11-22): jogging and dual-arm numbers unchanged.
 passed, and new shaping has one place to go. Jogging scripts that relied on the default buffer
 pass `pipeline=[LiveBuffer(window_ms=500)]` (migration note). The buffer stays the right tool
 for dense live targets and the wrong one for policy steps, which is written next to it.
+
+**2026-11-24:** `LiveBuffer` was removed (ADR 0013). Live targets go out alone, or through
+`ServoHorizon` (ADR 0022); the pipeline itself stands.

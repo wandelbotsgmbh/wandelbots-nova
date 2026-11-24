@@ -131,7 +131,7 @@ and streams them as timestamped action chunks. How well the robot follows those 
   of the send pipeline (`novapolicy/pipeline/`: `base.py` and `modules/`; chunk modules before
   `Timestamps()`, filters that may drop but never retime waypoints, values-only waypoint modules
   last). The built-ins (smoothing, timestep timeline, bridge, ramp, clamp, padding, dropping late
-  waypoints; opt-in: `LiveBuffer`, `ServoHorizon`, `EaseIn`) are such modules; the opt-in cycle
+  waypoints; opt-in: `ServoHorizon`, `EaseIn`) are such modules; the opt-in cycle
   grid, `Timestamps(grid_ms=...)`, is a setting of the placement step, the one stage that times
   waypoints. `pipeline=None` runs `default_pipeline()`, an explicit list exactly what it lists. New
   shaping goes there as a module, never into the executor, the joggers or the session. Check

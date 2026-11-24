@@ -11,8 +11,8 @@ TCP moves until 150 ms after the last repeat; a first press counts for 0.6 s, th
 terminal starts repeating. The speed ramps at a fixed acceleration, so taps and releases do not
 jerk. The TCP stays inside a box around its start.
 
-Each pose goes out as a live target (``set_target``) on the default pipeline. For a steadier
-speed at the cost of more delay, add a ``LiveBuffer`` to the pipeline (see jogging_joints.py).
+Each pose goes out as a live target (``set_target``) on the default pipeline. For a smoother path
+at a little more delay, add a ``ServoHorizon`` to the pipeline (see jogging_quest.py).
 """
 
 import contextlib

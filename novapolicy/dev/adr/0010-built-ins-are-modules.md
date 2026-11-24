@@ -1,6 +1,8 @@
 # 0010 The built-ins are pipeline modules, and the list is everything
 
 Status: accepted, 2026-11-22. Supersedes the "opt-in, none by default" part of 0009.
+2026-11-24: `LiveBuffer` was removed (ADR 0013); `ServoHorizon` alone holds the `input` stage, and
+the executor no longer refuses a buffer under sequential execution.
 
 **Context.** After 0009 the send pipeline held only the opt-in `LiveBuffer` and `EaseIn`. Six
 built-ins still shaped what was sent from four places, each with its own switch: the queue

@@ -21,7 +21,7 @@ from novapolicy.pipeline.modules.ease_in import EaseIn
 from novapolicy.pipeline.modules.endpoint_ramp import EndpointRamp
 from novapolicy.pipeline.modules.hold_padding import HoldPadding
 from novapolicy.pipeline.modules.joint_clamp import JointClamp
-from novapolicy.pipeline.modules.live_buffer import LiveBuffer
+from novapolicy.pipeline.modules.servo_horizon import ServoHorizon
 from novapolicy.pipeline.modules.smoothing import Smoothing
 from novapolicy.pipeline.modules.timeline import TimestepTimeline
 from novapolicy.pipeline.placement import resample_on_grid
@@ -96,14 +96,14 @@ class _WaypointProbe:
 
 
 def test_the_module_kinds_are_told_apart_by_their_method():
-    assert isinstance(LiveBuffer(window_ms=100.0), ChunkModule)
-    assert not isinstance(LiveBuffer(window_ms=100.0), WaypointModule)
+    assert isinstance(ServoHorizon(), ChunkModule)
+    assert not isinstance(ServoHorizon(), WaypointModule)
     assert isinstance(EaseIn(duration_s=1.0), WaypointModule)
     assert not isinstance(EaseIn(duration_s=1.0), ChunkModule)
 
 
 def test_split_pipeline_keeps_each_kind_in_order():
-    first, second, buffer = _ChunkProbe(), _ChunkProbe(), LiveBuffer(window_ms=100.0)
+    first, second, buffer = _ChunkProbe(), _ChunkProbe(), ServoHorizon()
     ease, probe, late = EaseIn(duration_s=1.0), _WaypointProbe(), DropLate()
     chunk_modules, filters, waypoint_modules, _timestamps = split_pipeline([
         first,
@@ -120,7 +120,7 @@ def test_split_pipeline_keeps_each_kind_in_order():
 
 
 def test_timestamps_is_optional_and_an_empty_pipeline_has_no_modules():
-    buffer, ease = LiveBuffer(window_ms=100.0), EaseIn(duration_s=1.0)
+    buffer, ease = ServoHorizon(), EaseIn(duration_s=1.0)
     assert split_pipeline([buffer, ease]) == ([buffer], [], [ease], Timestamps())
     assert split_pipeline([Timestamps()]) == ([], [], [], Timestamps())
     assert split_pipeline([]) == ([], [], [], Timestamps())
@@ -128,7 +128,7 @@ def test_timestamps_is_optional_and_an_empty_pipeline_has_no_modules():
 
 def test_the_split_carries_the_listed_timestamps():
     grid = Timestamps(grid_ms=32.0)
-    assert split_pipeline([LiveBuffer(window_ms=100.0), grid, DropLate()]).timestamps is grid
+    assert split_pipeline([ServoHorizon(), grid, DropLate()]).timestamps is grid
 
 
 @pytest.mark.parametrize("kwargs", [{"grid_ms": 0.0}, {"grid_ms": -8.0}, {"grid_ms": math.inf}])
@@ -173,18 +173,18 @@ def test_a_filter_after_a_waypoint_module_or_a_chunk_module_after_a_filter_is_re
     with pytest.raises(ValueError, match="before the waypoint modules"):
         split_pipeline([EaseIn(duration_s=1.0), DropLate()])
     with pytest.raises(ValueError, match="before Timestamps"):
-        split_pipeline([DropLate(), LiveBuffer(window_ms=100.0)])
+        split_pipeline([DropLate(), ServoHorizon()])
 
 
 def test_a_chunk_module_after_the_timestamps_is_refused():
     with pytest.raises(ValueError, match="before Timestamps"):
-        split_pipeline([Timestamps(), LiveBuffer(window_ms=100.0)])
+        split_pipeline([Timestamps(), ServoHorizon()])
 
 
 @pytest.mark.parametrize(
     ("pipeline", "error", "match"),
     [
-        ([EaseIn(duration_s=1.0), LiveBuffer(window_ms=100.0)], ValueError, "before Timestamps"),
+        ([EaseIn(duration_s=1.0), ServoHorizon()], ValueError, "before Timestamps"),
         ([Timestamps(), Timestamps()], ValueError, "appears twice"),
         ([object()], TypeError, "not a pipeline module"),
         ([lambda waypoints, context: waypoints], TypeError, "not a pipeline module"),  # old form
@@ -209,7 +209,7 @@ class _OwnModule:
         ([Bridge(), TimestepTimeline()], "TimestepTimeline must come before Bridge"),
         ([TimestepTimeline(), Smoothing()], "Smoothing must come before TimestepTimeline"),
         ([HoldPadding(), EndpointRamp()], "EndpointRamp must come before HoldPadding"),
-        ([Bridge(), LiveBuffer(window_ms=500)], "LiveBuffer must come before Bridge"),
+        ([Bridge(), ServoHorizon()], "ServoHorizon must come before Bridge"),
     ],
     ids=[
         "timeline-after-bridge",
@@ -258,6 +258,6 @@ def test_every_default_pipeline_keeps_the_stages_order():
         default_pipeline(),
         default_pipeline(execution=SequentialExecution()),
         default_pipeline(execution=ContinuousExecution(rate_hz=10), policy=queue),
-        [LiveBuffer(window_ms=500), *default_pipeline()],
+        [ServoHorizon(), *default_pipeline()],
     ):
         split_pipeline(pipeline)

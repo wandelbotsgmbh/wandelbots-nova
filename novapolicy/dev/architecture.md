@@ -43,7 +43,7 @@ flowchart LR
 
 | Kind | Sees | May change | Built-ins |
 | --- | --- | --- | --- |
-| chunk module | every chunk, when queued | steps and timing | `Smoothing`, `TimestepTimeline`, `Bridge`, `EndpointRamp`, `JointClamp`, `LiveBuffer`, `ServoHorizon`, `HoldPadding` |
+| chunk module | every chunk, when queued | steps and timing | `Smoothing`, `TimestepTimeline`, `Bridge`, `EndpointRamp`, `JointClamp`, `ServoHorizon`, `HoldPadding` |
 | `Timestamps()` | the chunk | each step's time (contracts T1, T2, T4) | placement; `grid_ms` puts one-step joint targets on NOVA's cycle grid |
 | filter | the timed waypoints | which go out, never their time | `DropLate` |
 | waypoint module | the timed waypoints, at every send | values only | `EaseIn` |
@@ -68,7 +68,7 @@ flowchart TB
     end
     subgraph jog["jog_joints / jog_tcp, with the opt-in modules"]
         direction LR
-        j0["LiveBuffer or ServoHorizon (opt-in)"] --> j1[HoldPadding] --> j2[Timestamps] --> j3[DropLate] --> j4["EaseIn (opt-in)"]
+        j0["ServoHorizon (opt-in)"] --> j1[HoldPadding] --> j2[Timestamps] --> j3[DropLate] --> j4["EaseIn (opt-in)"]
     end
 ```
 
@@ -81,7 +81,6 @@ flowchart TB
 | `DropLate` | a waypoint already due makes the controller jump back | leaving it out |
 | `Smoothing` | blending overlapping plans leaves kinks | leaving it out |
 | `TimestepTimeline` | a queue's replacements must continue its timeline | (required for a queue) |
-| `LiveBuffer` | a lone live target is a terminal target the robot brakes to | not adding it |
 | `EaseIn` | a time-based target with velocity at t=0 lunges from rest | not adding it |
 | `ServoHorizon` | a lone live target makes the follower overshoot a sudden stop; a spring-damper sends a reachable, braking horizon instead ([ADR 0022](adr/0022-servo-horizon-for-live-targets.md)) | not adding it |
 | `Timestamps(grid_ms=32)` | NOVA's follower pulses around a one-step policy's pace when a waypoint falls just after its 8 ms cycle ([ADR 0021](adr/0021-one-step-targets-on-the-cycle-grid.md)) | `Timestamps()` (the default) |
@@ -102,25 +101,20 @@ it is queued and sent a little later, so its first waypoints can already be due;
 late, the robot keeps following the previous chunk. Leave it out only to see late waypoints on
 the wire. `TimestepTimeline` places a queue's later chunk at `origin + Δtimestep·dt`, the origin
 being when the first chunk's first step was due, so a replacement continues the plan instead of
-restarting at "now". `LiveBuffer` replays measured targets, never predicts them, on one absolute
-grid; its horizon ends at or before the newest target, since a point past it would be rewritten
-by the next target while the controller already steers toward it
-([ADR 0013](adr/0013-live-buffer-replays-measured-targets.md)). `ServoHorizon` runs a spring-damper
-on the client at 2 ms steps and sends its path braking onto the newest target, `horizon_ms` (400)
-long, `step_ms` (32) apart, the first waypoint on NOVA's 8 ms cycle. `EaseIn` blends by each
-waypoint's own timestamp, so a waypoint sent again gets the same value. `Timestamps(grid_ms)`
-resamples the lead window of one-step joint targets, starting from the robot's joints, onto the
-grid from now plus `MIN_LEAD_MS` to the newest target; multi-step chunks and TCP targets keep
-their times.
+restarting at "now". `ServoHorizon` runs a spring-damper on the client at 2 ms steps and sends
+its path braking onto the newest target, `horizon_ms` (400) long, `step_ms` (32) apart, the first
+waypoint on NOVA's 8 ms cycle. `EaseIn` blends by each waypoint's own timestamp, so a waypoint
+sent again gets the same value. `Timestamps(grid_ms)` resamples the lead window of one-step joint
+targets, starting from the robot's joints, onto the grid from now plus `MIN_LEAD_MS` to the newest
+target; multi-step chunks and TCP targets keep their times.
 
 ### Order and combinations
 
-Chunk modules run in the order of their stage (`CHUNK_STAGES`): `LiveBuffer` or `ServoHorizon`
-(both `input`) → `Smoothing` → `TimestepTimeline` → `Bridge` → `EndpointRamp` → `HoldPadding`.
-Both hand a live target on as a chunk of several steps, which the other passes through untouched,
-so use one of them. `JointClamp` and modules of your own have no stage and
-may stand anywhere among them; the others only interpolate between or repeat steps already inside
-the limits, so the clamp's place does not change the result. `ServoHorizon` is the exception: a
+Chunk modules run in the order of their stage (`CHUNK_STAGES`): `ServoHorizon` (`input`) →
+`Smoothing` → `TimestepTimeline` → `Bridge` → `EndpointRamp` → `HoldPadding`. `JointClamp` and
+modules of your own have no stage and may stand anywhere among them; the others only interpolate
+between or repeat steps already inside the limits, so the clamp's place does not change the
+result. `ServoHorizon` is the exception: a
 spring arriving with speed can pass its target, so a clamp belongs after it. Refused when the
 session is built (`ValueError`):
 
@@ -129,7 +123,7 @@ session is built (`ValueError`):
   ran 832 ms late);
 - a built-in module twice;
 - in the executor: a timestep queue without `TimestepTimeline` in continuous execution, a timestep
-  queue or a `LiveBuffer` in sequential execution.
+  queue in sequential execution.
 
 The executor warns, and runs as asked, for two lists that are rarely meant: the joggers' default
 (`default_pipeline()` without arguments: no `Bridge`, no `JointClamp`), and an `EndpointRamp` in
@@ -227,12 +221,12 @@ mapping, decoding, placement and streaming come from the package.
 | placement (lead, hold padding), trimming, resampling onto the cycle grid | `novapolicy/pipeline/placement.py` (`placement`, `trim_chunk`, `resample_on_grid`) |
 | send pipeline: module kinds, their order (`CHUNK_STAGES`), the split (`split_pipeline`), `Timestamps(grid_ms)` | `novapolicy/pipeline/base.py` |
 | the default pipeline | `novapolicy/pipeline/defaults.py` (`default_pipeline`, `timestep_queue_modules`) |
-| the built-in modules, one per file | `novapolicy/pipeline/modules/` (`live_buffer.py`, `servo_horizon.py`, `smoothing.py`, `timeline.py`, `bridge.py`, `endpoint_ramp.py`, `joint_clamp.py`, `hold_padding.py`, `drop_late.py`, `ease_in.py`) |
+| the built-in modules, one per file | `novapolicy/pipeline/modules/` (`servo_horizon.py`, `smoothing.py`, `timeline.py`, `bridge.py`, `endpoint_ramp.py`, `joint_clamp.py`, `hold_padding.py`, `drop_late.py`, `ease_in.py`) |
 | building one session per motion group, start move, e-stop monitor, fault and stop-condition checks, drain (executor and jogger) | `novapolicy/transport/lifecycle.py` |
 | NOVA transport: stamping and sending (`_schedule`), the playback clock (`_PlaybackClock`), what was sent (`scheduled`), the session-clock estimate (`JoggingTimeClock`) | `novapolicy/transport/session.py`, `clock.py`, `waypoints.py` |
 | jogging state, standstill, stop conditions (`first_fired`) | `novapolicy/transport/state.py` |
 | e-stop stream, IO stream | `novapolicy/transport/estop.py`, `io.py` |
-| jogging API | `novapolicy/jogging/jogger.py` |
+| jogging API, its timeline and lead (`LEAD_MS`, `TIMELINE_GRID_MS`, `trajectory_elapsed_ms`) | `novapolicy/jogging/jogger.py` |
 | provider contract, timestep queue | `novapolicy/providers/base.py`, `queued.py`, `action_queue.py` |
 | providers | `novapolicy/providers/gr00t/`, `lerobot/`, `leapp/` |
 | visualization | `novapolicy/rerun/` |

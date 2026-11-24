@@ -915,23 +915,14 @@ def test_a_jogger_pipeline_or_a_ramp_under_continuous_execution_is_warned_about(
     assert "joggers' default" not in caplog.text and "EndpointRamp" not in caplog.text
 
 
-def test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected():
-    """Sequential execution never replaces a running plan, so neither gets its timing."""
+def test_a_timestep_queue_under_sequential_execution_is_rejected():
+    """Sequential execution never replaces a running plan, so a queue gets no timing."""
     with pytest.raises(ValueError, match="requires ContinuousExecution"):
         PolicyExecutor(
             _schema(),
             _TestPolicy(_hold_action, requires_bridge=True),
             execution=SequentialExecution(),
         )
-    from novapolicy.pipeline.modules.live_buffer import LiveBuffer
-
-    with pytest.raises(ValueError, match="LiveBuffer requires ContinuousExecution"):
-        PolicyExecutor(
-            _schema(), _hold, execution=SequentialExecution(), pipeline=[LiveBuffer(80.0)]
-        )
-    PolicyExecutor(  # no raise
-        _schema(), _hold, execution=ContinuousExecution(), pipeline=[LiveBuffer(80.0)]
-    )
 
 
 @pytest.mark.asyncio
@@ -990,9 +981,9 @@ def test_the_pipeline_is_handed_to_every_session():
     """The sessions run exactly the list given, in order; the executor's defaults without one."""
     from novapolicy import EaseIn
     from novapolicy.pipeline.base import Timestamps
-    from novapolicy.pipeline.modules.live_buffer import LiveBuffer
+    from novapolicy.pipeline.modules.servo_horizon import ServoHorizon
 
-    pipeline = [LiveBuffer(window_ms=80.0), Timestamps(), EaseIn(duration_s=1.0)]
+    pipeline = [ServoHorizon(), Timestamps(), EaseIn(duration_s=1.0)]
     with patch("novapolicy.transport.lifecycle.WaypointJoggingSession") as session_cls:
         executor = PolicyExecutor(
             _schema(), _hold, execution=ContinuousExecution(), pipeline=pipeline
@@ -1004,34 +995,16 @@ def test_the_pipeline_is_handed_to_every_session():
         assert session_cls.call_args.kwargs["pipeline"] == tuple(defaults)
 
 
-def test_a_live_buffer_no_longer_makes_the_executor_refuse_chunks_or_tcp_targets():
-    """The buffer is a session module now: a multi-step chunk passes it and a TCP target is
-    buffered like a joint one, so the executor hands both to the session unchanged."""
-    from novapolicy.pipeline.modules.live_buffer import LiveBuffer
-
-    executor = PolicyExecutor(
-        _schema(), _hold, execution=ContinuousExecution(), pipeline=[LiveBuffer(window_ms=80.0)]
-    )
-    session = MagicMock(motion_group_id=MG_ID, queued_chunk_count=0)
-    executor._sessions = {MG_ID: session}
-    chunk = ActionChunk(joints={MG_ID: [[0.0] * 6, [0.1] * 6]}, dt_ms=20.0)
-    executor._send(chunk, chunk)
-    tcp_chunk = ActionChunk(joints={}, tcp={MG_ID: [[500.0, 0.0, 300.0, 0.0, 3.14, 0.0]]})
-    executor._send(tcp_chunk, tcp_chunk)
-    sent = [call.kwargs["steps"] for call in session.update_chunk.call_args_list]
-    assert sent == [[[0.0] * 6, [0.1] * 6], [[500.0, 0.0, 300.0, 0.0, 3.14, 0.0]]]
-
-
 def test_a_misordered_pipeline_is_refused_before_anything_moves():
     from novapolicy import EaseIn
-    from novapolicy.pipeline.modules.live_buffer import LiveBuffer
+    from novapolicy.pipeline.modules.servo_horizon import ServoHorizon
 
     with pytest.raises(ValueError, match="before Timestamps"):
         PolicyExecutor(
             _schema(),
             _hold,
             execution=ContinuousExecution(),
-            pipeline=[EaseIn(duration_s=1.0), LiveBuffer(window_ms=80.0)],
+            pipeline=[EaseIn(duration_s=1.0), ServoHorizon()],
         )
 
 
