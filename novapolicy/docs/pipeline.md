@@ -20,7 +20,7 @@ flowchart LR
 
 | Kind | Sees | May change | Built-ins |
 | --- | --- | --- | --- |
-| chunk module | every chunk, when it is queued | steps and timing | `LiveBuffer`, `ServoHorizon`, `Smoothing`, `TimestepTimeline`, `Bridge`, `EndpointRamp`, `JointClamp`, `HoldPadding` |
+| chunk module | every chunk, when it is queued | steps and timing | `ServoHorizon`, `Smoothing`, `TimestepTimeline`, `Bridge`, `EndpointRamp`, `JointClamp`, `HoldPadding` |
 | `Timestamps()` | the chunk | each step's time | the placement step, one per list |
 | filter | the timed waypoints | which waypoints go out, never their time | `DropLate` |
 | waypoint module | the timed waypoints, at every send | the values only | `EaseIn` |
@@ -60,15 +60,15 @@ Start from the defaults and edit the list. Use the same `execution` and `policy`
 from novapolicy import (
     EaseIn,
     HoldPadding,
-    LiveBuffer,
     PolicyExecutor,
+    ServoHorizon,
     Timestamps,
     default_pipeline,
     jog_joints,
 )
 
 # Add a module
-jog_joints(mg, pipeline=[LiveBuffer(window_ms=500), *default_pipeline()])
+jog_joints(mg, pipeline=[ServoHorizon(), *default_pipeline()])
 jog_joints(mg, pipeline=[*default_pipeline(), EaseIn(duration_s=1.0)])
 
 # Remove a module
@@ -96,37 +96,42 @@ async with jog_tcp(mg, tcp="Flange", pipeline=[ServoHorizon(), *default_pipeline
 All modules are importable from `novapolicy`, except `TimestepTimeline`, which is in
 `novapolicy.pipeline`. Parameters show their defaults.
 
-| Module | Kind | What it is for | Key parameters |
-| --- | --- | --- | --- |
-| `LiveBuffer` | chunk | Live targets from a dense source (`set_target`). Replays the last `window_ms` of targets as a horizon on an even grid, so the arm does not brake at every target. The arm trails the live target by about `window_ms`. | `window_ms=500` |
-| `ServoHorizon` | chunk | Live targets from a hand, VR controller or other device that stops and reverses quickly (`set_target`). Follows the targets with a spring-damper and sends its path, braking onto the newest target, so the arm does not overshoot a sudden stop. Chunks of several steps pass through. | `gain=300` (1/s²), `lookahead_s=0.115`, `horizon_ms=400`, `step_ms=32`, `linear_acceleration=8000` (mm/s²), `linear_speed=1500` (mm/s), `angular_acceleration=40` (rad/s²), `angular_speed=3` (rad/s) |
-| `Smoothing` | chunk | Smooths a chunk's steps with `passes` of a `[1, 2, 1] / 4` filter. Steps already sent keep their values; chunks under three steps pass unchanged. | `passes=2` |
-| `TimestepTimeline` | chunk | Keeps a `QueuedPolicyClient`'s chunks on one timeline: a later chunk continues the plan instead of restarting at "now". Required for a queue in continuous execution. | none |
-| `Bridge` | chunk | Bridges from the measured position to the policy's first step, at the chunk's own spacing, so a first step far from the robot is not a jump. Chunks with their own `first_timestamp_ms` pass unchanged. | `always_anchor=False`: `True` adds a hold on the measured position even when no bridge is needed |
-| `EndpointRamp` | chunk | Eases into and out of each chunk by subdividing its first and last interval. For sequential execution, where every chunk starts and ends at rest. | `interpolation_steps=3` (at least 2) |
-| `JointClamp` | chunk | Holds every joint target `margin_rad` inside the robot's joint limits, read when the session starts. TCP targets pass unchanged; a robot that reports no limits is sent unclamped, with a warning. | `margin_rad=0.035` (about 2°) |
-| `HoldPadding` | chunk | Holds a chunk's last target until the chunk spans `min_horizon_ms`, and at least `after_ms` past its last step, so the controller has a horizon to brake within. Pads chunks only: not live targets (`set_target`), and not one-step policy actions in continuous execution. | `min_horizon_ms=500`, `after_ms=0` |
-| `Timestamps` | placement | Gives each step its time on NOVA's clock. `grid_ms` puts one-step joint targets on multiples of `grid_ms`, resampled from the policy's path. Use a multiple of NOVA's 8 ms cycle, such as 32 for a 30 Hz policy, if a one-step policy's motion pulses. Multi-step chunks and TCP targets keep their times. | `grid_ms=None` (off) |
-| `DropLate` | filter | Drops waypoints due within `min_lead_ms` of now; the others keep their times. When all are late, nothing is sent and the arm keeps following the previous chunk. | `min_lead_ms=20` |
-| `EaseIn` | waypoint | Blends each waypoint from where the robot stood to its value over the first `duration_s`, by the waypoint's own timestamp. For time-based targets that start with velocity, such as a sine, which would otherwise lunge from rest. | `duration_s` (required) |
+| Module | Kind | Problem without it | What it does | Key parameters |
+| --- | --- | --- | --- | --- |
+| `ServoHorizon` | chunk | A live target that jumps (a hand, a VR controller stopping or reversing) makes the arm overshoot and ring; the follower drives at it without braking for what comes next. | For live targets that stop and reverse quickly (`set_target`). Follows the targets with a spring-damper and sends its path, braking onto the newest target. Chunks of several steps pass through. | `gain=300` (1/s²), `lookahead_s=0.115`, `horizon_ms=400`, `step_ms=32`, `linear_acceleration=8000` (mm/s²), `linear_speed=1500` (mm/s), `angular_acceleration=40` (rad/s²), `angular_speed=3` (rad/s) |
+| `Smoothing` | chunk | Where a queue blends overlapping predictions, the steps have kinks the arm follows. | Smooths a chunk's steps with `passes` of a `[1, 2, 1] / 4` filter. Steps already sent keep their values; chunks under three steps pass unchanged. | `passes=2` |
+| `TimestepTimeline` | chunk | A queue's next chunk restarts at "now" instead of continuing the plan it replaces. | Keeps a `QueuedPolicyClient`'s chunks on one timeline. Required for a queue in continuous execution. | none |
+| `Bridge` | chunk | The policy's first step is far from where the robot stands: the arm jumps to it. | Bridges from the measured position to the policy's first step, at the chunk's own spacing. Chunks with their own `first_timestamp_ms` pass unchanged. | `always_anchor=False`: `True` adds a hold on the measured position even when no bridge is needed |
+| `EndpointRamp` | chunk | A chunk that is already moving at its first and last step starts the arm abruptly from rest and lets it brake past the end. | Eases into and out of each chunk by subdividing its first and last interval. For sequential execution, where every chunk starts and ends at rest. | `interpolation_steps=3` (at least 2) |
+| `JointClamp` | chunk | A target past a joint limit pauses the motion. | Holds every joint target `margin_rad` inside the robot's joint limits, read when the session starts. TCP targets pass unchanged; a robot that reports no limits is sent unclamped, with a warning. | `margin_rad=0.035` (about 2°) |
+| `HoldPadding` | chunk | A short chunk ends at speed with nothing after it: the controller has no horizon to brake within and the arm overshoots the end. | Holds a chunk's last target until the chunk spans `min_horizon_ms`, and at least `after_ms` past its last step. Pads chunks only: not live targets (`set_target`), and not one-step policy actions in continuous execution. | `min_horizon_ms=500`, `after_ms=0` |
+| `Timestamps` | placement | Steps have no time NOVA can follow. With `grid_ms`: a one-step policy's motion pulses when its waypoints fall just after one of NOVA's 8 ms cycles. | Gives each step its time on NOVA's clock. `grid_ms` puts one-step joint targets on multiples of `grid_ms`, resampled from the policy's path; use a multiple of 8, such as 32 for a 30 Hz policy. Multi-step chunks and TCP targets keep their times. | `grid_ms=None` (off) |
+| `DropLate` | filter | A waypoint that is already due when it is sent makes the arm jump back to it. | Drops waypoints due within `min_lead_ms` of now; the others keep their times. When all are late, nothing is sent and the arm keeps following the previous chunk. | `min_lead_ms=20` |
+| `EaseIn` | waypoint | A time-based target that starts with velocity, such as a sine, makes the arm lunge from rest. | Blends each waypoint from where the robot stood to its value over the first `duration_s`, by the waypoint's own timestamp. | `duration_s` (required) |
 
 `HoldPadding` and `WaypointConfig.delay_until_braking_ms` are two ways to give a chunk a braking
 horizon. To use `delay_until_braking_ms`, remove `HoldPadding` from the list.
 
-Invalid parameters raise `ValueError` when the module is created: a non-positive `window_ms`,
-`duration_s` or `grid_ms`, negative `passes`, `interpolation_steps` below 2, a negative
-`min_horizon_ms` or `after_ms`, or a non-positive `ServoHorizon` setting. `ServoHorizon` also needs
+Invalid parameters raise `ValueError` when the module is created: a non-positive `duration_s` or
+`grid_ms`, negative `passes`, `interpolation_steps` below 2, a negative `min_horizon_ms` or
+`after_ms`, or a non-positive `ServoHorizon` setting. `ServoHorizon` also needs
 `step_ms` of at least 2 and `horizon_ms` of at least `step_ms`.
 
 ## Order and valid combinations
 
-Chunk modules run in a fixed order:
+Chunk modules run in a fixed order. Each built-in has a stage:
 
-`LiveBuffer` or `ServoHorizon` → `Smoothing` → `TimestepTimeline` → `Bridge` → `EndpointRamp` →
-`HoldPadding`
+| Stage | Module | Why it comes there |
+| --- | --- | --- |
+| input | `ServoHorizon` | turns a live target into a chunk the others can work on |
+| smooth | `Smoothing` | smooths the policy's own steps before anything is added to them |
+| timeline | `TimestepTimeline` | places a queue's chunk on its timeline before it is anchored |
+| anchor | `Bridge` | connects the robot to the first step that will actually be sent |
+| shape | `EndpointRamp` | eases the whole chunk, bridge included |
+| horizon | `HoldPadding` | pads the finished chunk, so nothing is added after the hold |
 
 `JointClamp` and your own modules may stand anywhere among them. Put `JointClamp` after
-`ServoHorizon`: the spring can pass its target. Use `LiveBuffer` or `ServoHorizon`, not both.
+`ServoHorizon`: the spring can pass its target.
 
 The list is checked when the executor or jogger is created. These raise `ValueError`:
 
@@ -142,13 +147,43 @@ An item that has none of `on_chunk`, `keep` or `on_waypoints` raises `TypeError`
 
 - A `QueuedPolicyClient` in `ContinuousExecution` without `TimestepTimeline` in the list.
 - A `QueuedPolicyClient` in `SequentialExecution`.
-- `LiveBuffer` in `SequentialExecution`.
 
 It logs a warning, and runs as asked, for:
 
 - The joggers' default list (`default_pipeline()` without arguments): it has no `Bridge` and no
   `JointClamp`.
 - `EndpointRamp` in `ContinuousExecution`: the arm stops at every replacement.
+
+## Sequential and continuous execution
+
+The two execution modes use the same modules, in different lists, because they observe and send
+differently.
+
+**`SequentialExecution`** observes while the robot stands still, runs the chunk to standstill, and
+observes again. Each chunk is dated from its send: its first step is due the lead
+(`WaypointConfig.max_expected_latency_ms`, 100 ms) after the request goes out.
+
+- `Bridge` and `EndpointRamp` are in the list, because every chunk starts and ends at rest.
+- `HoldPadding(after_ms=300)` holds the last target 300 ms past the last step: an arm still moving
+  there would otherwise brake past it.
+- `DropLate` drops nothing in practice: a chunk dated from its send is never late.
+- A `QueuedPolicyClient` is refused: there is no plan to continue.
+
+**`ContinuousExecution`** observes every tick while the robot moves. Each chunk is dated from its
+observation, and replaces the waypoints NOVA has queued.
+
+- The observation is older than the send, so the first steps can already be due: `DropLate`
+  drops them.
+- `EndpointRamp` makes the arm stop at every replacement; the executor warns.
+- A `QueuedPolicyClient` adds `Smoothing`, `TimestepTimeline` and `Bridge(always_anchor=True)`:
+  its chunks overlap and continue one plan.
+- A one-step policy (reinforcement learning) sends one target per tick. `HoldPadding` skips it,
+  since the next target replaces it before it is due, and the targets are spaced one policy step
+  apart. `Timestamps(grid_ms=32)` is the option if the motion pulses.
+
+**The joggers** (`jog_joints`, `jog_tcp`) send live targets (`set_target`) or chunks
+(`set_chunk`). A live target is never padded: each goes out as one waypoint. Put `ServoHorizon` in
+front of the defaults to give it a horizon.
 
 ## Write your own module
 
