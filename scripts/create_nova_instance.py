@@ -5,9 +5,11 @@ Description: Retrieve access token, create instance, create default cell,
 """
 
 import asyncio
+import contextlib
 import json
 import os
 import sys
+import time
 from datetime import datetime
 
 import requests
@@ -17,8 +19,61 @@ from nova import Nova
 from nova.config import NovaConfig
 
 # TODO use env or command line args for these
-CELL_READINESS_TIMEOUT_SECS = 180.0
+# A new instance can take minutes to get its real certificate (CI saw > 2 min).
+CELL_READINESS_TIMEOUT_SECS = 300.0
+NATS_READINESS_TIMEOUT_SECS = 120.0
 SERVICES_READINESS_TIMEOUT_SECS = 180.0
+POLL_INTERVAL_SECS = 5.0
+
+
+def wait_for_api_ready(base_url: str, access_token: str, timeout: float) -> None:
+    """Poll the cell list until the instance answers with a valid certificate.
+
+    A freshly created instance first serves a self-signed placeholder certificate,
+    and its NATS websocket is not reachable yet. Opening ``Nova`` connects NATS right
+    away, so it has to wait for this first; plain HTTPS requests verify the
+    certificate and can simply be retried.
+    """
+    url = f"{base_url}/api/v2/cells"
+    deadline = time.monotonic() + timeout
+    last = "no answer yet"
+    while time.monotonic() < deadline:
+        try:
+            response = requests.get(
+                url, headers={"Authorization": f"Bearer {access_token}"}, timeout=10
+            )
+            if response.ok and "cell" in response.json():
+                logger.info(
+                    "✅ API reachable with a valid certificate; default cell 'cell' exists."
+                )
+                return
+            last = f"HTTP {response.status_code}: {response.text[:120]}"
+        except (requests.RequestException, ValueError) as e:
+            last = f"{type(e).__name__}: {e}"
+        logger.info(f"Waiting for the instance API: {last}")
+        time.sleep(POLL_INTERVAL_SECS)
+    raise TimeoutError(f"Instance API not ready within {timeout}s (last: {last})")
+
+
+async def open_nova(config: NovaConfig, timeout: float) -> Nova:
+    """Open ``Nova``, retrying while the instance's NATS websocket is not up yet.
+
+    nats-py itself retries the first connect for about two minutes before it gives
+    up, so this loop only adds attempts beyond that.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        nova = Nova(config)
+        try:
+            await nova.open()
+            return nova
+        except Exception as e:
+            with contextlib.suppress(Exception):
+                await nova.close()
+            if time.monotonic() >= deadline:
+                raise
+            logger.info(f"Waiting for NATS: {type(e).__name__}: {e}")
+            await asyncio.sleep(POLL_INTERVAL_SECS)
 
 
 async def wait_for_services_ready(nova: Nova, cell: str, timeout: float) -> None:
@@ -112,27 +167,22 @@ async def main() -> None:
     host = instance_response.get("host")
     instance_id = instance_response.get("instance_id")
 
-    config = NovaConfig(host=f"https://{host}", access_token=access_token)
-    async with Nova(config) as nova:
-        # Wait for cell to exist (API must be reachable for NATS connection)
-        logger.info("Waiting for cell readiness (%fs)...", CELL_READINESS_TIMEOUT_SECS)
-        async with asyncio.timeout(CELL_READINESS_TIMEOUT_SECS):
-            while True:
-                try:
-                    cells = await nova.api.cell_api.list_cells()
-                    if len(cells) > 0 and cells[0] == "cell":
-                        logger.info("✅ Default cell 'cell' created.")
-                        break
-                except Exception as e:
-                    logger.error(f"Waiting for default cell to be created: {e}")
-                finally:
-                    await asyncio.sleep(5)
+    base_url = f"https://{host}"
+    # The API and its certificate first: opening Nova connects NATS immediately and
+    # fails against an instance that still serves its placeholder certificate.
+    logger.info("Waiting for cell readiness (%fs)...", CELL_READINESS_TIMEOUT_SECS)
+    wait_for_api_ready(base_url, access_token, CELL_READINESS_TIMEOUT_SECS)
 
+    config = NovaConfig(host=base_url, access_token=access_token)
+    nova = await open_nova(config, NATS_READINESS_TIMEOUT_SECS)
+    try:
         # Wait for all services using NATS subscription
         logger.info(
             "Waiting for services readiness via NATS (%fs)...", SERVICES_READINESS_TIMEOUT_SECS
         )
         await wait_for_services_ready(nova, "cell", SERVICES_READINESS_TIMEOUT_SECS)
+    finally:
+        await nova.close()
 
     with open("instance_config.env", "w") as file:
         file.write(
