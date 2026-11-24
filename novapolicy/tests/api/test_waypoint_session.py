@@ -35,7 +35,9 @@ from websockets.frames import Close
 from nova import api
 from nova.types import Pose
 from novapolicy.jogging import jog_tcp
+from novapolicy.pipeline.base import Timestamps
 from novapolicy.pipeline.defaults import default_pipeline
+from novapolicy.pipeline.modules.drop_late import DropLate
 from novapolicy.pipeline.modules.hold_padding import HoldPadding
 from novapolicy.pipeline.modules.live_buffer import LIVE_LEAD_MS, LiveBuffer
 from novapolicy.transport.clock import ServerMs
@@ -964,6 +966,32 @@ def test_one_step_waypoints_are_spaced_by_the_policy_step_despite_bursty_observa
         due = [session._playback.due_ms(1_800 + k * step, step, 2_200 + k * step) for k in range(5)]
         assert all(d >= 2_200 + k * step for k, d in enumerate(due))
         assert all(0.5 * step < b - a < 1.5 * step for a, b in itertools.pairwise(due))
+
+
+def test_a_grid_puts_one_step_targets_on_its_multiples_and_leaves_chunks_alone():
+    """``Timestamps(grid_ms=32)``: one-step joint targets go out on multiples of 32 ms of the
+    session clock, resampled from the policy's path; a multi-step chunk keeps its own times."""
+    pipeline = [Timestamps(grid_ms=32.0), DropLate()]
+    config = WaypointConfig(max_expected_latency_ms=150)
+    with (
+        _built(pipeline=pipeline, config=config) as (session, _server),
+        _server_now(session) as now,
+    ):
+        session._current_joints = [0.0] * 6
+        sent = []
+        for k in range(6):
+            now.return_value = 1_000 + round(k * 1000 / 30)
+            pending = PendingChunk(
+                steps=[[0.1 * (k + 1)] * 6], dt_ms=1000 / 30, lead=True, sequence=k + 1
+            )
+            request = session._schedule(pending)[0]
+            assert request is not None
+            sent.append([w.timestamp for w in request.waypoints])
+        assert all(t % 32 == 0 for times in sent for t in times)
+        assert all(b - a == 32 for times in sent for a, b in itertools.pairwise(times))
+        assert sent[-1][-1] > sent[0][-1]  # it follows the policy
+        chunk = PendingChunk(steps=[[0.0] * 6] * 3, dt_ms=40, lead=True, sequence=9)
+        assert session._schedule(chunk)[1] == [1_317, 1_357, 1_397]
 
 
 @pytest.mark.asyncio

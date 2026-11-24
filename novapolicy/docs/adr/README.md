@@ -27,3 +27,4 @@ UR10e, with the client inside the NOVA cluster unless a record says otherwise.
 | [0018](0018-liveness-bounds-on-inputs.md) | Stale inputs end the run, with bounds that catch a dead input, not a slow one |
 | [0019](0019-session-stream-and-stop.md) | The session sends without waiting for acknowledgements and ends with a stop request |
 | [0020](0020-rerun-off-the-loop-in-the-robots-frame.md) | Rerun is written off the control loop, stamped when produced, drawn in the robot's frame |
+| [0021](0021-one-step-targets-on-the-cycle-grid.md) | One-step joint targets can be put on NOVA's cycle grid (opt-in) |

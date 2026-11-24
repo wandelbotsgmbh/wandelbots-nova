@@ -52,7 +52,9 @@ from novapolicy import (
     PolicySchema,
     Scale,
     StopContext,
+    Timestamps,
     WaypointConfig,
+    default_pipeline,
 )
 
 if TYPE_CHECKING:
@@ -265,10 +267,18 @@ async def run(mg: MotionGroup, args: argparse.Namespace) -> None:
 
     recorder = Recorder(target)
     duration_s = args.duration or len(args.parts.split(",")) * SWITCH_S
+    execution = ContinuousExecution(rate_hz=client.control_freq)
+    pipeline = None
+    if args.grid_ms:  # one-step targets on NOVA's cycle grid (ADR 0021)
+        pipeline = [
+            Timestamps(grid_ms=args.grid_ms) if isinstance(m, Timestamps) else m
+            for m in default_pipeline(execution=execution, policy=client)
+        ]
     executor = PolicyExecutor(
         schema,
         client,
-        execution=ContinuousExecution(rate_hz=client.control_freq),
+        execution=execution,
+        pipeline=pipeline,
         # How far ahead each target goes: 100 ms on the instance; raise it over a remote network.
         motion=WaypointConfig(max_expected_latency_ms=args.max_expected_latency_ms),
         n_action_steps=0,  # one step per inference, replaced by the next one
@@ -314,6 +324,12 @@ def main() -> None:
         type=float,
         default=100.0,
         help="how far ahead each target goes; 150 over a remote network",
+    )
+    parser.add_argument(
+        "--grid-ms",
+        type=float,
+        default=None,
+        help="put the targets on NOVA's cycle grid, a multiple of 8 ms (32 for this policy)",
     )
     runner = run_program(make_program(parser.parse_args()))
     if runner.program_run.state == api.models.ProgramRunState.FAILED:

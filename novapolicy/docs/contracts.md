@@ -121,6 +121,10 @@ Tests: `test_waypoints_already_in_the_past_are_trimmed_before_sending`,
 clock that follows the observations by at most 10% of a step per step and jumps to them when
 more than 100 ms off. This is the one bounded retiming. Test:
 `test_one_step_waypoints_are_spaced_by_the_policy_step_despite_bursty_observations`.
+Opt-in, `Timestamps(grid_ms=...)` then resamples those targets' path onto the multiples of
+`grid_ms` of the session clock, from the robot's position at the start; multi-step chunks and TCP
+targets keep their times (ADR 0021). Tests: `test_a_grid_puts_one_step_targets_on_its_multiples_and_leaves_chunks_alone`,
+`test_the_grid_starts_at_the_robot_and_continues_the_policy_path`.
 
 **T5 Rolling window.** A request dated by T1 re-sends the earlier waypoints that are not due
 yet. Tests: `test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due`,

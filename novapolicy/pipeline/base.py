@@ -6,8 +6,12 @@ re-sent waypoint's raw value again and must give a timestamp the same result.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import math
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+
+from novapolicy.pipeline.modules.drop_late import MIN_LEAD_MS
+from novapolicy.pipeline.placement import resample_on_grid
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -79,9 +83,45 @@ class WaypointFilter(Protocol):
         ...
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass
 class Timestamps:
-    """The placement step, as an item of the list (contracts T1 to T3)."""
+    """The placement step, as an item of the list (contracts T1 to T3).
+
+    ``grid_ms`` puts one-step joint waypoints on the multiples of ``grid_ms`` of the session clock,
+    resampled from the policy's path, instead of at the policy's own times. NOVA's follower steers
+    toward the next waypoint with a gain of 1 / (time left), from a state one 8 ms cycle old: a
+    waypoint due just after a cycle makes that gain spike and the arm pulse around the policy's
+    pace. A multiple of the 8 ms cycle (32 for a 30 Hz policy) keeps a cycle of time left
+    (ADR 0021). Off by default.
+    """
+
+    grid_ms: float | None = None
+    _path: list[tuple[float, list[float]]] = field(default_factory=list, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.grid_ms is not None and not (math.isfinite(self.grid_ms) and self.grid_ms > 0):
+            raise ValueError("Timestamps needs a positive finite grid_ms")
+
+    def on_grid(
+        self,
+        window: list[tuple[int, list[float]]],
+        now_ms: float,
+        current: list[float] | None,
+    ) -> list[tuple[int, list[float]]]:
+        """The lead window of one-step joint targets (``window``: due time and values) resampled
+        onto the grid, from ``now_ms`` plus the minimum lead; empty when the grid is off or has no
+        point yet. The path continues from the targets before the window, or starts at the
+        ``current`` joints at ``now_ms``. Pass an empty window to forget the path."""
+        grid = self.grid_ms
+        if grid is None or not window:
+            self._path = []
+            return []
+        keep_ms = now_ms - 2 * grid
+        path = [(t, v) for t, v in self._path if keep_ms <= t < window[0][0]]
+        if not path and current is not None:
+            path = [(float(now_ms), list(current))]
+        self._path = path + [(float(t), list(v)) for t, v in window if not path or t > path[-1][0]]
+        return resample_on_grid(self._path, now_ms + MIN_LEAD_MS, grid)
 
 
 class SplitPipeline(NamedTuple):
@@ -90,6 +130,7 @@ class SplitPipeline(NamedTuple):
     chunk_modules: list[ChunkModule]
     filters: list[WaypointFilter]
     waypoint_modules: list[WaypointModule]
+    timestamps: Timestamps
 
 
 def _check_order(pipeline: Sequence[object]) -> None:
@@ -120,12 +161,13 @@ def split_pipeline(pipeline: Sequence[object]) -> SplitPipeline:
         TypeError: an item of no kind.
     """
     _check_order(pipeline)
-    split = SplitPipeline([], [], [])
+    split = SplitPipeline([], [], [], Timestamps())
     stamped = False
     for item in pipeline:
         if isinstance(item, Timestamps):
             if stamped:
                 raise ValueError("Timestamps() appears twice in the pipeline")
+            split = split._replace(timestamps=item)
             stamped = True
         elif isinstance(item, ChunkModule):
             if stamped:

@@ -44,7 +44,7 @@ flowchart LR
 | Kind | Sees | May change | Built-ins |
 | --- | --- | --- | --- |
 | chunk module | every chunk, when queued | steps and timing | `Smoothing`, `TimestepTimeline`, `Bridge`, `EndpointRamp`, `JointClamp`, `LiveBuffer`, `HoldPadding` |
-| `Timestamps()` | the chunk | each step's time (contracts T1, T2) | placement |
+| `Timestamps()` | the chunk | each step's time (contracts T1, T2) | placement; `grid_ms` puts one-step joint targets on NOVA's cycle grid |
 | filter | the timed waypoints | which go out, never their time | `DropLate` |
 | waypoint module | the timed waypoints, at every send | values only | `EaseIn` |
 
@@ -96,6 +96,7 @@ flowchart TB
 | `TimestepTimeline` | a queue's replacements must continue its timeline | (required for a queue) |
 | `LiveBuffer` | a lone live target is a terminal target the robot brakes to | not adding it |
 | `EaseIn` | a time-based target with velocity at t=0 lunges from rest | not adding it |
+| `Timestamps(grid_ms=32)` | NOVA's follower pulses around a one-step policy's pace when a waypoint falls just after its 8 ms cycle ([ADR 0021](adr/0021-one-step-targets-on-the-cycle-grid.md)) | `Timestamps()` (the default) |
 
 ### Order and combinations
 

@@ -151,8 +151,10 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     ) -> None:
         self._motion_group = motion_group
         # Each session runs its own copy, so two arms never share a module's state.
-        self._chunk_modules, self._filters, self._waypoint_modules = split_pipeline(
-            copy.deepcopy(list(default_pipeline() if pipeline is None else pipeline))
+        self._chunk_modules, self._filters, self._waypoint_modules, self._timestamps = (
+            split_pipeline(
+                copy.deepcopy(list(default_pipeline() if pipeline is None else pipeline))
+            )
         )
         self._built: list[tuple[int, list[float]]] = []
         """Timed values of the request last built, recorded once it is sent."""
@@ -893,6 +895,13 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 if now_ms + MIN_LEAD_MS <= t < timed[0][0]
             ] + timed
             timed = self._lead_window
+            one_step_joints = count == 1 and self._mode == "joint"
+            timed = (
+                self._timestamps.on_grid(
+                    timed if one_step_joints else [], now_ms, self._current_joints
+                )
+                or timed
+            )
 
         times = [t for t, _ in timed]
         values = [list(v) for _, v in timed]

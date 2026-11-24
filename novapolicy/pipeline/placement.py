@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+import math
 from typing import TYPE_CHECKING
 
 from novapolicy.transport.clock import ServerMs
@@ -88,3 +89,25 @@ def placement(chunk: ActionChunk, *, execution: ExecutionMode) -> Placement:
     if chunk.action_timestep < 0 and (chunk.dt_ms > 0 or single):
         return Placement(None, lead=True, hold=not single)
     return Placement(None)
+
+
+def resample_on_grid(
+    path: list[tuple[float, list[float]]], start_ms: float, grid_ms: float
+) -> list[tuple[int, list[float]]]:
+    """``path`` (time-ordered ``(ms, values)``) sampled at the multiples of ``grid_ms`` from
+    ``start_ms`` to its last time, linear in between; a grid time before the path is left out."""
+    if not path:
+        return []
+    first_ms, last_ms = path[0][0], path[-1][0]
+    grid = math.ceil(start_ms / grid_ms) * grid_ms
+    out: list[tuple[int, list[float]]] = []
+    i = 0
+    while grid <= last_ms:
+        if grid >= first_ms:
+            while i + 1 < len(path) and path[i + 1][0] < grid:
+                i += 1
+            (t0, v0), (t1, v1) = path[i], path[min(i + 1, len(path) - 1)]
+            u = 0.0 if t1 <= t0 else min(1.0, (grid - t0) / (t1 - t0))
+            out.append((round(grid), [a + u * (b - a) for a, b in zip(v0, v1, strict=True)]))
+        grid += grid_ms
+    return out

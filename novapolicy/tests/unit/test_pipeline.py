@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from itertools import pairwise
+import math
 
 import pytest
 
@@ -23,6 +24,7 @@ from novapolicy.pipeline.modules.joint_clamp import JointClamp
 from novapolicy.pipeline.modules.live_buffer import LiveBuffer
 from novapolicy.pipeline.modules.smoothing import Smoothing
 from novapolicy.pipeline.modules.timeline import TimestepTimeline
+from novapolicy.pipeline.placement import resample_on_grid
 from novapolicy.transport.clock import ServerMs
 
 TARGET = [100.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -103,7 +105,7 @@ def test_the_module_kinds_are_told_apart_by_their_method():
 def test_split_pipeline_keeps_each_kind_in_order():
     first, second, buffer = _ChunkProbe(), _ChunkProbe(), LiveBuffer(window_ms=100.0)
     ease, probe, late = EaseIn(duration_s=1.0), _WaypointProbe(), DropLate()
-    chunk_modules, filters, waypoint_modules = split_pipeline([
+    chunk_modules, filters, waypoint_modules, _timestamps = split_pipeline([
         first,
         buffer,
         second,
@@ -119,9 +121,47 @@ def test_split_pipeline_keeps_each_kind_in_order():
 
 def test_timestamps_is_optional_and_an_empty_pipeline_has_no_modules():
     buffer, ease = LiveBuffer(window_ms=100.0), EaseIn(duration_s=1.0)
-    assert split_pipeline([buffer, ease]) == ([buffer], [], [ease])
-    assert split_pipeline([Timestamps()]) == ([], [], [])
-    assert split_pipeline([]) == ([], [], [])
+    assert split_pipeline([buffer, ease]) == ([buffer], [], [ease], Timestamps())
+    assert split_pipeline([Timestamps()]) == ([], [], [], Timestamps())
+    assert split_pipeline([]) == ([], [], [], Timestamps())
+
+
+def test_the_split_carries_the_listed_timestamps():
+    grid = Timestamps(grid_ms=32.0)
+    assert split_pipeline([LiveBuffer(window_ms=100.0), grid, DropLate()]).timestamps is grid
+
+
+@pytest.mark.parametrize("kwargs", [{"grid_ms": 0.0}, {"grid_ms": -8.0}, {"grid_ms": math.inf}])
+def test_timestamps_refuses_a_grid_it_cannot_place_on(kwargs):
+    with pytest.raises(ValueError, match="Timestamps needs"):
+        Timestamps(**kwargs)
+
+
+def test_a_path_is_sampled_on_the_grid_from_the_start_to_its_last_point():
+    path = [(0.0, [0.0]), (100.0, [1.0])]
+    assert resample_on_grid(path, 10.0, 32.0) == [
+        (32, [pytest.approx(0.32)]),
+        (64, [pytest.approx(0.64)]),
+        (96, [pytest.approx(0.96)]),
+    ]
+    assert resample_on_grid([(40.0, [0.0]), (100.0, [1.0])], 0.0, 32.0)[0][0] == 64  # 32 is before
+    assert resample_on_grid([], 0.0, 32.0) == []
+
+
+def test_the_grid_starts_at_the_robot_and_continues_the_policy_path():
+    grid = Timestamps(grid_ms=32.0)
+    assert Timestamps().on_grid([(1_150, [1.0])], 1_000.0, [0.0]) == []  # off by default
+    first = grid.on_grid([(1_150, [1.5])], 1_000.0, [0.0])
+    # From the robot at "now" to the policy's target, on multiples of 32 ms from now + 20 ms.
+    assert [t for t, _ in first] == [1_024, 1_056, 1_088, 1_120]
+    assert first[0][1] == [pytest.approx(0.24)]
+    # The next target extends the same path: the sent part is not resampled differently.
+    second = grid.on_grid([(1_183, [1.83])], 1_033.0, [9.0])
+    assert [t for t, _ in second] == [1_056, 1_088, 1_120, 1_152]
+    assert dict(second)[1_088] == dict(first)[1_088]
+    assert second[-1][1] == [pytest.approx(1.52)]
+    assert grid.on_grid([], 1_066.0, None) == []  # forgets the path
+    assert grid.on_grid([(1_216, [2.0])], 1_066.0, [3.0])[0][1][0] > 2.0  # restarts at the robot
 
 
 def test_a_filter_after_a_waypoint_module_or_a_chunk_module_after_a_filter_is_refused():
