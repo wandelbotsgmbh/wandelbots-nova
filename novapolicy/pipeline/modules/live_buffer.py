@@ -51,15 +51,18 @@ def resample_evenly(
     """Linearly interpolate irregularly timed samples onto an evenly spaced grid.
 
     ``start`` pins the grid to an absolute phase; without it the grid begins at the oldest
-    sample. Grid points past the newest sample hold its value.
+    sample. The grid ends at or before the newest sample: a point past it could only hold the
+    newest value and would be sent again with another one once the next sample arrives,
+    rewriting a waypoint the controller already steers toward. Only the minimum of
+    ``MIN_BUFFER_SAMPLES`` points can reach past it, while the buffer is still filling.
     """
     start = samples[0][0] if start is None else start
     end = samples[-1][0]
     if end < start:
         return []
-    # Round the span up so the grid reaches the newest sample; the epsilon absorbs float
+    # Round the span down so no point lies past the newest sample; the epsilon absorbs float
     # division (two steps can come out as 1.9999999999999996).
-    span_steps = math.ceil((end - start) / step_s - 1e-9)
+    span_steps = math.floor((end - start) / step_s + 1e-9)
     count = max(MIN_BUFFER_SAMPLES, span_steps + 1)
     grid: list[list[float]] = []
     index = 0
@@ -112,7 +115,9 @@ def timeline_timestamp_ms(
     anchor_ms: float, trajectory_time_s: float, *, lead_ms: float = LIVE_LEAD_MS
 ) -> int:
     """Absolute server timestamp ``anchor + T + lead`` for content generated at time ``T``."""
-    return int(anchor_ms + trajectory_time_s * 1000.0 + lead_ms)
+    # Rounded, not truncated: the float sum of a grid time lands a hair below a whole ms, and
+    # truncating it puts that waypoint 1 ms off the grid of the others.
+    return round(anchor_ms + trajectory_time_s * 1000.0 + lead_ms)
 
 
 def horizon_end_time_s(grid_start_s: float, window_ms: float) -> float:

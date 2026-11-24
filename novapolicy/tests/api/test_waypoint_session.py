@@ -866,7 +866,8 @@ def test_a_chunk_only_caller_is_never_warned_by_a_live_buffer(caplog):
 
 
 def test_a_live_buffer_moves_when_due_to_the_newest_target():
-    """The newest target is the last replayed step; its IO and hooks go with it."""
+    """The last replayed step, the grid point at or before the newest target, carries the newest
+    target's IO and hooks."""
 
     def action(name: str):
         async def run() -> None:
@@ -886,7 +887,8 @@ def test_a_live_buffer_moves_when_due_to_the_newest_target():
             )
         assert len(pending.steps) > 1
         assert pending.when_due == (len(pending.steps) - 1, newest)
-        assert pending.steps[-1][0] == pytest.approx(39 * 0.01)
+        # On the 50 ms grid, at most one grid step (2.5 targets) before the newest target.
+        assert 39 * 0.01 - 0.025 - 1e-9 <= pending.steps[-1][0] <= 39 * 0.01 + 1e-9
         assert pending.caller_step_count == len(pending.steps)
         assert pending.last_caller_step == len(pending.steps) - 1
 
@@ -908,7 +910,7 @@ def test_a_live_buffer_times_targets_by_when_they_were_produced():
             )
         pending = session._pending_request
         assert len(pending.steps) > 1  # replayed as a horizon on the produced times
-        assert pending.steps[-1][0] == pytest.approx(7.0)
+        assert 5.5 - 1e-9 <= pending.steps[-1][0] <= 7.0 + 1e-9  # within a 15 ms grid step
 
 
 def test_a_live_buffer_times_lead_chunks_by_the_session_clock():

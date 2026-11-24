@@ -6,8 +6,6 @@ timing behaviour that matters can be asserted directly.
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from novapolicy.pipeline.modules.live_buffer import (
@@ -155,16 +153,28 @@ def test_resampling_reads_each_sample_at_its_own_instant() -> None:
 
 
 def test_a_grid_point_past_the_newest_sample_holds_rather_than_guesses() -> None:
+    """While the buffer is filling, its minimum points may reach past the newest sample."""
     samples = [(0.0, [0.0]), (0.01, [10.0])]
     grid = resample_evenly(samples, 0.05, start=0.0)
     assert grid[-1][0] == pytest.approx(10.0)
 
 
-def test_the_horizon_reaches_the_newest_sample() -> None:
-    """Truncating the span would drop the freshest thing the buffer knows."""
-    samples = [(0.0, [0.0]), (0.04, [4.0]), (0.0999, [9.99])]
+def test_the_horizon_stops_at_the_newest_sample() -> None:
+    """A point past the newest sample would be re-sent with another value once the next sample
+    arrives: up to a grid step of motion, rewritten under the controller (46 mm in a fast
+    teleoperation move)."""
+    samples = [(0.0, [0.0]), (0.04, [4.0]), (0.0999, [9.99]), (0.12, [12.0])]
     grid = resample_evenly(samples, 0.05, start=0.0)
-    assert len(grid) == math.ceil(0.0999 / 0.05 - 1e-9) + 1
+    assert len(grid) == 3  # 0, 50 and 100 ms; 150 ms would lie past the newest sample
+
+
+def test_grid_points_keep_their_value_when_a_sample_arrives() -> None:
+    samples = [(i * 0.013, [float(i * i)]) for i in range(20)]
+    before = resample_evenly(samples[:15], 0.05, start=0.0)
+    after = resample_evenly(samples, 0.05, start=0.0)
+    assert [v for step in after[: len(before)] for v in step] == pytest.approx([
+        v for step in before for v in step
+    ])
 
 
 def test_horizon_end_is_the_window_after_the_grid_start() -> None:
