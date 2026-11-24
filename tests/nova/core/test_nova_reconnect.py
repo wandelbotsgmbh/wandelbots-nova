@@ -103,18 +103,16 @@ async def test_is_connected_holds_while_nats_py_reconnects(monkeypatch):
 
 async def test_reopen_waits_are_jittered_and_capped(connected_flag, monkeypatch):
     """Each wait is drawn from [0, delay]; the delay doubles per failure up to the cap."""
-    import nova.core.nova as nova_module
-
     nova = _make_nova()
     monkeypatch.setattr(
         type(nova.nats), "is_connected", property(lambda self: connected_flag["value"])
     )
     windows: list[tuple[float, float]] = []
     monkeypatch.setattr(
-        nova_module.random, "uniform", lambda lo, hi: windows.append((lo, hi)) or 0.0
+        "nova.core.nova.random.uniform", lambda lo, hi: windows.append((lo, hi)) or 0.0
     )
-    monkeypatch.setattr(nova_module, "_NATS_REOPEN_INITIAL_DELAY_SECS", 2.0)
-    monkeypatch.setattr(nova_module, "_NATS_REOPEN_MAX_DELAY_SECS", 8.0)
+    monkeypatch.setattr("nova.core.nova._NATS_REOPEN_INITIAL_DELAY_SECS", 2.0)
+    monkeypatch.setattr("nova.core.nova._NATS_REOPEN_MAX_DELAY_SECS", 8.0)
 
     failures = 4
 
@@ -133,13 +131,11 @@ async def test_reopen_waits_are_jittered_and_capped(connected_flag, monkeypatch)
 
 async def test_reopen_fires_reconnected(connected_flag, monkeypatch):
     """Consumers learn about a fallback reopen through the same signal as a reconnect."""
-    import nova.core.nova as nova_module
-
     nova = _make_nova()
     monkeypatch.setattr(
         type(nova.nats), "is_connected", property(lambda self: connected_flag["value"])
     )
-    monkeypatch.setattr(nova_module.random, "uniform", lambda lo, hi: 0.0)
+    monkeypatch.setattr("nova.core.nova.random.uniform", lambda lo, hi: 0.0)
 
     async def connect_side_effect(*args, **kwargs):
         connected_flag["value"] = True

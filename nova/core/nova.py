@@ -148,7 +148,10 @@ class Nova:
         logger.warning(f"NATS connection error: {exc}")
 
     async def _on_nats_disconnected(self) -> None:
-        logger.warning("NATS connection lost, attempting to reconnect")
+        # nats-py calls this on every close too, including the drain() in close().
+        if self._closing:
+            return
+        logger.warning("NATS connection lost")
 
     async def _on_nats_reconnected(self) -> None:
         logger.info("NATS connection restored")
@@ -200,8 +203,13 @@ class Nova:
         if self._nats_reopen_task is not None:
             self._nats_reopen_task.cancel()
         try:
-            if self.nats is not None and self.nats.is_connected:
-                await self.nats.drain()
+            if self.nats is not None and nats_usable(self.nats):
+                if self.nats.is_connected:
+                    await self.nats.drain()
+                else:
+                    # Reconnecting: close() also stops nats-py's reconnect task, which would
+                    # otherwise log in again and resubscribe after shutdown.
+                    await self.nats.close()
             return await self._api_client.close() if self._api_client is not None else None
         except Exception as e:
             logger.error(f"Error closing Nova: {e}", exc_info=True)

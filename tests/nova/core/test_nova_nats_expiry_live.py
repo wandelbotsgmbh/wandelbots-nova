@@ -128,11 +128,57 @@ async def test_login_can_expire_more_than_once(nova):
 
 async def test_other_server_errors_still_close_the_client(nova, monkeypatch):
     # Hold Nova's own reopen at its longest wait, so the check below sees the closed client.
-    import nova.core.nova as nova_module
-
-    monkeypatch.setattr(nova_module.random, "uniform", lambda lo, hi: hi)
+    monkeypatch.setattr("nova.core.nova.random.uniform", lambda lo, hi: hi)
     await server_sends(nova.nats, AUTHORIZATION_VIOLATION)
     await asyncio.sleep(0.1)  # nats-py closes in a task of its own
 
     assert nova.nats.is_closed
     assert not nova.is_connected()
+
+
+async def test_bus_io_wait_started_while_reconnecting_reads_state_once_live(nova, monkeypatch):
+    """The initial HTTP read must not be older than the (queued) subscription."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from nova.utils.io import wait_for_bus_io
+
+    connected_at_read: list[bool] = []
+
+    async def read_values(**kwargs):
+        connected_at_read.append(nova.nats.is_connected)
+        return []
+
+    bus_ios_api = MagicMock()
+    bus_ios_api.get_bus_io_values = AsyncMock(side_effect=read_values)
+    monkeypatch.setattr(nova.api, "bus_ios_api", bus_ios_api)
+
+    await expire_login(nova.nats)
+    assert not nova.nats.is_connected
+
+    async with asyncio.timeout(5):
+        await wait_for_bus_io(["io-a"], on_change=lambda changes: True, nova=nova)
+
+    assert connected_at_read == [True]
+
+
+async def test_close_while_reconnecting_stops_the_client(nova):
+    await expire_login(nova.nats)
+    assert nova.nats.is_reconnecting
+
+    await nova.close()
+    assert nova.nats.is_closed
+
+    await asyncio.sleep(0.5)  # nats-py's reconnect task would have logged in again by now
+    assert nova.nats.is_closed
+
+
+async def test_deliberate_close_does_not_report_a_lost_connection(nova, monkeypatch):
+    from unittest.mock import MagicMock
+
+    warning = MagicMock()
+    monkeypatch.setattr("nova.core.nova.logger.warning", warning)
+
+    await nova.close()
+
+    assert nova.nats.is_closed
+    warning.assert_not_called()
