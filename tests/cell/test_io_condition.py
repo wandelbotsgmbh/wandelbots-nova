@@ -321,6 +321,44 @@ async def test_bus_io_release_keeps_waiting_when_the_re_read_still_pauses():
         await wait
 
 
+async def test_bus_io_release_subscribes_again_after_a_fallback_reopen():
+    """After a long outage Nova reopens the client without subscriptions; pushes must
+    reach the wait again."""
+    nats = FakeNats()
+    gateway = _gateway(bus_values=[_value("enable", False), _value("enable", False)])
+    watcher = IOConditionWatcher(gateway, "cell", "ctrl", nats_client=nats)
+
+    wait = asyncio.create_task(watcher.wait_until_released(motion_enable_signal("enable")))
+    await nats.subscribed.wait()
+    await nats.reopen()
+    await _settle()
+    assert not wait.done()
+    assert nats.subjects() == {VALUES, STATUS}
+
+    await nats.publish(VALUES, _pushed("enable", True))
+    async with asyncio.timeout(2):
+        await wait
+    assert nats.subscriptions == []
+
+
+async def test_bus_io_loss_subscribes_again_after_a_fallback_reopen():
+    nats = FakeNats()
+    gateway = _gateway(bus_states=[_bus_state(CONNECTED), _bus_state(CONNECTED)])
+    watcher = IOConditionWatcher(gateway, "cell", "ctrl", nats_client=nats)
+
+    wait = asyncio.create_task(watcher.wait_until_bus_io_lost())
+    await nats.subscribed.wait()
+    await _settle()
+    await nats.reopen()
+    await _settle()
+    assert not wait.done()
+    assert nats.subjects() == {STATUS}
+
+    await nats.publish(STATUS, _status(""))
+    async with asyncio.timeout(2):
+        await wait
+
+
 async def test_bus_io_condition_accepts_a_reconnecting_client():
     """nats-py queues the subscribe while reconnecting; a wait that starts in that window
     must not fail (the server expires logins hourly, so the window recurs)."""

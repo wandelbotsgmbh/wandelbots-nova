@@ -29,7 +29,7 @@ from typing import Any, Protocol
 from pydantic import TypeAdapter
 
 from nova import api
-from nova.core.nats_state import nats_usable
+from nova.core.nats_state import ReconnectSignal, nats_usable
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +206,12 @@ class IOConditionWatcher:
             while True:
                 payload = await queue.get()
                 if payload is None:  # our connection came back
+                    # Subscribe again: Nova's fallback reopen starts without subscriptions.
+                    with contextlib.suppress(Exception):
+                        await subscription.unsubscribe()
+                    subscription = await nats_client.subscribe(
+                        self._subject("status"), cb=on_status
+                    )
                     if not await self._bus_io_connected_now():
                         return
                 elif not _bus_io_state_connected(payload):
@@ -273,15 +279,23 @@ class IOConditionWatcher:
         async def on_status(message) -> None:
             await queue.put(("status", message.data))
 
+        async def subscribe() -> list:
+            return [
+                await nats_client.subscribe(self._subject("ios"), cb=on_values),
+                await nats_client.subscribe(self._subject("status"), cb=on_status),
+            ]
+
+        async def unsubscribe(subscriptions: list) -> None:
+            for subscription in subscriptions:
+                with contextlib.suppress(Exception):
+                    await subscription.unsubscribe()
+
         # Subscribe first, read once afterwards: an edge in between is then seen
         # either by the read or by a queued message, never lost. The one hole is a
         # NATS reconnect (nothing is subscribed server-side while it lasts), which
         # is why a completed reconnect triggers the same one-shot read.
         reconnects = self._relay_reconnects(nats_client, queue, ("reconnected", b""))
-        subscriptions = [
-            await nats_client.subscribe(self._subject("ios"), cb=on_values),
-            await nats_client.subscribe(self._subject("status"), cb=on_status),
-        ]
+        subscriptions = await subscribe()
         try:
             if await self._holds_or_none(condition) == holds:
                 return
@@ -293,7 +307,16 @@ class IOConditionWatcher:
                         condition_holds(measured, condition.comparator, expected) == holds
                     ):
                         return
-                elif kind == "reconnected" or _bus_io_state_connected(payload):
+                elif kind == "reconnected":
+                    # nats-py replays subscriptions across its own reconnect, but Nova's
+                    # fallback reopen after a long outage starts from none. Subscribing
+                    # again covers both; the old ones are dropped first, so no message
+                    # arrives twice.
+                    await unsubscribe(subscriptions)
+                    subscriptions = await subscribe()
+                    if await self._holds_or_none(condition) == holds:
+                        return
+                elif _bus_io_state_connected(payload):
                     # The bus came (back) up, or our own connection did: values pushed
                     # in between are gone and not re-published, so ask once.
                     if await self._holds_or_none(condition) == holds:
@@ -301,9 +324,7 @@ class IOConditionWatcher:
         finally:
             if reconnects is not None:
                 reconnects.cancel()
-            for subscription in subscriptions:
-                with contextlib.suppress(Exception):
-                    await subscription.unsubscribe()
+            await unsubscribe(subscriptions)
 
     @staticmethod
     def _relay_reconnects(nats_client, queue: asyncio.Queue, item) -> asyncio.Task | None:
@@ -314,7 +335,7 @@ class IOConditionWatcher:
         ``nats.NATS``, test doubles) get no relay.
         """
         signal = getattr(nats_client, "reconnected", None)
-        if signal is None:
+        if not isinstance(signal, ReconnectSignal):
             return None
         since = signal.generation
 

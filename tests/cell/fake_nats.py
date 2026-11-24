@@ -54,6 +54,13 @@ class FakeNats:
             if subscription.active and subscription.subject == subject:
                 await subscription.cb(SimpleNamespace(subject=subject, data=data))
 
+    async def reopen(self) -> None:
+        """Nova's fallback after nats-py gave up: a fresh connection without subscriptions."""
+        for subscription in self.subscriptions:
+            subscription.active = False
+        self.subscriptions.clear()
+        await self.reconnect()
+
     async def reconnect(self) -> None:
         """The connection dropped and came back: nothing published in between arrived."""
         self.is_connected = True
