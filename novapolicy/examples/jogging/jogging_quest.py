@@ -28,7 +28,6 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 import nova
-from nova import api
 from nova.cell import virtual_controller
 from nova.types import Pose
 from novapolicy import ServoHorizon, default_pipeline, jog_tcp
@@ -194,7 +193,7 @@ def make_program(script: str, speed: float, *, raw: bool):
             controllers=[
                 virtual_controller(
                     name=CONTROLLER,
-                    manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                    manufacturer=nova.api.models.Manufacturer.UNIVERSALROBOTS,
                     type="universalrobots-ur10e",
                 )
             ],
