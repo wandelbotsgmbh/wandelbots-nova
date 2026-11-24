@@ -1,7 +1,7 @@
 """Teleoperation with a Meta Quest controller, mocked: the TCP follows the controller's pose.
 
     NOVA_API=http://<instance> PYTHONPATH=. uv run python \\
-        novapolicy/examples/jogging/jogging_quest.py [--script within|beyond|all|seam] [--speed 0.5]
+        novapolicy/examples/jogging/jogging_quest.py [--script within|beyond|all|seam] [--raw]
 
 While the grip is held, the TCP moves by the controller's motion since the grip was pressed:
 its translation, turned into the robot's base frame, and its rotation, about the TCP. Releasing
@@ -15,16 +15,16 @@ too. ``--speed 0.5`` plays a script at half speed, a quarter of the acceleration
 the tool slowly across the half-turn where its rotation vector flips sign. A real headset only
 has to provide ``latest()``: the newest controller pose and grip.
 
-Each pose goes out as a live target (``set_target``) on the default pipeline, one waypoint due
-the jogger's lead (100 ms) ahead, the way ur_rtde's ``servoL`` streams the newest pose. Measured
-on a virtual UR10e over a remote network:
+Each pose goes out as a live target (``set_target``) through ``ServoHorizon``: UR's servoj
+spring-damper (gain 300, lookahead 0.115 s) follows the pose, and the spring's path with the pose
+held, braking onto it, goes to NOVA as a 400 ms horizon (ADR 0022). ``--raw`` sends each pose
+alone instead, one waypoint the jogger's lead (100 ms) ahead, as ur_rtde's ``servoL`` streams it.
+Measured on a virtual UR10e over a remote network, the ``within`` part at full speed, with UR's
+servoj applied to the result as a real UR would:
 
-- ``within`` at half speed (about 2.8 m/s2): the TCP lags the controller by 100 ms, 1.8 mm rms
-  and 16 mm at most after that lag, 0.26 deg rms.
-- ``within`` at full speed: the arm falls behind the waypoints' times where they ask for more
-  acceleration than it has and overshoots stops by 20 to 30 mm; 30 to 80 mm rms.
-- A ``LiveBuffer`` (200 to 500 ms) halves the error at half speed and adds its window to the lag;
-  at full speed it does not help. Neither does a longer braking delay or a shorter lead.
+- ``ServoHorizon``: 316 ms behind the controller, 17 mm rms, no overshoot at sudden stops.
+- ``--raw``: 264 ms behind, 30 mm rms, overshooting stops by 19 mm (median) to 114 mm.
+- Where the hand moves harder than the arm can, about 85 mm peak error remains either way.
 """
 
 import argparse
@@ -39,7 +39,7 @@ import nova
 from nova import api
 from nova.cell import virtual_controller
 from nova.types import Pose
-from novapolicy import jog_tcp
+from novapolicy import ServoHorizon, default_pipeline, jog_tcp
 
 CONTROLLER = "ur10e-quest"
 START = [0.9484, -2.128, 2.2734, -1.7487, -1.5773, 2.552]
@@ -193,7 +193,7 @@ class Teleop:
         return rotvec
 
 
-def make_program(script: str, speed: float):
+def make_program(script: str, speed: float, *, raw: bool):
     @nova.program(
         id="jogging_quest",
         name="Quest Teleoperation (mocked)",
@@ -213,7 +213,8 @@ def make_program(script: str, speed: float):
         mg = (await ctx.nova.cell().controller(CONTROLLER))[0]
         tcp = (await mg.tcp_names())[0]
         quest, teleop = QuestMock(script, speed), Teleop()
-        async with jog_tcp(mg, tcp=tcp, start_joint_position=START) as jogger:
+        pipeline = None if raw else [ServoHorizon(), *default_pipeline()]
+        async with jog_tcp(mg, tcp=tcp, start_joint_position=START, pipeline=pipeline) as jogger:
             async for state in jogger:
                 now = jogger.elapsed
                 if now > quest.duration + 0.5:
@@ -228,8 +229,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--script", choices=sorted(SCRIPTS), default="all")
     parser.add_argument("--speed", type=float, default=1.0, help="play the script this fast")
+    parser.add_argument("--raw", action="store_true", help="send each pose alone, no ServoHorizon")
     args = parser.parse_args()
-    nova.run_program(make_program(args.script, args.speed))
+    nova.run_program(make_program(args.script, args.speed, raw=args.raw))
 
 
 if __name__ == "__main__":

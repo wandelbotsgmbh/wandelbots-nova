@@ -20,6 +20,7 @@ from novapolicy.pipeline.modules import (
     HoldPadding,
     JointClamp,
     LiveBuffer,
+    ServoHorizon,
     Smoothing,
     TimestepTimeline,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "JointClamp",
     "LiveBuffer",
     "ModuleContext",
+    "ServoHorizon",
     "Smoothing",
     "Timestamps",
     "TimestepTimeline",

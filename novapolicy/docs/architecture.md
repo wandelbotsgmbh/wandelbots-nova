@@ -43,7 +43,7 @@ flowchart LR
 
 | Kind | Sees | May change | Built-ins |
 | --- | --- | --- | --- |
-| chunk module | every chunk, when queued | steps and timing | `Smoothing`, `TimestepTimeline`, `Bridge`, `EndpointRamp`, `JointClamp`, `LiveBuffer`, `HoldPadding` |
+| chunk module | every chunk, when queued | steps and timing | `Smoothing`, `TimestepTimeline`, `Bridge`, `EndpointRamp`, `JointClamp`, `LiveBuffer`, `ServoHorizon`, `HoldPadding` |
 | `Timestamps()` | the chunk | each step's time (contracts T1, T2) | placement; `grid_ms` puts one-step joint targets on NOVA's cycle grid |
 | filter | the timed waypoints | which go out, never their time | `DropLate` |
 | waypoint module | the timed waypoints, at every send | values only | `EaseIn` |
@@ -96,6 +96,7 @@ flowchart TB
 | `TimestepTimeline` | a queue's replacements must continue its timeline | (required for a queue) |
 | `LiveBuffer` | a lone live target is a terminal target the robot brakes to | not adding it |
 | `EaseIn` | a time-based target with velocity at t=0 lunges from rest | not adding it |
+| `ServoHorizon` | a lone live target makes the follower overshoot a sudden stop; the spring of UR's servoj sends a reachable, braking horizon instead ([ADR 0022](adr/0022-servo-horizon-for-live-targets.md)) | not adding it |
 | `Timestamps(grid_ms=32)` | NOVA's follower pulses around a one-step policy's pace when a waypoint falls just after its 8 ms cycle ([ADR 0021](adr/0021-one-step-targets-on-the-cycle-grid.md)) | `Timestamps()` (the default) |
 
 ### Order and combinations
@@ -207,7 +208,7 @@ mapping, decoding, placement and streaming come from the package.
 | placement (lead, hold padding), trimming | `novapolicy/pipeline/placement.py` (`placement`, `trim_chunk`) |
 | send pipeline: module kinds, their order, the split | `novapolicy/pipeline/base.py` |
 | the default pipeline | `novapolicy/pipeline/defaults.py` (`default_pipeline`) |
-| the built-in modules, one per file | `novapolicy/pipeline/modules/` (`live_buffer.py`, `smoothing.py`, `timeline.py`, `bridge.py`, `endpoint_ramp.py`, `joint_clamp.py`, `hold_padding.py`, `drop_late.py`, `ease_in.py`) |
+| the built-in modules, one per file | `novapolicy/pipeline/modules/` (`live_buffer.py`, `servo_horizon.py`, `smoothing.py`, `timeline.py`, `bridge.py`, `endpoint_ramp.py`, `joint_clamp.py`, `hold_padding.py`, `drop_late.py`, `ease_in.py`) |
 | building one session per motion group, start move, e-stop monitor, fault and stop-condition checks, drain (executor and jogger) | `novapolicy/transport/lifecycle.py` |
 | NOVA transport: stamping and sending (`_schedule`), what was sent (`scheduled`) | `novapolicy/transport/session.py`, `clock.py`, `waypoints.py` |
 | jogging state, standstill, stop conditions (`first_fired`) | `novapolicy/transport/state.py` |

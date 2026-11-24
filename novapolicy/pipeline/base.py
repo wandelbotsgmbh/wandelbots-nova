@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from novapolicy.types import JoggingMode
 
 CHUNK_STAGES = ("input", "smooth", "timeline", "anchor", "shape", "horizon")
-"""The order of the built-in chunk modules, by their ``stage``: LiveBuffer, Smoothing,
+"""The order of the built-in chunk modules, by their ``stage``: LiveBuffer or ServoHorizon, Smoothing,
 TimestepTimeline, Bridge, EndpointRamp, HoldPadding. A module without a ``stage`` (JointClamp, your
 own) may stand anywhere among them."""
 
