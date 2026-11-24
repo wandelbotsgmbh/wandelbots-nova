@@ -5,6 +5,7 @@ from typing import Any, Callable
 from pydantic.type_adapter import TypeAdapter
 
 from nova import Nova, api, get_current_program_context
+from nova.core.nats_state import ReconnectSignal, nats_usable
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ async def wait_for_bus_io(
     """
     nova = _resolve_nova(nova)
 
-    if not nova.nats.is_connected:
+    if not nats_usable(nova.nats):
         raise RuntimeError("NATS client is not connected")
 
     if nats_subscription_kwargs is None:
@@ -138,9 +139,19 @@ async def wait_for_bus_io(
     if "cb" in nats_subscription_kwargs or "future" in nats_subscription_kwargs:
         raise ValueError("wait_for_io does not support cb or future subscriptions")
 
+    reconnected = getattr(nova.nats, "reconnected", None)
+    if not isinstance(reconnected, ReconnectSignal):
+        reconnected = None
+    generation = reconnected.generation if reconnected is not None else 0
+
     sub = await nova.nats.subscribe(f"nova.v2.cells.{cell}.bus-ios.ios", **nats_subscription_kwargs)
 
     try:
+        if reconnected is not None and not nova.nats.is_connected:
+            # While nats-py reconnects, the SUB is only queued. Read the initial state once
+            # it is live, or a change between the read and the replayed SUB is never seen.
+            await reconnected.wait(since=generation)
+
         old_values = await nova.api.bus_ios_api.get_bus_io_values(cell=cell, ios=bus_ios)
         old_values_dict = {value.io: value for value in old_values}
 
