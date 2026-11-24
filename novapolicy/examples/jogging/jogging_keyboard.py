@@ -12,7 +12,7 @@ terminal starts repeating. The speed ramps at a fixed acceleration, so taps and 
 jerk. The TCP stays inside a box around its start.
 
 Each pose goes out as a live target on the default pipeline. On a virtual UR10e over a remote
-network the TCP starts moving about 125 ms after a press and holds 50 mm/s within about 10 mm/s.
+network the TCP starts moving about 130 ms after a press and holds 50 mm/s within about 10 mm/s.
 A 500 ms ``LiveBuffer`` (see jogging_joints.py) holds the speed tighter but adds its window to the
 delay; re-sending a chunk of future poses every iteration (``set_chunk``) made the arm swing around
 the set speed at about 11 Hz.

@@ -26,7 +26,7 @@ CHUNK_STAGES = ("input", "smooth", "timeline", "anchor", "shape", "horizon")
 TimestepTimeline, Bridge, EndpointRamp, HoldPadding. A module without a ``stage`` (JointClamp, your
 own) may stand anywhere among them."""
 
-_STAGE_ORDER = "LiveBuffer, Smoothing, TimestepTimeline, Bridge, EndpointRamp, HoldPadding"
+_STAGE_ORDER = "LiveBuffer or ServoHorizon, Smoothing, TimestepTimeline, Bridge, EndpointRamp, HoldPadding"
 
 TimedWaypoint = tuple["ServerMs", list[float]]
 """A waypoint about to be sent: its time on the session clock and its values."""
