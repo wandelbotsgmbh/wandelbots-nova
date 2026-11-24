@@ -8,23 +8,15 @@ its translation, turned into the robot's base frame, and its rotation, about the
 the grip holds the TCP; pressing it again re-anchors, so the hand can be repositioned (a clutch).
 
 ``QuestMock`` stands in for the headset: controller poses at 72 Hz, arriving with a few ms of
-jitter, along a scripted motion of fast flicks, sudden reversals and quick wrist rotations. The
-``within`` part stays under the UR10e's speeds (TCP about 1.5 m/s, wrist about 180 deg/s) but its
-reversals need up to 11 m/s2, more than the arm can brake; the ``beyond`` part exceeds the speeds
-too. ``--speed 0.5`` plays a script at half speed, a quarter of the acceleration. ``seam`` turns
-the tool slowly across the half-turn where its rotation vector flips sign. A real headset only
-has to provide ``latest()``: the newest controller pose and grip.
+jitter, along a scripted motion of fast flicks, sudden reversals and quick wrist rotations.
+``--script`` picks the motion: ``within`` stays under the UR10e's speeds, ``beyond`` exceeds them,
+``all`` plays both, and ``seam`` turns the tool slowly across the half-turn where its rotation
+vector flips sign. ``--speed 0.5`` plays a script at half speed. A real headset only has to
+provide ``latest()``: the newest controller pose and grip.
 
-Each pose goes out as a live target (``set_target``) through ``ServoHorizon``: a critically damped
-spring-damper (gain 300, lookahead 0.115 s) follows the pose, and the spring's path with the pose
-held, braking onto it, goes to NOVA as a 400 ms horizon (ADR 0022). ``--raw`` sends each pose
-alone instead, one waypoint the jogger's lead (100 ms) ahead.
-Measured on a virtual UR10e, the ``within`` part at full speed:
-
-- Client on the NOVA instance, ``ServoHorizon``: 190 ms behind the controller, 7 mm rms, 25 mm
-  at most, no overshoot. ``--raw``: the zigzag sets the arm ringing by about 60 mm.
-- Over a remote network, ``ServoHorizon``: 220 ms, 19 mm rms; ``--raw``: 176 ms, 34 mm rms,
-  overshooting sudden stops by 20 to 30 mm.
+Each pose goes out as a live target (``set_target``) through ``ServoHorizon``, which follows the
+pose with a critically damped spring-damper and sends NOVA a short horizon that brakes onto it.
+``--raw`` sends each pose alone instead, one waypoint the jogger's lead ahead.
 """
 
 import argparse
@@ -227,7 +219,9 @@ def make_program(script: str, speed: float, *, raw: bool):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--script", choices=sorted(SCRIPTS), default="all")
+    parser.add_argument(
+        "--script", choices=sorted(SCRIPTS), default="all", help="the scripted motion to play"
+    )
     parser.add_argument("--speed", type=float, default=1.0, help="play the script this fast")
     parser.add_argument("--raw", action="store_true", help="send each pose alone, no ServoHorizon")
     args = parser.parse_args()

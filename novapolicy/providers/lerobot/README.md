@@ -1,47 +1,60 @@
 # Run a LeRobot policy with NOVA PolicyExecutor
 
-This guide is for users who want to execute a trained LeRobot policy through NOVA.
+This guide shows how to run a trained [LeRobot](https://github.com/huggingface/lerobot) policy on a
+NOVA robot.
 
 The setup has two parts:
 
 1. Start LeRobot's async inference server where the policy checkpoint is available.
-2. Configure `LeRobotPolicyClient` on the NOVA/robot side and run it with `PolicyExecutor`.
+2. Configure `LeRobotPolicyClient` on the NOVA side and run it with `PolicyExecutor`.
 
-The NOVA side sends observations to the LeRobot server and receives action chunks. Model weights are
-not uploaded by the client; `pretrained_name_or_path` is interpreted by the LeRobot server.
+The NOVA side sends observations to the LeRobot server and receives action chunks. The client does
+not upload model weights; the LeRobot server resolves `pretrained_name_or_path`.
 
 ## Quickstart
 
-### 1. Install the LeRobot policy extra
+### 1. Install
 
-Install this in the environment that runs NOVA policy execution:
+On the NOVA client machine, from this repository:
 
 ```bash
-uv add wandelbots-nova --extra novapolicy-lerobot
+uv sync --extra novapolicy-lerobot
 ```
 
-If you run the LeRobot server in a separate Python environment, install LeRobot there too. LeRobot
-currently requires Python 3.12:
+In your own uv project, add the override below to your `pyproject.toml` before you add the
+package. The core package needs Pillow 13 or newer, while LeRobot pins an older one, so pip cannot
+install this extra.
+
+```toml
+[tool.uv]
+override-dependencies = ["pillow>=13.0.0"]
+```
+
+```bash
+uv add "wandelbots-nova[novapolicy-lerobot]"
+```
+
+On the inference server, install LeRobot with its async extra. LeRobot requires Python 3.12:
 
 ```bash
 mamba create -y -n lerobot-server python=3.12 pip
 conda activate lerobot-server
 python -m pip install --upgrade pip
-python -m pip install 'wandelbots-nova[novapolicy-lerobot]'
+python -m pip install 'lerobot[async]>=0.6,<0.7'
 ```
 
 ### 2. Set the cell up
 
-The LeRobot examples here run on a UR10e carrying the UMI gripper, whose
-`umi_corrected` TCP is the frame the demonstrations were recorded in — not the cell's `Flange`,
-221.7 mm further down the tool. Fed the wrong frame a policy does not fail, it stalls in a hover.
+The LeRobot examples in this repository run on a UR10e with the UMI gripper. Use the TCP the
+demonstrations were recorded in, `umi_corrected`, not the cell's `Flange`. With the wrong TCP the
+policy does not fail; it hovers above the task.
 
 ```bash
 ./novapolicy/examples/setup_cell.sh http://<nova-host> umi
 ```
 
-[`pick_and_place_umi_ur10e.py`](../../examples/pick_and_place_umi_ur10e.py) drives the same task by
-hand. Run it first: if the scripted version cannot pick the cube up, no checkpoint will.
+[`pick_and_place_umi_ur10e.py`](../../examples/pick_and_place_umi_ur10e.py) runs the same task as a
+script. Run it first: if the scripted version cannot pick the cube up, no checkpoint will.
 
 ### 3. Put the checkpoint where the LeRobot server can read it
 
@@ -56,17 +69,20 @@ For a server-local checkpoint, copy the whole pretrained model directory to the 
 scp -r ./pretrained_model user@gpu-server:/models/my_lerobot_policy
 ```
 
-The NOVA client will later pass that same server-side path:
+The NOVA client later passes that same server-side path:
 
 ```python
 pretrained_name_or_path = "/models/my_lerobot_policy"
 ```
 
+Keep a copy of the checkpoint's `config.json` (and, if present, `policy_preprocessor.json` with its
+safetensors) on the client machine too. The client reads it to derive its settings; see
+[checkpoint execution settings](#checkpoint-execution-settings).
+
 ### 4. Start the LeRobot async server
 
-Run the server on the machine that has the checkpoint and should execute model inference. The server
-starts without a checkpoint argument; it loads the checkpoint path sent by the NOVA client when that
-client connects.
+Run the server on the machine that has the checkpoint and runs model inference. The server starts
+without a checkpoint argument. It loads the checkpoint path the NOVA client sends when it connects.
 
 ```bash
 # Terminal 1 — inference host
@@ -77,21 +93,17 @@ python -m lerobot.async_inference.policy_server \
   --port=8080
 ```
 
-Keep this process running. A successful startup logs that the gRPC server is listening on port 8080.
-The first client connection sends `policy_type`, checkpoint path, action-chunk size, and inference
-device. Loading happens while `PolicyExecutor` is in `CONNECTING`, before its execution timeout
-starts.
+Keep this process running. On startup it logs that the gRPC server is listening on port 8080.
+The model loads while `PolicyExecutor` is connecting, before its `timeout_s` starts.
 
-The server also accepts `--fps`, `--inference_latency`, and `--obs_queue_timeout`. They are not
-required for the basic setup. If you set server `--fps`, keep it aligned with the client's `control_freq`.
+The server also accepts `--fps`, `--inference_latency` and `--obs_queue_timeout`. The basic setup
+does not need them. If you set the server's `--fps`, keep it equal to the client's `control_freq`.
 
 ### 5. Execute the policy through NOVA
 
 Save the following as `run_lerobot_policy.py` on the NOVA client machine. Replace the host names,
-controller, camera device, checkpoint paths, and IO key with values for your cell and checkpoint.
-Model weights only need to exist on the inference server. The client reads the checkpoint's
-`config.json` to derive its settings, and its normalization statistics too when they are there —
-see [checkpoint execution settings](#checkpoint-execution-settings).
+controller, camera device, checkpoint paths and IO key with values for your cell and checkpoint.
+Model weights only need to exist on the inference server.
 
 ```python
 import asyncio
@@ -169,15 +181,14 @@ Run it while the async server is still listening:
 python run_lerobot_policy.py
 ```
 
-This example uses settled ACT execution: infer a chunk, execute the checkpoint-defined action
-horizon, reach standstill, and infer again. If the checkpoint has no camera input, remove
-`WebRTCCameras` and `Observation.image(...)`. Observation names and ordering must still match the
-checkpoint dataset.
+This runs one chunk at a time: infer a chunk, execute the checkpoint's action horizon, reach
+standstill, infer again. If the checkpoint has no camera input, remove `WebRTCCameras` and
+`Observation.image(...)`. Observation names and order must still match the checkpoint's dataset.
 
-### Continuous asynchronous execution
+### Continuous execution
 
-To keep a fixed-rate LeRobot action queue while NOVA continuously replaces the active lookahead,
-keep the same schema and use the following policy and executor options:
+To infer again while the robot moves, keep the same schema and wrap the client in
+`QueuedPolicyClient`:
 
 ```python
 from novapolicy import ContinuousExecution, QueuedPolicyClient
@@ -203,16 +214,31 @@ executor = PolicyExecutor(
 result = await executor.run()
 ```
 
-Use sequential execution first. Enable the continuous queue only when the checkpoint and robot task
-have been validated with overlapping action chunks.
+Start with sequential execution. Switch to continuous execution once the checkpoint and the task
+work with overlapping action chunks.
 
 ## Configuration reference
 
+`LeRobotPolicyClient(server_address, pretrained_name_or_path, *, config_path=None,
+actions_per_chunk=None, n_action_steps=None, policy_type=None, task=None, control_freq=None,
+device="cpu", timeout_s=15.0)`
+
+| Argument | Meaning | Default |
+| --- | --- | --- |
+| `server_address` | the LeRobot async inference server, `"host:port"` | required |
+| `pretrained_name_or_path` | checkpoint path or Hugging Face model id, resolved on the server | required |
+| `config_path` | a client-readable copy of the checkpoint directory or its `config.json` | `pretrained_name_or_path` |
+| `control_freq` | rate the returned actions play at, in steps per second: the dataset's `fps` | 30, with a warning |
+| `task` | language instruction for checkpoints that condition on one | none |
+| `device` | inference device on the server, such as `"cuda"` | `"cpu"` |
+| `policy_type` | LeRobot policy type; read from the checkpoint | from the checkpoint |
+| `actions_per_chunk` | action steps requested per chunk | the checkpoint's chunk length |
+| `n_action_steps` | steps of each chunk that run in sequential execution | the checkpoint's `n_action_steps` |
+| `timeout_s` | timeout for one server call, in s | 15 |
+
 ### `server_address`
 
-Address of the LeRobot async inference server in `"host:port"` form.
-
-Examples:
+Address of the LeRobot async inference server in `"host:port"` form:
 
 ```python
 server_address = "127.0.0.1:8080"
@@ -221,10 +247,9 @@ server_address = "gpu-server.internal:8080"
 
 ### `pretrained_name_or_path`
 
-Checkpoint path or Hugging Face model id passed to the LeRobot server.
-
-Important: for a remote server, this is resolved on the server machine, not on the NOVA client.
-The client does not upload model weights.
+Checkpoint path or Hugging Face model id passed to the LeRobot server. For a remote server, the
+path is resolved on the server machine, not on the NOVA client. The client does not upload model
+weights.
 
 ```python
 pretrained_name_or_path = "/models/my_lerobot_policy"
@@ -233,21 +258,21 @@ pretrained_name_or_path = "org/my-policy"
 
 ### `policy_type`
 
-LeRobot policy type sent to the server. Read from the checkpoint's `type`; pass it only to
+LeRobot policy type sent to the server. It is read from the checkpoint's `type`. Pass it only to
 override, and only with a value that agrees with the checkpoint:
 
 ```python
 policy_type = "act"
 ```
 
-The NOVA client-side decoder is policy-architecture agnostic as long as the server returns a flat
-action vector matching the schema-derived joint, TCP, and IO layout.
+The client decodes any policy architecture, as long as the server returns a flat action vector
+that matches the schema's joint, TCP and IO layout.
 
 ### `task`
 
 The language instruction for checkpoints that condition on one: SmolVLA, pi0, pi0.5, X-VLA and any
 other policy whose preprocessor pipeline contains LeRobot's `tokenizer_processor` step. It is sent
-with every observation as `observation["task"]`, the same key LeRobot's own robot client uses:
+with every observation as `observation["task"]`, as LeRobot's own robot client does:
 
 ```python
 client = LeRobotPolicyClient(
@@ -259,32 +284,30 @@ client = LeRobotPolicyClient(
 ```
 
 Phrase it like the instructions in the training data. Whether a checkpoint needs one is read from
-its `policy_preprocessor.json`, so no list of policy types is involved. `connect()` refuses to start
-an instruction-conditioned checkpoint without a task. Checkpoints that need no instruction (ACT,
-diffusion) ignore it.
+its `policy_preprocessor.json`. `connect()` refuses to start an instruction-conditioned checkpoint
+without a task. Checkpoints that need no instruction (ACT, diffusion) ignore it.
 
 ### `control_freq`
 
-The rate returned actions are played at, in steps per second (not how often the policy is asked:
-that is `ContinuousExecution(rate_hz=...)`). LeRobot calls this `fps`: it is the
-dataset's frame rate (`fps` in its `meta/info.json`) and the `fps` of LeRobot's own robot client.
-Pass that value as `control_freq`, the name every novapolicy client uses:
+The rate returned actions play at, in steps per second. It is not how often the policy is asked:
+that is `ContinuousExecution(rate_hz=...)`. LeRobot calls this `fps`. It is the dataset's frame
+rate (`fps` in its `meta/info.json`) and the `fps` of LeRobot's own robot client. Pass that value
+as `control_freq`:
 
 ```python
 control_freq = 15  # the dataset's fps; ActionChunk.dt_ms = 1000 / 15
 ```
 
-The default is 30 Hz, with a warning.
+The default is 30 Hz, with a warning. The frame rate belongs to the dataset, not the policy, so it
+cannot be read from the checkpoint. Keep it in your deployment configuration next to the checkpoint
+path.
 
-This is separate from the LeRobot server's optional `--fps` CLI flag. The server flag is used by
-LeRobot when it creates `TimedAction` timestamps; `LeRobotPolicyClient` does not use those
-timestamps. It decodes the returned action tensors into NOVA `ActionChunk`s and sets the chunk
-`dt_ms` from this client-side `control_freq`. `PolicyExecutor` then uses that `dt_ms` when scheduling the
-returned chunk.
+The LeRobot server's own `--fps` flag is separate. The client sets each chunk's `dt_ms` from its
+own `control_freq`, and `PolicyExecutor` uses that `dt_ms` to schedule the chunk.
 
 ### Checkpoint execution settings
 
-`LeRobotPolicyClient` reads what the checkpoint already declares instead of asking for it:
+`LeRobotPolicyClient` reads what the checkpoint already declares:
 
 | Derived from the checkpoint | Read from |
 | --- | --- |
@@ -292,59 +315,26 @@ returned chunk.
 | `actions_per_chunk` | `len(action_delta_indices)` |
 | `n_action_steps` (used by `PolicyExecutor`) | `n_action_steps` |
 
-Values are read through LeRobot's own `PreTrainedConfig`, not by parsing `config.json` field by
-field, so **every LeRobot policy works without a per-policy table here**. Policies disagree about
-what the action chunk is called — ACT says `chunk_size`, diffusion says `horizon`, fastwam says
-`action_horizon`, vqbet names it nothing — but every policy config must implement the abstract
-`action_delta_indices` property, and its length is the chunk length for all of them. A new or
-renamed LeRobot policy needs no change in novapolicy.
-
-A policy that declares no action chunk at all (`action_delta_indices is None`) needs
+Values are read through LeRobot's own `PreTrainedConfig`, so every LeRobot policy works, including
+new ones. A policy that declares no action chunk at all (`action_delta_indices is None`) needs
 `actions_per_chunk` explicitly.
 
-`control_freq` cannot be derived — the frame rate is a property of the dataset (`fps` in its `meta/info.json`),
-not the policy — so pass it unless the dataset was recorded at the default 30.
+Pass a derived argument only to override it. An override that contradicts the checkpoint raises:
+a different `policy_type`, or a chunk length above the checkpoint's action chunk. A shorter
+horizon is allowed, with a warning.
 
-Pass any of the derived arguments only to override it. An override that contradicts the checkpoint
-is reported rather than silently accepted: a different `policy_type`, or a chunk length above the
-checkpoint's action chunk, both raise. A *shorter* horizon is allowed with a warning, since a
-receding horizon is a legitimate choice.
+Before the setup message goes out, the client also holds the schema against the checkpoint's
+`input_features` and `output_features`: the observation keys, the shape behind each key and the
+width of the flat action vector. A mismatch fails at startup, before the robot moves. This runs
+automatically. A checkpoint that declares no features is warned about and skipped. Only `STATE`
+and `VISUAL` inputs are compared.
 
-The client also holds the schema against the checkpoint's `input_features` / `output_features`
-before the setup message goes out: the observation key set, the shape behind each key, and the
-width of the flat action vector. A mismatch fails at startup rather than after the robot has
-started moving. This runs automatically; there is nothing to call. A checkpoint that declares no
-features (they were inferred from the dataset at train time) is warned about and skipped.
-
-One exception: a **camera frame size** that disagrees only warns. See
-[camera resolution](#camera-resolution) below.
-
-### Checking the observation against the checkpoint's statistics
-
-Feature shapes prove the schema is the right *width*. They cannot prove it carries the right
-*numbers* — `PolicyFeature` has no per-dimension names, so a permuted joint order or a unit
-mismatch passes the contract check untouched.
-
-The checkpoint's own training statistics settle it. When `policy_preprocessor.json` and its
-safetensors are readable — alongside `config.json`, on the Hub or locally — the client holds the
-first live observation against them:
-
-- **An order of magnitude larger** than anything in training raises before the robot moves. That is
-  what a unit mismatch looks like; a pose does not land there.
-- **Outside the demonstrated range** warns. Starting from a pose the demonstrations never visited is
-  normal — a robot at its park pose before homing will warn, and should.
-
-A checkpoint shipped as `config.json` alone skips the check. One asymmetry worth knowing: bounds
-catch values that are too *large* for the training range — degrees where radians were expected. The
-reverse sits comfortably inside a degree range and cannot be caught this way.
-
-If the dataset genuinely used different units than NOVA reports, declare the conversion rather than
-working around the warning — see [Units](../../docs/schema.md#units).
+A camera frame size that disagrees with the checkpoint only warns; see
+[camera resolution](#camera-resolution).
 
 **Derivation needs a checkpoint the client can read.** If `pretrained_name_or_path` names a path
-that exists only on the inference server, the NOVA client cannot inspect it — LeRobot's async RPC
-has no checkpoint-metadata method. Pass `config_path` pointing at a client-local copy of the
-checkpoint directory or its `config.json`:
+that exists only on the inference server, the client cannot read it. Pass `config_path`, pointing
+at a client-local copy of the checkpoint directory or its `config.json`:
 
 ```python
 policy = LeRobotPolicyClient(
@@ -355,12 +345,10 @@ policy = LeRobotPolicyClient(
 )
 ```
 
-Without one, the client warns that neither derivation nor validation could run and falls back to
-the explicit arguments; `policy_type` and `actions_per_chunk` then both have to be supplied. The
-client never assumes a policy type it could not read — sending the wrong one makes the server build
-the wrong policy class.
+Without one, the client warns that it could neither derive nor validate, and uses the explicit
+arguments. `policy_type` and `actions_per_chunk` then both have to be passed.
 
-`load_execution_settings` remains available for reading the same values directly:
+`load_execution_settings` reads the same values directly:
 
 ```python
 from novapolicy.providers.lerobot import load_execution_settings
@@ -371,19 +359,37 @@ settings = load_execution_settings("./pretrained_model")
 # settings.input_features["observation.state"].shape == (7,)
 ```
 
+### Checking the observation against the checkpoint's statistics
+
+Feature shapes prove the schema has the right width. They do not prove it carries the right
+numbers: a permuted joint order or a unit mismatch passes the shape check.
+
+When `policy_preprocessor.json` and its safetensors are readable (next to `config.json`, on the
+Hub or locally), the client holds the first live observation against the checkpoint's training
+statistics:
+
+- **More than five times larger** than anything in training raises before the robot moves. That is
+  what a unit mismatch looks like.
+- **More than one training span outside the demonstrated range** warns. This is normal at a pose
+  the demonstrations never visited, such as a park pose before homing.
+
+A checkpoint shipped as `config.json` alone skips the check. The check catches values that are too
+large for the training range, such as degrees where radians were expected. It cannot catch the
+reverse.
+
+If the dataset used other units than NOVA reports, declare the conversion; see
+[Units](../../docs/schema.md#units).
+
 ### `actions_per_chunk`
 
-Number of action steps requested from the server. Defaults to the checkpoint's `chunk_size`, so the
-full prediction stays available for logging and visualization while `n_action_steps` limits what is
-actually executed. Pass it only to request a shorter chunk; a value above `chunk_size` raises.
+Number of action steps requested from the server. It defaults to the checkpoint's chunk length, so
+the full prediction stays available for logging and visualization, while `n_action_steps` limits
+what is executed. Pass it only to request a shorter chunk. A value above the chunk length raises.
 
-The LeRobot async server does not infer this. It is part of LeRobot's `RemotePolicyConfig`, and the
-server slices `policy.predict_action_chunk(...)` to the requested length.
+### Sequential execution
 
-### Settled ACT chunks
-
-For NOVA waypoint jogging, execute the checkpoint-defined ACT execution horizon and wait for NOVA
-to report that its waypoint buffer reached standstill before the next inference:
+With `SequentialExecution`, the executor runs the checkpoint's action horizon and waits until the
+robot stands still before the next inference:
 
 ```python
 PolicyExecutor(
@@ -396,34 +402,26 @@ PolicyExecutor(
 )
 ```
 
-This prevents the policy observation from being captured while the robot is still moving and avoids
-executing the lower-confidence tail beyond the checkpoint's configured execution horizon. The
-`SequentialExecution` automatically waits for exact NOVA standstill and, if ACT's first target is
-farther away than the spacing inside its executed horizon, prepends a
-same-`dt_ms` interpolated bridge to one continuous motion request. IO and computed actions fire when
-NOVA's server clock reaches policy waypoint zero; the
-robot does not stop at that boundary. Endpoint interpolation allocates additional same-`dt_ms`
-intervals for acceleration and braking of each settled request. See
-[`docs/executor.md`](../../docs/executor.md#bridging-a-distant-first-waypoint).
+The policy then never observes a robot in motion, and the less certain tail of each chunk beyond
+the execution horizon does not run. If the first target of a chunk is far from the robot, the
+executor adds a bridge to it. See [executor.md](../../docs/executor.md).
 
 ### Continuous execution with `QueuedPolicyClient`
 
-LeRobot has no queue of its own: for continuous execution wrap the client in
-`QueuedPolicyClient`, as any chunk-per-observation policy (`docs/executor.md`). It needs
-`ContinuousExecution`; `PolicyExecutor` refuses it with `SequentialExecution`. Configure
-`ContinuousExecution(rate_hz=control_freq)` and `n_action_steps=0`.
+For continuous execution, wrap the client in `QueuedPolicyClient`, as for any policy that answers
+a chunk per observation. It needs `ContinuousExecution`; `PolicyExecutor` refuses it with
+`SequentialExecution`. Configure `ContinuousExecution(rate_hz=control_freq)` and
+`n_action_steps=0`.
 
-`aggregation` says how a new prediction for a step already queued is merged with it:
+`aggregation` says how a new prediction for a step that is already queued is merged with it:
 
 | Mode | Merge |
-|---|---|
+| --- | --- |
 | `WEIGHTED_AVERAGE` | `0.3 * old + 0.7 * new` (LeRobot's default, and the queue's) |
 | `AVERAGE` | arithmetic mean of every prediction received for the timestep |
 
-`AVERAGE` measured lower peak path curvature on physical UR3 plug-task runs and a simulated
-UR10e pick-and-place. The merged plan is smoothed by the executor's default pipeline (`Smoothing`)
-after its targets are resolved to NOVA units, and the steps already sent stay exact; for tasks
-that need sharp contact transitions, pass the defaults without it:
+The executor's default pipeline smooths the merged plan (`Smoothing`). For tasks that need sharp
+contact transitions, pass the defaults without it:
 
 ```python
 from novapolicy import ContinuousExecution, Smoothing, default_pipeline
@@ -434,11 +432,11 @@ pipeline = [
 ]
 ```
 
+[pipeline.md](../../docs/pipeline.md) describes the modules.
+
 ## Observation and action mapping
 
-`LeRobotPolicyClient` maps the NOVA `PolicySchema` into LeRobot feature metadata.
-
-For example:
+`LeRobotPolicyClient` maps the NOVA `PolicySchema` into LeRobot feature metadata. For example:
 
 ```python
 Observation.joint_positions("arm", source=arm)
@@ -468,44 +466,17 @@ positions, joint velocities, TCP poses, object poses (`Observation.pose`), IOs, 
 `Observation.computed` (one value each). The checkpoint matches the values by position, so record
 the dataset in the same order.
 
-Image shape comes from the first camera frame.
-
-### Camera resolution
-
-**Camera resolution stays yours to choose.** Configure the stream in the Camera App at the
-resolution and aspect ratio the checkpoint was trained on where the hardware allows it — cameras
-do not offer arbitrary resolutions, so novapolicy never overrides your choice. It only tells you
-when the frames disagree with the checkpoint.
-
-When the client can read the checkpoint, it compares the first frame against the declared `VISUAL`
-shape and warns, distinguishing two cases:
-
-| Difference | What it means |
-| --- | --- |
-| **Resolution**, same aspect ratio | Frames rescale cleanly. You are paying network and decode cost for pixels that get downscaled again, and losing some detail. Worth fixing when the camera supports it. |
-| **Aspect ratio** | Rescaling cannot fix this. `resize=` is a plain rescale, not a crop or a pad, so a 16:9 stream squeezed into a 4:3 target is stretched. pi0, pi0_fast, pi05, smolvla and xvla resize with padding internally and tolerate it; **ACT does not resize at all** and sees the distorted geometry directly. |
-
-Neither stops the run.
-
-```python
-# Preferred: the camera stream is already at the checkpoint's resolution.
-WebRTCCameras(api_url=CAMERA_API)
-
-# Rescale on read when the hardware cannot deliver the checkpoint's resolution.
-WebRTCCameras(api_url=CAMERA_API, resize=(320, 240))
-```
-
-`resize=` scales frames on read, after they have crossed the network, so it fixes the shape the
-policy sees but not the bandwidth. Match the aspect ratio at the stream even when the resolution
-cannot match exactly.
+The image shape comes from the first camera frame.
 
 Returned LeRobot actions use a fixed flat layout: joint targets first, then TCP targets, then IO
-actions. Joint targets are split according to the schema's joint action motion groups. Each TCP
-target contributes six values in NOVA's native format: `[x, y, z, rx, ry, rz]` in millimetres and
-rotation-vector radians. IO actions are written once per returned chunk using the first action step.
+actions, then the keys of `Action.computed(..., keys=[...])` (one value each). Joint targets are
+split according to the schema's joint action motion groups. Each TCP target contributes six values,
+by default in NOVA's format: `[x, y, z, rx, ry, rz]` in millimetres and rotation-vector radians.
+With `orientation_type=OrientationType.QUATERNION` it contributes seven, and the entry's operators
+convert the units. IO actions are written once per returned chunk, from the first action step.
 
-A motion group can be controlled through joints or TCP, but not both. To observe joints while
-controlling the same robot in Cartesian space, disable the inferred joint action explicitly:
+A motion group is controlled through joints or TCP, not both. To observe joints while controlling
+the same robot in Cartesian space, turn off the joint action:
 
 ```python
 schema = PolicySchema(
@@ -519,34 +490,36 @@ schema = PolicySchema(
 
 For this schema the action vector is `[eef_x, eef_y, eef_z, eef_rx, eef_ry, eef_rz, gripper]`.
 
-## Protocol notes
+### Camera resolution
 
-The LeRobot async server flow, implemented inside `LeRobotPolicyClient`, is:
+Configure the stream in the Camera App at the resolution and aspect ratio the checkpoint was
+trained on, where the hardware allows it. novapolicy never overrides your choice. It only warns
+when the frames disagree with the checkpoint.
 
-1. `Ready` when the policy client connects
-2. `SendPolicyInstructions` during the optional policy `prepare(...)` step, while the executor is
-   still in `CONNECTING`
-3. `SendObservations` with the latest consumed action timestep
-4. `GetActions` in a background refill task
-5. Consume one queued action per control tick and blend overlapping future timesteps
+When the client can read the checkpoint, it compares the first frame with the declared `VISUAL`
+shape:
 
-`PolicyExecutor` triggers this indirectly by calling the `PolicyClient` methods; it does not send
-LeRobot RPCs itself. The executor switches to `EXECUTING` after preparation, so
-readiness/model-loading time is excluded from `timeout_s`.
+| Difference | What it means |
+| --- | --- |
+| **Resolution**, same aspect ratio | Frames rescale cleanly. You pay network and decode cost for pixels that are scaled down again, and lose some detail. Fix it when the camera supports it. |
+| **Aspect ratio** | Rescaling cannot fix this. `resize=` alone stretches a 16:9 stream into a 4:3 target; `resize_mode="crop"` centre-crops to the target's aspect ratio first, which cuts the image's edges instead. pi0, pi0_fast, pi05, smolvla and xvla resize with padding internally and tolerate it. **ACT does not resize** and sees the distorted image. |
 
-`SendPolicyInstructions` contains a pickled LeRobot `RemotePolicyConfig` with:
+Neither stops the run.
 
-- `policy_type`
-- `pretrained_name_or_path`
-- `lerobot_features`
-- `actions_per_chunk`
-- `device`
-- `rename_map` (left empty by this client)
+```python
+# Preferred: the camera stream is already at the checkpoint's resolution.
+WebRTCCameras(api_url=CAMERA_API)
 
-The server does not expose model metadata before setup, which is why the client reads the
-checkpoint itself. Keep `control_freq` (the dataset's `fps`) in your deployment configuration next to the checkpoint path, and
-make sure the client can reach a copy of `config.json` — see
-[Checkpoint execution settings](#checkpoint-execution-settings).
+# Rescale on read when the hardware cannot deliver the checkpoint's resolution.
+WebRTCCameras(api_url=CAMERA_API, resize=(320, 240))
+
+# Centre-crop to the checkpoint's aspect ratio, then rescale.
+WebRTCCameras(api_url=CAMERA_API, resize=(320, 240), resize_mode="crop")
+```
+
+`resize=` scales frames on read, after they have crossed the network. It fixes the shape the policy
+sees, not the bandwidth. Match the aspect ratio at the stream even when the resolution cannot
+match exactly.
 
 ## Troubleshooting
 
@@ -555,39 +528,56 @@ make sure the client can reach a copy of `config.json` — see
 Check that `pretrained_name_or_path` exists on the LeRobot server machine, not just on the NOVA
 client machine.
 
+### `LeRobotPolicyClient cannot read the checkpoint at ...`
+
+The client has no readable copy of the checkpoint. Pass `config_path` to a local copy, or pass
+`policy_type` and `actions_per_chunk` explicitly.
+
 ### `PolicySchema does not match the LeRobot checkpoint`
 
-The schema does not produce what the checkpoint declares, and the client says exactly which keys or
-shapes disagree. Common causes: an observation the checkpoint expects and the schema omits, an image
+The schema does not produce what the checkpoint declares. The message names the keys or shapes
+that disagree. Common causes: an observation the checkpoint expects and the schema omits, an image
 key that does not match the dataset's name, or a state width that is off.
 
 The flat action vector must contain the total DOF of all joint action motion groups, six values for
-every TCP action target, and one value for every IO action. A single 6-axis arm with one gripper IO
-returns seven values per step; a TCP-controlled arm with one gripper IO also returns seven — six
-Cartesian components followed by the IO value.
+every TCP action target (seven with a quaternion), one value for every IO action and one for every
+`Action.computed` key. A single 6-axis arm with one gripper IO returns seven values per step. A
+TCP-controlled arm with one gripper IO also returns seven: six Cartesian values, then the IO value.
 
-This check needs a client-readable checkpoint. Without one it cannot run, and the client warns that
-it was skipped.
+This check needs a client-readable checkpoint. Without one, the client warns that it was skipped.
 
 ### `LeRobot server returned no actions`
 
 The server answers a failed inference with the same empty message as a missing observation, and
-writes the real error only to its own log. Look there first. A `KeyError: 'task'` means the checkpoint
-needs a language instruction: pass `task=`. The client normally catches that at `connect()`, but it
-can't when it has no readable copy of the checkpoint.
+writes the real error only to its own log. Look there first. A `KeyError: 'task'` means the
+checkpoint needs a language instruction: pass `task=`. The client normally catches that at
+`connect()`, but not when it has no readable copy of the checkpoint.
+
+### `... is conditioned on a language instruction. Pass task='...'`
+
+Pass `task=` with an instruction phrased like those in the training data.
+
+### `policy_type=... contradicts the checkpoint` or `... exceeds the checkpoint's action chunk`
+
+Remove the override, or pass a value the checkpoint allows.
 
 ### `Observations are implausibly far outside what this checkpoint was trained on`
 
-The live observation does not resemble the training data — most often a unit mismatch. Compare the
-values in the message against the training ranges it prints. If the dataset used different units,
-declare the conversion with `ops=` on the observation; see [Units](../../docs/schema.md#units).
+The live observation does not resemble the training data, most often because of a unit mismatch.
+Compare the values in the message with the training ranges it prints. If the dataset used other
+units, declare the conversion with `ops=` on the observation; see
+[Units](../../docs/schema.md#units).
 
 Warnings about being *outside the training distribution*, as opposed to this error, are expected
-before homing: the robot is simply somewhere the demonstrations never visited.
+before homing: the robot is somewhere the demonstrations never visited.
+
+### The robot hovers above the task and never grasps
+
+Check the TCP. It has to be the TCP the demonstrations were recorded in.
 
 ### Missing image errors
 
 `LeRobotPolicyClient` needs the first image frame to declare LeRobot feature metadata, so the camera
 has to be connected and streaming before the first inference. A frame older than the executor's
-`camera_max_age_s` (1 s by default) counts as stale — see
-[stale inputs](../../docs/executor.md#stale-inputs-and-how-a-run-ends) for what happens then.
+`camera_max_age_s` (1 s by default) counts as stale, and the run stops. See
+[executor.md](../../docs/executor.md) for stale inputs.

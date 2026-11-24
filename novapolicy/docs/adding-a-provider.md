@@ -1,11 +1,12 @@
 # Adding a policy provider
 
 A provider connects one kind of policy to novapolicy. It owns its wire (HTTP, gRPC, ZMQ, an
-in-process runtime) and nothing else: the schema maps NOVA state to the policy's names and units
-and the policy's answer back to robot targets, and the executor places and streams those targets
-([ADR 0011](adr/0011-providers-own-their-wire.md)). A provider is one class with one required
-method, `get_actions`. [`examples/http_policy.py`](../examples/http_policy.py) is a complete one in
-26 lines of code, written against this contract without changing the package.
+in-process runtime) and nothing else. The schema maps NOVA state to the policy's names and units,
+and maps the policy's answer back to robot targets. The executor places and streams those targets.
+
+A provider is one class with one required method, `get_actions`.
+[`examples/http_policy.py`](../examples/http_policy.py) is a complete provider for a policy served
+over HTTP.
 
 ```mermaid
 flowchart LR
@@ -73,7 +74,7 @@ schema = PolicySchema(
 [schema.md](schema.md) covers TCP poses, IO, operators (`Scale`, `Rad2Deg`), frames and relative
 targets.
 
-## 2. Write `get_actions`
+## 2. Write the provider
 
 The schema hands you the observation in one format and takes the answer back in one format,
 both by key:
@@ -83,7 +84,8 @@ both by key:
 | observation | `schema.observation_groups(...)`: one vector per key | `{"arm": [6 values], "gripper": [1.0]}` |
 | answer | outputs for `schema.decode_actions(...)`: one row per step per key | `{"arm": [[6 values], ...], "gripper": [[0.0], ...]}` |
 
-Every provider is the same three lines; only the middle one, your wire, is yours:
+A provider opens its wire in `connect`, sends the observation in `get_actions` and closes the wire
+in `close`. Only the wire is yours; `wire` stands for your own protocol object:
 
 ```python
 from novapolicy import PolicyClient, resolve_control_freq
@@ -91,22 +93,29 @@ from novapolicy import PolicyClient, resolve_control_freq
 
 class MyPolicyClient(PolicyClient):
     def __init__(self, wire, *, control_freq: float | None = None) -> None:
-        self._wire = wire
+        self._wire = wire  # the provider's own protocol
         self._dt_ms = 1000.0 / resolve_control_freq(control_freq, owner="MyPolicyClient")
 
+    async def connect(self, motion_group_ids: list[str]) -> None:
+        await self._wire.open()
+
     async def get_actions(self, states, schema, images=None, io_values=None):
-        groups = schema.observation_groups(await schema.build_observation(states, io_values))
-        outputs = await self._wire.infer(groups, images)
+        observation = await schema.build_observation(states, io_values)
+        groups = schema.observation_groups(observation)  # {"arm": [6 values], ...}
+        outputs = await self._wire.infer(groups, images)  # {"arm": [[6 values], ...]}
         return schema.decode_actions(outputs, dt_ms=self._dt_ms, source="MyPolicy")
+
+    async def close(self) -> None:
+        await self._wire.close()
 ```
 
-**If your wire wants something else**, convert at the wire, not in between. These are the two
-that the shipped providers need:
+**If your wire wants another format**, convert at the wire, not in between. The shipped
+providers need these two:
 
-- *One flat vector* (a LeRobot checkpoint takes one `observation.state` and answers one flat row
-  per step): `schema.flatten(groups)` joins the vectors in schema order;
-  `schema.unflatten(rows, dof=...)` cuts the rows back into outputs by key (joints, TCP, IO, then
-  computed actions, `dof` joints per motion group).
+- *One flat vector.* A LeRobot checkpoint takes one `observation.state` and answers one flat row
+  per step. `schema.flatten(groups)` joins the vectors in schema order.
+  `schema.unflatten(rows, dof=...)` cuts the rows back into outputs by key: joints, TCP, IO, then
+  computed actions, `dof` joints per motion group.
 
   ```python
   dof = {group_id: len(state.joints) for group_id, state in states.items()}
@@ -114,7 +123,7 @@ that the shipped providers need:
   outputs = schema.unflatten(rows, dof=dof, source="MyPolicy")
   ```
 
-- *Arrays* (a GR00T server takes and returns float32 arrays): convert each vector, and convert
+- *Arrays.* A GR00T server takes and returns float32 arrays. Convert each vector, and convert
   the answer back to lists.
 
   ```python
@@ -124,11 +133,11 @@ that the shipped providers need:
 
 `dt_ms` is the policy's step spacing. Take it from the training data's frame rate
 (`control_freq=`), or from what the policy reports (`resolve_control_freq(..., recorded=...)`).
-A one-step policy (reinforcement learning) answers one row per call; it is the same code.
+A one-step policy (reinforcement learning) answers one row per call; the code is the same.
 
-What you do not write: timestamps, bridging from the robot's position, clamping to joint limits,
-holds at the end of a chunk, IO timing. The executor and the send pipeline do those for every
-provider ([architecture.md](architecture.md#the-send-pipeline)).
+You do not write timestamps, bridging from the robot's position, clamping to joint limits, holds
+at the end of a chunk or IO timing. The executor and the send pipeline do those for every
+provider; see [pipeline.md](pipeline.md).
 
 ## 3. Refuse what the policy cannot serve
 
@@ -139,23 +148,24 @@ Fail before the robot moves. If your wire can describe the policy, compare it wi
         spec = await self._wire.describe()  # e.g. {"observations": ["arm", "gripper"], ...}
         missing = [key for key in spec["observations"] if schema.observation_kind(key) is None]
         if missing:
-            raise ValueError(f"The policy needs observations the schema does not declare: {missing}")
+            msg = f"The policy needs observations the schema does not declare: {missing}"
+            raise ValueError(msg)
 ```
 
-Decoding also checks every chunk: a joint key with too few columns for its motion groups, or rows
-narrower than the action columns, raise instead of moving the robot
-([ADR 0014](adr/0014-providers-fail-before-motion.md)).
+Decoding also checks every chunk. A joint key with too few columns for its motion groups, or rows
+narrower than the action columns, raise an error instead of moving the robot.
 
 ## 4. Choose how it runs
 
 | Your policy | Execution |
 | --- | --- |
-| answers a chunk, robot runs it to standstill, then asks again | `SequentialExecution()` |
-| answers a chunk, asked again while the robot moves | `ContinuousExecution(rate_hz=...)`, wrap the client in `QueuedPolicyClient(...)` |
+| answers a chunk, the robot runs it to standstill, then it is asked again | `SequentialExecution()` |
+| answers a chunk and is asked again while the robot moves | `ContinuousExecution(rate_hz=...)`, client wrapped in `QueuedPolicyClient(...)` |
 | answers one step (reinforcement learning) | `ContinuousExecution(rate_hz=control_freq)` |
 
-`QueuedPolicyClient` keeps one timeline across overlapping chunks and brings the modules that need
-(`Smoothing`, `TimestepTimeline`, `Bridge`); the executor knows nothing about queues.
+`QueuedPolicyClient` keeps one timeline across overlapping chunks and adds the modules that
+timeline needs (`Smoothing`, `TimestepTimeline`, `Bridge`). It requires `ContinuousExecution`;
+the executor refuses it with `SequentialExecution`.
 
 ```python
 from novapolicy import ContinuousExecution, PolicyExecutor, QueuedPolicyClient
@@ -171,18 +181,25 @@ result = await PolicyExecutor(
 
 ## 5. Test it without a robot
 
-Give the provider a fake wire and check the chunk it returns. This is how
-`test_a_provider_is_a_transport_and_the_schema_does_the_mapping` tests the snippet above:
+Give the provider a fake wire and check the chunk it returns. The package's own test of the
+provider above does it like this:
 
 ```python
 class EchoWire:
+    async def open(self):
+        pass
+
     async def infer(self, observation, images):
         return {"arm": [[0.1] * 6, [0.2] * 6]}
 
+    async def close(self):
+        pass
 
-chunk = await MyPolicyClient(EchoWire(), control_freq=20).get_actions(
-    {mg.id: SimpleNamespace(joints=(0.0,) * 6)}, schema
-)
+
+client = MyPolicyClient(EchoWire(), control_freq=20)
+await client.connect([mg.id])
+chunk = await client.get_actions({mg.id: SimpleNamespace(joints=(0.0,) * 6)}, schema)
+await client.close()
 assert chunk.dt_ms == 50.0 and chunk.joints[mg.id] == [[0.1] * 6, [0.2] * 6]
 ```
 
@@ -191,10 +208,10 @@ assert chunk.dt_ms == 50.0 and chunk.joints[mg.id] == [[0.1] * 6, [0.2] * 6]
 Create a throwaway virtual controller and run the executor against it before any real robot.
 `test_a_new_provider_over_http` in
 [`tests/integration/test_pipeline_live.py`](../tests/integration/test_pipeline_live.py) runs the
-HTTP example continuously and sequentially and checks that the arm followed what was commanded;
-copy it for your provider.
+HTTP example continuously and sequentially and checks that the arm followed what was commanded.
+Copy it for your provider.
 
-## What the shipped providers add on top
+## What the shipped providers add
 
 | Provider | Wire | Beyond `get_actions` |
 | --- | --- | --- |
@@ -203,4 +220,12 @@ copy it for your provider.
 | `Gr00tPolicyClient` | ZMQ, msgpack | takes state and language keys from the server, checks the checkpoint's statistics, rot6d TCP default |
 | `LeRobotPolicyClient` | gRPC, pickle | checks the checkpoint's feature contract and statistics |
 
-The [architecture page](architecture.md#adding-a-policy-provider) lists their code sizes.
+## Troubleshooting
+
+| Symptom | What to do |
+| --- | --- |
+| `ValueError` from `decode_actions` about columns or row width | The answer does not fit the schema's actions. Check the width per key, and `dof` for a flat wire. |
+| `ValueError: ... requires ContinuousExecution` | Use `ContinuousExecution`, or drop `QueuedPolicyClient` for `SequentialExecution`. |
+| `ValueError: ... numbers its steps` | Your own `pipeline=` lacks the queue's modules. Build it from `default_pipeline(execution=..., policy=...)`. |
+| A warning that the client got no `control_freq` | Pass the training data's frame rate as `control_freq=`. Without it, actions play at 30 Hz. |
+| `RuntimeError: Stale policy input (inference exceeded 30s)` | `get_actions` took longer than `PolicyExecutor(inference_timeout_s=...)`. Check the wire, or raise the deadline. |

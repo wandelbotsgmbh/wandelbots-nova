@@ -4,7 +4,7 @@ What `PolicyExecutor` promises, as numbered invariants: **M** for mapping (robot
 **T** for timing (when each waypoint, IO and hook happens). The executor maps and transports;
 how the arm follows the waypoints is NOVA's job (see `AGENTS.md`). Each invariant names the test
 that asserts it; one marked *untested* is a promise without a guard yet. The reasons behind the
-choices are in the [decision records](adr/).
+choices are in the [decision records](adr).
 
 ## Clocks and units
 
@@ -106,8 +106,7 @@ an explicit `first_timestamp_ms` (never bridged); a timestep queue's chunk at
 `origin + Δtimestep·dt`; a continuous
 chunk with a bridge in front at "now".
 Tests: `test_an_explicit_start_time_always_wins`, `test_a_chunk_with_its_own_timestamp_is_not_bridged`,
-`test_async_queue_replacements_preserve_the_initial_policy_timeline`, `test_a_chunk_on_its_own_timeline_is_not_dated_by_the_observation`,
-
+`test_async_queue_replacements_preserve_the_initial_policy_timeline`, `test_a_chunk_on_its_own_timeline_is_not_dated_by_the_observation`.
 
 **T3 Late steps are dropped, never retimed** (the `DropLate` filter, in every default pipeline). A
 step due within `MIN_LEAD_MS` (20 ms) of now is not sent; the others keep their times, exactly
@@ -119,12 +118,14 @@ Tests: `test_waypoints_already_in_the_past_are_trimmed_before_sending`,
 
 **T4 One-step chunks in continuous execution** are spaced one policy step apart by a playback
 clock that follows the observations by at most 10% of a step per step and jumps to them when
-more than 100 ms off. This is the one bounded retiming. Test:
+more than 100 ms off. Besides the opt-in grid below, this is the one bounded retiming. Test:
 `test_one_step_waypoints_are_spaced_by_the_policy_step_despite_bursty_observations`.
 Opt-in, `Timestamps(grid_ms=...)` then resamples those targets' path onto the multiples of
 `grid_ms` of the session clock, from the robot's position at the start; multi-step chunks and TCP
 targets keep their times (ADR 0021). Tests: `test_a_grid_puts_one_step_targets_on_its_multiples_and_leaves_chunks_alone`,
-`test_the_grid_starts_at_the_robot_and_continues_the_policy_path`.
+`test_the_grid_starts_at_the_robot_and_continues_the_policy_path`,
+`test_a_path_is_sampled_on_the_grid_from_the_start_to_its_last_point`,
+`test_timestamps_refuses_a_grid_it_cannot_place_on`.
 
 **T5 Rolling window.** A request dated by T1 re-sends the earlier waypoints that are not due
 yet. Tests: `test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due`,
@@ -132,9 +133,11 @@ yet. Tests: `test_lead_chunks_resend_the_earlier_waypoints_that_are_not_yet_due`
 
 **T6 End of a chunk.** `HoldPadding(min_horizon_ms=500)` (in every default pipeline) extends a
 chunk with its last target up to the horizon, except one-step chunks in continuous execution,
-which the next step replaces before they are due (`Placement.hold`), and live targets. The
-padding is not motion anyone waits for: `WaypointJoggingSession.scheduled.until_server_ms` ends at
-the caller's last step. Tests: `test_hold_padding_holds_the_last_target_up_to_the_horizon`,
+which the next step replaces before they are due (`Placement.hold`), and live targets. In
+sequential execution, `HoldPadding(after_ms=300)` also holds the last target at least 300 ms past
+the last step (`SEQUENTIAL_HOLD_MS`). The padding is not motion anyone waits for:
+`WaypointJoggingSession.scheduled.until_server_ms` ends at the caller's last step. Tests: `test_hold_padding_holds_the_last_target_up_to_the_horizon`,
+`test_hold_padding_holds_after_the_last_step_however_long_the_chunk`,
 `test_a_short_chunk_holds_its_final_target_to_fill_the_buffer`,
 `test_the_padded_tail_of_a_short_chunk_is_not_motion_anyone_waits_for`.
 
@@ -177,37 +180,42 @@ collection while the loop runs and released when the run ends. Test:
 `test_setup_objects_are_frozen_only_while_the_loop_runs`.
 
 **T12 Setups the executor would run wrongly are refused at construction:** under sequential
-execution a timestep queue (`QueuedPolicyClient`, LeRobot's async queue) and a `LiveBuffer`
-in the pipeline; under continuous execution a timestep queue without its `TimestepTimeline`,
-which keeps its chunks on one timeline. Tests:
+execution a timestep queue (a `QueuedPolicyClient`, for example around a LeRobot client) and a
+`LiveBuffer` in the pipeline; under continuous execution a timestep queue without its
+`TimestepTimeline`, which keeps its chunks on one timeline. Tests:
 `test_a_timestep_queue_or_a_live_buffer_under_sequential_execution_is_rejected`,
 `test_a_timestep_queue_without_its_timeline_is_refused_before_anything_moves`.
 
 **T13 The send pipeline.** Everything that reaches NOVA passes one ordered list per motion group:
-the common chunk, chunk modules, `Timestamps()` (T1, T2), filters (T3), waypoint modules, the
+the common chunk, chunk modules, `Timestamps()` (T1, T2, T4), filters (T3), waypoint modules, the
 sender (T5, T7). The list is exactly what runs: `pipeline=None` on `PolicyExecutor`, `jog_joints`,
 `jog_tcp` and the session runs `default_pipeline()`, and an explicit list replaces it. Each motion
 group runs its own copy; a misordered list is refused at construction: kinds out of order, chunk
-modules out of their stages' order (`CHUNK_STAGES`), a built-in module twice.
+modules out of their stages' order (`CHUNK_STAGES`), a built-in module or `Timestamps()` twice.
 
 | Default | Joggers | Executor, sequential | Executor, continuous | Executor, continuous, timestep queue |
 | --- | --- | --- | --- | --- |
-| Modules | `HoldPadding`, `Timestamps`, `DropLate` | `Bridge`, `EndpointRamp`, `JointClamp`, then the joggers' | `JointClamp`, then the joggers' | the queue's `default_modules` (`Smoothing`, `TimestepTimeline`, `Bridge(always_anchor=True)`), `JointClamp`, then the joggers' |
+| Modules | `HoldPadding`, `Timestamps`, `DropLate` | `Bridge`, `EndpointRamp`, `JointClamp`, `HoldPadding(after_ms=300)`, `Timestamps`, `DropLate` | `JointClamp`, then the joggers' | the queue's `default_modules` (`Smoothing`, `TimestepTimeline`, `Bridge(always_anchor=True)`), `JointClamp`, then the joggers' |
 
 Chunk modules see every chunk when it is queued and may change steps and timing, keeping
 `when_due` and `start_step` on the steps they belong to. `Smoothing(passes)` filters a queue's
-plan and keeps the steps it already sent exact (`retained_prefix_steps`). `Bridge(always_anchor)`
+plan and keeps the steps it already sent exact (`retained_prefix_steps`). `TimestepTimeline`
+places a queue's later chunks on the timeline of its first (T2). `Bridge(always_anchor)`
 connects the measured position to the first step, dates a bridged chunk at the send in continuous execution and leaves chunks on their own timeline alone. `EndpointRamp` eases
 each chunk in and out. `JointClamp` holds joint targets inside the limits the session reads at its
-start. `LiveBuffer(window_ms)` turns live targets into a horizon on its own timeline (T2) and moves
-IO to the newest target; it times each target by `observed_at_ms`, which for a live target means
-when it was produced (the jogger's loop time, shared by all arms), and a lead chunk by the session
-clock. `JointClamp` is M7, `HoldPadding` T6. Filters drop waypoints without retiming them (`DropLate`, T3).
+start. `LiveBuffer(window_ms)` turns live targets into a horizon on its own timeline (T2), ending
+at or before the newest target, and moves IO to the newest target; it times each target by
+`observed_at_ms`, which for a live target means when it was produced (the jogger's loop time,
+shared by all arms), and a lead chunk by the session clock. `ServoHorizon` turns a live target
+(one step with its own start time) into a spring-damper's path braking onto it, on its own
+timeline from the target's due time rounded up to NOVA's 8 ms cycle, and moves IO to its first
+step; any other chunk passes through and resets the spring. `JointClamp` is M7, `HoldPadding` T6.
+Filters drop waypoints without retiming them (`DropLate`, T3).
 Waypoint modules run at every send, on raw values, and return values only, so no timing contract
 changes: `EaseIn(duration_s)` blends from where the robot stood by each waypoint's timestamp.
 What reaches NOVA per scenario is pinned by `test_what_reaches_nova_is_unchanged`; a queued LeRobot
 client by `test_a_queued_lerobot_client_merges_its_chunks_on_one_timeline`.
-Tests: `test_split_pipeline_keeps_each_kind_in_order`, `test_chunk_modules_out_of_their_stages_order_are_refused`, `test_a_built_in_module_twice_is_refused`, `test_a_clamp_and_your_own_modules_may_stand_anywhere_among_the_chunk_modules`, `test_every_default_pipeline_keeps_the_stages_order`, `test_a_jogger_pipeline_or_a_ramp_under_continuous_execution_is_warned_about`, `test_a_filter_after_a_waypoint_module_or_a_chunk_module_after_a_filter_is_refused`, `test_a_chunk_module_after_the_timestamps_is_refused`, `test_a_misordered_pipeline_is_refused_before_anything_moves`, `test_the_pipeline_is_handed_to_every_session`, `test_each_session_runs_its_own_copy_of_a_module`, `test_the_defaults_are_valid_pipelines`, `test_smoothing_keeps_the_steps_it_already_sent_exact`, `test_bridge_connects_the_robot_to_the_first_step_at_the_chunks_spacing`, `test_a_bridged_chunk_dated_by_its_observation_is_dated_at_the_send_instead`, `test_endpoint_ramp_keeps_every_step_and_moves_io_with_its_step`, `test_joint_clamp_holds_targets_inside_the_limits`, `test_the_session_reads_joint_limits_only_for_a_joint_clamp`, `test_drop_late_keeps_what_is_still_reachable_and_never_retimes`, `test_waypoint_modules_reshape_the_values_but_never_the_timestamps`, `test_a_waypoint_module_may_not_add_or_drop_waypoints`, `test_a_filled_live_buffer_is_replayed_as_a_horizon`, `test_a_live_buffer_moves_when_due_to_the_newest_target`, `test_sessions_given_one_live_buffer_do_not_share_its_points`, `test_a_live_buffer_times_targets_by_when_they_were_produced`, `test_a_live_buffer_times_lead_chunks_by_the_session_clock`, `test_live_targets_carry_the_loop_time_in_exact_grid_steps`, `test_ease_in_gives_a_moment_the_same_value_whenever_it_is_sent`.
+Tests: `test_split_pipeline_keeps_each_kind_in_order`, `test_chunk_modules_out_of_their_stages_order_are_refused`, `test_a_built_in_module_twice_is_refused`, `test_a_clamp_and_your_own_modules_may_stand_anywhere_among_the_chunk_modules`, `test_every_default_pipeline_keeps_the_stages_order`, `test_a_jogger_pipeline_or_a_ramp_under_continuous_execution_is_warned_about`, `test_a_filter_after_a_waypoint_module_or_a_chunk_module_after_a_filter_is_refused`, `test_a_chunk_module_after_the_timestamps_is_refused`, `test_a_misordered_pipeline_is_refused_before_anything_moves`, `test_the_pipeline_is_handed_to_every_session`, `test_each_session_runs_its_own_copy_of_a_module`, `test_the_defaults_are_valid_pipelines`, `test_smoothing_keeps_the_steps_it_already_sent_exact`, `test_bridge_connects_the_robot_to_the_first_step_at_the_chunks_spacing`, `test_a_bridged_chunk_dated_by_its_observation_is_dated_at_the_send_instead`, `test_endpoint_ramp_keeps_every_step_and_moves_io_with_its_step`, `test_joint_clamp_holds_targets_inside_the_limits`, `test_the_session_reads_joint_limits_only_for_a_joint_clamp`, `test_drop_late_keeps_what_is_still_reachable_and_never_retimes`, `test_waypoint_modules_reshape_the_values_but_never_the_timestamps`, `test_a_waypoint_module_may_not_add_or_drop_waypoints`, `test_a_filled_live_buffer_is_replayed_as_a_horizon`, `test_a_live_buffer_moves_when_due_to_the_newest_target`, `test_sessions_given_one_live_buffer_do_not_share_its_points`, `test_a_live_buffer_times_targets_by_when_they_were_produced`, `test_a_live_buffer_times_lead_chunks_by_the_session_clock`, `test_live_targets_carry_the_loop_time_in_exact_grid_steps`, `test_chunks_start_on_one_grid_in_exact_steps`, `test_the_horizon_stops_at_the_newest_sample`, `test_grid_points_keep_their_value_when_a_sample_arrives`, `test_a_step_settles_on_the_target_without_overshoot`, `test_waypoints_start_on_the_controller_cycle_and_are_evenly_spaced`, `test_the_spring_keeps_to_the_limits`, `test_a_rotation_through_the_half_turn_goes_the_short_way`, `test_a_chunk_of_several_steps_passes_through`, `test_ease_in_gives_a_moment_the_same_value_whenever_it_is_sent`.
 
 ## Known gaps
 

@@ -24,20 +24,10 @@ that skips an answer it cannot read leaves the robot standing still without a wo
   missing key is skipped, but a present key without the expected array raises: that is what a
   server that changed its array serialization looks like, and skipping it once left the robot
   standing still with nothing in the log.
-- **LeRobot settings come from the checkpoint.** The chunk length is `len(action_delta_indices)`,
-  an abstract property every policy config implements, because the field names differ (ACT
-  `chunk_size`, diffusion `horizon`, fastwam `action_horizon`, vqbet none); a new or renamed
-  policy needs no change. Settings are resolved once, since `connect` may run again on a
-  reconnect. LeRobot is imported lazily: its policy registry costs seconds and loads torch.
-  Statistics are fetched from the Hub like the config, or every Hub model would skip the range
-  check. Only a `config.json` path maps to its directory; any other file would silently read the
-  `config.json` beside it. A checkpoint the client cannot read, or whose config needs packages
-  this environment lacks, falls back to explicit arguments; one LeRobot rejects raises, with
-  draccus' exception type kept out of the contract. A client cannot read a server-local path:
-  pass `config_path`. The schema check compares only `STATE` and `VISUAL` inputs: a checkpoint
-  may declare `LANGUAGE` or `ENV` features a schema never emits, and demanding them would fail
-  every task-conditioned checkpoint. A camera frame size that differs only warns: it belongs to
-  the camera stream, and hardware cannot always deliver an arbitrary resolution.
+- **Settings come from the checkpoint**, not from arguments that can disagree with it; an
+  argument that contradicts it raises (LeRobot: another `policy_type`, a longer chunk). How LeRobot reads them (one property every policy config
+  implements, which inputs are compared, fallbacks) is in its
+  [README](../../providers/lerobot/README.md#checkpoint-execution-settings).
 
 **Consequences.** Misconfiguration ends a run before motion or at the first step, with a message
 naming the cause, instead of as motion or a silent stall.

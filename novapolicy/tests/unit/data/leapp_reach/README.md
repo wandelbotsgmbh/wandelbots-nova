@@ -5,8 +5,9 @@ A small export shaped like Isaac Lab's manager-based reach export: inputs tagged
 `last_action` feedback state, and one output, the absolute joint target
 (`write:robot:set_joint_position_target`, current position + 0.0625 x action), at 60 Hz.
 
-The network is random (seed 0); `test_leapp_client.py` checks the client against the outputs
-LEAPP's own `InferenceManager` gives for it. Regenerate with LEAPP 0.8.1 and torch:
+The network is random (seed 0); `tests/api/test_leapp_client.py` checks the client against the
+outputs LEAPP's own `InferenceManager` gives for it. Regenerate with LEAPP 0.8.1 and torch, with
+the script below saved as `build_reach_export.py`:
 
 ```bash
 uv venv -p 3.12 venv-leapp && uv pip install -p venv-leapp/bin/python leapp==0.8.1

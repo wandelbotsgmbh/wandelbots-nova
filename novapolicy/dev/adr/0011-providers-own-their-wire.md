@@ -2,7 +2,8 @@
 
 Status: accepted, 2026-11-23
 
-**Context.** Four policy providers ship with novapolicy, and each reaches its policy differently:
+**Context.** Four policy providers shipped with novapolicy (three since NATS was removed the same
+day), and each reaches its policy differently:
 GR00T over ZMQ with msgpack, LeRobot over gRPC with pickle, NATS with its own request/reply
 protocol (vendored from the server's repository), LEAPP in-process with onnxruntime. Each provider
 also built its own observation from the robot states and decoded its own answer, and the executor
@@ -45,7 +46,7 @@ in hardware units, unlike joint and TCP targets: only the client knows where in 
 a value sits, so it applies the schema's `Mapping` while decoding, and a chunk built by hand
 carries hardware values (`True`, `100.0`) that nothing converts again. A `Mapping` crosses a type
 boundary and stays separate from the float-to-float `ValueOp`s (see
-[schema.md](../schema.md#units)). An operator's direction is a property of its class, so the
+[schema.md](../../docs/schema.md#units)). An operator's direction is a property of its class, so the
 schema refuses a forward-only operator on a writable channel without probing it. Relative TCP
 rotations compose as rotations: rotation vectors are not additive, and adding them component-wise
 turns a tool-down pose (near π) the wrong way. Pure chunk transforms are free functions

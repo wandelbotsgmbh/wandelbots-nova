@@ -2,8 +2,8 @@
 
 Status: accepted. Recorded 2026-11-23 from the code (`transport/session.py`); the decision
 is older. How a run's teardown follows its reason is in
-[executor.md](../executor.md#teardown-follows-the-reason) and
-[jogging.md](../jogging.md#closing-the-session).
+[executor.md](../../docs/executor.md#teardown-follows-the-reason) and
+[jogging.md](../../docs/jogging.md#closing-the-session).
 
 **Context.** A `WaypointJoggingSession` holds one `executeActionChunks` websocket per motion group:
 requests go out, acknowledgements and errors come back. The round trip is tens to hundreds of

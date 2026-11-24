@@ -7,16 +7,21 @@ This guide maps its inputs and outputs onto a `PolicySchema` and runs it on a NO
 The policy has to be exported with [LEAPP](https://github.com/nvidia-isaac/leapp). The export
 contains the network and the observation and action processing of the training environment
 (normalization, offsets, action scale, last action), so none of that is rebuilt on the robot side.
-What you declare is which NOVA value feeds each input, and which output commands the robot.
+You declare which NOVA value feeds each input, and which output commands the robot.
 
 You need a NOVA instance (its URL in `NOVA_API`, plus `NOVA_ACCESS_TOKEN` for a cloud instance)
-and either a robot controller on it or a virtual one; the [complete script](#complete-script)
-creates a virtual robot for a first run. A worked example is
-[`execute_leapp_two_point_reach/`](../examples/execute_leapp_two_point_reach/).
+and either a robot controller on it or a virtual one. The [complete script](#complete-script)
+creates a virtual robot for a first run. Two worked examples:
+
+- [`execute_leapp_two_point_reach/`](../examples/execute_leapp_two_point_reach/): a policy that
+  reaches a detected part, with the trained export included.
+- [`execute_isaaclab_rl_reach/`](../examples/execute_isaaclab_rl_reach/): Isaac Lab's UR10e reach
+  task, with your own export.
 
 ## 1. Export the policy
 
-Export with the ONNX backend, using the same physics backend and overrides as training:
+Export with the ONNX backend, using the same physics backend and overrides as training. The client
+runs ONNX exports only.
 
 ```bash
 uv run --extra leapp isaaclab leapp export --rl_library rsl_rl --task <task>
@@ -50,8 +55,8 @@ the ports look like this (names and widths depend on your policy):
 | input `<node>/<command>` | `command:<command>` | | [1, 7] |
 | output `<node>/<action term>` | `write:robot:set_joint_position_target...` | `joint/position` | [1, joints] |
 
-Feedback states such as the last action are not listed: the export carries them itself. Each input
-listed needs exactly one observation in the schema.
+Feedback states such as the last action are not listed: the export carries them itself. Each
+listed input needs exactly one observation in the schema.
 
 ## 3. Map each input to an observation
 
@@ -66,22 +71,22 @@ Feed joint positions as NOVA reports them, even if the policy was trained on pos
 a default pose: the export subtracts that pose itself. `action=False` keeps the observation from
 also declaring an action; the joint action is declared on its own (step 4).
 
-The observation names are the mapping: the client feeds each export input from the observation
+The observation names are the mapping. The client feeds each export input from the observation
 with the same name. Name each observation after the last part of the input's connection
-(`joint_pos`, `joint_vel`, the command name), or after the input's full port name from step 2. When
-two inputs share a connection name, as two robots' `joint_pos` do, only the port names
-(`left_robot_joint_pos`, `right_robot_joint_pos`) tell them apart.
+(`joint_pos`, `joint_vel`, the command name), or after the input's full port name from step 2.
+When two inputs share a connection name, as two robots' `joint_pos` do, use the port names
+(`left_robot_joint_pos`, `right_robot_joint_pos`).
 
 The values must match what the policy saw in training:
 
-- **Order and width.** Joint observations list the motion group's joints in NOVA's order; check it
+- **Order and width.** Joint observations list the motion group's joints in NOVA's order. Check it
   against the training robot's joint order. The width has to equal the port's shape, or the first
   inference reports the mismatch.
 - **Units.** Joints need no conversion. Positions in NOVA are mm; most policies use metres, hence
-  `Scale(0.001)`. Current Isaac Lab orders quaternions `(x, y, z, w)`, as `OrientationType.QUATERNION`
-  does; Isaac Lab 2.x used `(w, x, y, z)`.
+  `Scale(0.001)`. Current Isaac Lab orders quaternions `(x, y, z, w)`, as
+  `OrientationType.QUATERNION` does. Isaac Lab 2.x used `(w, x, y, z)`.
 - **Frame.** Isaac Lab's pose commands are in the robot's base frame. NOVA poses are in the
-  controller's world; if that is not the robot's base (a mounted robot), convert in the source.
+  controller's world. If that is not the robot's base (a mounted robot), convert in the source.
 
 A pose command, such as a goal, takes its value from the source of its `Observation.pose`: a fixed
 pose, an async function, a detector running at its own rate, or an object in an Isaac Sim scene.
@@ -100,10 +105,11 @@ from novapolicy import Action
 actions = [Action.joint_positions("arm", target=mg)]
 ```
 
-The client takes the output of kind `joint/position`, or with a
-`write:<robot>:set_joint_position_target...` connection. If the export has several, name the joint
-action like the output it should command. An output named like a key of `Action.computed(...,
-keys=[...])` reaches that hook in `chunk.values`; other outputs, such as exported gains, are not used.
+The client takes the output of kind `joint/position`, or the output with a
+`write:<robot>:set_joint_position_target...` connection. If the export has several, name the
+joint action like the output it should command. An output named like a key of
+`Action.computed(..., keys=[...])` reaches that hook in `chunk.values`. Other outputs, such as
+exported gains, are not used.
 
 ## 5. Run
 
@@ -111,9 +117,9 @@ Run in this order, each step only when the one before looks right:
 
 1. **Dry run.** Build one observation and run one inference, without commanding anything. Compare
    the printed observation with the training environment's: units, joint order, frame, quaternion
-   sign. A policy that outputs absolute targets can command one far from the current joints; the
-   arm moves there within its velocity limits, and the jogging session logs a warning for a large
-   first step.
+   sign. A policy that outputs absolute targets can command one far from the current joints. The
+   arm moves there within its velocity limits, without a warning, so compare the dry run's joint
+   target with the current joints.
 2. **Virtual robot.** Run the policy on a virtual controller and compare where the robot ends with
    where the policy ends in simulation.
 3. **Real robot**, supervised, with the controller's safety zones configured.
@@ -123,15 +129,17 @@ Run in this order, each step only when the one before looks right:
 nothing. `executor.run()` connects and validates by itself; call them yourself only for a dry run.
 
 `PolicyExecutor(start_joint_position={mg: joints})` moves the robot to the training start pose
-before the policy starts. A stop condition refuses inputs the policy was not trained for: stop
-conditions run on every tick, before every action is sent and while the run starts up, so the robot
-does not move on such an input. Set `LOG_LEVEL=WARNING` to hide the executor's per-step log lines.
+before the policy starts. Use a stop condition to refuse inputs the policy was not trained for.
+Stop conditions run on every tick, before every action is sent and while the run starts up, so
+the robot does not move on such an input. Set `LOG_LEVEL=WARNING` to hide the executor's per-step
+log lines.
 
 ### Complete script
 
-A template: a dry run, then the policy, on a virtual robot that NOVA creates and deletes. Fill in the constants for your policy and robot, and add one observation per
-further export input, as mapped in step 3. The
-[worked example](../examples/execute_leapp_two_point_reach/) is a filled-in, runnable version.
+A template: a dry run, then the policy, on a virtual robot that NOVA creates and deletes. Fill in
+the constants for your policy and robot, and add one observation per further export input, as
+mapped in step 3. The [worked example](../examples/execute_leapp_two_point_reach/) is a filled-in,
+runnable version.
 
 ```python
 """Run a trained reinforcement-learning policy (LEAPP export) on a NOVA robot.
@@ -212,9 +220,55 @@ if __name__ == "__main__":
     run_program(run_policy)
 ```
 
-With `START_JOINTS` set, the run first moves the robot to the pose training started from; the dry
+With `START_JOINTS` set, the run first moves the robot to the pose training started from. The dry
 run before it sees the robot where it is. Without it, the policy starts from the current position,
 which works when that is close to what the policy saw in training.
+
+## Execution settings
+
+**Use continuous execution.** A reinforcement-learning policy was trained with the next action
+computed while the joints were still moving. `ContinuousExecution(rate_hz=client.control_freq)`
+does the same. `SequentialExecution` runs each step to standstill, so the policy sees zero joint
+velocity at every observation and runs far below its rate.
+
+**Latency.** Each target is due `WaypointConfig(max_expected_latency_ms=...)` after the
+observation it was computed from. The default is 100 ms, which fits when the script runs on the
+NOVA instance. Over a remote network, raise it to about 150 ms:
+
+```python
+from novapolicy import WaypointConfig
+
+executor = PolicyExecutor(
+    schema,
+    client,
+    execution=ContinuousExecution(rate_hz=client.control_freq),
+    motion=WaypointConfig(max_expected_latency_ms=150),
+    n_action_steps=0,
+)
+```
+
+The arm executes each target that much after its observation. If you train your own policy, train
+it for that delay: randomize the action delay in training to cover the value, and put the previous
+action or target in the observation. The
+[two-point reach example](../examples/execute_leapp_two_point_reach/) is trained this way.
+
+**Targets on NOVA's cycle grid.** If the arm pulses around the policy's pace, put the targets on
+NOVA's 8 ms cycle grid with `Timestamps(grid_ms=...)`. Use the multiple of 8 ms closest to the
+policy's step: 32 for a 30 Hz policy. It is off by default. Swap it into the default pipeline
+rather than passing it alone, which would drop the other modules, `JointClamp` among them:
+
+```python
+from novapolicy import ContinuousExecution, PolicyExecutor, Timestamps, default_pipeline
+
+execution = ContinuousExecution(rate_hz=client.control_freq)
+pipeline = [
+    Timestamps(grid_ms=32) if isinstance(m, Timestamps) else m
+    for m in default_pipeline(execution=execution, policy=client)
+]
+executor = PolicyExecutor(schema, client, execution=execution, pipeline=pipeline, n_action_steps=0)
+```
+
+[pipeline.md](pipeline.md) describes the default pipeline and its modules.
 
 ## Check before a real run
 
@@ -223,14 +277,30 @@ which works when that is close to what the policy saw in training.
 | Every input fed | `await client.validate_schema(schema)` names any input without an observation. |
 | Units, order and frame | Compare the dry run's observation with the training environment's. |
 | Rate | Compare `result.steps / result.duration_s` with `client.control_freq`. |
-| Latency | Run on the NOVA instance; over a remote network raise `max_expected_latency_ms`. |
-| Joint velocities | UR controllers send no measured velocity; expect differenced values. |
+| Latency | Run on the NOVA instance. Over a remote network raise `max_expected_latency_ms` to 150 ms. |
+| Joint velocities | Where the controller sends no measured velocity, expect differenced values. |
 | Response | Run on a virtual robot first and compare where it ends with the training environment. |
 | Inputs in range | A stop condition refuses goals or commands outside the trained range. |
-| Safety | Configure the controller's safety zones; stop conditions and the stale-input deadlines are software checks. |
+| Safety | Configure the controller's safety zones. Stop conditions and the stale-input deadlines are software checks. |
 
 If the policy fails on the robot, start the robot from the same observation as in simulation and
 compare the responses step by step. That separates an input mismatch from a response mismatch.
+
+## Troubleshooting
+
+| Symptom | What to do |
+| --- | --- |
+| `Schema does not satisfy the LEAPP export: No observation feeds ...` | Add an observation with one of the names the message lists. |
+| `... is joint/position: feed it with Observation.joint_positions(...)` | That input needs the observation kind named in the message. |
+| `The schema has 0 joint actions; exactly one is supported` | Declare one `Action.joint_positions`. |
+| `No single joint target among the export's outputs` | Name the joint action like the output it should command. |
+| `The export outputs absolute joint targets` | Remove `mode="relative"` from the joint action. |
+| `<port> takes N values, observation ... has M` | The observation's width differs from the port. Check the joints and the pose's `orientation_type`. |
+| The export fails to load and asks for the ONNX backend | Export again with the ONNX backend. |
+| The run is far below `client.control_freq` | Use `ContinuousExecution`, and run the script on the NOVA instance. |
+| The arm lags or overshoots over a remote network | Raise `max_expected_latency_ms` to 150 ms. |
+| The arm pulses around the policy's pace | Put the targets on the cycle grid with `Timestamps(grid_ms=...)`. |
+| The arm moves somewhere unexpected | Compare the dry run's observation with training: units, joint order, frame, quaternion order. |
 
 ## Reference
 
@@ -246,8 +316,8 @@ compare the responses step by step. That separates an input mismatch from a resp
 Each export input is fed from the observation named like its port (`robot_joint_vel`), or like the
 last part of its Isaac Lab connection (`state:robot:joint_vel` → `joint_vel`, `command:ee_pose` →
 `ee_pose`) when no other input shares that name. The joint target is the output of kind
-`joint/position` or with a `write:<robot>:set_joint_position_target...` connection, or, where that
-is ambiguous, the output named like the joint action. Feedback inputs (such as the last action)
+`joint/position` or with a `write:<robot>:set_joint_position_target...` connection. Where that is
+ambiguous, it is the output named like the joint action. Feedback inputs (such as the last action)
 carry from step to step and start from the export's initial values at every run. The client needs
 the `novapolicy-leapp` extra (`onnxruntime`, `PyYAML`, `safetensors`), not torch.
 
@@ -257,46 +327,14 @@ the `novapolicy-leapp` extra (`onnxruntime`, `PyYAML`, `safetensors`), not torch
 - a `joint/position` or `joint/velocity` input is fed by another kind of observation;
 - the joint action is `mode="relative"` (the export outputs absolute targets);
 - the export has no or several joint targets and none is named like the joint action;
-- the schema has more than one joint action.
+- the schema has no joint action, or more than one;
+- an `Action.computed` key matches no export output.
 
 ### Joint velocities
 
 `Observation.joint_velocities(key, source, *, ops=None)` gives `key_1 .. key_n` in rad/s: the
 controller's measured `joint_velocity` where its state stream sends it, else the difference of the
 state packets on their timestamps across at least 20 ms.
-
-## Background
-
-**Continuous, not sequential.** A reinforcement-learning policy was trained with the next action
-computed while the joints were still moving. Continuous execution does the same; sequential
-execution runs each step to standstill, so the policy sees zero joint velocity at every observation.
-On a virtual UR10e a scripted one-step policy ran at 58 Hz of 60 continuously and at 6 Hz
-sequentially.
-
-**Latency.** Each waypoint must reach the controller about 67 ms before it is due, so it needs a
-lead that also covers the observation's age and the network round trip. Every request re-sends
-the earlier waypoints that are not due yet, so the controller always has the next few queued. A
-target is due `WaypointConfig(max_expected_latency_ms=...)` after the
-observation it was computed from (100 ms by default, as MoveIt Servo's `max_expected_latency`;
-dated by the observation as UMI and Diffusion Policy do), without a braking hold, so the arm
-executes it that much later. Consecutive targets are spaced one policy step apart on a playback
-clock that follows the observations slowly, as a streaming jitter buffer does: dating each target
-by its own observation would pass the state stream's jitter on as speed jumps. Run the policy on
-the NOVA instance, where
-100 ms fits; over a remote network raise the value (250 ms over a 40 to 120 ms VPN, where state
-packets arrive late and in bursts). Train the policy for it as sim-to-real practice does: a
-randomized action delay that covers the value, and its previous action or target in the
-observation, as the [worked example](../examples/execute_leapp_two_point_reach/) does.
-
-**Pulsing on the virtual robot.** NOVA's follower steers toward the next waypoint from a state one
-8 ms cycle old, and a waypoint due just after a cycle makes the arm pulse around the policy's
-pace. `Timestamps(grid_ms=32)` in the pipeline puts the targets on that cycle grid (the example's
-`--grid-ms 32`); on a virtual UR10e at a 150 ms lead it halved the largest path deviation and cut
-the speed ripple by about 28% ([ADR 0021](adr/0021-one-step-targets-on-the-cycle-grid.md)). Test
-it on a physical robot, and at a shorter lead, before relying on it there.
-
-**Limitations.** Only ONNX exports run; TorchScript and `pt2` exports need LEAPP's torch runtime.
-One joint target and one joint action are supported; image inputs are not fed yet.
 
 ## Sources
 

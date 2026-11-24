@@ -1,7 +1,7 @@
 # 0018 Stale inputs end the run, with bounds that catch a dead input, not a slow one
 
 Status: accepted. Recorded 2026-11-23 from the code (`executor.py`); the decision is older. The
-contract is M10; what happens is in [executor.md](../executor.md#stale-inputs-and-how-a-run-ends).
+contract is M10; what happens is in [executor.md](../../docs/executor.md#stale-inputs-and-how-a-run-ends).
 
 **Context.** A camera can freeze and a policy service can hang. Either one, unnoticed, keeps the
 robot moving on old information: a frozen frame drives chunk after chunk, a hung inference leaves

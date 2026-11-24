@@ -2,7 +2,8 @@
 
 Status: accepted. Recorded 2026-11-23 from the code (`transport/session.py`, `_PlaybackClock`);
 the decision is older. The contract is T4; ADR 0003 names the clock and ADR 0004 counts it as the
-one bounded retiming.
+one bounded retiming. Since 2026-11-24, `Timestamps(grid_ms=...)` can resample these waypoints
+onto NOVA's cycle grid (ADR 0021, opt-in).
 
 **Context.** A one-step policy (RL) sends one target per observation, dated a lead after the state
 it was computed from. Over a network the state stream is jittery and bursty: evenly spaced targets
@@ -22,6 +23,9 @@ as FANUC Stream Motion does and as Isaac ROS spaces steps by `step_dt`:
   the observation, at least half a step after the previous waypoint so timestamps keep increasing.
 - A multi-step chunk carries its own spacing and resets the clock.
 
-**Consequences.** State-stream jitter no longer reaches the follower as speed jumps; the arm
-follows the policy at an even pace, up to 10% off its step. A stall longer than 100 ms shows as
-one jump back onto the observations instead of a growing lag.
+**Consequences.** State-stream jitter no longer reaches the follower as speed jumps: the commanded
+waypoints are evenly spaced, up to 10% off the step. A stall longer than 100 ms shows as one jump
+back onto the observations instead of a growing lag. The executed speed still pulses around the
+policy's pace, and that is the follower's, not the spacing's: over a VPN (2026-11-24), spacing the
+waypoints exactly one step apart cut the commanded speed ripple of the shoulder (0.139 to
+0.115 rad/s) but not the executed one (0.183 to 0.185 rad/s).

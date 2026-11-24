@@ -5,7 +5,7 @@ teleoperation example (`examples/jogging/jogging_quest.py`) uses it.
 
 **Context.** Teleoperation sends the hand's pose as a live target, about 70 to 100 times a
 second. Sent alone, each is one waypoint the jogger's lead (100 ms) ahead, and NOVA's follower
-drives at it with `(waypoint − q) / time left` without braking for what comes next: at a sudden
+steers at it with `(waypoint − q) / time left` without knowing what comes next: at a sudden
 stop or reversal the arm overshoots and rings. A hand reverses at up to about 11 m/s², more than
 the arm can brake, so the arm also falls behind the waypoints' times. A `LiveBuffer` sends more
 waypoints, but they are the hand's exact past path, which asks for the same accelerations; its

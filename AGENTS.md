@@ -130,13 +130,25 @@ and streams them as timestamped action chunks. How well the robot follows those 
   faithfully, fix or report it on the NOVA side. The only place to shape what is sent is a module
   of the send pipeline (`novapolicy/pipeline/`: `base.py` and `modules/`; chunk modules before
   `Timestamps()`, filters that may drop but never retime waypoints, values-only waypoint modules
-  last). The built-ins (smoothing, bridge, ramp, clamp, padding, dropping late waypoints) are such
-  modules; `pipeline=None` runs `default_pipeline()`, an explicit list exactly what it lists. New
+  last). The built-ins (smoothing, timestep timeline, bridge, ramp, clamp, padding, dropping late
+  waypoints; opt-in: `LiveBuffer`, `ServoHorizon`, `EaseIn`) are such modules; the opt-in cycle
+  grid, `Timestamps(grid_ms=...)`, is a setting of the placement step, the one stage that times
+  waypoints. `pipeline=None` runs `default_pipeline()`, an explicit list exactly what it lists. New
   shaping goes there as a module, never into the executor, the joggers or the session. Check
   `novapolicy/tests/api/test_wire_capture.py` stays unchanged when moving one.
 - Transport timing is in scope: waypoint timestamps, the lead, loop pacing, and guards that stop
   a run loudly instead of degrading it silently.
 - Light output smoothing is acceptable only if it stays small; prefer none.
+
+### Customer docs and developer docs
+
+The repository is customer facing. `novapolicy/README.md` and `novapolicy/docs/` explain how to
+use the package: setup, verified snippets, options, troubleshooting. Measurements, design
+rationale, alternatives tried, limitations, todos, ADR and contract references go to
+`novapolicy/dev/` (`adr/`, `contracts.md`, `architecture.md`, `notes/`), never into the customer
+docs. When a change needs a decision record or a measurement, add it under `dev/`; when it changes
+usage, update `docs/`. Example docstrings and `--help` texts say what the example does and how to
+run it, without measurements.
 
 ### Debugging a run from its Rerun recording
 
@@ -163,6 +175,7 @@ df = srv.client().get_dataset("run").filter_contents(["/policy/**"]).reader(inde
   and `tcp_actual/position/*`, tell lag (the arm on the path but late) from leaving the path.
 - `/policy/<mg>/joints/j*`: measured joints. `/policy/<mg>/waypoint_request/*`: per request,
   `scheduled_at_server_ms` (sent), `first_timestamp_ms` (first waypoint due; the difference is the
-  lead), `count`, `action_timestep`. `/policy/action_chunks`: the policy's outputs.
+  lead), `last_timestamp_ms`, `dt_ms`, `count`, `action_timestep`. `/policy/action_chunks`: the
+  policy's outputs.
 - Without the extra, `rerun.chunk.RrdReader(path).stream()` yields the raw chunks
   (`chunk.entity_path`, `chunk.to_record_batch()`).

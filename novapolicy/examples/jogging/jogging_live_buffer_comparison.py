@@ -3,17 +3,16 @@
 Oscillates joint 0 with each variant, a few rounds in turn, and prints how well the
 robot followed:
 
-* ``buffer``: the 500 ms live buffer replays recent targets as a horizon (the workaround).
+* ``buffer``: the 500 ms live buffer replays recent targets as a horizon.
 * ``lone``: each target is sent alone; the robot brakes towards every one of them.
 * ``lone+braking``: each target is sent alone with ``delay_until_braking_ms``, so the
   server keeps the velocity until the next target arrives.
 
-If ``lone+braking`` follows as smoothly as ``buffer`` with less lag, the buffer can go.
 In Rerun, compare the commanded and measured joint 0 of the runs one after another.
 
 Run against a NOVA instance (26.8.0-112 or newer for delay_until_braking):
 
-    NOVA_API=http://172.31.13.175 PYTHONPATH=. uv run python \
+    NOVA_API=http://<instance> PYTHONPATH=. uv run python \
         novapolicy/examples/jogging/jogging_live_buffer_comparison.py
 """
 

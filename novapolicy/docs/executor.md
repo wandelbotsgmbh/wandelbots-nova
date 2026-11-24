@@ -1,79 +1,45 @@
-# PolicyExecutor & Timestamp Protocol
+# PolicyExecutor: execution modes and timing
 
-Advanced internals: how `PolicyExecutor` drives the jogging layer, and how
-client and server keep their clocks aligned. For the simple standalone jogging
-API (`jog_joints` / `jog_tcp`), see [jogging.md](jogging.md).
+`PolicyExecutor` runs one policy episode on NOVA. In a loop it observes the robot, asks the
+policy for an action chunk, and sends the actions to NOVA, until a timeout, a stop condition or
+`stop()`. This page covers how to choose an execution mode, how to tune timing, and how a run
+ends. To move a robot without a policy, see [jogging.md](jogging.md). For the schema, see
+[schema.md](schema.md).
 
-## Pipeline
+## Quick start
+
+```python
+from novapolicy import PolicyExecutor, SequentialExecution
+
+executor = PolicyExecutor(
+    schema,  # a PolicySchema
+    policy,  # a PolicyClient, for example Gr00tPolicyClient or CallbackPolicyClient
+    execution=SequentialExecution(),
+    timeout_s=60.0,
+)
+result = await executor.run()
+print(result.reason, result.steps, result.duration_s)
+```
+
+`PolicyExecutor` accepts `PolicyClient` instances only. Wrap a local async function with
+`CallbackPolicyClient`. The backend clients (`Gr00tPolicyClient`, `LeRobotPolicyClient`,
+`LeappPolicyClient`) implement the interface directly.
 
 ```mermaid
 flowchart LR
     Policy["Policy"] -->|"action chunk\n(positions + dt_ms)"| Executor
-    Executor -->|"resolved, trimmed chunk\nper motion group"| Session["WaypointJoggingSession\n(send pipeline)"]
-    Session -->|"ActionChunkRequest\n(JOINTS or POSE waypoints)"| NOVA["NOVA Action Chunk Streaming API"]
-    NOVA -->|"state stream\n(jogger_session_timestamp_ms)"| Session
+    Executor -->|"resolved chunk\nper motion group"| Session["Session\n(send pipeline)"]
+    Session -->|"JOINTS or POSE waypoints"| NOVA["NOVA Action Chunk Streaming API"]
+    NOVA -->|"state stream"| Session
 ```
 
-The executor maps (contracts M1–M11) and places (T1, T2); everything that shapes what is sent
-runs in each session's send pipeline, one ordered list of modules (contract T13, ADR 0010). With
-`pipeline=None` the executor runs `default_pipeline(execution=..., policy=...)`:
+## Choosing an execution mode
 
-| Execution | Default pipeline |
-| --- | --- |
-| `SequentialExecution` | `Bridge`, `EndpointRamp`, `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
-| `ContinuousExecution` | `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
-| `ContinuousExecution`, timestep queue | `Smoothing`, `TimestepTimeline`, `Bridge(always_anchor=True)` (the queue's `default_modules`), `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
-
-An explicit `pipeline` is exactly what runs: extend or edit the default list rather than starting
-from an empty one.
-
-## Execution Loop
-
-### `SequentialExecution` (default)
-
-```
-1. Observe robot state
-2. Query policy → get action chunk
-3. Bridge from the observed state when the first target is farther than normal waypoint spacing
-4. Send bridge + policy waypoints as one continuous request
-5. Wait for the exact final NOVA timestamp *and* a measured standstill
-6. Go to 1
-```
-
-### `ContinuousExecution`
-
-In continuous mode the executor runs as a **receding horizon controller**: at
-each tick it queries the policy for a fresh chunk and sends it, overlapping the
-previous one. The server replaces waypoints older than the new chunk's first
-timestamp. This mode supports asynchronous action queues such as ACT as well as
-policies that implement model-side Real-Time Chunking (RTC).
-
-```
-1. Observe robot state
-2. Query policy → get action chunk
-3. Send waypoints to server (overrides previous chunk)
-4. If `rate_hz` is set, sleep until the next fixed-rate tick
-5. Go to 1
-```
-
-![A new chunk replaces the still-buffered tail of the previous one; the robot jogs from its actual position onto the new chunk, bounded by velocity and acceleration limits](images/action-chunk-blending.png)
-
-The overlap is a **hard replace, not a mathematical blend**: from the new chunk's
-first timestamp onward, the previous chunk's still-buffered targets are discarded
-(the faded dashed tail) and the new chunk's values are used verbatim. The robot does
-not teleport — the servo aims from the robot's actual position toward the new targets
-and catches up bounded by the jogger's velocity/acceleration limits (the white line).
-A client must therefore preserve or smooth the retained overlap. This can come
-from an asynchronous action queue.
-
-## Configuration
-
-Execution behavior is selected with an explicit mode object. Note `n_action_steps`: it defaults to
-`None`, meaning "use the horizon the policy declares" — a `LeRobotPolicyClient` reports its
-checkpoint's `n_action_steps`. Pass `0` to execute every returned step regardless, which is what
-the continuous asynchronous-queue setup wants, or a positive number to trim explicitly. Trimming
-is a receding horizon: later steps carry more prediction uncertainty and are discarded, while the
-policy still predicts its full horizon (e.g. 16 steps) for an asynchronous client to keep.
+| mode | behavior | use case |
+| --- | --- | --- |
+| `SequentialExecution()` (default) | runs each chunk to the end, waits until the robot stands still, then asks the policy again | settled, step-by-step inference |
+| `ContinuousExecution()` | replaces the running chunk as fast as inference allows | asynchronous inference |
+| `ContinuousExecution(rate_hz=20)` | replaces the running chunk at a fixed rate | rate-controlled asynchronous inference |
 
 ```python
 from novapolicy import (
@@ -111,37 +77,117 @@ continuous_asap = PolicyExecutor(
 )
 ```
 
-`PolicyExecutor` accepts `PolicyClient` instances only. Wrap local async callbacks with
-`CallbackPolicyClient`; backend clients such as GR00T and LeRobot implement the interface directly.
+### `SequentialExecution`
 
-| Mode | Behavior | Use case |
-|---|---|---|
-| `SequentialExecution()` | Wait for exact chunk completion and standstill, bridge to the next prediction, then replan | Settled sequential inference |
-| `ContinuousExecution()` | Replace chunks as fast as inference allows | Asynchronous inference |
-| `ContinuousExecution(rate_hz=20)` | Replace chunks at a positive fixed rate | Rate-controlled asynchronous inference |
+```
+1. Observe robot state
+2. Query policy → get action chunk
+3. Bridge from the observed state when the first target is farther than normal waypoint spacing
+4. Send bridge + policy waypoints as one continuous request
+5. Wait until the last waypoint is due and the robot stands still
+6. Go to 1
+```
 
-The mode owns every setting that is meaningful to it. In particular, endpoint ramps belong to
-`SequentialExecution`; a continuously replaced chunk has no final endpoint to brake at.
+Each chunk starts and ends at rest, and holds its last target for 300 ms after its last step.
+The wait ends at the chunk's last step once the robot stands still, so each cycle can take up to
+300 ms longer than the chunk itself, plus inference time.
 
-### Bridging a distant first waypoint
+### `ContinuousExecution`
+
+```
+1. Observe robot state
+2. Query policy → get action chunk
+3. Send waypoints to NOVA (replaces the previous chunk)
+4. If `rate_hz` is set, sleep until the next fixed-rate tick
+5. Go to 1
+```
+
+The executor works as a receding-horizon controller: each new chunk overlaps the previous one.
+NOVA replaces the waypoints from the new chunk's first timestamp onward.
+This mode supports asynchronous action queues such as ACT.
+
+![A new chunk replaces the still-buffered tail of the previous one; the robot jogs from its actual position onto the new chunk, bounded by velocity and acceleration limits](images/action-chunk-blending.png)
+
+The overlap is a **hard replace, not a blend**. From the new chunk's first timestamp onward, the
+previous chunk's remaining targets are discarded (the faded dashed tail) and the new chunk's
+values are used as they are. The robot does not jump: it moves from its actual position toward
+the new targets, within its velocity and acceleration limits (the white line). The policy client
+must keep the overlap consistent, or smooth it, for example with an asynchronous action queue
+(see [below](#continuous-execution-for-chunk-per-observation-policies)).
+
+- Higher rates give smoother overlap but need faster inference. With 20 Hz and 1 s chunks,
+  consecutive chunks overlap by about 95%.
+- If no new chunk arrives before the previous one ends, the robot stops.
+- Chunks shorter than 500 ms are padded by repeating their last target, so NOVA can always brake
+  within the horizon. One-step chunks are not padded in continuous execution, because the next
+  step replaces them.
+
+### How many steps run: `n_action_steps`
+
+| value | steps executed from each chunk |
+| --- | --- |
+| `None` (default) | the horizon the policy declares (a `LeRobotPolicyClient` reports its checkpoint's `n_action_steps`), else all |
+| `0` | all returned steps; use it for a continuous asynchronous queue |
+| `N > 0` | the first `N` steps |
+
+Trimming is a receding horizon: later steps are less certain and are discarded, while the policy
+still predicts its full horizon (for example 16 steps), which an asynchronous client can keep.
+
+## Continuous execution for chunk-per-observation policies
+
+A policy that answers each observation with a new chunk and keeps no queue of its own
+(`Gr00tPolicyClient`, a `CallbackPolicyClient`) makes the arm jump at every replacement. Wrap it
+in `QueuedPolicyClient`. It keeps the steps that ran during inference (plus `margin_steps`, 2 by
+default) as they were sent, blends the overlap with the new chunk, smooths the plan, and keeps
+all chunks on one timeline. Wrap a `LeRobotPolicyClient` the same way.
+
+```python
+from novapolicy import (
+    ContinuousExecution,
+    Gr00tPolicyClient,
+    PolicyExecutor,
+    QueuedPolicyClient,
+)
+
+executor = PolicyExecutor(
+    schema,
+    QueuedPolicyClient(Gr00tPolicyClient(host, port=port, control_freq=30)),
+    execution=ContinuousExecution(),
+    n_action_steps=0,  # keep the whole horizon as lookahead
+)
+```
+
+`QueuedPolicyClient` needs `ContinuousExecution`. With `SequentialExecution` the executor raises
+`ValueError` at construction.
+
+## Bridging a distant first waypoint
 
 When a policy's first waypoint is far from the robot, the `Bridge` module (in the sequential
-default pipeline) connects the measured position to the predicted motion in the session. The
-bridge and policy chunk are sent as one continuous request, so NOVA does not stop at the boundary
-and IO or computed actions remain aligned with policy waypoint zero.
+default pipeline) connects the measured position to the predicted motion. The bridge and the
+policy chunk are sent as one request, so NOVA does not stop between them, and IO or computed
+actions stay aligned with the policy's first waypoint.
 
-In continuous execution only a timestep queue (`QueuedPolicyClient`, LeRobot's async queue) is
-bridged (`Bridge(always_anchor=True)`, from its `default_modules`), and only until its timeline
-exists: its later chunks carry an `action_timestep`, and the session's `TimestepTimeline` places
-them on the first one's timeline without re-anchoring to the measured state. A queue's pipeline
-must contain the `TimestepTimeline`; the executor refuses one without at construction.
+In continuous execution only a `QueuedPolicyClient` is bridged, and only until its timeline is
+set up by its first chunk.
+Its pipeline must contain a `TimestepTimeline`; the executor refuses one without it at
+construction. `default_pipeline(execution=..., policy=...)` includes it.
 
-### Sequential endpoint ramps
+## Customizing the send pipeline
 
-A settled executor intentionally lets every submitted waypoint request end, so every request starts
-and finishes at zero velocity. The sequential default pipeline's `EndpointRamp()` replaces the
-first and final waypoint intervals with three same-`dt_ms` intervals. Customize or disable it by
-editing the default list (an explicit `pipeline` is exactly what runs):
+Everything that shapes what is sent runs in an ordered list of modules. With `pipeline=None` the
+executor runs `default_pipeline(execution=..., policy=...)`:
+
+| execution | default pipeline |
+| --- | --- |
+| `SequentialExecution` | `Bridge`, `EndpointRamp`, `JointClamp`, `HoldPadding(after_ms=300)`, `Timestamps`, `DropLate` |
+| `ContinuousExecution` | `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
+| `ContinuousExecution` with `QueuedPolicyClient` | `Smoothing`, `TimestepTimeline`, `Bridge(always_anchor=True)`, `JointClamp`, `HoldPadding`, `Timestamps`, `DropLate` |
+
+An explicit `pipeline` is exactly what runs. Start from the default list and edit it, rather
+than writing one from scratch. Pass the same `execution` and `policy` to `default_pipeline` as to
+the executor. What each module does is in [pipeline.md](pipeline.md).
+
+Replace a module, for example a longer endpoint ramp in sequential execution:
 
 ```python
 from novapolicy import EndpointRamp, PolicyExecutor, SequentialExecution, default_pipeline
@@ -157,7 +203,11 @@ custom = PolicyExecutor(
         EndpointRamp(interpolation_steps=4) if isinstance(m, EndpointRamp) else m for m in defaults
     ],
 )
+```
 
+Remove a module:
+
+```python
 disabled = PolicyExecutor(
     schema,
     policy,
@@ -166,78 +216,115 @@ disabled = PolicyExecutor(
 )
 ```
 
-The interpolation behaves as follows:
-
-- the first interval uses quadratic ease-in (increasing displacement),
-- the final interval uses quadratic ease-out (decreasing displacement),
-- a single interval uses smoothstep so both endpoint velocities approach zero.
-
-All original waypoints remain in the request, and IO and computed actions stay with policy
-waypoint zero. Each added point retains the
-original `dt_ms`, intentionally increasing request duration. Continuous execution does not expose
-this setting because every chunk tail is provisional. Its policy client must provide a coherent
-initial lookahead and preserve continuity across replacement seams.
-
-### Mutable lookahead smoothing
-
-A timestep queue's plan is smoothed by the `Smoothing` module in its default pipeline: a temporal
-`[1, 2, 1] / 4` filter on joint and TCP target sequences. Two passes, the default, are equivalent
-to `[1, 4, 6, 4, 1] / 16` away from chunk boundaries. The steps the queue already sent
-(`ActionChunk.retained_prefix_steps`) keep exactly the values sent for their timesteps. TCP position and rotation-vector components are filtered independently;
-IO actions, timing, and action-timestep metadata remain unchanged. Unlike endpoint interpolation,
-smoothing does not add waypoints or change chunk duration.
-
-The policy API currently has no episode-final signal. Consequently, settled execution brakes every
-request endpoint rather than trying to guess which prediction will be the episode's final chunk.
-
-Higher rates give smoother overlapping but require faster inference.
-The server requires continuous waypoint updates — if the buffer empties
-(no new chunk arrives before the previous one finishes), the robot pauses.
-Chunks shorter than `HoldPadding.min_horizon_ms` (500 ms; except one-step chunks in
-continuous execution, which the next step replaces) are padded by repeating
-their final target so the server always has a horizon it can brake within. That
-padding is excluded from `scheduled.until_server_ms`, so waits for a chunk to
-finish end at the last waypoint the caller asked for rather than sitting through
-the hold.
-With 20 Hz and 1s lookahead chunks, there is ~95% overlap between
-consecutive chunks, providing ample buffer.
-
-### Continuous execution for chunk-per-observation policies
-
-A policy that answers each observation with a fresh chunk and keeps no queue of its own
-(`Gr00tPolicyClient`, a `CallbackPolicyClient`) makes the arm jump at every replacement seam.
-Wrap it in `QueuedPolicyClient`: it resolves each chunk to absolute NOVA targets, keeps the steps
-that executed during inference (plus `margin_steps`) exactly as published, blends the overlap
-0.3/0.7, smooths the plan with that head retained and places it on the executor's timestep
-timeline, as the LeRobot async queue does.
+Add a module:
 
 ```python
-from novapolicy import ContinuousExecution, PolicyExecutor, QueuedPolicyClient
+from novapolicy import EaseIn
 
-executor = PolicyExecutor(
-    schema,
-    QueuedPolicyClient(Gr00tPolicyClient(host, port=port, control_freq=30)),
-    execution=ContinuousExecution(),
-    n_action_steps=0,  # keep the whole horizon as lookahead
+pipeline = [*default_pipeline(execution=execution, policy=policy), EaseIn(duration_s=1.0)]
+executor = PolicyExecutor(schema, policy, execution=execution, pipeline=pipeline)
+```
+
+`EndpointRamp` brings every chunk to rest. In `ContinuousExecution` it makes the arm stop at each
+replacement, and the executor logs a warning.
+
+## Timing
+
+### When each step is due
+
+Step `k` of a chunk is due `reference + max_expected_latency_ms + k·dt` on the session clock, in
+both modes:
+
+- In continuous execution the reference is the moment the observation was taken.
+- In sequential execution the reference is the send. The robot was at rest when it was observed.
+
+Steps whose time has already passed when the chunk is sent are dropped, never retimed. IO and
+computed actions run when the policy's first step is due.
+
+### Setting the lead for your network
+
+The lead, `WaypointConfig.max_expected_latency_ms`, is 100 ms by default. That fits a policy
+running on the NOVA instance. Over a remote network, use 150 ms:
+
+```python
+from novapolicy import PolicyExecutor, WaypointConfig
+
+executor = PolicyExecutor(schema, policy, motion=WaypointConfig(max_expected_latency_ms=150))
+```
+
+The arm follows the policy by this much. A lead that is too short for the network makes steps
+arrive late, so they are dropped and the path deviates. The RL example takes it as
+`--max-expected-latency-ms 150`.
+
+### One-step joint targets on the cycle grid (`Timestamps(grid_ms=...)`)
+
+A policy that returns one joint target per step can make the arm move in small pulses around its
+pace. `Timestamps(grid_ms=32)` puts those one-step joint targets on a fixed time grid on the
+session clock, interpolating linearly between them. It applies only to one-step joint targets.
+Multi-step chunks, TCP targets and chunks with their own timeline keep their times.
+
+It is off by default. Swap it into the default list:
+
+```python
+from novapolicy import ContinuousExecution, PolicyExecutor, Timestamps, default_pipeline
+
+execution = ContinuousExecution(rate_hz=30)
+pipeline = [
+    Timestamps(grid_ms=32) if isinstance(m, Timestamps) else m
+    for m in default_pipeline(execution=execution, policy=policy)
+]
+executor = PolicyExecutor(schema, policy, execution=execution, pipeline=pipeline)
+```
+
+Choose the multiple of 8 ms closest to the policy's step: 32 for 30 Hz. The RL example takes it
+as `run_reach.py --grid-ms 32`.
+
+## Timestamp protocol
+
+Each waypoint carries a timestamp in milliseconds on the session clock. The session clock starts
+when NOVA receives the first request.
+
+### Trajectory-absolute timestamps
+
+To make overlapping chunks line up, a policy can place a chunk at an explicit point on the
+session clock with `ActionChunk.first_timestamp_ms`. Identical steps then land at identical
+timestamps, and NOVA joins them into one trajectory instead of restarting at every resend.
+
+```python
+ActionChunk(
+    joints={"0@ur10e": chunk_steps},
+    dt_ms=10.0,
+    first_timestamp_ms=int(step_idx * 10.0),  # explicit absolute anchor
 )
 ```
 
-### Dry runs
+A chunk with its own `first_timestamp_ms` is never bridged. When left at `-1` (the default), the
+executor places step 0 as follows:
 
-`resolve_actions(schema, chunk, states)` returns the targets the executor would send for a raw
-policy chunk.
+| case | anchor | offset |
+| --- | --- | --- |
+| explicit `first_timestamp_ms >= 0` | that value | `0` (exact) |
+| `SequentialExecution` | the send on the server's clock + `max_expected_latency_ms` | step `k` at `+ k·dt`; nothing is late |
+| `ContinuousExecution`, chunk from the latest observation | the observation time on the server's clock + `max_expected_latency_ms` | step `k` at `+ k·dt`; steps too close to send are dropped |
+| `ContinuousExecution`, chunk with its own timeline (policy timestep, bridge) | `now` | `0` |
+
+### Unreachable waypoints are trimmed
+
+A chunk is timestamped when it is built and sent a moment later. Leading waypoints whose time has
+already passed cannot be reached, so they are dropped at send time and the rest is sent. A chunk
+whose waypoints have all passed is dropped. The waypoints that are sent keep their timestamps, so
+the trajectory is not distorted.
 
 ## Stale inputs and how a run ends
 
-A camera can freeze and a policy service can hang. Freshness is declared per channel; a frame
-older than its bound, or an inference past `inference_timeout_s`, ends the run with
-`RuntimeError("Stale policy input ...")`. Frames for the Rerun view are held to a far looser
-bound: visualization needs no control-loop freshness, and a stale-frame error from the logging
-task would end a run that is otherwise fine. The e-stop monitor ends the run when it has seen no
-controller state for 2 s, since an e-stop it cannot see must not leave the robot moving.
+A camera can freeze and a policy service can hang. Each camera channel has a freshness bound. A
+frame older than its bound, or an inference that takes longer than `inference_timeout_s`, ends
+the run with `RuntimeError("Stale policy input ...")`. Frames shown in Rerun are held to a much
+looser bound and do not end the run. If the executor sees no controller state for 2 s, it ends
+the run as well.
 
 ```python
-from novapolicy import Observation, PolicyExecutor
+from novapolicy import Observation, PolicyExecutor, PolicySchema
 
 schema = PolicySchema(
     observations=[
@@ -255,155 +342,100 @@ executor = PolicyExecutor(
 )
 ```
 
+Here `cameras` is a `WebRTCCameras` instance.
+
 ### Teardown follows the reason
 
-How a run ended decides what happens to motion the controller already accepted:
+How a run ended decides what happens to motion NOVA already accepted:
 
-- **A normal end** — a stop condition, the execution timeout or an external `stop()` — drains the
-  accepted waypoints before the sessions close. They were owed
-  to the caller.
-- **An error or e-stop** drops them. `session.stop()` cancels immediately, which is the point on a
-  failure path.
+- **A normal end** (a stop condition, the execution timeout or `stop()`) lets the accepted
+  waypoints finish before the sessions close.
+- **An error or e-stop** drops them and stops at once.
 
 > These are **software** guards running in the executor loop, not a safety system. Rely on the
 > safety zones and protective stops configured on the robot controller.
 
-## Detecting standstill
+### Detecting standstill
 
-`SequentialExecution` promises to observe the robot at rest, so it has to know
-when the robot has actually stopped. Two conditions are needed and neither
-suffices alone:
+`SequentialExecution` asks the policy again only when the robot is at rest. It waits until both
+are true:
 
-1. **The schedule ran out** — every chunk the executor queued was sent
-   (`session.scheduled.chunk_count`) and the acknowledged server clock
-   (`last_server_timestamp_ms`) has reached `session.scheduled.until_server_ms`,
-   the timestamp of the last waypoint the caller asked for. This says the
-   deadline elapsed, not that the robot stopped: it is still braking through the
-   hold padding that follows.
-2. **The joints stopped moving** — `WaypointJoggingSession.is_at_standstill`.
-   Before a chunk's waypoints are reached the robot is legitimately still, so
-   this on its own would end the wait before any motion began.
+1. the last waypoint of the chunk is due on the session clock, and
+2. the joints have stopped moving.
 
-Standstill is measured client-side, from the joint positions in the state
-stream, because NOVA reports no "the commanded waypoints ran out" state. Since
-26.6 `PAUSED_BY_USER` follows a Pause/Stop *request* only — and the executor
-never sends one, since pausing also pauses the session clock the fixed timeline
-is anchored on — so a drained queue reports `RUNNING` indefinitely. Relying on
-that state instead made every episode execute exactly one chunk and then hang
-until the timeout. It is still accepted when it does appear.
+Standstill is measured from the joint positions in the state stream. A robot that keeps creeping
+slowly does not count as at rest.
 
-`StandstillDetector` holds a *reference* posture and replaces it only once some
-joint leaves a small band around it (`_STANDSTILL_EPS_RAD`, ~0.06°); the robot
-counts as settled after `_STANDSTILL_HOLD_MS` of server time inside the band.
-Holding the reference rather than differencing consecutive samples is what makes
-a slow crawl detectable — a creep of less than one epsilon per sample would
-otherwise read as standstill forever — while bounded encoder noise never
-accumulates out of the band. The hold is measured in server milliseconds, not
-sample counts, because state packets arrive in bursts on some deployments.
+## Dry runs
 
-## Timing: contracts and decisions
-
-The executor maps and transports (see `AGENTS.md`). How the arm follows the waypoints is NOVA's
-job; on the client side it owns only when each waypoint is due and when it is sent.
-
-![The executor maps and transports; NOVA's action chunk streaming owns the motion. The timing contracts sit on the stage they govern.](images/executor-contracts.png)
-
-What it promises is listed as numbered, tested invariants in [contracts.md](contracts.md):
-**M** for mapping, **T** for timing. Why each choice was made, with the alternative it was
-measured against, is in the [decision records](adr/).
-
-In short: step `k` of a chunk is due `reference + max_expected_latency_ms + k·dt` on the session
-clock, in both modes. The reference is the observation in continuous execution and the send in
-sequential execution. Late steps are dropped, never retimed. IO and computed actions run when
-the policy's first step is due.
-
-## Timestamp Protocol
-
-Each waypoint carries a timestamp (milliseconds since session start). The server
-maintains an internal clock that starts when the first `ActionChunkRequest` is
-received.
-
-The server exposes that clock as `jogger_session_timestamp_ms` in the state
-stream (`JoggingDetails`). One server millisecond is one millisecond of motion:
-outgoing intervals are **never rescaled**. Deriving a server/client rate ratio and
-scaling timestamps by it is the tempting alternative and it is wrong — on a UR10e
-the ratio settles near 1.09 and stretches the timeline, slowing all motion by that
-proportion.
-
-`JoggingTimeClock` uses the readings only to estimate where the server clock is
-now, so that a `now`-anchored chunk can be placed on it:
-
-```
-server "now" = last acknowledged jogger_session_timestamp_ms
-             + (monotonic now - the instant that state was generated)
-```
-
-The elapsed term is measured from when the state was *generated*
-(`MotionGroupState.timestamp`), not from when its packet arrived. Packets can be
-delivered in bursts, and treating arrival as generation drags the estimate
-backwards by the delivery delay. Server/client wall-clock skew is calibrated over
-the first state packets of a session and then held fixed; the per-packet delay
-correction derived from it is bounded, so a wall-clock step cannot shunt the
-estimate far into the future.
-
-The extrapolation itself is deliberately **uncapped**. The jogger timer only
-advances once waypoints execute, and waypoints can only be placed once the
-estimate advances, so capping it deadlocks startup. A stalled link is warned
-about, not clamped — `JoggingTimeClock.max_lookahead_ms` is that warning
-threshold, not a limit on the estimate.
-
-An asynchronous policy queue does not use `now` at all: its first bridge assigns
-an exact raw controller timestamp to action zero, and every replacement uses
-``origin + action_timestep * policy_dt``.
-
-### Unreachable waypoints are trimmed
-
-A chunk is timestamped when it is built and sent a moment later. Waypoints whose
-timestamp has already passed — plus a small minimum lead
-(`drop_late.MIN_LEAD_MS`) — cannot be reached, and commanding them makes
-the server jump to catch the trajectory. The session drops those leading
-waypoints at send time and sends the still-reachable tail. A chunk whose every
-waypoint has elapsed is dropped entirely.
-
-Trimming does not move the surviving waypoints: the absolute time-to-position
-mapping stays exactly as the caller defined it. It does change which index of the
-*sent* request holds the caller's step zero: `scheduled.waypoint_timestamps`
-describes the request on the wire, while a chunk's `when_due` step and the policy's
-first step (`executing_action_timestep`) keep the timestamps the caller laid out.
-
-A dropped chunk still advances `scheduled.chunk_count`, and its steps keep their
-timestamps (all of them in the past, so its `when_due` action runs at once). The
-executor waits for `scheduled.chunk_count` to reach what it queued, so a silently
-skipped chunk would leave that wait unsatisfiable for the rest of the run.
-
-### Trajectory-absolute timestamps
-
-For overlapping chunks, timestamps are **trajectory-absolute**: the chunk is
-anchored at an explicit point on the server's session timeline rather than at
-"now". This is what lets consecutive overlapping chunks line up — identical
-steps land at identical timestamps, so the server stitches them into one
-trajectory instead of restarting at every resend.
-
-A policy can set an explicit anchor via `ActionChunk.first_timestamp_ms`:
+`resolve_actions(schema, chunk, states)` returns the targets the executor would send for a raw
+policy chunk: operators inverted, relative targets applied to `states`, TCP targets in the world
+frame. Load the schema's coordinate systems first.
 
 ```python
-ActionChunk(
-    joints={"0@ur10e": chunk_steps},
-    dt_ms=10.0,
-    first_timestamp_ms=int(step_idx * 10.0),  # explicit absolute anchor
-)
+from novapolicy import resolve_actions
+
+await schema.load_coordinate_systems()
+targets = resolve_actions(schema, chunk, states)  # states: motion group id -> RobotState
 ```
 
-When left at `-1`, the executor anchors automatically (see
-`novapolicy/pipeline/placement.py::placement`): step 0 is placed at an absolute anchor with an
-offset measured in whole `dt` steps —
+## Reference
 
-| case | anchor | offset |
-|------|--------|--------|
-| explicit `first_timestamp_ms >= 0` | that value | `0` (exact) |
-| `SequentialExecution` | the send on the server's clock + `max_expected_latency_ms` | step `k` at `+ k·dt`; nothing is late |
-| `ContinuousExecution`, chunk from the latest observation | the observation time on the server's clock + `max_expected_latency_ms` | step `k` at `+ k·dt`; steps too close to send are dropped |
-| `ContinuousExecution`, chunk with its own timeline (policy timestep, bridge) | `now` | `0` |
+### `PolicyExecutor`
 
-The `now` anchor is resolved at *yield time* (right before the websocket send)
-so it cannot go stale while the chunk waits in the session queue.
+```text
+PolicyExecutor(schema, policy, *, stop_conditions=None, timeout_s=0, camera_max_age_s=1.0,
+               inference_timeout_s=30.0, motion=WaypointConfig(),
+               execution=SequentialExecution(), n_action_steps=None,
+               start_joint_position=None, pipeline=None)
+```
+
+| parameter | default | meaning |
+| --- | --- | --- |
+| `schema` | required | the `PolicySchema`: observations, actions and the robots they use |
+| `policy` | required | a `PolicyClient` |
+| `stop_conditions` | `None` | checks run each tick; one returning `True` ends the run normally, with its name in `result.reason` |
+| `timeout_s` | `0` | maximum run time in seconds; `0` is no timeout |
+| `camera_max_age_s` | `1.0` | default freshness bound for camera frames in seconds; override per channel with `Observation.image(..., max_age_s=...)` |
+| `inference_timeout_s` | `30.0` | deadline for one `get_actions` call in seconds; `0` disables it |
+| `motion` | `WaypointConfig()` | session settings: lead, state rate; see [jogging.md](jogging.md#waypointconfig) |
+| `execution` | `SequentialExecution()` | the execution mode |
+| `n_action_steps` | `None` | steps executed from each chunk; see [above](#how-many-steps-run-n_action_steps) |
+| `start_joint_position` | `None` | joint positions per motion group to move to before the run; the move uses the cell's collision setups |
+| `pipeline` | `None` | the send pipeline; `None` runs `default_pipeline(execution=..., policy=...)` |
+
+The policy is connected and its schema validated before the start move, so a schema the policy
+refuses fails before the robot moves.
+
+### Running and stopping
+
+| member | meaning |
+| --- | --- |
+| `await run()` | runs one episode and returns an `ExecutionResult`; raises on errors |
+| `stop()` | asks the run to end; `run()` returns shortly after |
+| `status` | an `ExecutorStatus` with `phase`, `step` and `message` |
+| `phase` | the current `Phase`: `IDLE`, `CONNECTING`, `EXECUTING`, `COMPLETED` or `ERROR` |
+| `last_observation` | the most recent observation (robot state and camera images), or `None` |
+| `result` | the last `ExecutionResult`, or `None` |
+
+`ExecutionResult` has `reason` (`"timeout"`, `"stopped"` or `"stop condition: <name>"`), `steps`,
+`duration_s` and `last_state`, the last observed robot state per motion group.
+
+`run()` raises `MotionError` (joint limit, self-collision, singularity), `EmergencyStopError`
+(e-stop, protective stop) or `RuntimeError` (connection lost, stale input, other errors).
+
+## Troubleshooting
+
+| symptom | what to do |
+| --- | --- |
+| `ValueError` at construction: the policy "requires ContinuousExecution" | use `ContinuousExecution()`, or the policy without `QueuedPolicyClient` |
+| `ValueError` at construction: "LiveBuffer requires ContinuousExecution" | use `ContinuousExecution()`, or remove the `LiveBuffer` |
+| `ValueError` at construction: put the policy's `default_modules` (a `TimestepTimeline`) in the pipeline | build the pipeline from `default_pipeline(execution=..., policy=...)` |
+| a warning that the pipeline is the joggers' default | pass `execution` and `policy` to `default_pipeline` |
+| a warning that `EndpointRamp` stops the arm in continuous execution | remove `EndpointRamp` from the pipeline |
+| `RuntimeError("Stale policy input ...")` | check the camera or policy service; raise `max_age_s` for a slow camera, or `inference_timeout_s` for a slow policy |
+| the arm jumps at every chunk replacement in continuous execution | wrap the policy in `QueuedPolicyClient` |
+| the path deviates or lags over a remote network | set `WaypointConfig(max_expected_latency_ms=150)` |
+| the arm moves in small pulses with a one-step joint policy | try `Timestamps(grid_ms=...)` with the multiple of 8 ms closest to the policy's step |
+| the robot stops between chunks in continuous execution | raise `rate_hz` or make inference faster, so a new chunk arrives before the previous one ends |
+| each sequential cycle is slow | expected: each cycle waits for standstill and can take up to 300 ms longer than its chunk; use `ContinuousExecution` for faster cycles |

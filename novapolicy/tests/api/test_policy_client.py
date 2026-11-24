@@ -80,7 +80,7 @@ class _EchoWire:
 
 @pytest.mark.asyncio
 async def test_a_provider_is_a_transport_and_the_schema_does_the_mapping() -> None:
-    """The provider from docs/architecture.md, as written there, on a fake wire."""
+    """The provider from docs/adding-a-provider.md, as written there, on a fake wire."""
     from novapolicy import PolicyClient, resolve_control_freq
 
     class MyPolicyClient(PolicyClient):

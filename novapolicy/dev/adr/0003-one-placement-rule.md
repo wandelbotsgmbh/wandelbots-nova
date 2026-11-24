@@ -11,7 +11,8 @@ tell from the mode what would happen.
 observation in continuous execution and the send in sequential execution, where the robot was at
 rest when it was observed. Multi-step chunks are dated by the session-clock estimate at
 observation time, one-step chunks by the state's timestamp through a playback clock (T4).
-Timelines of the policy's own (explicit timestamps, timestep queues, RTC) are kept.
+Timelines of the policy's own (explicit timestamps, timestep queues; RTC too, until it was
+removed with ADR 0011) are kept.
 
 **Alternatives measured.** Backdating by inference time: 0.74–1.14° rms at 200 ms inference
 (now 0.45°, one run). Dating chunks by the state timestamp: shifted chunks overlapped and the
