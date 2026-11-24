@@ -160,6 +160,11 @@ def test_the_grid_starts_at_the_robot_and_continues_the_policy_path():
     assert [t for t, _ in second] == [1_056, 1_088, 1_120, 1_152]
     assert dict(second)[1_088] == dict(first)[1_088]
     assert second[-1][1] == [pytest.approx(1.52)]
+    # Still before the first target is due, the robot's start stays the path's origin: a waypoint
+    # sent again keeps its value, the commanded path never steps back.
+    third = grid.on_grid([(1_216, [2.16])], 1_066.0, [9.0])
+    assert dict(third)[1_088] == dict(first)[1_088]
+    assert dict(third)[1_120] == dict(first)[1_120]
     assert grid.on_grid([], 1_066.0, None) == []  # forgets the path
     assert grid.on_grid([(1_216, [2.0])], 1_066.0, [3.0])[0][1][0] > 2.0  # restarts at the robot
 

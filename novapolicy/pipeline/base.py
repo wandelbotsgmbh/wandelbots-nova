@@ -116,8 +116,9 @@ class Timestamps:
         if grid is None or not window:
             self._path = []
             return []
-        keep_ms = now_ms - 2 * grid
-        path = [(t, v) for t, v in self._path if keep_ms <= t < window[0][0]]
+        path = [(t, v) for t, v in self._path if t < window[0][0]]
+        while len(path) > 1 and path[1][0] <= now_ms:  # keep one point at or before "now"
+            path.pop(0)
         if not path and current is not None:
             path = [(float(now_ms), list(current))]
         self._path = path + [(float(t), list(v)) for t, v in window if not path or t > path[-1][0]]
