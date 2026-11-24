@@ -1,4 +1,4 @@
-"""ServoHorizon: UR's servoj law on live targets, sent as the spring's braking path (ADR 0022)."""
+"""ServoHorizon: a spring-damper on live targets, sent as the spring's braking path (ADR 0022)."""
 
 from __future__ import annotations
 

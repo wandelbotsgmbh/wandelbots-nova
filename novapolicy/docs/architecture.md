@@ -96,7 +96,7 @@ flowchart TB
 | `TimestepTimeline` | a queue's replacements must continue its timeline | (required for a queue) |
 | `LiveBuffer` | a lone live target is a terminal target the robot brakes to | not adding it |
 | `EaseIn` | a time-based target with velocity at t=0 lunges from rest | not adding it |
-| `ServoHorizon` | a lone live target makes the follower overshoot a sudden stop; the spring of UR's servoj sends a reachable, braking horizon instead ([ADR 0022](adr/0022-servo-horizon-for-live-targets.md)) | not adding it |
+| `ServoHorizon` | a lone live target makes the follower overshoot a sudden stop; a spring-damper sends a reachable, braking horizon instead ([ADR 0022](adr/0022-servo-horizon-for-live-targets.md)) | not adding it |
 | `Timestamps(grid_ms=32)` | NOVA's follower pulses around a one-step policy's pace when a waypoint falls just after its 8 ms cycle ([ADR 0021](adr/0021-one-step-targets-on-the-cycle-grid.md)) | `Timestamps()` (the default) |
 
 ### Order and combinations

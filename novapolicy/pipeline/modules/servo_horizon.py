@@ -1,4 +1,4 @@
-"""Chunk module: follow live targets with UR's servoj law and send the braking path (ADR 0022)."""
+"""Chunk module: follow live targets with a spring-damper and send its braking path (ADR 0022)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from novapolicy.transport.waypoints import PendingChunk
 
 TICK_MS = 2.0
-"""The integration step: servoj's controller tick."""
+"""The integration step."""
 CYCLE_MS = 8
 """NOVA's controller cycle: the first waypoint is due on one (ADR 0021)."""
 _NO_ROTATION = 1e-9
@@ -21,7 +21,7 @@ _NO_ROTATION = 1e-9
 
 @dataclass
 class ServoHorizon:
-    """Chunk module: a live target becomes the reference of a spring-damper, UR's servoj law,
+    """Chunk module: a live target becomes the reference of a spring-damper,
     ``q'' = gain * (ref - (q + lookahead_s * q'))``, and the chunk sent is that spring's path
     with the target held: where it is when the target is due, then braking onto it.
 
@@ -29,7 +29,7 @@ class ServoHorizon:
     braking for what comes next and overshoots a sudden stop. The spring rounds a turn the arm
     cannot take into one it can, holds a constant speed ``lookahead_s`` behind the target and, at
     ``lookahead_s = 2 / sqrt(gain)``, settles without overshoot. Accelerations and speeds above the
-    limits scale the whole step down, keeping its direction, as servoj does. The waypoints are
+    limits scale the whole step down, keeping its direction. The waypoints are
     ``step_ms`` apart for ``horizon_ms``, the first on NOVA's 8 ms cycle (ADR 0021).
 
     For live targets (``set_target``) only: a chunk of several steps, or one without its own
@@ -42,9 +42,9 @@ class ServoHorizon:
     stage: ClassVar[str] = "input"  # its place among the chunk modules (CHUNK_STAGES)
 
     gain: float = 300.0
-    """Spring stiffness, 1/s² (servoj: 100 to 2000)."""
+    """Spring stiffness, 1/s²."""
     lookahead_s: float = 0.115
-    """Damping time: the lag behind a target at constant speed (servoj: 0.01 to 0.2 s)."""
+    """Damping time, s: the lag behind a target at constant speed."""
     horizon_ms: float = 400.0
     step_ms: float = 32.0
     linear_acceleration: float = 8000.0
@@ -111,7 +111,7 @@ class ServoHorizon:
         )
 
     def _groups(self, mode: str, width: int) -> list[tuple[range, float, float]]:
-        """The axes servoj limits together: TCP position, TCP rotation, or each joint."""
+        """The axes limited together: TCP position, TCP rotation, or each joint."""
         if mode == "cartesian":
             return [
                 (range(3), self.linear_acceleration, self.linear_speed),
@@ -128,7 +128,7 @@ class ServoHorizon:
         ref: list[float],
         groups: list[tuple[range, float, float]],
     ) -> tuple[list[float], list[float]]:
-        """One servoj tick: the spring, one scale for all axes, semi-implicit Euler."""
+        """One tick: the spring, one scale for all axes, semi-implicit Euler."""
         dt = TICK_MS / 1000.0
         qdd = [
             self.gain * (r - (x + self.lookahead_s * v)) for r, x, v in zip(ref, q, qd, strict=True)

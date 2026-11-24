@@ -15,10 +15,10 @@ too. ``--speed 0.5`` plays a script at half speed, a quarter of the acceleration
 the tool slowly across the half-turn where its rotation vector flips sign. A real headset only
 has to provide ``latest()``: the newest controller pose and grip.
 
-Each pose goes out as a live target (``set_target``) through ``ServoHorizon``: UR's servoj
+Each pose goes out as a live target (``set_target``) through ``ServoHorizon``: a critically damped
 spring-damper (gain 300, lookahead 0.115 s) follows the pose, and the spring's path with the pose
 held, braking onto it, goes to NOVA as a 400 ms horizon (ADR 0022). ``--raw`` sends each pose
-alone instead, one waypoint the jogger's lead (100 ms) ahead, as ur_rtde's ``servoL`` streams it.
+alone instead, one waypoint the jogger's lead (100 ms) ahead.
 Measured on a virtual UR10e, the ``within`` part at full speed:
 
 - Client on the NOVA instance, ``ServoHorizon``: 190 ms behind the controller, 7 mm rms, 25 mm
