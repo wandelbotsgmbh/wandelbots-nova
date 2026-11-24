@@ -142,7 +142,7 @@ def _check_order(pipeline: Sequence[object]) -> None:
     last: tuple[int, str] | None = None
     for item in pipeline:
         name = type(item).__name__
-        if type(item).__module__.startswith("novapolicy.") and not isinstance(item, Timestamps):
+        if type(item).__module__.startswith("novapolicy.pipeline.modules."):
             if type(item) in builtins:
                 raise ValueError(f"{name} appears twice in the pipeline")
             builtins.add(type(item))
