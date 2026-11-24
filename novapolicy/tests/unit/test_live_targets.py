@@ -185,6 +185,9 @@ class _PushSession(_FakeSession):
     def update_chunk(self, **kwargs) -> None:
         self.chunks.append(kwargs)
 
+    def check_steps(self, steps: list[list[float]]) -> None:
+        pass
+
 
 class _NamedMotionGroup:
     """``_set_live_target`` reaches the Rerun helpers, which key off the id."""
@@ -243,3 +246,17 @@ def test_live_targets_carry_the_loop_time_in_exact_grid_steps(ack0_ms: float) ->
         jogger._set_live_target(mg, [float(i), 0.0, 0.0, 0.0, 0.0, 0.0])
     produced = [chunk["observed_at_ms"] for chunk in session.chunks]
     assert all(b - a == 10 for a, b in pairwise(produced)), produced
+
+
+@pytest.mark.parametrize("ack0_ms", [8.0, 8.6])
+def test_chunks_start_on_one_grid_in_exact_steps(ack0_ms: float) -> None:
+    """Chunks re-sent every loop iteration must start on one 10 ms grid: a chunk 1 ms early
+    leaves a waypoint 1 ms after the previous chunk's, which the follower takes as a speed jump."""
+    jogger, _mg, session = _push_jogger()
+    jogger._loop_t0 = 0.0
+    jogger._ack0_ms = ack0_ms
+    for i in range(1000):
+        jogger._tick_ms = ack0_ms + i * 10.0 + 0.3
+        jogger.set_chunk([[float(i), 0.0, 0.0, 0.0, 0.0, 0.0]] * 3, dt_ms=10.0)
+    starts = [chunk["first_timestamp_ms"] for chunk in session.chunks]
+    assert all(b - a == 10 for a, b in pairwise(starts)), starts

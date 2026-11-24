@@ -111,7 +111,9 @@ class _BaseJogger:
         to "now" then)."""
         if mg not in self._sessions or self._loop_t0 is None:
             return None
-        return ServerMs(int(self._ack0_ms + self.elapsed * 1000.0 + LEAD_MS))
+        # Each term rounded on its own, as for live targets: truncating the sum puts some chunks
+        # 1 ms early, off the grid of the others, and the follower takes the 1 ms as a speed jump.
+        return ServerMs(round(self._ack0_ms) + round(self.elapsed * 1000.0) + round(LEAD_MS))
 
     def _expected_dims(self, mg: MotionGroup) -> int | None:
         """Expected target dimension for a motion group. Override in subclass."""
