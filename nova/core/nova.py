@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 
 import nats
 from nats import errors as nats_errors
@@ -15,7 +16,9 @@ from .nats_state import ReconnectSignal, nats_usable
 # Backoff for re-establishing the NATS connection after nats-py has exhausted its own
 # built-in reconnect attempts (e.g. when the server keeps closing the connection, as
 # happens when an auth-callout-issued user JWT expires and the server stays unreachable
-# for longer than nats-py's reconnect window).
+# for longer than nats-py's reconnect window). The delay caps the exponential window; each
+# wait is drawn uniformly from it ("full jitter"), so the processes of a cell, which all lose
+# the connection at the same moment, do not hit the server and its auth callout in lockstep.
 _NATS_REOPEN_INITIAL_DELAY_SECS = 2.0
 _NATS_REOPEN_MAX_DELAY_SECS = 60.0
 
@@ -46,6 +49,11 @@ class _ReconnectingNATS(nats.NATS):
         self.reconnected = ReconnectSignal()
 
     async def connect(self, *args, reconnected_cb=None, **kwargs) -> None:
+        # nats-py appends the given servers to the pool on every connect() and keeps the pool
+        # of a closed client, so each reopen would add the same server again (and carry the
+        # old reconnect counters along). Start from an empty pool instead.
+        self._server_pool.clear()
+
         async def on_reconnected() -> None:
             await self.reconnected.fire()
             if reconnected_cb is not None:
@@ -150,6 +158,12 @@ class Nova:
 
         This only fires on an unintended, server- or network-caused closure; `close()`
         sets `_closing` first so a deliberate shutdown never triggers it.
+
+        The reopen reconnects the same client object, so references handed out earlier (e.g.
+        to cells) stay valid. Subscriptions do not survive it: nats-py drops them when it
+        closes the client. Unlike nats-py's own reconnect, this path is only reached after an
+        outage longer than nats-py's reconnect window; ``reconnected`` fires once the reopen
+        succeeds, and consumers that subscribe must subscribe again then.
         """
         if self._closing:
             return
@@ -161,10 +175,14 @@ class Nova:
     async def _reopen_with_backoff(self) -> None:
         delay = _NATS_REOPEN_INITIAL_DELAY_SECS
         while not self._closing:
-            await asyncio.sleep(delay)
+            await asyncio.sleep(random.uniform(0, delay))
             try:
                 await self.open()
                 logger.info("NATS connection re-established")
+                # A reopen is a reconnect for every consumer waiting on the signal, and the
+                # one that most needs it: their subscriptions are gone, not just paused.
+                if isinstance(self.nats, _ReconnectingNATS):
+                    await self.nats.reconnected.fire()
                 return
             except Exception as exc:
                 logger.warning(f"NATS reconnect attempt failed: {exc}")

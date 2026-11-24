@@ -126,7 +126,11 @@ async def test_login_can_expire_more_than_once(nova):
     assert len(nova.nats._server_pool) == 1, "reconnecting must not grow the server pool"
 
 
-async def test_other_server_errors_still_close_the_client(nova):
+async def test_other_server_errors_still_close_the_client(nova, monkeypatch):
+    # Hold Nova's own reopen at its longest wait, so the check below sees the closed client.
+    import nova.core.nova as nova_module
+
+    monkeypatch.setattr(nova_module.random, "uniform", lambda lo, hi: hi)
     await server_sends(nova.nats, AUTHORIZATION_VIOLATION)
     await asyncio.sleep(0.1)  # nats-py closes in a task of its own
 

@@ -99,3 +99,88 @@ async def test_is_connected_holds_while_nats_py_reconnects(monkeypatch):
 
     monkeypatch.setattr(type(nova.nats), "is_closed", property(lambda self: True))
     assert not nova.is_connected()
+
+
+async def test_reopen_waits_are_jittered_and_capped(connected_flag, monkeypatch):
+    """Each wait is drawn from [0, delay]; the delay doubles per failure up to the cap."""
+    import nova.core.nova as nova_module
+
+    nova = _make_nova()
+    monkeypatch.setattr(
+        type(nova.nats), "is_connected", property(lambda self: connected_flag["value"])
+    )
+    windows: list[tuple[float, float]] = []
+    monkeypatch.setattr(
+        nova_module.random, "uniform", lambda lo, hi: windows.append((lo, hi)) or 0.0
+    )
+    monkeypatch.setattr(nova_module, "_NATS_REOPEN_INITIAL_DELAY_SECS", 2.0)
+    monkeypatch.setattr(nova_module, "_NATS_REOPEN_MAX_DELAY_SECS", 8.0)
+
+    failures = 4
+
+    async def connect_side_effect(*args, **kwargs):
+        if len(windows) <= failures:
+            raise OSError("server unreachable")
+        connected_flag["value"] = True
+
+    nova.nats.connect.side_effect = connect_side_effect
+
+    await asyncio.wait_for(nova._reopen_with_backoff(), timeout=5)
+
+    assert windows == [(0, 2.0), (0, 4.0), (0, 8.0), (0, 8.0), (0, 8.0)]
+    assert connected_flag["value"]
+
+
+async def test_reopen_fires_reconnected(connected_flag, monkeypatch):
+    """Consumers learn about a fallback reopen through the same signal as a reconnect."""
+    import nova.core.nova as nova_module
+
+    nova = _make_nova()
+    monkeypatch.setattr(
+        type(nova.nats), "is_connected", property(lambda self: connected_flag["value"])
+    )
+    monkeypatch.setattr(nova_module.random, "uniform", lambda lo, hi: 0.0)
+
+    async def connect_side_effect(*args, **kwargs):
+        connected_flag["value"] = True
+
+    nova.nats.connect.side_effect = connect_side_effect
+    before = nova.nats.reconnected.generation
+
+    await asyncio.wait_for(nova._reopen_with_backoff(), timeout=5)
+
+    assert nova.nats.reconnected.generation == before + 1
+
+
+async def test_reopen_task_stops_on_close(connected_flag, monkeypatch):
+    nova = _make_nova()
+    monkeypatch.setattr(
+        type(nova.nats), "is_connected", property(lambda self: connected_flag["value"])
+    )
+    nova.nats.connect.side_effect = OSError("server unreachable")
+
+    await nova._on_nats_closed()
+    task = nova._nats_reopen_task
+    assert task is not None
+
+    await nova.close()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=5)
+    assert task.cancelled()
+
+
+async def test_repeated_connects_keep_one_server_in_the_pool(monkeypatch):
+    """nats-py appends to the pool on every connect(); a reopen must not grow it."""
+    import nats
+
+    client = Nova(NovaConfig(host="http://localhost:8080")).nats
+
+    async def fake_connect(self, *args, servers=("nats://x:4222",), **kwargs):
+        self._setup_server_pool(list(servers))
+
+    monkeypatch.setattr(nats.NATS, "connect", fake_connect)
+
+    for _ in range(3):
+        await client.connect(servers=["nats://x:4222"])
+
+    assert len(client._server_pool) == 1
