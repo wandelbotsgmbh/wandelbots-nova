@@ -14,7 +14,14 @@ _TIMESTAMP = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
 
 def _api_pose(pose: Pose, dataset_pose: str, frame: str | None = None) -> api.models.DatasetPose:
     return api.models.DatasetPose(
-        pose=pose.to_api_model(), dataset_pose=dataset_pose, dataset="d", frame=frame
+        pose=pose.to_api_model(),
+        dataset_pose=dataset_pose,
+        dataset="d",
+        frame=api.models.WorldFrameReference()
+        if frame is None
+        else api.models.DatasetFrameReference(frame=frame),
+        tcp="Flange",
+        kinematic_configuration=api.models.UnspecifiedKinematicConfiguration(),
     )
 
 
@@ -218,6 +225,35 @@ class TestUnresolvableFrames:
 
         with pytest.raises(FrameResolutionError, match="not attached to a dataset"):
             detached.as_world()
+
+
+def _controller_cs_pose(dataset_pose: str) -> api.models.DatasetPose:
+    return _api_pose(SLOT, dataset_pose).model_copy(
+        update={
+            "frame": api.models.ControllerCoordinateSystemReference(
+                controller="kuka", coordinate_system="base1"
+            )
+        }
+    )
+
+
+class TestControllerCoordinateSystems:
+    """A dataset does not describe a controller's coordinate systems, so it cannot
+    resolve a pose taught relative to one."""
+
+    def test_as_world_reports_the_controller_coordinate_system(self):
+        dataset = _dataset(poses=[_controller_cs_pose("on-base")])
+
+        with pytest.raises(FrameResolutionError, match="'base1' of controller 'kuka'") as excinfo:
+            dataset.poses["on-base"].as_world()
+
+        assert excinfo.value.frame == "kuka/base1"
+
+    def test_is_rejected_as_a_motion_target(self):
+        dataset = _dataset(poses=[_controller_cs_pose("on-base")])
+
+        with pytest.raises(ValueError, match="'base1' of controller 'kuka', not in world"):
+            cartesian_ptp(dataset.poses["on-base"])
 
 
 class TestMotionTargets:

@@ -19,7 +19,9 @@
           0
         ]
       },
-      "kinematic_configuration": null,
+      "kinematic_configuration": {
+        "type": "unspecified"
+      },
       "dataset_pose": "home",
       "dataset": "default",
       "name": "home",
@@ -29,7 +31,10 @@
       "metadata": {
         "seeded": "true"
       },
-      "frame": null
+      "frame": {
+        "type": "world"
+      },
+      "tcp": "Flange"
     },
     {
       "pose": {
@@ -44,7 +49,9 @@
           0
         ]
       },
-      "kinematic_configuration": null,
+      "kinematic_configuration": {
+        "type": "unspecified"
+      },
       "dataset_pose": "pick",
       "dataset": "default",
       "name": "pick",
@@ -54,7 +61,10 @@
       "metadata": {
         "seeded": "true"
       },
-      "frame": null
+      "frame": {
+        "type": "world"
+      },
+      "tcp": "Flange"
     },
     {
       "pose": {
@@ -69,7 +79,9 @@
           0
         ]
       },
-      "kinematic_configuration": null,
+      "kinematic_configuration": {
+        "type": "unspecified"
+      },
       "dataset_pose": "place",
       "dataset": "default",
       "name": "place",
@@ -79,7 +91,10 @@
       "metadata": {
         "seeded": "true"
       },
-      "frame": null
+      "frame": {
+        "type": "world"
+      },
+      "tcp": "Flange"
     },
     {
       "pose": {
@@ -94,7 +109,9 @@
           0
         ]
       },
-      "kinematic_configuration": null,
+      "kinematic_configuration": {
+        "type": "unspecified"
+      },
       "dataset_pose": "table-origin",
       "dataset": "default",
       "name": "table_origin",
@@ -104,11 +121,15 @@
       "metadata": {
         "seeded": "true"
       },
-      "frame": "table"
+      "frame": {
+        "type": "dataset_frame",
+        "frame": "table"
+      },
+      "tcp": "Flange"
     },
     {
       "pose": {
-           "position": [
+        "position": [
           0,
           0,
           0
@@ -119,7 +140,9 @@
           0
         ]
       },
-      "kinematic_configuration": null,
+      "kinematic_configuration": {
+        "type": "unspecified"
+      },
       "dataset_pose": "table-corner",
       "dataset": "default",
       "name": "table_corner",
@@ -129,11 +152,15 @@
       "metadata": {
         "seeded": "true"
       },
-      "frame": "table"
+      "frame": {
+        "type": "dataset_frame",
+        "frame": "table"
+      },
+      "tcp": "Flange"
     },
     {
       "pose": {
-           "position": [
+        "position": [
           500,
           -400,
           0
@@ -144,7 +171,9 @@
           0
         ]
       },
-      "kinematic_configuration": null,
+      "kinematic_configuration": {
+        "type": "unspecified"
+      },
       "dataset_pose": "fixture-slot-a",
       "dataset": "default",
       "name": "fixture_slot_a",
@@ -154,7 +183,11 @@
       "metadata": {
         "seeded": "true"
       },
-      "frame": "fixture"
+      "frame": {
+        "type": "dataset_frame",
+        "frame": "fixture"
+      },
+      "tcp": "Flange"
     },
     {
       "pose": {
@@ -169,7 +202,9 @@
           0
         ]
       },
-      "kinematic_configuration": null,
+      "kinematic_configuration": {
+        "type": "unspecified"
+      },
       "dataset_pose": "fixture-slot-b",
       "dataset": "default",
       "name": "fixture_slot_b",
@@ -179,7 +214,11 @@
       "metadata": {
         "seeded": "true"
       },
-      "frame": "fixture"
+      "frame": {
+        "type": "dataset_frame",
+        "frame": "fixture"
+      },
+      "tcp": "Flange"
     },
     {
       "pose": {
@@ -194,7 +233,9 @@
           0
         ]
       },
-      "kinematic_configuration": null,
+      "kinematic_configuration": {
+        "type": "unspecified"
+      },
       "dataset_pose": "tool-tip",
       "dataset": "default",
       "name": "tool_tip",
@@ -204,7 +245,11 @@
       "metadata": {
         "seeded": "true"
       },
-      "frame": "tool-frame"
+      "frame": {
+        "type": "dataset_frame",
+        "frame": "tool-frame"
+      },
+      "tcp": "Flange"
     }
   ],
   "command_routines": [

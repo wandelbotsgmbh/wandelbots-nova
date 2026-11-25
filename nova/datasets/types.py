@@ -23,7 +23,7 @@ class DatasetPose(api.models.DatasetPose):
     """A dataset pose whose `pose` is an SDK `Pose` instead of the API wire model.
 
     `pose` is the pose as taught, relative to `frame`. Use `as_world()` to resolve it
-    into world coordinates.
+    into world coordinates. `tcp` and `kinematic_configuration` are kept as on the wire.
     """
 
     # `from_attributes` lets an `api.models.DatasetPose` be validated into this type as-is.
@@ -37,13 +37,23 @@ class DatasetPose(api.models.DatasetPose):
         """Return this pose in world coordinates.
 
         Raises:
-            FrameResolutionError: `frame` cannot be resolved to world.
+            FrameResolutionError: `frame` cannot be resolved to world, e.g. a coordinate
+                system configured on a controller, which a dataset does not describe.
         """
-        if self.frame is None:
+        if isinstance(self.frame, api.models.WorldFrameReference):
             return self.pose
+        if isinstance(self.frame, api.models.ControllerCoordinateSystemReference):
+            name = f"{self.frame.controller}/{self.frame.coordinate_system}"
+            raise FrameResolutionError(
+                f"Pose '{self.dataset_pose}' is expressed in coordinate system "
+                f"'{self.frame.coordinate_system}' of controller '{self.frame.controller}'; "
+                "resolving controller coordinate systems is not supported yet",
+                frame=name,
+                chain=[name],
+            )
         if self._tree is None:
-            raise _detached(f"Pose '{self.dataset_pose}'", self.frame)
-        return self._tree.world_transform(self.frame) @ self.pose
+            raise _detached(f"Pose '{self.dataset_pose}'", self.frame.frame)
+        return self._tree.world_transform(self.frame.frame) @ self.pose
 
 
 class DatasetFrame(api.models.DatasetFrame):
