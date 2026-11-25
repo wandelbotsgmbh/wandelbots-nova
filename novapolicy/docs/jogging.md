@@ -81,8 +81,8 @@ of steps. For TCP jogging, each step is a raw `[x, y, z, rx, ry, rz]` list in mm
 
 Handing a chunk to `set_target`, or a single target to `set_chunk`, raises `TypeError`.
 
-By default each live target goes out as a single waypoint, due 100 ms after the current
-`elapsed` (`novapolicy.jogging.jogger.LEAD_MS`). The robot steers toward it without knowing what
+By default each live target goes out as a single waypoint, due `max_expected_latency_ms` after the
+current `elapsed` (`WaypointConfig`, 100 ms by default). The robot steers toward it without knowing what
 comes next, so a target that stops or reverses suddenly, such as a hand, can make it overshoot.
 For a smooth path that brakes onto the target, add
 [`ServoHorizon`](#following-a-hand-servohorizon) to the pipeline. To keep the robot moving between
@@ -114,8 +114,8 @@ Send chunks at a steady rate that leaves several future waypoints in the queue:
 
 ### Where a chunk lands
 
-Step zero of a chunk is due 100 ms after the current `elapsed` on the session clock
-(`novapolicy.jogging.jogger.LEAD_MS`). Content computed for trajectory time `T` always lands at the
+Step zero of a chunk is due `max_expected_latency_ms` after the current `elapsed` on the session
+clock (`WaypointConfig`, 100 ms by default; raise it over a remote network, e.g. to 150). Content computed for trajectory time `T` always lands at the
 same timestamp, however often you send it. Overlapping chunks therefore join into one
 trajectory.
 

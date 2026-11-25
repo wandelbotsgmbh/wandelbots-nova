@@ -40,10 +40,6 @@ def _is_chunk(value: object) -> bool:
     return isinstance(value, list) and bool(value) and isinstance(value[0], list)
 
 
-# How far ahead of session time step zero is placed, for a chunk and a live target alike [ms];
-# must outlast the interval between pushes plus link latency, and stays constant (ADR 0013).
-LEAD_MS = 100.0
-"""How far after the loop's time a target or a chunk's first step is due, on the session clock."""
 TIMELINE_GRID_MS = 10.0
 """Resolution of the jogger's timeline: content produced in one loop iteration shares a time."""
 
@@ -78,10 +74,14 @@ class _BaseJogger:
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
         pipeline: Sequence[object] | None = None,
     ) -> None:
+        config = config or WaypointConfig()
         self._mg_list = list(motion_groups)
         self._multi = len(self._mg_list) > 1
+        # How far after the loop's time a target or a chunk's first step is due, as for a
+        # policy's chunks: one fixed lead for the whole run (ADR 0002).
+        self._max_expected_latency_ms = config.max_expected_latency_ms
         self._lifecycle = SessionLifecycle(
-            config=config or WaypointConfig(), stop_conditions=stop_conditions, pipeline=pipeline
+            config=config, stop_conditions=stop_conditions, pipeline=pipeline
         )
         sessions = self._lifecycle.build({
             mg: (self._MODE, tcp) for mg, tcp in motion_groups.items()
@@ -115,14 +115,18 @@ class _BaseJogger:
         return min(s.estimated_server_timestamp_ms for s in self._sessions.values())
 
     def _anchor(self, mg: MotionGroup) -> ServerMs | None:
-        """Session-clock time of content produced at this iteration, ``ack0 + elapsed + LEAD_MS``,
+        """Session-clock time of content produced at this iteration, ``ack0 + elapsed + max_expected_latency_ms``,
         the same however often it is sent; ``None`` before the loop has state (place relative
         to "now" then)."""
         if mg not in self._sessions or self._loop_t0 is None:
             return None
         # Each term rounded on its own, as for live targets: truncating the sum puts some chunks
         # 1 ms early, off the grid of the others, and the follower takes the 1 ms as a speed jump.
-        return ServerMs(round(self._ack0_ms) + round(self.elapsed * 1000.0) + round(LEAD_MS))
+        return ServerMs(
+            round(self._ack0_ms)
+            + round(self.elapsed * 1000.0)
+            + round(self._max_expected_latency_ms)
+        )
 
     def _expected_dims(self, mg: MotionGroup) -> int | None:
         """Expected target dimension for a motion group. Override in subclass."""
@@ -426,7 +430,8 @@ def jog_joints(
 
     Args:
         motion_groups: Single motion group or list for multi-robot control.
-        config: Waypoint jogging configuration.
+        config: Waypoint jogging configuration; its ``max_expected_latency_ms`` (100 ms by
+            default) is how far ahead of the loop's time each target and chunk is due.
         stop_conditions: Callbacks run on every jogging tick; one returning ``True`` for its
             ``StopContext`` ends the loop.
         start_joint_position: Joint positions to PTP-move to first: a list for one robot, a dict

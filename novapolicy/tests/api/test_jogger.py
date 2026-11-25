@@ -73,6 +73,7 @@ def _build_joint_jogger(
     num_joints: int = 6,
     pipeline: tuple[object, ...] = (),
     start_joint_position: list[float] | None = None,
+    config: WaypointConfig | None = None,
 ) -> _JointSetup:
     """Build a real joint jogger over fake robot transports.
 
@@ -94,6 +95,7 @@ def _build_joint_jogger(
             mgs if len(mgs) > 1 else mgs[0],
             pipeline=pipeline,
             start_joint_position=start_joint_position,
+            config=config,
         )
     return jogger, mgs, sessions
 
@@ -145,6 +147,19 @@ def test_setting_a_single_target_streams_it_to_the_robot():
         extend_buffer=False,
     )
     assert jogger.target == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+
+@pytest.mark.parametrize(
+    ("config", "lead_ms"), [(None, 100), (WaypointConfig(max_expected_latency_ms=150), 150)]
+)
+def test_targets_and_chunks_are_due_max_expected_latency_ms_after_the_loop_time(config, lead_ms):
+    """The joggers take their lead from WaypointConfig, as a policy's chunks do."""
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", config=config)
+    _tick(jogger, sessions, 2_000.0)
+    jogger.set_target([1.0] * 6)
+    jogger.set_chunk([[1.0] * 6, [2.0] * 6], dt_ms=50.0)
+    starts = [c.kwargs["first_timestamp_ms"] for c in sessions[mg].update_chunk.call_args_list]
+    assert starts == [2_000 + lead_ms, 2_000 + lead_ms]
 
 
 def test_the_pipeline_is_handed_to_every_session():

@@ -39,6 +39,7 @@ def _jogger(mode: str = "cartesian") -> tuple[TcpJogger, object, _FakeSession]:
     # Drive the session clock directly: elapsed reads the per-tick sample.
     jogger._loop_t0 = 0.0
     jogger._ack0_ms = 0.0
+    jogger._max_expected_latency_ms = 100.0
     jogger._tick_ms = 0.0
     return jogger, mg, session
 

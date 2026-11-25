@@ -229,10 +229,11 @@ the replayed horizon only delayed the robot by its window. Send live targets alo
 | `jog_joints(mg)` (500 ms buffer for `set_target`) | `jog_joints(mg)`, or `jog_joints(mg, pipeline=[ServoHorizon(), *default_pipeline()])` |
 | `jog_joints(mg, buffer_window_ms=0)` | `jog_joints(mg)` |
 | `PolicyExecutor(..., buffer_window_ms=80)` | `PolicyExecutor(...)` without it |
-| `novapolicy.jogging.live_buffer.LIVE_LEAD_MS` | `novapolicy.jogging.jogger.LEAD_MS` |
+| `novapolicy.jogging.live_buffer.LIVE_LEAD_MS` | `WaypointConfig.max_expected_latency_ms` (`jog_joints(..., config=...)`) |
 | `novapolicy.jogging.live_buffer.TIMELINE_GRID_MS`, `trajectory_elapsed_ms` | `novapolicy.jogging.jogger.TIMELINE_GRID_MS`, `trajectory_elapsed_ms` |
 
-A live target now goes out as one waypoint, due `LEAD_MS` (100 ms) after the jogger's loop time.
+A live target now goes out as one waypoint, due `WaypointConfig.max_expected_latency_ms` (100 ms by
+default) after the jogger's loop time, the same lead a policy's chunks use.
 The joint and TCP jogging examples (`jogging_joints.py`, `jogging_tcp.py`) use `ServoHorizon` for
 their live targets. The executor no longer refuses anything about a buffer.
 

@@ -14,7 +14,8 @@ targets instead.
 
 ## Where a chunk lands
 
-Step zero is placed at `elapsed + LEAD_MS` (100 ms, `novapolicy.jogging.jogger.LEAD_MS`) on the
+Step zero is placed at `elapsed + max_expected_latency_ms` (`WaypointConfig`, 100 ms by default; a
+constant `LEAD_MS` until 2026-11-25) on the
 absolute session timeline, not at "now" resolved at send time. Content generated at trajectory
 time `T` therefore always maps to the same timestamp, however often it is re-sent, so
 overlapping chunks stitch together instead of the same trajectory point landing at a slightly

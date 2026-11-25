@@ -226,7 +226,7 @@ mapping, decoding, placement and streaming come from the package.
 | NOVA transport: stamping and sending (`_schedule`), the playback clock (`_PlaybackClock`), what was sent (`scheduled`), the session-clock estimate (`JoggingTimeClock`) | `novapolicy/transport/session.py`, `clock.py`, `waypoints.py` |
 | jogging state, standstill, stop conditions (`first_fired`) | `novapolicy/transport/state.py` |
 | e-stop stream, IO stream | `novapolicy/transport/estop.py`, `io.py` |
-| jogging API, its timeline and lead (`LEAD_MS`, `TIMELINE_GRID_MS`, `trajectory_elapsed_ms`) | `novapolicy/jogging/jogger.py` |
+| jogging API, its timeline (`TIMELINE_GRID_MS`, `trajectory_elapsed_ms`); its lead is `WaypointConfig.max_expected_latency_ms` | `novapolicy/jogging/jogger.py` |
 | provider contract, timestep queue | `novapolicy/providers/base.py`, `queued.py`, `action_queue.py` |
 | providers | `novapolicy/providers/gr00t/`, `lerobot/`, `leapp/` |
 | visualization | `novapolicy/rerun/` |
