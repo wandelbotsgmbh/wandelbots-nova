@@ -398,7 +398,7 @@ PolicyExecutor(schema, policy, *, stop_conditions=None, timeout_s=0, camera_max_
 | `timeout_s` | `0` | maximum run time in seconds; `0` is no timeout |
 | `camera_max_age_s` | `1.0` | default freshness bound for camera frames in seconds; override per channel with `Observation.image(..., max_age_s=...)` |
 | `inference_timeout_s` | `30.0` | deadline for one `get_actions` call in seconds; `0` disables it |
-| `motion` | `ActionChunkConfig()` | session settings: lead, state rate; see [jogging.md](jogging.md#waypointconfig) |
+| `motion` | `ActionChunkConfig()` | session settings: lead, state rate; see [jogging.md](jogging.md#actionchunkconfig) |
 | `execution` | `SequentialExecution()` | the execution mode |
 | `n_action_steps` | `None` | steps executed from each chunk; see [above](#how-many-steps-run-n_action_steps) |
 | `start_joint_position` | `None` | joint positions per motion group to move to before the run; the move uses the cell's collision setups |
