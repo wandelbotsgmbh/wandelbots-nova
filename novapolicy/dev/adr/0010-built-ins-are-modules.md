@@ -8,7 +8,7 @@ the executor no longer refuses a buffer under sequential execution.
 built-ins still shaped what was sent from four places, each with its own switch: the queue
 clients smoothed their plans (`smoothing_passes`, `async_queue_smoothing`), the executor bridged,
 ramped and clamped (`SequentialExecution(endpoint_ramp=...)`, `clamp_to_joint_limits`), and the
-session padded and trimmed (`WaypointConfig.min_chunk_horizon_ms`, always). Nobody could see the
+session padded and trimmed (`ActionChunkConfig.min_chunk_horizon_ms`, always). Nobody could see the
 whole chain in one place, or leave one step out without a dedicated switch.
 
 **Decision.** Each built-in is a module of the one list:

@@ -7,7 +7,7 @@ removed on 2026-11-23 with the other diagnostics; the fixed lead stands.
 network round trip (`SINGLE_STEP_MARGIN_MS`: 33 ms ahead was rough on a virtual UR10e, 67 ms
 smooth). Over a VPN the round trip ranged from 40 to 220 ms.
 
-**Decision.** Waypoints are due `WaypointConfig.max_expected_latency_ms` (default 100 ms) after
+**Decision.** Waypoints are due `ActionChunkConfig.max_expected_latency_ms` (default 100 ms) after
 their reference, as MoveIt Servo's `max_expected_latency`. The measured round trip is only a
 guard: five one-step waypoints in a row that arrive with less than 67 ms left stop the run with
 `MotionError` ("over budget"). (Removed 2026-11-23: nothing reads the round trip any more.)

@@ -147,7 +147,7 @@ rebuilt the chunk without that timestamp. It is sent at the time the policy set.
 
 ### One placement rule for both modes
 
-Step `k` of a chunk is now due `WaypointConfig.max_expected_latency_ms + k·dt` after a reference
+Step `k` of a chunk is now due `ActionChunkConfig.max_expected_latency_ms + k·dt` after a reference
 in both modes: the observation in `ContinuousExecution`, the send in `SequentialExecution` (the
 robot was at rest when it was observed). Chunks with their own `first_timestamp_ms` are
 unchanged.
@@ -210,7 +210,7 @@ to 300 ms longer; pass your own `pipeline=[...]` with `HoldPadding()` for the ol
   past `inference_timeout_s` always ends the run with `RuntimeError` (the old default, `ABORT`).
 - **No late-acknowledgement guard:** one-step waypoints that keep reaching the controller with
   less than 67 ms of their lead left no longer stop the run with `MotionError("over budget")`.
-  Size `WaypointConfig.max_expected_latency_ms` for the network.
+  Size `ActionChunkConfig.max_expected_latency_ms` for the network.
 - **`WaypointJoggingSession.lead_left_ms`**, the per-session lead summary and the waypoint-tracking
   log lines are gone.
 
@@ -229,10 +229,10 @@ the replayed horizon only delayed the robot by its window. Send live targets alo
 | `jog_joints(mg)` (500 ms buffer for `set_target`) | `jog_joints(mg)`, or `jog_joints(mg, pipeline=[ServoHorizon(), *default_pipeline()])` |
 | `jog_joints(mg, buffer_window_ms=0)` | `jog_joints(mg)` |
 | `PolicyExecutor(..., buffer_window_ms=80)` | `PolicyExecutor(...)` without it |
-| `novapolicy.jogging.live_buffer.LIVE_LEAD_MS` | `WaypointConfig.max_expected_latency_ms` (`jog_joints(..., config=...)`) |
+| `novapolicy.jogging.live_buffer.LIVE_LEAD_MS` | `ActionChunkConfig.max_expected_latency_ms` (`jog_joints(..., config=...)`) |
 | `novapolicy.jogging.live_buffer.TIMELINE_GRID_MS`, `trajectory_elapsed_ms` | `novapolicy.jogging.jogger.TIMELINE_GRID_MS`, `trajectory_elapsed_ms` |
 
-A live target now goes out as one waypoint, due `WaypointConfig.max_expected_latency_ms` (100 ms by
+A live target now goes out as one waypoint, due `ActionChunkConfig.max_expected_latency_ms` (100 ms by
 default) after the jogger's loop time, the same lead a policy's chunks use.
 The joint and TCP jogging examples (`jogging_joints.py`, `jogging_tcp.py`) use `ServoHorizon` for
 their live targets. The executor no longer refuses anything about a buffer.
@@ -264,8 +264,8 @@ PolicyExecutor(schema, policy, execution=execution, pipeline=pipeline)
 
 | Before | Now |
 | --- | --- |
-| `WaypointConfig(min_chunk_horizon_ms=300)` | `HoldPadding(min_horizon_ms=300)` in place of `HoldPadding()` |
-| `WaypointConfig(min_chunk_horizon_ms=0)` | the defaults without `HoldPadding` |
+| `ActionChunkConfig(min_chunk_horizon_ms=300)` | `HoldPadding(min_horizon_ms=300)` in place of `HoldPadding()` |
+| `ActionChunkConfig(min_chunk_horizon_ms=0)` | the defaults without `HoldPadding` |
 | `PolicyExecutor(..., clamp_to_joint_limits=False)` | the defaults without `JointClamp` |
 | `SequentialExecution(endpoint_ramp=EndpointRamp(interpolation_steps=4))` | `EndpointRamp(interpolation_steps=4)` in place of `EndpointRamp()` |
 | `SequentialExecution(endpoint_ramp=None)` | the defaults without `EndpointRamp` |
@@ -392,6 +392,16 @@ members. Code that only uses `PolicyExecutor`, `jog_joints` and `jog_tcp` needs 
 
 ## Imports and package layout
 
+### `WaypointConfig` is now `ActionChunkConfig`
+
+The configuration of NOVA's action chunk streaming is named after it. Same fields, same defaults:
+
+| Before | Now |
+| --- | --- |
+| `from novapolicy import WaypointConfig` | `from novapolicy import ActionChunkConfig` |
+| `PolicyExecutor(..., motion=WaypointConfig(...))` | `PolicyExecutor(..., motion=ActionChunkConfig(...))` |
+| `jog_joints(..., config=WaypointConfig(...))` | `jog_joints(..., config=ActionChunkConfig(...))` |
+
 ### The package follows its architecture
 
 The modules moved into one folder per part of the package: `mapping/`, `pipeline/` (with one file
@@ -479,6 +489,7 @@ up a GR00T policy on a real robot.
 | a LeRobot policy plays twice as fast | pass `control_freq=15` (or the dataset's `fps`); the default is now 30 |
 | `TypeError` for `buffer_window_ms=` | remove it ([`LiveBuffer` is removed](#livebuffer-is-removed)) |
 | `TypeError` for `ease_in_s=` | add `EaseIn` to the pipeline ([Ease-in](#ease-in-is-a-pipeline-module)) |
+| `ImportError` for `WaypointConfig` | renamed to `ActionChunkConfig`, see [above](#waypointconfig-is-now-actionchunkconfig) |
 | `ImportError` for `LiveBuffer` or `LIVE_LEAD_MS` | see [`LiveBuffer` is removed](#livebuffer-is-removed) |
 | `TypeError` for `use_async_queue=` on `LeRobotPolicyClient` | wrap it in `QueuedPolicyClient` ([LeRobot](#lerobot-has-no-async-queue-of-its-own)) |
 | `TypeError` for `rtc=` on `Gr00tPolicyClient` | remove it ([RTC is removed](#gr00t-real-time-chunking-rtc-is-removed)) |

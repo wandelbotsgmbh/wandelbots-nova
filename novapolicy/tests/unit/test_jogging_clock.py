@@ -279,7 +279,7 @@ def test_a_slow_state_rate_still_finishes_calibrating(manual_time) -> None:
     """Calibration must not be able to outlast the readiness timeout.
 
     The sample count is the real criterion, but the rate those samples arrive at
-    belongs to the caller (``WaypointConfig.state_rate_ms``). At 500ms per packet
+    belongs to the caller (``ActionChunkConfig.state_rate_ms``). At 500ms per packet
     twenty of them take ten seconds — ``wait_ready``'s whole default budget — so a
     healthy session would fail to start. Past the window the estimate is frozen
     with whatever it has: a rougher skew estimate, not a broken one.

@@ -109,7 +109,7 @@ All modules are importable from `novapolicy`, except `TimestepTimeline`, which i
 | `DropLate` | filter | A waypoint that is already due when it is sent makes the arm jump back to it. | Drops waypoints due within `min_lead_ms` of now; the others keep their times. When all are late, nothing is sent and the arm keeps following the previous chunk. | `min_lead_ms=20` |
 | `EaseIn` | waypoint | A time-based target that starts with velocity, such as a sine, makes the arm lunge from rest. | Blends each waypoint from where the robot stood to its value over the first `duration_s`, by the waypoint's own timestamp. | `duration_s` (required) |
 
-`HoldPadding` and `WaypointConfig.delay_until_braking_ms` are two ways to give a chunk a braking
+`HoldPadding` and `ActionChunkConfig.delay_until_braking_ms` are two ways to give a chunk a braking
 horizon. To use `delay_until_braking_ms`, remove `HoldPadding` from the list.
 
 Invalid parameters raise `ValueError` when the module is created: a non-positive `duration_s` or
@@ -161,7 +161,7 @@ differently.
 
 **`SequentialExecution`** observes while the robot stands still, runs the chunk to standstill, and
 observes again. Each chunk is dated from its send: its first step is due the lead
-(`WaypointConfig.max_expected_latency_ms`, 100 ms) after the request goes out.
+(`ActionChunkConfig.max_expected_latency_ms`, 100 ms) after the request goes out.
 
 - `Bridge` and `EndpointRamp` are in the list, because every chunk starts and ends at rest.
 - `HoldPadding(after_ms=300)` holds the last target 300 ms past the last step: an arm still moving
@@ -206,7 +206,7 @@ with `dataclasses.replace`. `waypoints` is a list of `(time_ms, values)` pairs.
 | --- | --- |
 | `now_ms` | the session clock now |
 | `position` | the robot's latest measured position, in the waypoints' form; `None` before one |
-| `step_ms` | the session's spacing for steps without their own (`WaypointConfig.single_step_dt_ms`) |
+| `step_ms` | the session's spacing for steps without their own (`ActionChunkConfig.single_step_dt_ms`) |
 | `motion_group_id` | the motion group the session drives |
 | `mode` | `"joint"` or `"cartesian"` (TCP poses) |
 | `joint_limits` | the robot's joint limits when a `JointClamp` is in the list, else `None` |

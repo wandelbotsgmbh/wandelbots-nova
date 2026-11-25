@@ -45,6 +45,7 @@ from novapolicy.providers.gr00t import Gr00tPolicyClient
 from novapolicy.providers.queued import QueuedPolicyClient
 from novapolicy.types import (
     ActionChunk,
+    ActionChunkConfig,
     ActionMode,
     ContinuousExecution,
     EmergencyStopError,
@@ -55,7 +56,6 @@ from novapolicy.types import (
     SequentialExecution,
     StopCondition,
     StopContext,
-    WaypointConfig,
 )
 
 if TYPE_CHECKING:
@@ -92,6 +92,7 @@ def __getattr__(name: str) -> object:
 __all__ = [
     "Action",
     "ActionChunk",
+    "ActionChunkConfig",
     "ActionMode",
     "BoolMapping",
     "Bridge",
@@ -135,7 +136,6 @@ __all__ = [
     "TcpJogger",
     "Timestamps",
     "ValueOp",
-    "WaypointConfig",
     "WebRTCCameras",
     "default_pipeline",
     "jog_joints",

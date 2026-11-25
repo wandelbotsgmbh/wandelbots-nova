@@ -19,7 +19,7 @@ class HoldPadding:
     Pads only chunks queued with ``extend_buffer=True`` (contract T6). ``after_ms`` lets an
     arm still moving at the last step settle on it: NOVA brakes after the last waypoint and
     does not return to it (ADR 0010). Leave it out to use
-    ``WaypointConfig.delay_until_braking_ms``; put it after modules that set their own horizon.
+    ``ActionChunkConfig.delay_until_braking_ms``; put it after modules that set their own horizon.
     """
 
     stage: ClassVar[str] = "horizon"  # its place among the chunk modules (CHUNK_STAGES)

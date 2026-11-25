@@ -43,7 +43,7 @@ from novapolicy.transport.clock import ServerMs
 from novapolicy.transport.lifecycle import SessionLifecycle
 from novapolicy.transport.session import MIN_LEAD_MS, WaypointJoggingSession
 from novapolicy.transport.waypoints import PendingChunk
-from novapolicy.types import JoggingNotSupportedError, MotionError, WaypointConfig
+from novapolicy.types import ActionChunkConfig, JoggingNotSupportedError, MotionError
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator, Sequence
@@ -199,7 +199,7 @@ def _build_session(
     states: Sequence[object] = (),
     stop_conditions: list[object] | None = None,
     mode: str = "joint",
-    config: WaypointConfig | None = None,
+    config: ActionChunkConfig | None = None,
     response_delay: float = 0.003,
     pipeline: Sequence[object] | None = None,
     acknowledge_stop: bool = True,
@@ -234,7 +234,7 @@ def _build_session(
 
     session = WaypointJoggingSession(
         motion_group=mg,
-        config=config or WaypointConfig(),
+        config=config or ActionChunkConfig(),
         tcp="Flange",
         mode=mode,
         stop_conditions=stop_conditions,
@@ -654,7 +654,7 @@ def test_one_step_waypoints_are_spaced_by_the_policy_step_despite_bursty_observa
     """Observations dated 0 to 60 ms apart must not become speed jumps: the playback clock
     keeps one step between waypoints and follows the observations slowly."""
     step = 1000 / 30
-    with _built(config=WaypointConfig(max_expected_latency_ms=150)) as (session, _server):
+    with _built(config=ActionChunkConfig(max_expected_latency_ms=150)) as (session, _server):
         observed = [1_000.0, 1_008.0, 1_070.0, 1_100.0, 1_105.0, 1_170.0, 1_200.0, 1_233.0]
         due = [session._playback.due_ms(t + 150, step, earliest_ms=0) for t in observed]
         spacing = [b - a for a, b in itertools.pairwise(due)]
@@ -676,7 +676,7 @@ def test_a_grid_puts_one_step_targets_on_its_multiples_and_leaves_chunks_alone()
     """``Timestamps(grid_ms=32)``: one-step joint targets go out on multiples of 32 ms of the
     session clock, resampled from the policy's path; a multi-step chunk keeps its own times."""
     pipeline = [Timestamps(grid_ms=32.0), DropLate()]
-    config = WaypointConfig(max_expected_latency_ms=150)
+    config = ActionChunkConfig(max_expected_latency_ms=150)
     with (
         _built(pipeline=pipeline, config=config) as (session, _server),
         _server_now(session) as now,
@@ -933,7 +933,7 @@ async def test_a_dead_state_stream_surfaces_instead_of_timing_out_startup():
 
 def _check(session: WaypointJoggingSession) -> str | None:
     """What the executor and the joggers call every tick: raises a session failure."""
-    lifecycle = SessionLifecycle(config=WaypointConfig())
+    lifecycle = SessionLifecycle(config=ActionChunkConfig())
     lifecycle.sessions = {session.motion_group_id: session}
     return lifecycle.check()
 
@@ -1202,7 +1202,7 @@ def _chunk_requests(server: FakeJoggingServer) -> list[object]:
 async def test_drain_stops_on_the_last_target_instead_of_keeping_the_velocity():
     """With a delay until braking the robot would run on past the last target."""
     async with _started(
-        config=WaypointConfig(delay_until_braking_ms=200), pipeline=_unpadded()
+        config=ActionChunkConfig(delay_until_braking_ms=200), pipeline=_unpadded()
     ) as (session, server):
         session.update_chunk(steps=[[0.0] * 6, [1.0] * 6], dt_ms=50.0, first_timestamp_ms=5_000)
         await _wait_until(lambda: session.scheduled.until_server_ms == 5_050)
@@ -1218,7 +1218,7 @@ async def test_drain_stops_on_the_last_target_instead_of_keeping_the_velocity():
 async def test_a_final_target_already_passed_is_still_sent_to_stop_on():
     """A robot keeping its velocity past the last target has to come back to it."""
     async with _started(
-        config=WaypointConfig(delay_until_braking_ms=200), pipeline=_unpadded()
+        config=ActionChunkConfig(delay_until_braking_ms=200), pipeline=_unpadded()
     ) as (session, server):
         session.update_chunk(steps=[[1.0] * 6], dt_ms=50.0, first_timestamp_ms=5_000)
         await _wait_until(lambda: session.scheduled.until_server_ms == 5_000)
@@ -1309,7 +1309,7 @@ def _bare_session() -> WaypointJoggingSession:
     """A session for testing ``update_chunk`` alone, which talks to no gateway."""
     mg = MagicMock()
     mg.id = "0@ur10e"
-    return WaypointJoggingSession(motion_group=mg, config=WaypointConfig(), tcp="Flange")
+    return WaypointJoggingSession(motion_group=mg, config=ActionChunkConfig(), tcp="Flange")
 
 
 def test_an_unknown_keyword_is_refused() -> None:
@@ -1471,7 +1471,7 @@ def test_a_tcp_session_takes_six_values_per_step_before_it_starts():
     mg = MagicMock()
     mg.id = "0@ur10e"
     session = WaypointJoggingSession(
-        motion_group=mg, config=WaypointConfig(), tcp="Flange", mode="cartesian"
+        motion_group=mg, config=ActionChunkConfig(), tcp="Flange", mode="cartesian"
     )
     with pytest.raises(
         ValueError, match="Step 0 has 7 values but motion group '0@ur10e' expects 6"

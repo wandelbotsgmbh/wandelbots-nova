@@ -5,7 +5,7 @@ Superseded 2026-11-24: `LiveBuffer` was removed; see
 so the replayed horizon only added its window as delay; live targets go out alone, or through
 `ServoHorizon` (ADR 0022). The one timeline below stands for the joggers:
 `TIMELINE_GRID_MS` and `trajectory_elapsed_ms` are in `jogging/jogger.py`, and since 2026-11-25
-their lead is `WaypointConfig.max_expected_latency_ms` (before, the constant `LEAD_MS`). The buffer's tests
+their lead is `ActionChunkConfig.max_expected_latency_ms` (before, the constant `LEAD_MS`). The buffer's tests
 went with it, except `test_chunks_start_on_one_grid_in_exact_steps`.
 
 Status: accepted. Recorded 2026-11-23 from the code (`pipeline/modules/live_buffer.py`);

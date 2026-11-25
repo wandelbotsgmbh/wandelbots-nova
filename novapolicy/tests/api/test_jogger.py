@@ -20,7 +20,7 @@ from novapolicy.jogging import jog_joints, jog_tcp
 from novapolicy.jogging.jogger import JointJogger, TcpJogger
 from novapolicy.pipeline.modules.servo_horizon import ServoHorizon
 from novapolicy.tests.doubles import fake_session as _fake_session, mg as _mg
-from novapolicy.types import MotionError, WaypointConfig
+from novapolicy.types import ActionChunkConfig, MotionError
 
 _JOGGER = "novapolicy.jogging.jogger"
 _LIFECYCLE = "novapolicy.transport.lifecycle"
@@ -73,7 +73,7 @@ def _build_joint_jogger(
     num_joints: int = 6,
     pipeline: tuple[object, ...] = (),
     start_joint_position: list[float] | None = None,
-    config: WaypointConfig | None = None,
+    config: ActionChunkConfig | None = None,
 ) -> _JointSetup:
     """Build a real joint jogger over fake robot transports.
 
@@ -150,10 +150,10 @@ def test_setting_a_single_target_streams_it_to_the_robot():
 
 
 @pytest.mark.parametrize(
-    ("config", "lead_ms"), [(None, 100), (WaypointConfig(max_expected_latency_ms=150), 150)]
+    ("config", "lead_ms"), [(None, 100), (ActionChunkConfig(max_expected_latency_ms=150), 150)]
 )
 def test_targets_and_chunks_are_due_max_expected_latency_ms_after_the_loop_time(config, lead_ms):
-    """The joggers take their lead from WaypointConfig, as a policy's chunks do."""
+    """The joggers take their lead from ActionChunkConfig, as a policy's chunks do."""
     jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", config=config)
     _tick(jogger, sessions, 2_000.0)
     jogger.set_target([1.0] * 6)
@@ -485,7 +485,7 @@ async def test_a_cancel_while_draining_stops_the_sessions_and_reaches_the_caller
             self.stopped = True
 
     session = _Session()
-    lifecycle = SessionLifecycle(config=WaypointConfig())
+    lifecycle = SessionLifecycle(config=ActionChunkConfig())
     lifecycle.sessions["0@ur"] = session  # ty: ignore[invalid-assignment]
     task = asyncio.create_task(lifecycle.close(drain=True))
     await drained.wait()

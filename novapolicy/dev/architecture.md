@@ -217,7 +217,7 @@ mapping, decoding, placement and streaming come from the package.
 | measured inputs: joint velocities, state stream, joint limits, training range | `novapolicy/mapping/` (`joint_velocities.py`, `state_stream.py`, `joint_limits.py`, `training_range.py`) |
 | loop, IO and computed actions | `novapolicy/executor.py` |
 | cameras: sources, latest frames, their age (contract M10) | `novapolicy/cameras/` (`protocol.py`, `manager.py`, `webrtc.py`) |
-| public types: `ActionChunk`, execution modes, `WaypointConfig`, stop conditions, errors | `novapolicy/types.py` |
+| public types: `ActionChunk`, execution modes, `ActionChunkConfig`, stop conditions, errors | `novapolicy/types.py` |
 | placement (lead, hold padding), trimming, resampling onto the cycle grid | `novapolicy/pipeline/placement.py` (`placement`, `trim_chunk`, `resample_on_grid`) |
 | send pipeline: module kinds, their order (`CHUNK_STAGES`), the split (`split_pipeline`), `Timestamps(grid_ms)` | `novapolicy/pipeline/base.py` |
 | the default pipeline | `novapolicy/pipeline/defaults.py` (`default_pipeline`, `timestep_queue_modules`) |
@@ -226,7 +226,7 @@ mapping, decoding, placement and streaming come from the package.
 | NOVA transport: stamping and sending (`_schedule`), the playback clock (`_PlaybackClock`), what was sent (`scheduled`), the session-clock estimate (`JoggingTimeClock`) | `novapolicy/transport/session.py`, `clock.py`, `waypoints.py` |
 | jogging state, standstill, stop conditions (`first_fired`) | `novapolicy/transport/state.py` |
 | e-stop stream, IO stream | `novapolicy/transport/estop.py`, `io.py` |
-| jogging API, its timeline (`TIMELINE_GRID_MS`, `trajectory_elapsed_ms`); its lead is `WaypointConfig.max_expected_latency_ms` | `novapolicy/jogging/jogger.py` |
+| jogging API, its timeline (`TIMELINE_GRID_MS`, `trajectory_elapsed_ms`); its lead is `ActionChunkConfig.max_expected_latency_ms` | `novapolicy/jogging/jogger.py` |
 | provider contract, timestep queue | `novapolicy/providers/base.py`, `queued.py`, `action_queue.py` |
 | providers | `novapolicy/providers/gr00t/`, `lerobot/`, `leapp/` |
 | visualization | `novapolicy/rerun/` |

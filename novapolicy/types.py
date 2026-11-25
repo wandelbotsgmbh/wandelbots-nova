@@ -82,8 +82,8 @@ ExecutionMode: TypeAlias = SequentialExecution | ContinuousExecution
 
 
 @dataclass(frozen=True, slots=True)
-class WaypointConfig:
-    """Configuration for NOVA waypoint jogging; a new chunk replaces the queued ones."""
+class ActionChunkConfig:
+    """Configuration for NOVA's action chunk streaming; a new chunk replaces the queued ones."""
 
     state_rate_ms: int = 10
     """State stream update rate in ms."""

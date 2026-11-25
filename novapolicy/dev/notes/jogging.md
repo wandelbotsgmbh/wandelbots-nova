@@ -14,7 +14,7 @@ targets instead.
 
 ## Where a chunk lands
 
-Step zero is placed at `elapsed + max_expected_latency_ms` (`WaypointConfig`, 100 ms by default; a
+Step zero is placed at `elapsed + max_expected_latency_ms` (`ActionChunkConfig`, 100 ms by default; a
 constant `LEAD_MS` until 2026-11-25) on the
 absolute session timeline, not at "now" resolved at send time. Content generated at trajectory
 time `T` therefore always maps to the same timestamp, however often it is re-sent, so
@@ -96,7 +96,7 @@ How it keeps one timeline ([ADR 0013](../adr/0013-live-buffer-replays-measured-t
   backwards. Forward jumps are kept: they are the clock correcting after a late state read, and
   limiting them lets the timeline fall behind until every waypoint is in the past.
 - The replay grid sits on absolute multiples of its spacing, not on the oldest surviving sample,
-  which changes with every prune. The spacing is `WaypointConfig.single_step_dt_ms`, never coarser
+  which changes with every prune. The spacing is `ActionChunkConfig.single_step_dt_ms`, never coarser
   than half the buffered span, so a short buffer keeps more than its endpoints.
 - The resampled span is rounded down, with an epsilon for float division, so the grid ends at or
   before the newest sample. A point past it could only hold the newest value and would be sent

@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from novapolicy.mapping.joint_limits import JointLimits
-    from novapolicy.types import JoggingMode, StopCondition, ValueType, WaypointConfig
+    from novapolicy.types import ActionChunkConfig, JoggingMode, StopCondition, ValueType
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     def __init__(
         self,
         motion_group: MotionGroup,
-        config: WaypointConfig,
+        config: ActionChunkConfig,
         *,
         tcp: str = "",
         mode: JoggingMode = "joint",

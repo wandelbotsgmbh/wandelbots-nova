@@ -38,13 +38,13 @@ from novapolicy.transport.session import Scheduled
 from novapolicy.transport.waypoints import PendingChunk
 from novapolicy.types import (
     ActionChunk,
+    ActionChunkConfig,
     ActionMode,
     ContinuousExecution,
     EmergencyStopError,
     MotionError,
     SequentialExecution,
     StopContext,
-    WaypointConfig,
 )
 
 if TYPE_CHECKING:
@@ -270,7 +270,7 @@ async def _send_once(
 @pytest.mark.asyncio
 async def test_a_run_ends_with_timeout_once_the_deadline_passes(robot: _Robot):
     """With timeout_s set, the executor stops itself and reports 'timeout'."""
-    executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=0.2)
+    executor = PolicyExecutor(_schema(), _hold, motion=ActionChunkConfig(), timeout_s=0.2)
     result = await executor.run()
     assert result.reason == "timeout"
     assert result.steps > 0
@@ -638,7 +638,7 @@ def test_continuous_execution_rejects_invalid_fixed_rates() -> None:
 @pytest.mark.asyncio
 async def test_calling_stop_ends_the_run_with_stopped(robot: _Robot):
     """An external stop() request ends an open-ended run and reports 'stopped'."""
-    executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=0)
+    executor = PolicyExecutor(_schema(), _hold, motion=ActionChunkConfig(), timeout_s=0)
 
     async def stop_soon() -> None:
         await asyncio.sleep(0.1)
@@ -657,7 +657,7 @@ def test_a_plain_async_function_requires_an_explicit_adapter() -> None:
         PolicyExecutor(
             _schema(),
             _hold_action,  # type: ignore[arg-type]
-            motion=WaypointConfig(),
+            motion=ActionChunkConfig(),
             timeout_s=0.1,
         )
 
@@ -669,7 +669,7 @@ async def test_policy_prepare_time_does_not_count_towards_execution_timeout(robo
     executor = PolicyExecutor(
         _schema(),
         policy,
-        motion=WaypointConfig(),
+        motion=ActionChunkConfig(),
         timeout_s=0.05,
         execution=ContinuousExecution(),
     )
@@ -740,7 +740,7 @@ async def test_a_stop_condition_fired_mid_run_ends_the_run_and_names_itself(robo
 
     robot.session.update_chunk = MagicMock(side_effect=fire_after_first_send)
 
-    executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=5.0)
+    executor = PolicyExecutor(_schema(), _hold, motion=ActionChunkConfig(), timeout_s=5.0)
     result = await executor.run()
 
     assert result.reason == "stop condition: operator_stop"
@@ -768,7 +768,7 @@ async def test_a_fault_raises_out_of_run(robot: _Robot, source: str, error: Exce
     else:
         robot.session.has_failed = True
         robot.session.failure_exception = error
-    executor = PolicyExecutor(_schema(), _hold, motion=WaypointConfig(), timeout_s=5.0)
+    executor = PolicyExecutor(_schema(), _hold, motion=ActionChunkConfig(), timeout_s=5.0)
     with pytest.raises(type(error)) as raised:
         await executor.run()
     assert raised.value is error

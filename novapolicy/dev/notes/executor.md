@@ -141,7 +141,7 @@ What it promises is listed as numbered, tested invariants in [contracts.md](../c
 **M** for mapping, **T** for timing. Why each choice was made, with the alternative it was
 measured against, is in the [decision records](../adr/).
 
-The lead, `WaypointConfig.max_expected_latency_ms`, is 100 ms by default, which fits a policy
+The lead, `ActionChunkConfig.max_expected_latency_ms`, is 100 ms by default, which fits a policy
 running on the NOVA instance. Over a remote network use 150 ms
 ([ADR 0002](../adr/0002-fixed-lead.md)): on the RL reach over a VPN, the path
 deviated by up to 19 mm and lagged by up to 95 mm at 100 ms, 9 mm and 41 mm at 150 ms, and

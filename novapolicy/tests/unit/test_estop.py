@@ -21,7 +21,7 @@ from nova import api
 from novapolicy.tests.doubles import mg as _mg
 from novapolicy.transport.estop import EstopMonitor
 from novapolicy.transport.lifecycle import SessionLifecycle
-from novapolicy.types import EmergencyStopError, MotionError, WaypointConfig
+from novapolicy.types import ActionChunkConfig, EmergencyStopError, MotionError
 
 _SafetyState = api.models.SafetyStateType
 
@@ -32,7 +32,7 @@ _SafetyState = api.models.SafetyStateType
 
 
 def _lifecycle(session: MagicMock | None = None) -> SessionLifecycle:
-    lifecycle = SessionLifecycle(config=WaypointConfig())
+    lifecycle = SessionLifecycle(config=ActionChunkConfig())
     if session is not None:
         lifecycle.sessions["0@ur10e"] = session
     return lifecycle

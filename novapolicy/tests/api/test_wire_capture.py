@@ -29,9 +29,9 @@ from novapolicy.providers.queued import QueuedPolicyClient
 from novapolicy.transport.session import Scheduled, WaypointJoggingSession
 from novapolicy.types import (
     ActionChunk,
+    ActionChunkConfig,
     ContinuousExecution,
     SequentialExecution,
-    WaypointConfig,
 )
 
 if TYPE_CHECKING:
@@ -220,7 +220,7 @@ def _continuous_one_step() -> tuple[_Capture, Any]:
         capture,
         fn,
         execution=ContinuousExecution(rate_hz=30),
-        motion=WaypointConfig(delay_until_braking_ms=200),
+        motion=ActionChunkConfig(delay_until_braking_ms=200),
     )
 
 
@@ -266,7 +266,7 @@ def _timestep_queue() -> tuple[_Capture, Any]:
 
 async def _jog(chunk: bool) -> list[dict[str, Any]]:
     capture = _Capture(advance_ms=11.0)
-    proxy = capture.make(motion_group=_mg(), config=WaypointConfig(), mode="joint")
+    proxy = capture.make(motion_group=_mg(), config=ActionChunkConfig(), mode="joint")
     session = capture.sessions[MG_ID]
     for k in range(4):
         now = session.estimated_server_timestamp_ms

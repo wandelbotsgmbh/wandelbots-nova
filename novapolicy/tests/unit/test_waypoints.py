@@ -8,7 +8,7 @@ import pytest
 
 from nova import api
 from novapolicy.transport.waypoints import make_timed_waypoints_request
-from novapolicy.types import WaypointConfig
+from novapolicy.types import ActionChunkConfig
 
 
 def _wire(req) -> dict:
@@ -46,8 +46,8 @@ def test_without_a_delay_the_request_is_unchanged_for_older_servers():
 
 def test_a_negative_delay_until_braking_is_rejected_at_construction():
     with pytest.raises(ValueError, match="delay_until_braking_ms"):
-        _ = WaypointConfig(delay_until_braking_ms=-1)
-    assert WaypointConfig().delay_until_braking_ms is None
+        _ = ActionChunkConfig(delay_until_braking_ms=-1)
+    assert ActionChunkConfig().delay_until_braking_ms is None
 
 
 def test_a_zero_step_spacing_is_rejected_at_construction():
@@ -59,12 +59,12 @@ def test_a_zero_step_spacing_is_rejected_at_construction():
     """
     import pytest
 
-    from novapolicy.types import WaypointConfig
+    from novapolicy.types import ActionChunkConfig
 
     with pytest.raises(ValueError, match="single_step_dt_ms"):
-        _ = WaypointConfig(single_step_dt_ms=0.0)
+        _ = ActionChunkConfig(single_step_dt_ms=0.0)
     with pytest.raises(ValueError, match="single_step_dt_ms"):
-        _ = WaypointConfig(single_step_dt_ms=-10.0)
+        _ = ActionChunkConfig(single_step_dt_ms=-10.0)
 
 
 def test_hold_padding_refuses_a_negative_horizon_and_allows_zero() -> None:

@@ -20,7 +20,7 @@ sequentially.
 **Latency.** Each waypoint must reach the controller about 67 ms before it is due, so it needs a
 lead that also covers the observation's age and the network round trip. Every request re-sends
 the earlier waypoints that are not due yet, so the controller always has the next few queued. A
-target is due `WaypointConfig(max_expected_latency_ms=...)` after the
+target is due `ActionChunkConfig(max_expected_latency_ms=...)` after the
 observation it was computed from (100 ms by default, as MoveIt Servo's `max_expected_latency`;
 dated by the observation as UMI and Diffusion Policy do), without a braking hold, so the arm
 executes it that much later. Consecutive targets are spaced one policy step apart on a playback

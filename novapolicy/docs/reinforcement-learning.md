@@ -231,18 +231,18 @@ computed while the joints were still moving. `ContinuousExecution(rate_hz=client
 does the same. `SequentialExecution` runs each step to standstill, so the policy sees zero joint
 velocity at every observation and runs far below its rate.
 
-**Latency.** Each target is due `WaypointConfig(max_expected_latency_ms=...)` after the
+**Latency.** Each target is due `ActionChunkConfig(max_expected_latency_ms=...)` after the
 observation it was computed from. The default is 100 ms, which fits when the script runs on the
 NOVA instance. Over a remote network, raise it to about 150 ms:
 
 ```python
-from novapolicy import WaypointConfig
+from novapolicy import ActionChunkConfig
 
 executor = PolicyExecutor(
     schema,
     client,
     execution=ContinuousExecution(rate_hz=client.control_freq),
-    motion=WaypointConfig(max_expected_latency_ms=150),
+    motion=ActionChunkConfig(max_expected_latency_ms=150),
     n_action_steps=0,
 )
 ```

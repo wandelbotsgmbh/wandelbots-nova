@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from novapolicy.rerun import PolicyRerunLogger
-    from novapolicy.types import JoggingMode, StopCondition, WaypointConfig
+    from novapolicy.types import ActionChunkConfig, JoggingMode, StopCondition
 
 _STOP_ERRORS = (asyncio.CancelledError, MotionError, EmergencyStopError, OSError, RuntimeError)
 """What stopping a session may raise without failing the teardown: the robot is stopping anyway."""
@@ -46,7 +46,7 @@ class SessionLifecycle:
     def __init__(
         self,
         *,
-        config: WaypointConfig,
+        config: ActionChunkConfig,
         stop_conditions: list[StopCondition] | None = None,
         pipeline: Sequence[object] | None = None,
     ) -> None:

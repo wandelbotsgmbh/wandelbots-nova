@@ -82,11 +82,11 @@ of steps. For TCP jogging, each step is a raw `[x, y, z, rx, ry, rz]` list in mm
 Handing a chunk to `set_target`, or a single target to `set_chunk`, raises `TypeError`.
 
 By default each live target goes out as a single waypoint, due `max_expected_latency_ms` after the
-current `elapsed` (`WaypointConfig`, 100 ms by default). The robot steers toward it without knowing what
+current `elapsed` (`ActionChunkConfig`, 100 ms by default). The robot steers toward it without knowing what
 comes next, so a target that stops or reverses suddenly, such as a hand, can make it overshoot.
 For a smooth path that brakes onto the target, add
 [`ServoHorizon`](#following-a-hand-servohorizon) to the pipeline. To keep the robot moving between
-targets, set `WaypointConfig.delay_until_braking_ms` (see
+targets, set `ActionChunkConfig.delay_until_braking_ms` (see
 [Short chunks are padded](#short-chunks-are-padded)).
 
 ## Chunked targets
@@ -115,7 +115,7 @@ Send chunks at a steady rate that leaves several future waypoints in the queue:
 ### Where a chunk lands
 
 Step zero of a chunk is due `max_expected_latency_ms` after the current `elapsed` on the session
-clock (`WaypointConfig`, 100 ms by default; raise it over a remote network, e.g. to 150). Content computed for trajectory time `T` always lands at the
+clock (`ActionChunkConfig`, 100 ms by default; raise it over a remote network, e.g. to 150). Content computed for trajectory time `T` always lands at the
 same timestamp, however often you send it. Overlapping chunks therefore join into one
 trajectory.
 
@@ -130,7 +130,7 @@ To turn padding off, leave `HoldPadding` out of the pipeline. A chunk whose last
 real stopping point then ends with a deceleration to standstill.
 
 To stream short chunks, down to a single waypoint, as one continuous motion, set
-`WaypointConfig.delay_until_braking_ms`. NOVA then keeps the robot's velocity for that long after
+`ActionChunkConfig.delay_until_braking_ms`. NOVA then keeps the robot's velocity for that long after
 a chunk's last waypoint before it brakes, and each new chunk restarts the countdown.
 
 - It needs NOVA 26.8.0-112 or newer.
@@ -141,9 +141,9 @@ a chunk's last waypoint before it brakes, and each new chunk restarts the countd
   stops on it.
 
 ```python
-from novapolicy import WaypointConfig, jog_tcp
+from novapolicy import ActionChunkConfig, jog_tcp
 
-config = WaypointConfig(delay_until_braking_ms=200)
+config = ActionChunkConfig(delay_until_braking_ms=200)
 async with jog_tcp(mg, tcp="Flange", config=config) as jogger:
     async for state in jogger:
         jogger.set_target(read_controller_pose())
@@ -290,7 +290,7 @@ jog_tcp(motion_groups, *, tcp="", config=None, stop_conditions=None,
 | --- | --- | --- | --- |
 | `motion_groups` | `MotionGroup` or `list[MotionGroup]` (`jog_joints`); `MotionGroup` or `dict[MotionGroup, str]` (`jog_tcp`) | required | the robots to jog; for `jog_tcp` the dict maps each group to its TCP name |
 | `tcp` | `str` | `""` | `jog_tcp` only: TCP name when you pass a single motion group |
-| `config` | `WaypointConfig` or `None` | `WaypointConfig()` | session settings, see below |
+| `config` | `ActionChunkConfig` or `None` | `ActionChunkConfig()` | session settings, see below |
 | `stop_conditions` | `list[StopCondition]` or `None` | `None` | checks run on every tick; see [Stop conditions](#stop-conditions) |
 | `start_joint_position` | `list[float]`, or a dict per motion group | `None` | joint positions to move to before the session starts |
 | `pipeline` | list of modules or `None` | `default_pipeline()` | modules between your targets and NOVA, exactly as given |
@@ -307,7 +307,7 @@ jog_tcp(motion_groups, *, tcp="", config=None, stop_conditions=None,
 | `state()` | the current state, or `None` before the first state arrives |
 | `stop_condition_triggered` | name of the stop condition that ended the loop, or `None` |
 
-### `WaypointConfig`
+### `ActionChunkConfig`
 
 | field | default | meaning |
 | --- | --- | --- |

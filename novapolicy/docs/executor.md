@@ -46,10 +46,10 @@ from novapolicy import (
     ContinuousExecution,
     PolicyExecutor,
     SequentialExecution,
-    WaypointConfig,
+    ActionChunkConfig,
 )
 
-config = WaypointConfig(state_rate_ms=10)
+config = ActionChunkConfig(state_rate_ms=10)
 
 # Complete and settle every chunk before the next inference.
 sequential = PolicyExecutor(
@@ -243,13 +243,13 @@ computed actions run when the policy's first step is due.
 
 ### Setting the lead for your network
 
-The lead, `WaypointConfig.max_expected_latency_ms`, is 100 ms by default. That fits a policy
+The lead, `ActionChunkConfig.max_expected_latency_ms`, is 100 ms by default. That fits a policy
 running on the NOVA instance. Over a remote network, use 150 ms:
 
 ```python
-from novapolicy import PolicyExecutor, WaypointConfig
+from novapolicy import PolicyExecutor, ActionChunkConfig
 
-executor = PolicyExecutor(schema, policy, motion=WaypointConfig(max_expected_latency_ms=150))
+executor = PolicyExecutor(schema, policy, motion=ActionChunkConfig(max_expected_latency_ms=150))
 ```
 
 The arm follows the policy by this much. A lead that is too short for the network makes steps
@@ -385,7 +385,7 @@ targets = resolve_actions(schema, chunk, states)  # states: motion group id -> R
 
 ```text
 PolicyExecutor(schema, policy, *, stop_conditions=None, timeout_s=0, camera_max_age_s=1.0,
-               inference_timeout_s=30.0, motion=WaypointConfig(),
+               inference_timeout_s=30.0, motion=ActionChunkConfig(),
                execution=SequentialExecution(), n_action_steps=None,
                start_joint_position=None, pipeline=None)
 ```
@@ -398,7 +398,7 @@ PolicyExecutor(schema, policy, *, stop_conditions=None, timeout_s=0, camera_max_
 | `timeout_s` | `0` | maximum run time in seconds; `0` is no timeout |
 | `camera_max_age_s` | `1.0` | default freshness bound for camera frames in seconds; override per channel with `Observation.image(..., max_age_s=...)` |
 | `inference_timeout_s` | `30.0` | deadline for one `get_actions` call in seconds; `0` disables it |
-| `motion` | `WaypointConfig()` | session settings: lead, state rate; see [jogging.md](jogging.md#waypointconfig) |
+| `motion` | `ActionChunkConfig()` | session settings: lead, state rate; see [jogging.md](jogging.md#waypointconfig) |
 | `execution` | `SequentialExecution()` | the execution mode |
 | `n_action_steps` | `None` | steps executed from each chunk; see [above](#how-many-steps-run-n_action_steps) |
 | `start_joint_position` | `None` | joint positions per motion group to move to before the run; the move uses the cell's collision setups |
@@ -434,7 +434,7 @@ refuses fails before the robot moves.
 | a warning that `EndpointRamp` stops the arm in continuous execution | remove `EndpointRamp` from the pipeline |
 | `RuntimeError("Stale policy input ...")` | check the camera or policy service; raise `max_age_s` for a slow camera, or `inference_timeout_s` for a slow policy |
 | the arm jumps at every chunk replacement in continuous execution | wrap the policy in `QueuedPolicyClient` |
-| the path deviates or lags over a remote network | set `WaypointConfig(max_expected_latency_ms=150)` |
+| the path deviates or lags over a remote network | set `ActionChunkConfig(max_expected_latency_ms=150)` |
 | the arm moves in small pulses with a one-step joint policy | try `Timestamps(grid_ms=...)` with the multiple of 8 ms closest to the policy's step |
 | the robot stops between chunks in continuous execution | raise `rate_hz` or make inference faster, so a new chunk arrives before the previous one ends |
 | each sequential cycle is slow | expected: each cycle waits for standstill and can take up to 300 ms longer than its chunk; use `ContinuousExecution` for faster cycles |

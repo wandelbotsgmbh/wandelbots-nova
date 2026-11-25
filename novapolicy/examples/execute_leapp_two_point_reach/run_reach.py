@@ -41,6 +41,7 @@ from nova.cell import virtual_controller
 from nova.types import Pose
 from novapolicy import (
     Action,
+    ActionChunkConfig,
     ContinuousExecution,
     EmergencyStopError,
     LeappPolicyClient,
@@ -53,7 +54,6 @@ from novapolicy import (
     Scale,
     StopContext,
     Timestamps,
-    WaypointConfig,
     default_pipeline,
 )
 
@@ -280,7 +280,7 @@ async def run(mg: MotionGroup, args: argparse.Namespace) -> None:
         execution=execution,
         pipeline=pipeline,
         # How far ahead each target goes: 100 ms on the instance; raise it over a remote network.
-        motion=WaypointConfig(max_expected_latency_ms=args.max_expected_latency_ms),
+        motion=ActionChunkConfig(max_expected_latency_ms=args.max_expected_latency_ms),
         n_action_steps=0,  # one step per inference, replaced by the next one
         stop_conditions=[part_outside_trained_positions(target), recorder],
         timeout_s=duration_s,

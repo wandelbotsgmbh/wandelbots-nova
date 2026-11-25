@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Self, TypeAlias, cast, overload, override
 
 from novapolicy.transport.clock import ServerMs
 from novapolicy.transport.lifecycle import SessionLifecycle, move_to_start_joint_position
-from novapolicy.types import WaypointConfig
+from novapolicy.types import ActionChunkConfig
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
@@ -69,12 +69,12 @@ class _BaseJogger:
         self,
         motion_groups: dict[MotionGroup, str],
         *,
-        config: WaypointConfig | None = None,
+        config: ActionChunkConfig | None = None,
         stop_conditions: list[StopCondition] | None = None,
         start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
         pipeline: Sequence[object] | None = None,
     ) -> None:
-        config = config or WaypointConfig()
+        config = config or ActionChunkConfig()
         self._mg_list = list(motion_groups)
         self._multi = len(self._mg_list) > 1
         # How far after the loop's time a target or a chunk's first step is due, as for a
@@ -398,7 +398,7 @@ class TcpJogger(_BaseJogger):
 def jog_joints(
     motion_groups: MotionGroup,
     *,
-    config: WaypointConfig | None = ...,
+    config: ActionChunkConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
     pipeline: Sequence[object] | None = ...,
@@ -410,7 +410,7 @@ def jog_joints(
 def jog_joints(
     motion_groups: list[MotionGroup],
     *,
-    config: WaypointConfig | None = ...,
+    config: ActionChunkConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
     pipeline: Sequence[object] | None = ...,
@@ -421,7 +421,7 @@ def jog_joints(
 def jog_joints(
     motion_groups: MotionGroup | list[MotionGroup],
     *,
-    config: WaypointConfig | None = None,
+    config: ActionChunkConfig | None = None,
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     pipeline: Sequence[object] | None = None,
@@ -473,7 +473,7 @@ def jog_tcp(
     motion_groups: MotionGroup,
     *,
     tcp: str,
-    config: WaypointConfig | None = ...,
+    config: ActionChunkConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: list[float] | None = ...,
     pipeline: Sequence[object] | None = ...,
@@ -485,7 +485,7 @@ def jog_tcp(
 def jog_tcp(
     motion_groups: dict[MotionGroup, str],
     *,
-    config: WaypointConfig | None = ...,
+    config: ActionChunkConfig | None = ...,
     stop_conditions: list[StopCondition] | None = ...,
     start_joint_position: dict[MotionGroup, list[float]] | None = ...,
     pipeline: Sequence[object] | None = ...,
@@ -497,7 +497,7 @@ def jog_tcp(
     motion_groups: MotionGroup | dict[MotionGroup, str],
     *,
     tcp: str = "",
-    config: WaypointConfig | None = None,
+    config: ActionChunkConfig | None = None,
     stop_conditions: list[StopCondition] | None = None,
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     pipeline: Sequence[object] | None = None,

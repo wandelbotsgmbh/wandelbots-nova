@@ -204,7 +204,7 @@ plan and keeps the steps it already sent exact (`retained_prefix_steps`). `Times
 places a queue's later chunks on the timeline of its first (T2). `Bridge(always_anchor)`
 connects the measured position to the first step, dates a bridged chunk at the send in continuous execution and leaves chunks on their own timeline alone. `EndpointRamp` eases
 each chunk in and out. `JointClamp` holds joint targets inside the limits the session reads at its
-start. A live target from the joggers is one waypoint, exactly as set, due `WaypointConfig.max_expected_latency_ms` (100 ms)
+start. A live target from the joggers is one waypoint, exactly as set, due `ActionChunkConfig.max_expected_latency_ms` (100 ms)
 after the loop time all arms share (the lead *untested*); the `LiveBuffer` that replayed live
 targets as a horizon was removed on 2026-11-24. `ServoHorizon` turns a live target (one step with
 its own start time) into a spring-damper's path braking onto it, on its own timeline from the

@@ -24,13 +24,13 @@ from novapolicy.transport.lifecycle import SessionLifecycle, move_to_start_joint
 from novapolicy.transport.state import first_fired
 from novapolicy.types import (
     ActionChunk,
+    ActionChunkConfig,
     ContinuousExecution,
     EmergencyStopError,
     ExecutionMode,
     MotionError,
     SequentialExecution,
     StopContext,
-    WaypointConfig,
 )
 
 if TYPE_CHECKING:
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _ASYNC_REPLACEMENT_LEAD_STEPS = 1
-_DEFAULT_WAYPOINT_CONFIG = WaypointConfig()
+_DEFAULT_ACTION_CHUNK_CONFIG = ActionChunkConfig()
 _DEFAULT_EXECUTION = SequentialExecution()
 
 # Default freshness bound for the policy's camera frames, and the deadline for one inference
@@ -149,7 +149,7 @@ class PolicyExecutor:
         timeout_s: float = 0,
         camera_max_age_s: float = _DEFAULT_CAMERA_MAX_AGE_S,
         inference_timeout_s: float = _DEFAULT_INFERENCE_TIMEOUT_S,
-        motion: WaypointConfig = _DEFAULT_WAYPOINT_CONFIG,
+        motion: ActionChunkConfig = _DEFAULT_ACTION_CHUNK_CONFIG,
         execution: ExecutionMode = _DEFAULT_EXECUTION,
         n_action_steps: int | None = None,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
