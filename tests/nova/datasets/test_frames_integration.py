@@ -5,6 +5,8 @@ unit tests would notice if the SDK and the server disagreed on how poses compose
 is the only thing that does.
 """
 
+import re
+
 import pytest
 
 from nova import Nova, api
@@ -18,6 +20,23 @@ pytestmark = pytest.mark.integration
 # NOVA versions, so the test picks the pose to check from the dataset itself.
 DATASET = "default"
 REVISION = 1
+
+# The SDK's API client reads the dataset format introduced in NOVA 26.9 (AnchoredPose):
+# older servers send `frame` and `kinematic_configuration` as null and no `tcp`, so
+# fetching a dataset fails validation. CI instances come from the portal's default
+# version, which may still be older; skip there instead of failing, and run again
+# automatically once the server is new enough.
+MIN_SERVER_VERSION = (26, 9)
+
+
+async def _require_dataset_format(nova: Nova) -> None:
+    version = await nova.api.system_api.get_system_version()
+    match = re.match(r"(\d+)\.(\d+)", str(version))
+    if match is None:
+        return  # unknown format: run the test rather than skip it silently
+    if (int(match[1]), int(match[2])) < MIN_SERVER_VERSION:
+        required = ".".join(map(str, MIN_SERVER_VERSION))
+        pytest.skip(f"the dataset format needs NOVA >= {required}, the server is {version}")
 
 
 def _chain_depth(dataset: ds.Dataset, frame: str) -> int:
@@ -43,6 +62,7 @@ def _frame_relative_pose(dataset: ds.Dataset) -> tuple[str, str]:
 
 async def test_as_world_matches_the_api():
     async with Nova() as nova:
+        await _require_dataset_format(nova)
         dataset = await ds.fetch(nova, DATASET, revision=REVISION)
         name, frame = _frame_relative_pose(dataset)
         pose = dataset.poses[name]
@@ -60,6 +80,7 @@ async def test_as_world_matches_the_api():
 
 async def test_localizing_matches_the_api():
     async with Nova() as nova:
+        await _require_dataset_format(nova)
         dataset = await ds.fetch(nova, DATASET, revision=REVISION)
         name, frame = _frame_relative_pose(dataset)
         world = dataset.poses[name].as_world()
