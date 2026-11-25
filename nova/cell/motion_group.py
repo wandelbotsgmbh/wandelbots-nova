@@ -458,7 +458,7 @@ class MotionGroup(AbstractRobot):
         self,
         joints: list[tuple[float, ...]],
         tcp: str | None,
-        external_tool_coordinate_system: str | None,
+        external_tool_coordinate_system: str | None = None,
     ) -> list[Pose]:
         """Get the forward kinematics of the motion group.
 
@@ -466,6 +466,8 @@ class MotionGroup(AbstractRobot):
             joints: The joint configurations to compute poses for.
             tcp: The TCP to apply. If None, no TCP offset is applied and the returned
                 poses are the flange poses.
+            external_tool_coordinate_system: Name of the controller coordinate system of an
+                external (stationary) tool. If None, no external tool is applied.
 
         Returns:
             list[Pose]: The forward kinematics of the motion group. Empty list if not available.
@@ -1133,7 +1135,7 @@ class MotionGroup(AbstractRobot):
         combined_actions: CombinedActions,
         joint_trajectory: api.models.JointTrajectory,
         tcp: str | None,
-        external_tool_coordinate_system: str | None,
+        external_tool_coordinate_system: str | None = None,
     ) -> list[api.models.SetIO] | None:
         """Resolve path-triggered write actions into the ``set_outputs`` IO overlay.
 

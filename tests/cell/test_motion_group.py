@@ -619,6 +619,8 @@ async def test_forward_kinematics_without_tcp_skips_tcp_offset(mock_motion_group
         "forward_kinematics_request"
     ]
     assert request.tcp_offset is None
+    # Optional, so existing callers keep working without an external tool.
+    assert request.external_tool_coordinate_system is None
 
 
 @pytest.mark.asyncio
@@ -764,8 +766,9 @@ async def test_resolve_set_outputs_distance_trigger_uses_forward_kinematics(mock
 
     # anchor arc length 100 mm + 25 mm -> 125 mm -> location 1.25
     assert [entry.location for entry in set_outputs] == [1.25]
+    # No external tool: forward kinematics gets None for its coordinate system.
     mock_motion_group.forward_kinematics.assert_awaited_once_with(
-        [tuple(sample) for sample in trajectory.joint_positions], "Flange"
+        [tuple(sample) for sample in trajectory.joint_positions], "Flange", None
     )
 
 
