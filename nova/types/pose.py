@@ -41,7 +41,13 @@ def _pose_from_args(
                 "Cannot specify kinematic_configuration when passing a ConfiguredPose "
                 "with a kinematic_configuration"
             )
-        return Pose.from_dataset_pose(configured_pose)
+        pose = Pose.from_dataset_pose(configured_pose)
+        if kinematic_configuration is not None:
+            # The pose has none of its own (checked above): use the explicit one.
+            return Pose.from_api_model(
+                configured_pose.pose, kinematic_configuration=kinematic_configuration
+            )
+        return pose
     if len(args) == 1 and isinstance(args[0], api.models.AnchoredPose):
         anchored_pose = args[0]
         if (
@@ -54,7 +60,14 @@ def _pose_from_args(
                 "Cannot specify kinematic_configuration when passing an AnchoredPose or "
                 "DatasetPose with a specified kinematic_configuration"
             )
-        return Pose.from_dataset_pose(anchored_pose)
+        # from_dataset_pose also rejects a pose that is not in world.
+        pose = Pose.from_dataset_pose(anchored_pose)
+        if kinematic_configuration is not None:
+            # Its own configuration is unspecified (checked above): use the explicit one.
+            return Pose.from_api_model(
+                anchored_pose.pose, kinematic_configuration=kinematic_configuration
+            )
+        return pose
     if len(args) == 1 and isinstance(args[0], api.models.Pose):
         return Pose.from_api_model(args[0], kinematic_configuration=kinematic_configuration)
     if (

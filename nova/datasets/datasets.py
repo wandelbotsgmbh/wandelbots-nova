@@ -20,6 +20,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+#: The oldest NOVA whose dataset format (``AnchoredPose``) this SDK's API client reads.
+MIN_NOVA_VERSION = "26.9"
+
 
 def _dataset_error(exc: api.ApiException) -> DatasetError:
     """Map a raw API-client exception onto the stable `nova.datasets` exception type.
@@ -50,6 +53,13 @@ async def fetch(
         )
     except api.ApiException as exc:
         raise _dataset_error(exc) from exc
+    except ValidationError as exc:
+        # Older servers send the pre-AnchoredPose format (no `tcp`, `frame` and
+        # `kinematic_configuration` as null), which the API client cannot read.
+        raise DatasetError(
+            f"Dataset {dataset!r} could not be read: this SDK needs NOVA {MIN_NOVA_VERSION} "
+            f"or newer for datasets. Validation error: {exc}"
+        ) from exc
 
     return Dataset.from_api_model(response)
 
