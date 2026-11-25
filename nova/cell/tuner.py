@@ -5,6 +5,8 @@ from typing import Optional
 
 import pydantic
 
+from nova.core.nats_state import nats_usable
+
 from .movement_controller.trajectory_cursor import MotionEvent, TrajectoryCursor, motion_started
 
 logger = logging.getLogger(__name__)
@@ -74,7 +76,7 @@ class TrajectoryTuner:
         if ctx is None:
             raise RuntimeError("TrajectoryTuner requires a valid program context")
         nats = ctx.nova.nats
-        if nats is None or not nats.is_connected:
+        if not nats_usable(nats):
             raise RuntimeError("TrajectoryTuner requires a connected NATS client")
 
         current_cursor: Optional[TrajectoryCursor] = None

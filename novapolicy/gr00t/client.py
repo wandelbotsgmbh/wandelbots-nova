@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 
 from novapolicy.gr00t.eef import TcpFormat, pose_to_eef
-from novapolicy.gr00t.rtc import (  # noqa: TC001
+from novapolicy.gr00t.rtc import (  # ruff: ignore[typing-only-first-party-import]
     RTCConfig,
     RTCState,
     compute_rtc_options,
@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from typing import Any
 
+    from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
     from novapolicy.schema import PolicySchema
 
@@ -40,6 +41,11 @@ _IMAGE_NDIM_SINGLE = 3  # (H, W, C)
 _IMAGE_NDIM_TEMPORAL = 4  # (T, H, W, C)
 _IMAGE_CHANNELS = 3
 _ACTION_NDIM = 3
+_PROTOCOL_HINT = (
+    "This client speaks the GR00T N1.6+ policy server protocol "
+    "(gr00t/policy/server_client.py); N1 and N1.5 servers (gr00t/eval/service.py) "
+    "take a flat observation and answer with the action alone."
+)
 
 
 class Gr00tPolicyClient(PolicyClient):
@@ -98,7 +104,7 @@ class Gr00tPolicyClient(PolicyClient):
             )
         )
 
-    async def connect(self, motion_group_ids: list[str]) -> None:  # noqa: ARG002
+    async def connect(self, motion_group_ids: list[str]) -> None:  # ruff: ignore[unused-method-argument]
         """Create the ZMQ REQ socket.
 
         Called once per episode by the executor.  Resets RTC state so frozen
@@ -172,7 +178,7 @@ class Gr00tPolicyClient(PolicyClient):
         io_values: dict[str, object] | None = None,
     ) -> ActionChunk:
         """Build GR00T observation from raw states + images, send, decode response."""
-        import time as _time  # noqa: PLC0415
+        import time as _time  # ruff: ignore[import-outside-top-level]
 
         groot_obs = await self._build_groot_obs(states, schema, images, io_values)
 
@@ -198,7 +204,10 @@ class Gr00tPolicyClient(PolicyClient):
 
         inference_latency = _time.monotonic() - t0
         if not isinstance(response, (list, tuple)) or len(response) != _RESPONSE_PAIR_SIZE:
-            msg = "GR00T get_action response must be a 2-tuple of (action, info)"
+            msg = (
+                "GR00T get_action response must be a 2-tuple of (action, info), "
+                f"got {type(response).__name__}. {_PROTOCOL_HINT}"
+            )
             raise TypeError(msg)
 
         action_raw = require_dict(response[0], name="GR00T action")
@@ -206,7 +215,7 @@ class Gr00tPolicyClient(PolicyClient):
 
         # RTC: update timing state (server stores action internally)
         if self._rtc_config is not None:
-            import time as _time2  # noqa: PLC0415
+            import time as _time2  # ruff: ignore[import-outside-top-level]
 
             if self._rtc_state.action_horizon is None:
                 self._rtc_state.action_horizon = detect_action_horizon(action_raw)
@@ -222,6 +231,32 @@ class Gr00tPolicyClient(PolicyClient):
             if backdate:
                 chunk = chunk.model_copy(update={"seam_backdate_steps": backdate})
         return chunk
+
+    def _split_joint_action(
+        self, key: str, mgs: list[MotionGroup], steps: np.ndarray[Any, np.dtype[np.float32]]
+    ) -> dict[str, list[list[float]]]:
+        """Each motion group's own columns of a ``(horizon, dof)`` action.
+
+        A key shared by several groups carries their joints side by side, in the
+        order the state concatenated them, so each group takes the next
+        ``dof`` columns rather than the first ones.
+        """
+        if len(mgs) == 1 and mgs[0].id not in self._actual_dof:
+            return {mgs[0].id: steps.tolist()}  # nothing observed to size it by
+        split: dict[str, list[list[float]]] = {}
+        offset = 0
+        for mg in mgs:
+            dof = self._actual_dof.get(mg.id)
+            if dof is None or offset + dof > steps.shape[1]:
+                msg = (
+                    f"GR00T action '{key}' has {steps.shape[1]} columns, which do not "
+                    f"split into the joints of {[g.id for g in mgs]} "
+                    f"(joints observed: {[self._actual_dof.get(g.id) for g in mgs]})"
+                )
+                raise TypeError(msg)
+            split[mg.id] = steps[:, offset : offset + dof].tolist()
+            offset += dof
+        return split
 
     async def close(self) -> None:
         """Close the socket and terminate the ZMQ context."""
@@ -261,18 +296,17 @@ class Gr00tPolicyClient(PolicyClient):
         # Extract action horizon from delta_indices
         action_horizon = 0
         action_configs: list[dict[str, str]] = []
-        action_section = config.get("action")
-        if isinstance(action_section, dict):
-            as_json = action_section.get("as_json", action_section)
-            if isinstance(as_json, dict):
-                deltas = as_json.get("delta_indices", [])
-                if isinstance(deltas, list):
-                    action_horizon = len(deltas)
-                cfgs = as_json.get("action_configs", [])
-                if isinstance(cfgs, list):
-                    action_configs = [
-                        {k: str(v) for k, v in c.items()} for c in cfgs if isinstance(c, dict)
-                    ]
+        action_metadata = _modality_metadata(config, "action")
+        deltas = action_metadata.get("delta_indices", [])
+        if isinstance(deltas, list):
+            action_horizon = len(deltas)
+        configs = action_metadata.get("action_configs", [])
+        if isinstance(configs, list):
+            action_configs = [
+                {str(key): str(value) for key, value in config.items()}
+                for config in configs
+                if isinstance(config, dict)
+            ]
 
         return {
             "state_keys": state_keys,
@@ -350,9 +384,8 @@ class Gr00tPolicyClient(PolicyClient):
 
         return state_dict
 
-    async def _fill_computed_state(
-        self, state_dict: dict[str, np.ndarray], schema: PolicySchema
-    ) -> None:
+    @staticmethod
+    async def _fill_computed_state(state_dict: dict[str, np.ndarray], schema: PolicySchema) -> None:
         """Run Observation.computed hooks and merge numeric results into the state.
 
         GR00T's state is a numeric payload, so each computed value must be a
@@ -380,14 +413,10 @@ class Gr00tPolicyClient(PolicyClient):
         ios: dict[str, dict[str, bool | int | float | str]] = {}
 
         for key, mgs in schema.joint_action_keys:
-            arr = action.get(key)
-            if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
-                for mg in mgs:
-                    joint_data = arr[0].astype(np.float32)
-                    actual_dof = self._actual_dof.get(mg.id)
-                    if actual_dof and joint_data.shape[1] > actual_dof:
-                        joint_data = joint_data[:, :actual_dof]
-                    joints[mg.id] = joint_data.tolist()
+            typed_arr = _action_array(action, key)
+            if typed_arr is None:
+                continue
+            joints.update(self._split_joint_action(key, mgs, typed_arr[0].astype(np.float32)))
 
         # Decode IO actions
         for key, mg, hw_key, mapping in schema.io_action_keys:
@@ -397,18 +426,60 @@ class Gr00tPolicyClient(PolicyClient):
                 val = float(arr.flat[-1])
                 ios.setdefault(mg.id, {})[hw_key] = mapping.to_hardware(val)
             elif key in action:
-                val = float(action[key])  # type: ignore[arg-type]
+                val = float(cast("Any", action[key]))
                 ios.setdefault(mg.id, {})[hw_key] = mapping.to_hardware(val)
 
         # Decode TCP actions
         tcp_targets: dict[str, list[list[float]]] = {}
         for key, mg in schema.tcp_action_keys:
-            arr = action.get(key)
-            if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
-                tcp_targets[mg.id] = arr[0].astype(np.float32).tolist()
+            typed_arr = _action_array(action, key)
+            if typed_arr is not None:
+                tcp_targets[mg.id] = typed_arr[0].astype(np.float32).tolist()
+
+        _require_some_action(schema, action, decoded=bool(joints or tcp_targets or ios))
 
         dt_ms = float(cast("float", info.get("dt_ms", self._dt_ms)))
         return ActionChunk(joints=joints, tcp=tcp_targets, ios=ios or None, dt_ms=dt_ms)
+
+
+def _require_some_action(schema: PolicySchema, action: dict[str, object], *, decoded: bool) -> None:
+    """Raise when the schema expects motion and the answer decoded to nothing at all.
+
+    An answer with IO actions only (a gripper, say) is a valid one.
+    """
+    expected = schema.motion_action_keys
+    if expected and not decoded:
+        msg = (
+            f"GR00T answered with none of the expected actions {expected}; "
+            f"response keys: {sorted(action)}"
+        )
+        raise TypeError(msg)
+
+
+def _action_array(
+    action: dict[str, object], key: str
+) -> np.ndarray[Any, np.dtype[np.float32]] | None:
+    """The ``(batch, horizon, dof)`` array under ``key``, or ``None`` if the key is absent.
+
+    A model may leave out an action it was not trained on, so an absent key is
+    skipped. A key that is present but holds no such array raises instead: that
+    is what a server that changed its array serialization looks like, and
+    skipping it once left the robot standing still with nothing in the log.
+    """
+    if key not in action:
+        return None
+    arr = action[key]
+    if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM - 1:
+        arr = arr[None]  # (horizon, dof) without the batch axis, as RTC also accepts
+    if isinstance(arr, np.ndarray) and arr.ndim == _ACTION_NDIM:
+        return cast("np.ndarray[Any, np.dtype[np.float32]]", arr)
+    got = f"{type(arr).__name__} {getattr(arr, 'shape', '')}".strip()
+    msg = (
+        f"GR00T action '{key}' must be an array of shape ([batch,] horizon, dof), got {got}. "
+        f"Response keys: {sorted(action)}. If the server was updated, it may use an array "
+        "serialization this client does not decode."
+    )
+    raise TypeError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -434,15 +505,21 @@ def _build_video(obs: dict[str, Any]) -> dict[str, np.ndarray]:
     return video
 
 
-def _extract_modality_keys(config: dict[str, object], modality: str) -> set[str]:
-    """Extract ``modality_keys`` from a GR00T ``get_modality_config`` response."""
+def _modality_metadata(config: dict[str, object], modality: str) -> dict[str, object]:
+    """Return one modality's required ``as_json`` metadata payload."""
     entry = config.get(modality)
-    if not isinstance(entry, dict):
-        return set()
-    as_json = entry.get("as_json")
-    if not isinstance(as_json, dict):
-        return set()
-    keys = as_json.get("modality_keys")
+    if entry is None:
+        return {}
+    entry_dict = require_dict(entry, name=f"GR00T {modality} modality")
+    return require_dict(
+        entry_dict.get("as_json"),
+        name=f"GR00T {modality} modality as_json",
+    )
+
+
+def _extract_modality_keys(config: dict[str, object], modality: str) -> set[str]:
+    """Extract ``modality_keys`` from a GR00T modality payload."""
+    keys = _modality_metadata(config, modality).get("modality_keys")
     if not isinstance(keys, list):
         return set()
-    return {str(k) for k in keys}
+    return {str(key) for key in keys}

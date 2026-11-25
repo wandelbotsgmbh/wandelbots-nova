@@ -28,10 +28,20 @@ def flange_matrix(dh_robot: DHRobot, joints: list[float]) -> np.ndarray:
     """
     matrix = np.asarray(dh_robot.pose_to_matrix(dh_robot.mounting), dtype=float)
     for dh_param, joint in zip(dh_robot.dh_parameters, joints, strict=False):
-        matrix = matrix @ np.asarray(
+        matrix @= np.asarray(
             dh_robot.dh_transform(dh_param=dh_param, joint_position=joint), dtype=float
         )
     return matrix
+
+
+def joint_tcp_position(
+    dh_robot: DHRobot, joint_target: list[float], tcp_offset: np.ndarray | None
+) -> list[float]:
+    """TCP position for a joint target: flange FK plus the TCP offset if known."""
+    if tcp_offset is None:
+        return dh_robot.calculate_joint_positions(joint_target)[-1]
+    flange = flange_matrix(dh_robot, joint_target)
+    return (flange @ tcp_offset)[:3, 3].tolist()
 
 
 def tcp_offset_matrix(offset: Pose) -> np.ndarray:

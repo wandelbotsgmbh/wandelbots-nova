@@ -33,3 +33,19 @@ async def test_returns_action_chunk_unchanged():
     chunk = await client.get_actions(states={}, schema=schema)
 
     assert chunk is expected
+
+
+@pytest.mark.asyncio
+async def test_callback_client_uses_explicit_no_op_capabilities() -> None:
+    async def fn(_obs: dict) -> ActionChunk:
+        return ActionChunk()
+
+    client = CallbackPolicyClient(fn)
+    await client.connect([])
+    await client.validate_schema(PolicySchema(observations=[]))
+    await client.prepare({}, PolicySchema(observations=[]))
+    client.synchronize_action_timestep(4)
+    await client.close()
+
+    assert client.requires_first_waypoint_bridge is False
+    assert client.rtc is None

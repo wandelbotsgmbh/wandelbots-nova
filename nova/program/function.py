@@ -179,13 +179,30 @@ class Program(BaseModel, Generic[Parameters, Return]):
                 f"Please make sure the right input parameters are configured. {e}"
             )
 
+        viewer = await self._activate_viewer_for_direct_call(nova)
         try:
             return await self._wrapped(ctx, **validated_kwargs)
         finally:
-            if self._viewer is not None:
-                from nova.viewers import _cleanup_active_viewers
+            if viewer is not None:
+                from nova.viewers import get_viewer_manager
 
-                _cleanup_active_viewers()
+                get_viewer_manager().cleanup_viewer(viewer)
+
+    async def _activate_viewer_for_direct_call(self, nova: Nova) -> Any | None:
+        """Activate this program's viewer when it is awaited directly, not run by a runner.
+
+        A runner activates the viewer itself and sets the execution context before it
+        calls the program, so this only acts when there is no execution context.
+        """
+        from nova.program.runner import current_execution_context_var
+        from nova.viewers import get_viewer_manager
+
+        if self._viewer is None or current_execution_context_var.get(None) is not None:
+            return None
+        get_viewer_manager().activate_viewer(self._viewer)
+        self._viewer.configure(nova)
+        await self._viewer.setup_after_preconditions()
+        return self._viewer
 
     async def _load_dataset(self, nova: Nova) -> Dataset | None:
         """Load the dataset declared in this program's preconditions, before it starts running.
@@ -494,6 +511,12 @@ def program(
         if description:
             program_obj.description = description
         program_obj.preconditions = preconditions
+        if viewer is not None:
+            from nova.viewers import get_viewer_manager
+
+            # Rerun() registers itself globally. The program owns this viewer and
+            # activates it only while it runs, so other programs' runs don't log into it.
+            get_viewer_manager().unregister_viewer(viewer)
         program_obj._viewer = viewer
         registry.register(program_obj)
         return program_obj

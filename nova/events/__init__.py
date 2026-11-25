@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from nova.cell.cell import Cell
 from nova.cell.robot_cell import Device, OutputDevice
 from nova.config import BASE_PATH
+from nova.core.nats_state import nats_usable
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +142,7 @@ class Cycle:
         if self._cell.nats is None:
             raise RuntimeError("NATS client is not available in the cell")
 
-        if not self._cell.nats.is_connected:
+        if not nats_usable(self._cell.nats):
             raise RuntimeError(f"NATS client is not connected for: {self._cell.nats}")
 
         try:
