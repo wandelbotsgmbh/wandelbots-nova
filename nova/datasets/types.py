@@ -37,10 +37,20 @@ class DatasetPose(api.models.DatasetPose):
         """Return this pose in world coordinates.
 
         Raises:
-            FrameResolutionError: `frame` cannot be resolved to world.
+            FrameResolutionError: `frame` cannot be resolved to world, e.g. a coordinate
+                system configured on a controller, which a dataset does not describe.
         """
         if isinstance(self.frame, api.models.WorldFrameReference):
             return self.pose
+        if isinstance(self.frame, api.models.ControllerCoordinateSystemReference):
+            name = f"{self.frame.controller}/{self.frame.coordinate_system}"
+            raise FrameResolutionError(
+                f"Pose '{self.dataset_pose}' is expressed in coordinate system "
+                f"'{self.frame.coordinate_system}' of controller '{self.frame.controller}'; "
+                "resolving controller coordinate systems is not supported yet",
+                frame=name,
+                chain=[name],
+            )
         if self._tree is None:
             raise _detached(f"Pose '{self.dataset_pose}'", self.frame.frame)
         return self._tree.world_transform(self.frame.frame) @ self.pose

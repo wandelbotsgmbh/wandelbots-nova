@@ -419,6 +419,12 @@ class Pose(pydantic.BaseModel, Sized):
         >>> Pose.from_dataset_pose(dp)
         Traceback (most recent call last):
         ValueError: Pose 'p1' is expressed in frame 'fixture', not in world. Call as_world() on the dataset pose to resolve it.
+
+        The same holds for a pose relative to a coordinate system configured on a controller:
+        >>> dp = api.models.DatasetPose(dataset_pose='p1', dataset='d1', frame=api.models.ControllerCoordinateSystemReference(controller='kuka', coordinate_system='base1'), pose=api.models.Pose(position=[1, 2, 3], orientation=[4, 5, 6]), tcp='Flange', kinematic_configuration=api.models.UnspecifiedKinematicConfiguration())
+        >>> Pose.from_dataset_pose(dp)
+        Traceback (most recent call last):
+        ValueError: Pose 'p1' is expressed in coordinate system 'base1' of controller 'kuka', not in world. Resolving controller coordinate systems is not supported yet.
         """
         frame = getattr(dataset_pose, "frame", None)
         if isinstance(frame, api.models.DatasetFrameReference):
@@ -427,6 +433,14 @@ class Pose(pydantic.BaseModel, Sized):
             raise ValueError(
                 f"{subject} is expressed in frame '{frame.frame}', not in world. "
                 "Call as_world() on the dataset pose to resolve it."
+            )
+        if isinstance(frame, api.models.ControllerCoordinateSystemReference):
+            name = getattr(dataset_pose, "dataset_pose", None)
+            subject = f"Pose '{name}'" if name else "Pose"
+            raise ValueError(
+                f"{subject} is expressed in coordinate system '{frame.coordinate_system}' of "
+                f"controller '{frame.controller}', not in world. Resolving controller coordinate "
+                "systems is not supported yet."
             )
         configuration = dataset_pose.kinematic_configuration
         if isinstance(configuration, api.models.UnspecifiedKinematicConfiguration):

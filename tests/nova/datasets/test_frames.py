@@ -227,6 +227,35 @@ class TestUnresolvableFrames:
             detached.as_world()
 
 
+def _controller_cs_pose(dataset_pose: str) -> api.models.DatasetPose:
+    return _api_pose(SLOT, dataset_pose).model_copy(
+        update={
+            "frame": api.models.ControllerCoordinateSystemReference(
+                controller="kuka", coordinate_system="base1"
+            )
+        }
+    )
+
+
+class TestControllerCoordinateSystems:
+    """A dataset does not describe a controller's coordinate systems, so it cannot
+    resolve a pose taught relative to one."""
+
+    def test_as_world_reports_the_controller_coordinate_system(self):
+        dataset = _dataset(poses=[_controller_cs_pose("on-base")])
+
+        with pytest.raises(FrameResolutionError, match="'base1' of controller 'kuka'") as excinfo:
+            dataset.poses["on-base"].as_world()
+
+        assert excinfo.value.frame == "kuka/base1"
+
+    def test_is_rejected_as_a_motion_target(self):
+        dataset = _dataset(poses=[_controller_cs_pose("on-base")])
+
+        with pytest.raises(ValueError, match="'base1' of controller 'kuka', not in world"):
+            cartesian_ptp(dataset.poses["on-base"])
+
+
 class TestMotionTargets:
     def test_a_world_pose_can_be_used_directly(self, nested: Dataset):
         home = nested.poses["home"]
