@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "683932045c88",
+  "strategy": "manual-commit",
+  "branch": "feat/dataset-pose-extends-anchored-pose",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "uv.lock"
+  ],
+  "sessions": [
+    {
+      "metadata": "/68/3932045c88/0/metadata.json",
+      "transcript": "/68/3932045c88/0/full.jsonl",
+      "compact_transcript": "/68/3932045c88/0/transcript.jsonl",
+      "content_hash": "/68/3932045c88/0/content_hash.txt",
+      "prompt": "/68/3932045c88/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1609,
+    "cache_creation_tokens": 10932331,
+    "cache_read_tokens": 287695920,
+    "output_tokens": 512907,
+    "api_call_count": 764,
+    "subagent_tokens": {
+      "input_tokens": 12,
+      "cache_creation_tokens": 34439,
+      "cache_read_tokens": 125123,
+      "output_tokens": 3625,
+      "api_call_count": 6
+    }
+  }
+}
