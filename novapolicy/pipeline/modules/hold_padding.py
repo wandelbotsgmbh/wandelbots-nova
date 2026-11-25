@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from novapolicy.pipeline.base import ModuleContext
-    from novapolicy.transport.waypoints import PendingChunk
+    from novapolicy.transport.action_chunks import PendingChunk
 
 
 @dataclass(frozen=True, slots=True)

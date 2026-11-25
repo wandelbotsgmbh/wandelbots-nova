@@ -47,7 +47,7 @@ class PendingChunk:
     """Let ``HoldPadding`` pad the chunk (contract T6); live targets turn it off."""
     when_due: tuple[int, Callable[[], Awaitable[None]]] | None = None
     """``(step, action)``: run ``action`` when the caller's ``step`` is due, see
-    :meth:`~novapolicy.transport.session.WaypointJoggingSession.update_chunk`."""
+    :meth:`~novapolicy.transport.session.ActionChunkSession.update_chunk`."""
     retained_prefix_steps: int = 0
     """Leading steps already sent in an earlier chunk, which ``Smoothing`` keeps exact."""
     start_step: int = 0
@@ -70,7 +70,7 @@ def anchor_timestamp_ms(
     return first_timestamp_ms + int(timestamp_offset_steps * step_dt_ms)
 
 
-def make_timed_waypoints_request(
+def make_action_chunk_request(
     mode: JoggingMode,
     timed_steps: list[tuple[int, list[float]]],
     *,

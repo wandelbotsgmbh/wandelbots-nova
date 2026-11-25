@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from nova.types import RobotState
     from novapolicy.rerun.context import RerunContext
     from novapolicy.rerun.streaming import StateStreamer
-    from novapolicy.transport.session import WaypointJoggingSession
+    from novapolicy.transport.session import ActionChunkSession
     from novapolicy.types import ActionChunk
     from rerun import RecordingStream
 
@@ -128,7 +128,7 @@ class PolicyRerunLogger:
         self._last_robot_state_at: dict[str, float] = {}
         self._step = 0
         """The latest observed policy step, which per-packet tracking is logged at."""
-        self._observed: list[tuple[WaypointJoggingSession, Callable[..., None]]] = []
+        self._observed: list[tuple[ActionChunkSession, Callable[..., None]]] = []
         self._recording: RecordingStream | None = None
         self._sink = AsyncLogSink()  # writes off the caller's thread (ADR 0020)
 
@@ -590,7 +590,7 @@ class PolicyRerunLogger:
     # ------------------------------------------------------------------
 
     def log_state_packet(
-        self, session: WaypointJoggingSession, state: RobotState, server_ms: int, at: float
+        self, session: ActionChunkSession, state: RobotState, server_ms: int, at: float
     ) -> None:
         """Log one state packet: the robot, and what the session sent for that packet's own
         server timestamp against it, so both sides of the tracking error are the same instant."""
@@ -604,7 +604,7 @@ class PolicyRerunLogger:
 
     def start_streaming(
         self,
-        sessions: Mapping[str, WaypointJoggingSession],
+        sessions: Mapping[str, ActionChunkSession],
         *,
         image_reader: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
@@ -631,7 +631,7 @@ class PolicyRerunLogger:
                 state: RobotState,
                 server_ms: int,
                 at: float,
-                session: WaypointJoggingSession = session,
+                session: ActionChunkSession = session,
             ) -> None:
                 self.log_state_packet(session, state, server_ms, at)
 

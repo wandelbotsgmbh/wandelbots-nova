@@ -11,7 +11,7 @@ from novapolicy.mapping.poses import unwrap_tcp_rotations
 
 if TYPE_CHECKING:
     from novapolicy.pipeline.base import ModuleContext
-    from novapolicy.transport.waypoints import PendingChunk
+    from novapolicy.transport.action_chunks import PendingChunk
 
 _MIN_SPACING_STEPS = 2
 _SEGMENT_RATIO_EPSILON = 1e-12

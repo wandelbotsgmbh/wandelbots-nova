@@ -3,7 +3,7 @@
 The jogger lets you stream joint targets to one or more robots and surfaces
 faults through its ``async for`` loop. These tests state that contract through
 the public ``jog_joints()`` API, substituting only the robot transport
-(``WaypointJoggingSession``) — they never reach into the jogger's internals.
+(``ActionChunkSession``) — they never reach into the jogger's internals.
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ def _build_joint_jogger(
         sessions[motion_group].pipeline = kw.get("pipeline")
         return sessions[motion_group]
 
-    with patch("novapolicy.transport.lifecycle.WaypointJoggingSession", side_effect=make_session):
+    with patch("novapolicy.transport.lifecycle.ActionChunkSession", side_effect=make_session):
         jogger = jog_joints(
             mgs if len(mgs) > 1 else mgs[0],
             pipeline=pipeline,
@@ -116,7 +116,7 @@ def _build_tcp_jogger(
         sessions[motion_group].pipeline = kw.get("pipeline")
         return sessions[motion_group]
 
-    with patch("novapolicy.transport.lifecycle.WaypointJoggingSession", side_effect=make_session):
+    with patch("novapolicy.transport.lifecycle.ActionChunkSession", side_effect=make_session):
         jogger = jog_tcp(mg, tcp=tcp, pipeline=pipeline)
     return jogger, mg, sessions
 

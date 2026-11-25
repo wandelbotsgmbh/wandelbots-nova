@@ -8,7 +8,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from novapolicy.transport.session import Scheduled, WaypointJoggingSession
+from novapolicy.transport.session import ActionChunkSession, Scheduled
 
 
 def mg(mg_id: str = "0@ur10e", controller_id: str | None = None) -> MagicMock:
@@ -36,7 +36,7 @@ def tcp_state(values: tuple[float, float, float, float, float, float]) -> MagicM
 
 
 def fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
-    """A stand-in for a live WaypointJoggingSession (the robot transport)."""
+    """A stand-in for a live ActionChunkSession (the robot transport)."""
     session = MagicMock()
     session.motion_group = MagicMock()
     session.motion_group_id = "0@ur10e"
@@ -76,7 +76,7 @@ def fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
             _num_joints=session.num_joints,
             motion_group_id=session.motion_group_id,
         )
-        WaypointJoggingSession.check_steps(shape, steps)  # ty: ignore[invalid-argument-type]
+        ActionChunkSession.check_steps(shape, steps)  # ty: ignore[invalid-argument-type]
 
     session.check_steps = MagicMock(side_effect=check_steps)
     session.current_state = state((0.0,) * num_joints)

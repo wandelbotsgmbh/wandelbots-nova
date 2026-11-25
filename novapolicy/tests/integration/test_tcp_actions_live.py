@@ -4,7 +4,7 @@ The module provisions one throwaway virtual UR10e (deleted on teardown); each te
 it to the same tool-down start, lets a scripted policy send one TCP chunk through the executor in
 sequential mode, and measures where the TCP actually came to rest. That covers the
 whole path a policy's TCP action takes: unit operators, relative composition, the
-executor's waypoint jogging and NOVA's inverse kinematics. They require NOVA_API /
+executor's action chunk streaming and NOVA's inverse kinematics. They require NOVA_API /
 NOVA_ACCESS_TOKEN and are skipped unless run with ``-m integration``.
 """
 

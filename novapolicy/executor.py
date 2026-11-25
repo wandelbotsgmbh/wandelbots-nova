@@ -1,4 +1,4 @@
-"""PolicyExecutor — runs one policy episode via waypoint jogging."""
+"""PolicyExecutor — runs one policy episode via action chunk streaming."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from novapolicy.mapping.schema import PolicySchema
     from novapolicy.rerun import PolicyRerunLogger
     from novapolicy.transport.clock import ServerMs
-    from novapolicy.transport.session import WaypointJoggingSession
+    from novapolicy.transport.session import ActionChunkSession
     from novapolicy.types import StopCondition
 
 logger = logging.getLogger(__name__)
@@ -168,7 +168,7 @@ class PolicyExecutor:
                 frame ends the run with ``RuntimeError``.
             inference_timeout_s: Deadline for one ``get_actions`` call [s]; 0 = none. A
                 liveness guard, not a real-time bound.
-            motion: Waypoint jogging configuration.
+            motion: Action chunk streaming configuration.
             execution: ``SequentialExecution`` settles each chunk before the next inference;
                 ``ContinuousExecution`` replaces the lookahead as fast as possible or at its rate.
             n_action_steps: Steps executed from each chunk: ``None`` the policy's own horizon if
@@ -208,7 +208,7 @@ class PolicyExecutor:
         self._lifecycle = SessionLifecycle(
             config=motion, stop_conditions=self._stop_conditions, pipeline=self._pipeline
         )
-        self._sessions: dict[str, WaypointJoggingSession] = self._lifecycle.sessions
+        self._sessions: dict[str, ActionChunkSession] = self._lifecycle.sessions
         self._cameras = CameraManager(camera_max_age_s)
         self._stop_event = asyncio.Event()
         self._last_obs: dict[str, Any] | None = None
@@ -742,7 +742,7 @@ class PolicyExecutor:
 
         return run
 
-    def _build_sessions(self) -> dict[str, WaypointJoggingSession]:
+    def _build_sessions(self) -> dict[str, ActionChunkSession]:
         """A fresh session per motion group: TCP poses for the schema's TCP action groups,
         joints for the rest."""
         tcp_groups = self._schema.tcp_action_groups()

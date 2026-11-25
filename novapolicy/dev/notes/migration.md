@@ -47,13 +47,13 @@ to run, wrongly: with `[Bridge, TimestepTimeline]` a queue's steps ran up to 832
 The modules moved into one folder per part of the [architecture](../architecture.md#where-things-live).
 
 - **Patch targets follow them too**: tests that stub the transport patch
-  `novapolicy.transport.lifecycle.WaypointJoggingSession` and
+  `novapolicy.transport.lifecycle.ActionChunkSession` and
   `novapolicy.transport.lifecycle.EstopMonitor`.
 - Type-checker and CI paths: `novapolicy/lerobot/**` is now `novapolicy/providers/lerobot/**`.
 
 ## A slimmer transport core: test patch targets
 
-- Tests that stub the transport patch `novapolicy.transport.lifecycle.WaypointJoggingSession` and
+- Tests that stub the transport patch `novapolicy.transport.lifecycle.ActionChunkSession` and
   `novapolicy.transport.lifecycle.EstopMonitor` instead of the names in `novapolicy.executor` or
   `novapolicy.jogging.jogger`.
 

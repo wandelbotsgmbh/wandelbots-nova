@@ -1,4 +1,4 @@
-"""Session-clock estimation for waypoint jogging (ADR 0012).
+"""Session-clock estimation for action chunk streaming (ADR 0012).
 
 ``JoggingTimeClock`` extrapolates NOVA's ``jogger_session_timestamp_ms`` between state samples.
 One server millisecond is one millisecond of motion: intervals are never rescaled.

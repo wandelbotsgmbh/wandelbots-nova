@@ -223,7 +223,7 @@ mapping, decoding, placement and streaming come from the package.
 | the default pipeline | `novapolicy/pipeline/defaults.py` (`default_pipeline`, `timestep_queue_modules`) |
 | the built-in modules, one per file | `novapolicy/pipeline/modules/` (`servo_horizon.py`, `smoothing.py`, `timeline.py`, `bridge.py`, `endpoint_ramp.py`, `joint_clamp.py`, `hold_padding.py`, `drop_late.py`, `ease_in.py`) |
 | building one session per motion group, start move, e-stop monitor, fault and stop-condition checks, drain (executor and jogger) | `novapolicy/transport/lifecycle.py` |
-| NOVA transport: stamping and sending (`_schedule`), the playback clock (`_PlaybackClock`), what was sent (`scheduled`), the session-clock estimate (`JoggingTimeClock`) | `novapolicy/transport/session.py`, `clock.py`, `waypoints.py` |
+| NOVA transport: stamping and sending (`_schedule`), the playback clock (`_PlaybackClock`), what was sent (`scheduled`), the session-clock estimate (`JoggingTimeClock`) | `novapolicy/transport/session.py`, `clock.py`, `action_chunks.py` |
 | jogging state, standstill, stop conditions (`first_fired`) | `novapolicy/transport/state.py` |
 | e-stop stream, IO stream | `novapolicy/transport/estop.py`, `io.py` |
 | jogging API, its timeline (`TIMELINE_GRID_MS`, `trajectory_elapsed_ms`); its lead is `ActionChunkConfig.max_expected_latency_ms` | `novapolicy/jogging/jogger.py` |

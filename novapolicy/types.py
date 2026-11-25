@@ -23,7 +23,7 @@ JoggingMode = Literal["joint", "cartesian"]
 
 
 class ActionChunk(pydantic.BaseModel, frozen=True):
-    """Action chunk streamed to a waypoint jogging session, one or more steps per motion group."""
+    """Action chunk streamed to a action chunk streaming session, one or more steps per motion group."""
 
     joints: dict[str, list[list[float]]] = pydantic.Field(default_factory=dict)
     """Motion group id → sequence of joint targets (radians)."""

@@ -83,7 +83,7 @@ is already in NOVA units and is sent as it is. Tests: `test_a_callback_control_f
 
 **M12 Action values are checked when queued.** Every value of a step must be finite, and every
 step as wide as the session's waypoints: the robot's joint count for joints, 6 for TCP poses.
-`WaypointJoggingSession.update_chunk` raises `ValueError` naming the motion group, the step and
+`ActionChunkSession.update_chunk` raises `ValueError` naming the motion group, the step and
 the expected width before anything is queued; the executor and the joggers check every motion
 group's steps before they queue any. Tests:
 `test_invalid_action_values_are_refused_before_anything_is_sent`,
@@ -142,7 +142,7 @@ chunk with its last target up to the horizon, except one-step chunks in continuo
 which the next step replaces before they are due (`Placement.hold`), and live targets. In
 sequential execution, `HoldPadding(after_ms=300)` also holds the last target at least 300 ms past
 the last step (`SEQUENTIAL_HOLD_MS`). The padding is not motion anyone waits for:
-`WaypointJoggingSession.scheduled.until_server_ms` ends at the caller's last step. Tests: `test_hold_padding_holds_the_last_target_up_to_the_horizon`,
+`ActionChunkSession.scheduled.until_server_ms` ends at the caller's last step. Tests: `test_hold_padding_holds_the_last_target_up_to_the_horizon`,
 `test_hold_padding_holds_after_the_last_step_however_long_the_chunk`,
 `test_a_short_chunk_holds_its_final_target_to_fill_the_buffer`,
 `test_the_padded_tail_of_a_short_chunk_is_not_motion_anyone_waits_for`.

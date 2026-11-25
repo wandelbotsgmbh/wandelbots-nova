@@ -426,11 +426,11 @@ def jog_joints(
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     pipeline: Sequence[object] | None = None,
 ) -> JointJogger:
-    """Create a joint position jogger using server-side waypoint jogging.
+    """Create a joint position jogger using server-side action chunk streaming.
 
     Args:
         motion_groups: Single motion group or list for multi-robot control.
-        config: Waypoint jogging configuration; its ``max_expected_latency_ms`` (100 ms by
+        config: Action chunk streaming configuration; its ``max_expected_latency_ms`` (100 ms by
             default) is how far ahead of the loop's time each target and chunk is due.
         stop_conditions: Callbacks run on every jogging tick; one returning ``True`` for its
             ``StopContext`` ends the loop.
@@ -502,7 +502,7 @@ def jog_tcp(
     start_joint_position: list[float] | dict[MotionGroup, list[float]] | None = None,
     pipeline: Sequence[object] | None = None,
 ) -> TcpJogger:
-    """Create a TCP pose jogger using server-side waypoint jogging.
+    """Create a TCP pose jogger using server-side action chunk streaming.
 
     Args:
         motion_groups: Single motion group (with ``tcp`` kwarg) or

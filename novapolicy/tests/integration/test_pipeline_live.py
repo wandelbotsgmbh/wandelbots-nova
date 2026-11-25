@@ -87,8 +87,8 @@ class _Recording:
 def recording(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Recording]:
     record = _Recording()
     schedule, notify = (
-        ws.WaypointJoggingSession._schedule,
-        ws.WaypointJoggingSession._notify_state_observer,
+        ws.ActionChunkSession._schedule,
+        ws.ActionChunkSession._notify_state_observer,
     )
 
     def recording_schedule(self: Any, pending: Any) -> Any:
@@ -109,8 +109,8 @@ def recording(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Recording]:
             record.states.append((ts_ms, self._current_joints[0]))
         notify(self, ts_ms)
 
-    monkeypatch.setattr(ws.WaypointJoggingSession, "_schedule", recording_schedule)
-    monkeypatch.setattr(ws.WaypointJoggingSession, "_notify_state_observer", recording_notify)
+    monkeypatch.setattr(ws.ActionChunkSession, "_schedule", recording_schedule)
+    monkeypatch.setattr(ws.ActionChunkSession, "_notify_state_observer", recording_notify)
     yield record
 
 

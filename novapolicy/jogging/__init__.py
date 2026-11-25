@@ -22,10 +22,11 @@ from novapolicy.pipeline.modules.hold_padding import HoldPadding
 from novapolicy.pipeline.modules.joint_clamp import JointClamp
 from novapolicy.pipeline.modules.servo_horizon import ServoHorizon
 from novapolicy.pipeline.modules.smoothing import Smoothing
-from novapolicy.transport.session import WaypointJoggingSession
+from novapolicy.transport.session import ActionChunkSession
 from novapolicy.transport.state import JoggingStateTracker
 
 __all__ = [
+    "ActionChunkSession",
     "Bridge",
     "ChunkModule",
     "DropLate",
@@ -41,7 +42,6 @@ __all__ = [
     "TcpJogger",
     "Timestamps",
     "WaypointFilter",
-    "WaypointJoggingSession",
     "WaypointModule",
     "default_pipeline",
     "jog_joints",

@@ -5,7 +5,7 @@ is older. How a run's teardown follows its reason is in
 [executor.md](../../docs/executor.md#teardown-follows-the-reason) and
 [jogging.md](../../docs/jogging.md#closing-the-session).
 
-**Context.** A `WaypointJoggingSession` holds one `executeActionChunks` websocket per motion group:
+**Context.** A `ActionChunkSession` holds one `executeActionChunks` websocket per motion group:
 requests go out, acknowledgements and errors come back. The round trip is tens to hundreds of
 milliseconds. Closing the stream is also how a session ends, and NOVA keeps session state across
 streams.

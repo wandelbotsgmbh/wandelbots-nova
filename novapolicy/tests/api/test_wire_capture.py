@@ -1,7 +1,7 @@
 """What reaches NOVA, pinned per scenario: the guard for moving shaping between places.
 
 Each scenario runs the real executor (or the jogger's calls) against real
-``WaypointJoggingSession`` objects whose loops are not started and whose clock is frozen and
+``ActionChunkSession`` objects whose loops are not started and whose clock is frozen and
 advanced step by step. After every queued chunk the session builds the request it would send,
 and the test records the waypoints (time and values), ``delay_until_braking``, the step
 timestamps and when the chunk's IO is due. The record must match ``data/wire_golden.json``
@@ -26,7 +26,7 @@ from novapolicy.mapping.joint_limits import JointLimits
 from novapolicy.mapping.schema import Observation, PolicySchema
 from novapolicy.providers.base import CallbackPolicyClient
 from novapolicy.providers.queued import QueuedPolicyClient
-from novapolicy.transport.session import Scheduled, WaypointJoggingSession
+from novapolicy.transport.session import ActionChunkSession, Scheduled
 from novapolicy.types import (
     ActionChunk,
     ActionChunkConfig,
@@ -73,10 +73,10 @@ class _Capture:
     def __init__(self, *, advance_ms: float) -> None:
         self.records: list[dict[str, Any]] = []
         self.advance_ms = advance_ms
-        self.sessions: dict[str, WaypointJoggingSession] = {}
+        self.sessions: dict[str, ActionChunkSession] = {}
 
     def make(self, *args: object, **kwargs: Any) -> MagicMock:  # ruff: ignore[too-many-statements]
-        real = WaypointJoggingSession(*args, **kwargs)
+        real = ActionChunkSession(*args, **kwargs)
         clock = _Clock(START_MS)
         real._clock = clock  # ty: ignore[invalid-assignment]
         real._current_joints = [0.0] * 6
@@ -195,7 +195,7 @@ async def _run_executor(
     policy = kwargs.pop("policy", None) or CallbackPolicyClient(policy_fn)
     estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
     with (
-        patch("novapolicy.transport.lifecycle.WaypointJoggingSession", side_effect=capture.make),
+        patch("novapolicy.transport.lifecycle.ActionChunkSession", side_effect=capture.make),
         patch("novapolicy.transport.lifecycle.EstopMonitor", return_value=estop),
         patch("novapolicy.rerun._is_rerun_active", return_value=False),
     ):

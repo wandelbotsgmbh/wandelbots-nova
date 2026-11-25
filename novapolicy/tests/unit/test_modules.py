@@ -16,8 +16,8 @@ from novapolicy.pipeline.modules.hold_padding import HoldPadding
 from novapolicy.pipeline.modules.joint_clamp import JointClamp
 from novapolicy.pipeline.modules.smoothing import Smoothing
 from novapolicy.pipeline.modules.timeline import TimestepTimeline
+from novapolicy.transport.action_chunks import PendingChunk
 from novapolicy.transport.clock import ServerMs
-from novapolicy.transport.waypoints import PendingChunk
 from novapolicy.types import ContinuousExecution, SequentialExecution
 
 LIMITS = JointLimits(lower=(-1.0,) * 3, upper=(1.0,) * 3)

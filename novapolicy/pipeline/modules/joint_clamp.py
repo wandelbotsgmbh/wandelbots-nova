@@ -9,7 +9,7 @@ from novapolicy.mapping.joint_limits import DEFAULT_MARGIN_RAD
 
 if TYPE_CHECKING:
     from novapolicy.pipeline.base import ModuleContext
-    from novapolicy.transport.waypoints import PendingChunk
+    from novapolicy.transport.action_chunks import PendingChunk
 
 
 @dataclass(frozen=True, slots=True)

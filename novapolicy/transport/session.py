@@ -1,4 +1,4 @@
-"""Waypoint jogging session: streams timestamped joint or pose waypoints for one motion group
+"""Action chunk streaming session: streams timestamped joint or pose waypoints for one motion group
 through NOVA's action chunk streaming (``ActionChunkRequest``), after the send pipeline."""
 
 from __future__ import annotations
@@ -23,6 +23,11 @@ from novapolicy.pipeline.base import ModuleContext, split_pipeline
 from novapolicy.pipeline.defaults import default_pipeline
 from novapolicy.pipeline.modules.drop_late import MIN_LEAD_MS
 from novapolicy.pipeline.modules.joint_clamp import JointClamp
+from novapolicy.transport.action_chunks import (
+    PendingChunk,
+    anchor_timestamp_ms,
+    make_action_chunk_request,
+)
 from novapolicy.transport.clock import SINGLE_STEP_MARGIN_MS, JoggingTimeClock, ServerMs
 from novapolicy.transport.io import IOWriter
 from novapolicy.transport.state import (
@@ -30,11 +35,6 @@ from novapolicy.transport.state import (
     StandstillDetector,
     first_fired,
     jogging_details,
-)
-from novapolicy.transport.waypoints import (
-    PendingChunk,
-    anchor_timestamp_ms,
-    make_timed_waypoints_request,
 )
 from novapolicy.types import JoggingNotSupportedError, MotionError, StopContext
 
@@ -64,7 +64,7 @@ _PLAYBACK_RATE_GAIN = 0.05
 # Longest a graceful stop waits for already-sent waypoints to finish executing (ADR 0019).
 _DRAIN_TIMEOUT_S = 3.0
 
-# How much sent history :meth:`WaypointJoggingSession.commanded_at` keeps, in server ms: only
+# How much sent history :meth:`ActionChunkSession.commanded_at` keeps, in server ms: only
 # needs to outlast the delivery burst that makes a state packet stale.
 _COMMAND_HISTORY_MS = 1000
 
@@ -81,7 +81,7 @@ _TCP_WIDTH = 6
 
 @dataclass(frozen=True, slots=True)
 class Scheduled:
-    """What the latest send scheduled; :attr:`WaypointJoggingSession.scheduled`, replaced on
+    """What the latest send scheduled; :attr:`ActionChunkSession.scheduled`, replaced on
     every send.
 
     A chunk dropped because every waypoint had passed counts as scheduled too: it sends no
@@ -178,7 +178,7 @@ class _LateSteps:
             )
 
 
-class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
+class ActionChunkSession:  # ruff: ignore[too-many-public-methods]
     """Sends action chunks as timestamped joint or TCP waypoints via NOVA action chunk streaming;
     the server computes the motion profile and, for TCP waypoints, the IK."""
 
@@ -327,14 +327,14 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 return
             if self._failed:
                 raise RuntimeError(
-                    f"Waypoint jogging failed for {self.motion_group_id}: {self._failure_reason}"
+                    f"Action chunk streaming failed for {self.motion_group_id}: {self._failure_reason}"
                 ) from self._failure_exception
             if time.monotonic() >= deadline:
                 reason = (
                     self._failure_reason or "no ready acknowledgement or state-clock calibration"
                 )
                 raise RuntimeError(
-                    f"Timed out waiting for waypoint jogging readiness for "
+                    f"Timed out waiting for action chunk streaming readiness for "
                     f"{self.motion_group_id}: {reason}"
                 )
             await asyncio.sleep(0.05)
@@ -500,7 +500,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     async def start(self) -> None:
         """Start the state stream and jogging loop."""
         if self._running:
-            msg = f"WaypointJoggingSession for {self.motion_group_id} is already running."
+            msg = f"ActionChunkSession for {self.motion_group_id} is already running."
             raise RuntimeError(msg)
 
         self._running = True
@@ -530,7 +530,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             self._jogging_loop(), name=f"wp-jog-{self.motion_group_id}"
         )
         logger.info(
-            "WaypointJoggingSession started for %s (%d joints)",
+            "ActionChunkSession started for %s (%d joints)",
             self.motion_group_id,
             self._num_joints,
         )
@@ -606,7 +606,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._jogging_task = None
         self._state_task = None
 
-        logger.info("WaypointJoggingSession stopped for %s", self.motion_group_id)
+        logger.info("ActionChunkSession stopped for %s", self.motion_group_id)
 
     # -------------------------------------------------------------------------
     # State stream
@@ -767,7 +767,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
             with contextlib.suppress(asyncio.CancelledError):
                 _ = await signal_task
 
-    async def _pending_waypoint_requests(
+    async def _pending_action_chunk_requests(
         self,
         response_task: asyncio.Task[None],
     ) -> AsyncGenerator[api.models.ExecuteActionChunksRequest, None]:
@@ -965,7 +965,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 raise ValueError(msg)
         self._built = list(zip(times, values, strict=True))
         return (
-            make_timed_waypoints_request(
+            make_action_chunk_request(
                 self._mode,
                 self._built,
                 delay_until_braking_ms=0 if pending.final else self._config.delay_until_braking_ms,
@@ -1034,7 +1034,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
                 name=f"wp-jog-responses-{self.motion_group_id}",
             )
             try:
-                async for request in self._pending_waypoint_requests(response_task):
+                async for request in self._pending_action_chunk_requests(response_task):
                     yield request
             finally:
                 if not response_task.done():
@@ -1076,13 +1076,13 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         elif isinstance(error, MotionError):
             self._fail(str(error), error)
             self._running = False
-            logger.warning("Waypoint jogging stopped for %s: %s", self.motion_group_id, error)
+            logger.warning("Action chunk streaming stopped for %s: %s", self.motion_group_id, error)
         elif self._running:  # not stopping, and no stop condition fired
             if error is None:
                 message = f"the server closed the jogging connection for {self.motion_group_id}"
                 self._fail(message, None)
             else:
-                message = f"Waypoint jogging ended for {self.motion_group_id}"
+                message = f"Action chunk streaming ended for {self.motion_group_id}"
                 self._fail(str(error) or message, self._surfaced(error, message))
             self._running = False
             logger.error("%s: %s", message, error or "no error")

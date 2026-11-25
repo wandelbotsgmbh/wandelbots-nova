@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
-    from novapolicy.transport.session import WaypointJoggingSession
+    from novapolicy.transport.session import ActionChunkSession
 
 
 class _FakeSession:
@@ -33,7 +33,7 @@ def _jogger(mode: str = "cartesian") -> tuple[TcpJogger, object, _FakeSession]:
     mg = object()
     jogger._mg_list = cast("list[MotionGroup]", [mg])
     jogger._multi = False
-    jogger._sessions = cast("dict[MotionGroup, WaypointJoggingSession]", {mg: session})
+    jogger._sessions = cast("dict[MotionGroup, ActionChunkSession]", {mg: session})
     jogger._rerun = None
     jogger._timeline_ms = 0.0
     # Drive the session clock directly: elapsed reads the per-tick sample.
@@ -104,7 +104,7 @@ def test_tracking_is_logged_per_state_at_that_state_s_own_instant() -> None:
     during a delivery burst, and draws the tracking error as a flat shelf.
     """
     logger = _RecordingLogger()
-    session = cast("WaypointJoggingSession", _TrackedSession(sent=[0.0]))
+    session = cast("ActionChunkSession", _TrackedSession(sent=[0.0]))
 
     # a burst: three packets generated 8ms apart, delivered together
     for offset, generated in ((0, 100.0), (8, 100.008), (16, 100.016)):
@@ -118,7 +118,7 @@ def test_tracking_is_skipped_when_nothing_was_sent_yet() -> None:
     """No sent history means no misleading entry; the 3D robot still moves."""
     logger = _RecordingLogger()
 
-    logger.log_state_packet(cast("WaypointJoggingSession", _TrackedSession()), _STATE, 1000, 100.0)
+    logger.log_state_packet(cast("ActionChunkSession", _TrackedSession()), _STATE, 1000, 100.0)
 
     assert logger.tcp == []
     assert logger.robot == [("mg", 100.0)]
@@ -127,7 +127,7 @@ def test_tracking_is_skipped_when_nothing_was_sent_yet() -> None:
 def test_joint_mode_tracking_uses_the_joint_logger_at_the_latest_observed_step() -> None:
     logger = _RecordingLogger()
     logger._step = 7  # what log_observation last saw
-    session = cast("WaypointJoggingSession", _TrackedSession("joint", sent=[1.0, 2.0]))
+    session = cast("ActionChunkSession", _TrackedSession("joint", sent=[1.0, 2.0]))
 
     logger.log_state_packet(session, _STATE, 1000, 100.0)
 
@@ -154,7 +154,7 @@ async def test_streaming_observes_every_session_until_it_stops(
     logger._sink = MagicMock()
     session = _TrackedSession(sent=[3.0])
 
-    logger.start_streaming({"mg": cast("WaypointJoggingSession", session)})
+    logger.start_streaming({"mg": cast("ActionChunkSession", session)})
     (observer,) = session.observers
     observer(_STATE, 1000, 100.0)
     await logger.stop_streaming()
@@ -201,7 +201,7 @@ def _push_jogger():
     mg = cast("MotionGroup", _NamedMotionGroup())
     session = _PushSession()
     jogger._mg_list = [mg]
-    jogger._sessions = cast("dict[MotionGroup, WaypointJoggingSession]", {mg: session})
+    jogger._sessions = cast("dict[MotionGroup, ActionChunkSession]", {mg: session})
     return jogger, mg, session
 
 

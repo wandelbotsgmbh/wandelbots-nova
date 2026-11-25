@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from nova.types import RobotState
-    from novapolicy.transport.session import WaypointJoggingSession
+    from novapolicy.transport.session import ActionChunkSession
     from rerun import RecordingStream
 
 logger = logging.getLogger(__name__)
@@ -54,13 +54,13 @@ class StateStreamer:
         )
         self._tcp_trail = tcp_trail if tcp_trail is not None else {}
         self._image_reader = image_reader
-        self._sessions: dict[str, WaypointJoggingSession] | None = None
+        self._sessions: dict[str, ActionChunkSession] | None = None
         self._task: asyncio.Task[None] | None = None
         self._running = False
         self._tick_counter = 0
         self._logged_scheduled_chunks: dict[str, int] = {}
 
-    def start(self, sessions: dict[str, WaypointJoggingSession]) -> None:
+    def start(self, sessions: dict[str, ActionChunkSession]) -> None:
         """Start the background streaming task."""
         self._sessions = sessions
         self._running = True
@@ -116,7 +116,7 @@ class StateStreamer:
 
         log_images(self._ctx, images)
 
-    def _log_controller_timing(self, mg_id: str, session: WaypointJoggingSession) -> None:
+    def _log_controller_timing(self, mg_id: str, session: ActionChunkSession) -> None:
         """Log raw controller progress and each scheduled waypoint request."""
         recording = self._ctx.recording
         rr.log(
@@ -144,10 +144,12 @@ class StateStreamer:
         }
         for name, value in values.items():
             rr.log(
-                f"policy/{mg_id}/waypoint_request/{name}", rr.Scalars(value), recording=recording
+                f"policy/{mg_id}/action_chunk_request/{name}",
+                rr.Scalars(value),
+                recording=recording,
             )
         rr.log(
-            "policy/waypoint_requests",
+            "policy/action_chunk_requests",
             rr.TextLog(
                 f"{mg_id} | chunk={sequence} | "
                 f"action_timestep={scheduled.action_timestep} | "

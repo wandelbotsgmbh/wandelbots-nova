@@ -145,8 +145,8 @@ def test_bridge_does_not_swing_the_wrist_across_a_rotation_vector_flip():
     """Regression: a sign flip near pi once bridged through the identity in 573 steps."""
     from novapolicy.pipeline.base import ModuleContext
     from novapolicy.pipeline.modules.bridge import Bridge
+    from novapolicy.transport.action_chunks import PendingChunk
     from novapolicy.transport.clock import ServerMs
-    from novapolicy.transport.waypoints import PendingChunk
 
     current, policy = _tool_down_flip()
     chunk = PendingChunk(steps=policy, dt_ms=100.0, caller_step_count=3)

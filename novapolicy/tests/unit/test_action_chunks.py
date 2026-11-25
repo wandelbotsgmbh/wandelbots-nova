@@ -7,7 +7,7 @@ import json
 import pytest
 
 from nova import api
-from novapolicy.transport.waypoints import make_timed_waypoints_request
+from novapolicy.transport.action_chunks import make_action_chunk_request
 from novapolicy.types import ActionChunkConfig
 
 
@@ -18,7 +18,7 @@ def _wire(req) -> dict:
 
 def test_cartesian_mode_builds_pose_waypoints_splitting_position_and_orientation():
     """[x, y, z, rx, ry, rz] maps to NOVA position and rotation vector."""
-    req = make_timed_waypoints_request("cartesian", [(0, [500.0, 200.0, 300.0, 0.1, 0.2, 0.3])])
+    req = make_action_chunk_request("cartesian", [(0, [500.0, 200.0, 300.0, 0.1, 0.2, 0.3])])
     assert isinstance(req, api.models.ActionChunkRequest)
     waypoint = req.waypoints[0]
     assert waypoint.waypoint.kind == "POSE"
@@ -29,18 +29,18 @@ def test_cartesian_mode_builds_pose_waypoints_splitting_position_and_orientation
 
 
 def test_empty_steps_produce_no_waypoints():
-    assert make_timed_waypoints_request("joint", []).waypoints == []
+    assert make_action_chunk_request("joint", []).waypoints == []
 
 
 def test_delay_until_braking_is_sent_with_the_waypoints():
     """The pinned API client predates the field, so the request has to carry it itself."""
-    req = make_timed_waypoints_request("joint", [(100, [0.0] * 6)], delay_until_braking_ms=200)
+    req = make_action_chunk_request("joint", [(100, [0.0] * 6)], delay_until_braking_ms=200)
     assert _wire(req)["delay_until_braking"] == 200
 
 
 def test_without_a_delay_the_request_is_unchanged_for_older_servers():
     assert "delay_until_braking" not in _wire(
-        make_timed_waypoints_request("joint", [(100, [0.0] * 6)])
+        make_action_chunk_request("joint", [(100, [0.0] * 6)])
     )
 
 

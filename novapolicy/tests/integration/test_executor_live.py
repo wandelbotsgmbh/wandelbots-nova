@@ -4,7 +4,7 @@ Each test provisions its own throwaway *virtual* controllers with unique names
 (the same create-on-demand pattern the core nova integration tests use) and
 deletes them on teardown, so the tests are self-contained and never touch a
 pre-existing controller. They drive *two* robots through the full pipeline end
-to end: schema -> executor -> waypoint jogging session -> NOVA motion API ->
+to end: schema -> executor -> action chunk streaming session -> NOVA motion API ->
 state stream. They require NOVA_API / NOVA_ACCESS_TOKEN and are skipped unless
 run with `-m integration`.
 """

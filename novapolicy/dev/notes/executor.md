@@ -14,7 +14,7 @@ API (`jog_joints` / `jog_tcp`), see [jogging.md](../../docs/jogging.md).
 ```mermaid
 flowchart LR
     Policy["Policy"] -->|"action chunk\n(positions + dt_ms)"| Executor
-    Executor -->|"resolved, trimmed chunk\nper motion group"| Session["WaypointJoggingSession\n(send pipeline)"]
+    Executor -->|"resolved, trimmed chunk\nper motion group"| Session["ActionChunkSession\n(send pipeline)"]
     Session -->|"ActionChunkRequest\n(JOINTS or POSE waypoints)"| NOVA["NOVA Action Chunk Streaming API"]
     NOVA -->|"state stream\n(jogger_session_timestamp_ms)"| Session
 ```
@@ -109,7 +109,7 @@ suffices alone:
    the timestamp of the last waypoint the caller asked for. This says the
    deadline elapsed, not that the robot stopped: it is still braking through the
    hold padding that follows.
-2. **The joints stopped moving** — `WaypointJoggingSession.is_at_standstill`.
+2. **The joints stopped moving** — `ActionChunkSession.is_at_standstill`.
    Before a chunk's waypoints are reached the robot is legitimately still, so
    this on its own would end the wait before any motion began.
 

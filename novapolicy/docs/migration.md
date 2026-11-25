@@ -392,6 +392,21 @@ members. Code that only uses `PolicyExecutor`, `jog_joints` and `jog_tcp` needs 
 
 ## Imports and package layout
 
+### Waypoint names are now action chunk names
+
+NOVA's API calls the stream it executes action chunks; the stream's names follow it. Same
+behaviour; the names that mean single waypoints inside a chunk (`WaypointModule`,
+`WaypointFilter`, `on_waypoints`, `TimedWaypoint`) stay.
+
+| Before | Now |
+| --- | --- |
+| `WaypointJoggingSession` | `ActionChunkSession` |
+| `novapolicy.transport.waypoints` | `novapolicy.transport.action_chunks` |
+| `make_timed_waypoints_request` | `make_action_chunk_request` |
+| Rerun `/policy/<mg>/waypoint_request/*`, `/policy/waypoint_requests` | `/policy/<mg>/action_chunk_request/*`, `/policy/action_chunk_requests` |
+
+The entries above and below name the session as it was called before.
+
 ### `WaypointConfig` is now `ActionChunkConfig`
 
 The configuration of NOVA's action chunk streaming is named after it. Same fields, same defaults:
@@ -489,6 +504,7 @@ up a GR00T policy on a real robot.
 | a LeRobot policy plays twice as fast | pass `control_freq=15` (or the dataset's `fps`); the default is now 30 |
 | `TypeError` for `buffer_window_ms=` | remove it ([`LiveBuffer` is removed](#livebuffer-is-removed)) |
 | `TypeError` for `ease_in_s=` | add `EaseIn` to the pipeline ([Ease-in](#ease-in-is-a-pipeline-module)) |
+| `ImportError` for `WaypointJoggingSession` or `novapolicy.transport.waypoints` | renamed, see [Waypoint names are now action chunk names](#waypoint-names-are-now-action-chunk-names) |
 | `ImportError` for `WaypointConfig` | renamed to `ActionChunkConfig`, see [above](#waypointconfig-is-now-actionchunkconfig) |
 | `ImportError` for `LiveBuffer` or `LIVE_LEAD_MS` | see [`LiveBuffer` is removed](#livebuffer-is-removed) |
 | `TypeError` for `use_async_queue=` on `LeRobotPolicyClient` | wrap it in `QueuedPolicyClient` ([LeRobot](#lerobot-has-no-async-queue-of-its-own)) |

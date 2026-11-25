@@ -1,4 +1,4 @@
-"""Behavioural tests for WaypointJoggingSession.
+"""Behavioural tests for ActionChunkSession.
 
 These drive the *real* async jogging + state-stream loops, substituting only
 the NOVA SDK boundary: the motion group, the API gateway, and the small
@@ -39,10 +39,10 @@ from novapolicy.pipeline.base import Timestamps
 from novapolicy.pipeline.defaults import default_pipeline
 from novapolicy.pipeline.modules.drop_late import DropLate
 from novapolicy.pipeline.modules.hold_padding import HoldPadding
+from novapolicy.transport.action_chunks import PendingChunk
 from novapolicy.transport.clock import ServerMs
 from novapolicy.transport.lifecycle import SessionLifecycle
-from novapolicy.transport.session import MIN_LEAD_MS, WaypointJoggingSession
-from novapolicy.transport.waypoints import PendingChunk
+from novapolicy.transport.session import MIN_LEAD_MS, ActionChunkSession
 from novapolicy.types import ActionChunkConfig, JoggingNotSupportedError, MotionError
 
 if TYPE_CHECKING:
@@ -204,7 +204,7 @@ def _build_session(
     pipeline: Sequence[object] | None = None,
     acknowledge_stop: bool = True,
     drop_with: BaseException | None = None,
-) -> tuple[WaypointJoggingSession, FakeJoggingServer]:
+) -> tuple[ActionChunkSession, FakeJoggingServer]:
     server = FakeJoggingServer(
         fault=fault,
         raise_exc=raise_exc,
@@ -232,7 +232,7 @@ def _build_session(
     gateway = MagicMock()
     gateway.action_chunk_streaming_api.execute_action_chunks = server.execute_action_chunks
 
-    session = WaypointJoggingSession(
+    session = ActionChunkSession(
         motion_group=mg,
         config=config or ActionChunkConfig(),
         tcp="Flange",
@@ -253,7 +253,7 @@ def _build_session(
 
 
 @contextlib.contextmanager
-def _built(**kwargs: Any) -> Iterator[tuple[WaypointJoggingSession, FakeJoggingServer]]:
+def _built(**kwargs: Any) -> Iterator[tuple[ActionChunkSession, FakeJoggingServer]]:
     """``_build_session(**kwargs)``, with its SDK patches undone afterwards."""
     session, server = _build_session(**kwargs)
     try:
@@ -266,7 +266,7 @@ def _built(**kwargs: Any) -> Iterator[tuple[WaypointJoggingSession, FakeJoggingS
 @contextlib.asynccontextmanager
 async def _started(
     *, ready: bool = True, **kwargs: Any
-) -> AsyncIterator[tuple[WaypointJoggingSession, FakeJoggingServer]]:
+) -> AsyncIterator[tuple[ActionChunkSession, FakeJoggingServer]]:
     """A built session, started (and ready unless ``ready=False``), stopped even on failure."""
     with _built(**kwargs) as (session, server):
         try:
@@ -279,7 +279,7 @@ async def _started(
             server.stop()
 
 
-def _server_now(session: WaypointJoggingSession) -> Any:
+def _server_now(session: ActionChunkSession) -> Any:
     """Patch the server time the session's clock estimates; set it on the yielded mock."""
     return patch.object(
         type(session._clock), "estimated_server_timestamp_ms", new_callable=PropertyMock
@@ -354,10 +354,10 @@ async def test_a_queued_joint_chunk_is_sent_as_a_timestamped_waypoint():
         )
 
         await _wait_until(lambda: len(server.requests) >= 2)
-        waypoint_req = _inner(server.requests[1])
-        assert _is_joint_chunk(waypoint_req)
-        assert len(waypoint_req.waypoints) == 1
-        sent = waypoint_req.waypoints[0]
+        action_chunk_req = _inner(server.requests[1])
+        assert _is_joint_chunk(action_chunk_req)
+        assert len(action_chunk_req.waypoints) == 1
+        sent = action_chunk_req.waypoints[0]
         assert _joints(sent) == target
         assert sent.timestamp == 5_000  # absolute anchor honoured exactly
         assert session.scheduled.action_timestep == 7
@@ -871,8 +871,8 @@ async def test_a_fully_elapsed_chunk_is_dropped_instead_of_sent():
         )
         await _wait_until(lambda: session.scheduled.chunk_count == session.queued_chunk_count)
 
-        waypoint_requests = [r for r in server.requests if _is_joint_chunk(_inner(r))]
-        assert waypoint_requests == []
+        action_chunk_requests = [r for r in server.requests if _is_joint_chunk(_inner(r))]
+        assert action_chunk_requests == []
         # Nothing went on the wire...
         assert session.scheduled.waypoint_timestamps == ()
         # ...but the chunk still counts as scheduled. Callers wait for this to
@@ -964,7 +964,7 @@ async def test_a_dead_state_stream_surfaces_instead_of_timing_out_startup():
             server.stop()
 
 
-def _check(session: WaypointJoggingSession) -> str | None:
+def _check(session: ActionChunkSession) -> str | None:
     """What the executor and the joggers call every tick: raises a session failure."""
     lifecycle = SessionLifecycle(config=ActionChunkConfig())
     lifecycle.sessions = {session.motion_group_id: session}
@@ -1338,11 +1338,11 @@ async def test_drain_waits_for_a_chunk_that_is_still_only_queued():
 # ---------------------------------------------------------------------------
 
 
-def _bare_session() -> WaypointJoggingSession:
+def _bare_session() -> ActionChunkSession:
     """A session for testing ``update_chunk`` alone, which talks to no gateway."""
     mg = MagicMock()
     mg.id = "0@ur10e"
-    return WaypointJoggingSession(motion_group=mg, config=ActionChunkConfig(), tcp="Flange")
+    return ActionChunkSession(motion_group=mg, config=ActionChunkConfig(), tcp="Flange")
 
 
 def test_an_unknown_keyword_is_refused() -> None:
@@ -1503,7 +1503,7 @@ async def test_invalid_action_values_are_refused_before_anything_is_sent(
 def test_a_tcp_session_takes_six_values_per_step_before_it_starts():
     mg = MagicMock()
     mg.id = "0@ur10e"
-    session = WaypointJoggingSession(
+    session = ActionChunkSession(
         motion_group=mg, config=ActionChunkConfig(), tcp="Flange", mode="cartesian"
     )
     with pytest.raises(

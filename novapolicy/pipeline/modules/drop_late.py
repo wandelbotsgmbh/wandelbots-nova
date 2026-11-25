@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from novapolicy.pipeline.base import ModuleContext, TimedWaypoint
-    from novapolicy.transport.waypoints import PendingChunk
+    from novapolicy.transport.action_chunks import PendingChunk
 
 MIN_LEAD_MS = 20.0
 """Smallest lead, in ms, a waypoint may still be sent with (contract T3)."""

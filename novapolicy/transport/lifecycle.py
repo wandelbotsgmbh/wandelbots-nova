@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from nova.actions import jnt
 from novapolicy.transport.estop import EstopMonitor
-from novapolicy.transport.session import WaypointJoggingSession
+from novapolicy.transport.session import ActionChunkSession
 from novapolicy.types import EmergencyStopError, MotionError
 
 if TYPE_CHECKING:
@@ -53,7 +53,7 @@ class SessionLifecycle:
         self._config = config
         self._stop_conditions = stop_conditions
         self._pipeline = pipeline
-        self.sessions: dict[str, WaypointJoggingSession] = {}
+        self.sessions: dict[str, ActionChunkSession] = {}
         """The sessions by motion group ID, filled by :meth:`build`."""
         self._motion_groups: list[MotionGroup] = []
         self._estop: EstopMonitor | None = None
@@ -61,13 +61,13 @@ class SessionLifecycle:
 
     def build(
         self, groups: Mapping[MotionGroup, tuple[JoggingMode, str]]
-    ) -> dict[str, WaypointJoggingSession]:
+    ) -> dict[str, ActionChunkSession]:
         """A fresh session per motion group, with its jogging mode and TCP, in place of the
         last run's; returns :attr:`sessions`."""
         self._motion_groups = list(groups)
         self.sessions.clear()
         for mg, (mode, tcp) in groups.items():
-            self.sessions[mg.id] = WaypointJoggingSession(
+            self.sessions[mg.id] = ActionChunkSession(
                 motion_group=mg,
                 config=self._config,
                 tcp=tcp,

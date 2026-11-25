@@ -3,7 +3,7 @@
 The executor's job is to run a policy against one or more robots and report
 *why* it stopped. These tests state that contract through the public surface
 (``run()`` -> ``ExecutionResult``), substituting only the robot transport
-(``WaypointJoggingSession``) and the e-stop monitor, since there is no real
+(``ActionChunkSession``) and the e-stop monitor, since there is no real
 robot in a unit test. Nothing reaches into the executor's private fields.
 """
 
@@ -33,9 +33,9 @@ from novapolicy.pipeline.modules.smoothing import Smoothing
 from novapolicy.providers.base import CallbackPolicyClient, PolicyClient
 from novapolicy.providers.queued import QueuedPolicyClient
 from novapolicy.tests.doubles import fake_session as _fake_session, mg as _mg
+from novapolicy.transport.action_chunks import PendingChunk
 from novapolicy.transport.clock import ServerMs
 from novapolicy.transport.session import Scheduled
-from novapolicy.transport.waypoints import PendingChunk
 from novapolicy.types import (
     ActionChunk,
     ActionChunkConfig,
@@ -219,7 +219,7 @@ def _patched_robot(**session_class: object) -> Iterator[MagicMock]:
     monitor; yields the e-stop monitor."""
     estop = MagicMock(start=AsyncMock(), stop=AsyncMock(), error=None)
     with (
-        patch("novapolicy.transport.lifecycle.WaypointJoggingSession", **session_class),
+        patch("novapolicy.transport.lifecycle.ActionChunkSession", **session_class),
         patch("novapolicy.transport.lifecycle.EstopMonitor", return_value=estop),
     ):
         yield estop
@@ -984,7 +984,7 @@ def test_the_pipeline_is_handed_to_every_session():
     from novapolicy.pipeline.modules.servo_horizon import ServoHorizon
 
     pipeline = [ServoHorizon(), Timestamps(), EaseIn(duration_s=1.0)]
-    with patch("novapolicy.transport.lifecycle.WaypointJoggingSession") as session_cls:
+    with patch("novapolicy.transport.lifecycle.ActionChunkSession") as session_cls:
         executor = PolicyExecutor(
             _schema(), _hold, execution=ContinuousExecution(), pipeline=pipeline
         )

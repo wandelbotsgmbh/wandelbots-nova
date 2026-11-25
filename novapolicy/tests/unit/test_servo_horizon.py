@@ -9,8 +9,8 @@ import pytest
 
 from novapolicy import ServoHorizon
 from novapolicy.pipeline.base import ModuleContext
+from novapolicy.transport.action_chunks import PendingChunk
 from novapolicy.transport.clock import ServerMs
-from novapolicy.transport.waypoints import PendingChunk
 
 START = [0.0, 0.0, 500.0, math.pi - 0.02, 0.0, 0.0]  # a tool pointing down, near the half-turn
 

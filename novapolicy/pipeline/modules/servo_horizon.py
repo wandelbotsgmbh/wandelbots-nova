@@ -10,7 +10,7 @@ from novapolicy.transport.clock import ServerMs
 
 if TYPE_CHECKING:
     from novapolicy.pipeline.base import ModuleContext
-    from novapolicy.transport.waypoints import PendingChunk
+    from novapolicy.transport.action_chunks import PendingChunk
 
 TICK_MS = 2.0
 """The integration step."""

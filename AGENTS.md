@@ -173,7 +173,7 @@ df = srv.client().get_dataset("run").filter_contents(["/policy/**"]).reader(inde
 - `/policy/<mg>/tcp_error/position_norm_mm`: commanded against measured TCP per state packet; the
   commanded value is what the session actually sent for that moment. With `tcp_target/position/*`
   and `tcp_actual/position/*`, tell lag (the arm on the path but late) from leaving the path.
-- `/policy/<mg>/joints/j*`: measured joints. `/policy/<mg>/waypoint_request/*`: per request,
+- `/policy/<mg>/joints/j*`: measured joints. `/policy/<mg>/action_chunk_request/*`: per request,
   `scheduled_at_server_ms` (sent), `first_timestamp_ms` (first waypoint due; the difference is the
   lead), `last_timestamp_ms`, `dt_ms`, `count`, `action_timestep`. `/policy/action_chunks`: the
   policy's outputs.
