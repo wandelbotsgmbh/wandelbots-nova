@@ -8,7 +8,7 @@ This demonstrates:
 - The difference between `.pose` and `.as_world()` on a dataset pose
 
 A dataset pose carries the pose exactly as it was taught, relative to its `frame`
-(`frame=None` means it is already a world pose). A dataset frame is in turn expressed
+(a `world` frame reference means it is already a world pose). A dataset frame is in turn expressed
 relative to its `reference_frame`, so frames form a chain up to `world`. `as_world()`
 walks that chain locally - no API calls - and raises if a frame along the way is missing.
 
@@ -28,29 +28,46 @@ from nova.types import MotionSettings, Pose
 APPROACH = Pose((0, 0, -100, 0, 0, 0))
 
 
-def _show_pose_vs_world_pose(dataset: ds.Dataset):
-    """`.pose` is the pose as taught, `.as_world()` resolves its frame chain."""
-    # "pick" is taught in world (frame=None), so both are the same pose.
-    pick = dataset.poses["pick"]
-    assert pick.frame is None
-    assert pick.pose == pick.as_world()
+def _frame_chain(dataset: ds.Dataset, frame: str) -> list[str]:
+    """The frames from `frame` up to world, e.g. ["fixture", "table"]."""
+    chain: list[str] = []
+    current: str | None = frame
+    while current is not None and current in dataset.frames and current not in chain:
+        chain.append(current)
+        current = dataset.frames[current].reference_frame
+    return chain
 
-    # "fixture-slot-a" is taught in the "fixture" frame, which itself sits on "table".
-    # `.pose` is the raw taught value and is NOT a world pose - moving there would send
-    # the robot to the wrong place. `.as_world()` composes table <- fixture <- slot.
-    slot = dataset.poses["fixture-slot-a"]
-    assert slot.frame == "fixture"
-    assert slot.pose != slot.as_world()
+
+def _show_pose_vs_world_pose(dataset: ds.Dataset):
+    """`.pose` is the pose as taught, `.as_world()` resolves its frame chain.
+
+    The poses are picked from the dataset itself: the local example dataset and the
+    dataset NOVA seeds on a fresh cell differ between NOVA versions.
+    """
+    # A pose taught in world: `.pose` and `.as_world()` are the same pose.
+    for name, pose in dataset.poses.items():
+        if isinstance(pose.frame, api.models.WorldFrameReference):
+            assert pose.pose == pose.as_world()
+            print(f"{name}.pose = {name}.as_world() = {pose.pose}  (taught in world)")
+            break
+
+    # A pose taught in a dataset frame - the one with the longest frame chain. `.pose` is
+    # the raw taught value and is NOT a world pose - moving there would send the robot to
+    # the wrong place. `.as_world()` composes the whole chain.
+    in_frames = [
+        (name, pose, _frame_chain(dataset, pose.frame.frame))
+        for name, pose in dataset.poses.items()
+        if isinstance(pose.frame, api.models.DatasetFrameReference)
+    ]
+    if not in_frames:
+        return
+    name, pose, chain = max(in_frames, key=lambda entry: len(entry[2]))
+    print(f"{name}.pose       = {pose.pose}  (in frame '{chain[0]}')")
+    print(f"{name}.as_world() = {pose.as_world()}  (via {' <- '.join(reversed(chain))})")
 
     # A frame resolves to the transform that takes a pose from that frame into world.
-    fixture = dataset.frames["fixture"]
-
-    print(f"pick.pose            = {pick.pose}")
-    print(f"pick.as_world()      = {pick.as_world()}")
-    print(f"slot.pose            = {slot.pose}  (in frame '{slot.frame}')")
-    print(f"slot.as_world()      = {slot.as_world()}")
-    print(f"fixture.pose         = {fixture.pose}  (in frame '{fixture.reference_frame}')")
-    print(f"fixture.as_world()   = {fixture.as_world()}")
+    frame = dataset.frames[chain[0]]
+    print(f"{chain[0]}.as_world() = {frame.as_world()}")
 
 
 async def _move_through_dataset_poses(ctx: nova.ProgramContext, count: int):
@@ -127,8 +144,9 @@ async def load_local_dataset(ctx: nova.ProgramContext, count: int = 1):
 
 
 # Configure a robot program that loads its dataset from the remote NOVA API.
-# "default" / revision 1 is the dataset pre-seeded on a fresh NOVA cell - its
-# content is identical to examples/example_dataset.json.
+# "default" / revision 1 is the dataset pre-seeded on a fresh NOVA cell. It has "pick" and
+# "place" poses like examples/example_dataset.json; the rest of its content depends on the
+# NOVA version. Needs NOVA 26.9 or newer (the dataset format this SDK reads).
 @nova.program(
     id="load_remote_dataset",
     name="Load remote dataset",

@@ -19,6 +19,9 @@ def _pose(dataset_pose: str, dataset: str = "default") -> api.models.DatasetPose
         pose=api.models.Pose(position=[1, 2, 3], orientation=[0, 0, 0]),
         dataset_pose=dataset_pose,
         dataset=dataset,
+        frame=api.models.WorldFrameReference(),
+        tcp="Flange",
+        kinematic_configuration=api.models.UnspecifiedKinematicConfiguration(),
     )
 
 

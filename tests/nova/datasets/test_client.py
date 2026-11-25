@@ -29,6 +29,9 @@ def _dataset_response(dataset_id: str = "source-set") -> api.models.GetDatasetRe
                 pose=api.models.Pose(position=[1, 2, 3], orientation=[0, 0, 0]),
                 dataset_pose="pick",
                 dataset=dataset_id,
+                frame=api.models.WorldFrameReference(),
+                tcp="Flange",
+                kinematic_configuration=api.models.UnspecifiedKinematicConfiguration(),
             )
         ],
         frames=[
@@ -86,6 +89,34 @@ class TestFetchDataset:
         nova_mock = _nova_mock(get_dataset=api.ApiException(status=500, reason="boom"))
 
         with pytest.raises(DatasetError):
+            await ds.fetch(nova_mock, "default")
+
+    async def test_dataset_from_a_server_older_than_26_9_names_the_minimum_version(self):
+        """Before NOVA 26.9 poses come without `tcp` and with null `frame` and
+        `kinematic_configuration`; the API client rejects that while reading the response."""
+        old_format = {
+            "dataset": "default",
+            "name": "default",
+            "revision": 1,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "poses": [
+                {
+                    "dataset_pose": "pick",
+                    "dataset": "default",
+                    "pose": {"position": [1, 2, 3], "orientation": [0, 0, 0]},
+                    "frame": None,
+                    "kinematic_configuration": None,
+                }
+            ],
+            "frames": [],
+            "command_routines": [],
+        }
+        with pytest.raises(Exception) as validation:
+            api.models.GetDatasetResponse.model_validate(old_format)
+        nova_mock = _nova_mock(get_dataset=validation.value)
+
+        with pytest.raises(DatasetError, match="needs NOVA 26.9 or newer"):
             await ds.fetch(nova_mock, "default")
 
 
