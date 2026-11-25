@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "bb08cf430f83",
+  "strategy": "manual-commit",
+  "branch": "feat/add-external-tool-cs",
+  "checkpoints_count": 2,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/bb/08cf430f83/0/metadata.json",
+      "transcript": "/bb/08cf430f83/0/full.jsonl",
+      "compact_transcript": "/bb/08cf430f83/0/transcript.jsonl",
+      "content_hash": "/bb/08cf430f83/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 45,
+    "cache_creation_tokens": 13648,
+    "cache_read_tokens": 6103919,
+    "output_tokens": 7538,
+    "api_call_count": 22
+  }
+}
