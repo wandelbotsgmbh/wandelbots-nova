@@ -712,6 +712,39 @@ async def test_a_short_chunk_holds_its_final_target_to_fill_the_buffer():
 
 
 @pytest.mark.asyncio
+async def test_steps_already_due_when_sent_are_warned_once_and_counted_at_the_stop(caplog):
+    """A lead too short for the latency drops the caller's steps as late: say so once, name the
+    setting, and count them when the session stops; the run goes on."""
+    caplog.set_level(logging.WARNING, logger="novapolicy.transport.session")
+    async with _started(pipeline=_unpadded()) as (session, server):
+        steps = [[float(i)] * 6 for i in range(6)]
+        session.update_chunk(steps=steps, dt_ms=50.0, first_timestamp_ms=0)  # due in the past
+        await _wait_until(lambda: len(server.requests) >= 2)
+        session.update_chunk(steps=steps, dt_ms=50.0, first_timestamp_ms=0)
+        await _wait_until(lambda: len(server.requests) >= 3)
+        warned = [r for r in caplog.records if "already due when sent" in r.getMessage()]
+        assert len(warned) == 1
+        assert "max_expected_latency_ms" in warned[0].getMessage()
+    summary = [r for r in caplog.records if "of 12 steps were already due" in r.getMessage()]
+    assert len(summary) == 1
+
+
+def test_a_timestep_queues_overlap_is_not_taken_for_latency(caplog):
+    """A queue's replacement starts with the timesteps already running; dropping them is no sign
+    of a lead too short for the network."""
+    caplog.set_level(logging.WARNING, logger="novapolicy.transport.session")
+    with _built(pipeline=_unpadded()) as (session, _server), _server_now(session) as now:
+        now.return_value = 1_000
+        pending = PendingChunk(
+            steps=[[0.0] * 6] * 4, dt_ms=50.0, first_timestamp_ms=ServerMs(950), action_timestep=7
+        )
+        request, stamps, skipped = session._schedule(pending)
+        session._record(pending, stamps, request, skipped)
+    assert skipped > 0
+    assert not [r for r in caplog.records if "already due when sent" in r.getMessage()]
+
+
+@pytest.mark.asyncio
 async def test_waypoints_already_in_the_past_are_trimmed_before_sending():
     """Only the still-reachable tail of a chunk is sent.
 

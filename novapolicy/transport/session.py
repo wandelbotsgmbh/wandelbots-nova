@@ -135,6 +135,49 @@ class _PlaybackClock:
         return due
 
 
+@dataclass
+class _LateSteps:
+    """The caller's steps that were already due when their chunk was sent, so the filters
+    dropped them: the latency exceeds ``max_expected_latency_ms``. Warned at the first one and
+    counted for the session's stop; the run goes on.
+
+    A chunk on a policy's own timestep timeline (a timestep queue) is not counted: each
+    replacement starts with the timesteps already running, and dropping those is its design."""
+
+    late: int = 0
+    total: int = 0
+
+    def note(self, pending: PendingChunk, dropped: int, group: str, lead_ms: float) -> None:
+        """Count a sent chunk; ``dropped`` steps from its start were filtered out as late."""
+        if pending.action_timestep >= 0 and not pending.lead:
+            return
+        first, last = pending.start_step, pending.last_caller_step
+        late = max(0, min(dropped, last + 1) - first)
+        self.total += max(0, last - first + 1)
+        if late and not self.late:
+            logger.warning(
+                "%s: %d step(s) were already due when sent and were dropped. The latency exceeds "
+                "max_expected_latency_ms (%.0f ms); raise it, e.g. "
+                "ActionChunkConfig(max_expected_latency_ms=150) over a remote network.",
+                group,
+                late,
+                lead_ms,
+            )
+        self.late += late
+
+    def report(self, group: str, lead_ms: float) -> None:
+        """At the stop: how many of the caller's steps were dropped as late."""
+        if self.late:
+            logger.warning(
+                "%s: %d of %d steps were already due when sent and were dropped "
+                "(max_expected_latency_ms %.0f ms).",
+                group,
+                self.late,
+                self.total,
+                lead_ms,
+            )
+
+
 class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
     """Sends action chunks as timestamped joint or TCP waypoints via NOVA action chunk streaming;
     the server computes the motion profile and, for TCP waypoints, the IK."""
@@ -188,6 +231,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """Name of the stop condition that fired (normal stop, not a failure)."""
 
         self._clock = JoggingTimeClock()  # session-clock estimate (ADR 0012)
+        self._late = _LateSteps()  # caller steps already due when sent: warned once, counted
         # One-step waypoints already sent and not yet due, resent with every new one.
         self._lead_window: list[tuple[int, list[float]]] = []
         self._playback = _PlaybackClock()  # due times of one-step waypoints
@@ -195,8 +239,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         # The newest queued chunk, stamped and sent by the jogging loop.
         self._pending_request: PendingChunk | None = None
         self._pending_request_event = asyncio.Event()
-        self._stop_requested = False
-        self._stop_acknowledged = False
+        self._stop_requested = self._stop_acknowledged = False
         self._stop_settled = asyncio.Event()
         self._queued_chunk_count = 0
         self._due_tasks: set[asyncio.Task[None]] = set()
@@ -466,8 +509,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         self._timestamps.on_grid([], 0.0, None)  # forgets the grid's path
         self._pending_request_event.clear()
         # A session can be started again after stop(); the last stop is over.
-        self._stop_requested = False
-        self._stop_acknowledged = False
+        self._stop_requested = self._stop_acknowledged = False
         self._stop_settled.clear()
 
         initial_state = await self._motion_group.get_state()
@@ -550,6 +592,7 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         """Stop the session at once, dropping anything still scheduled; call :meth:`drain` first
         to let the accepted waypoints run out."""
         self._running = False
+        self._late.report(self.motion_group_id, self._config.max_expected_latency_ms)
         for task in self._due_tasks:
             task.cancel()  # not due yet: the motion it belongs to is stopped too
         await self._request_server_stop()
@@ -805,6 +848,9 @@ class WaypointJoggingSession:  # ruff: ignore[too-many-public-methods]
         policy's first step is due and, for a request, the values it sends. The drain stops on
         its last waypoint, and :meth:`commanded_at` answers from it: like the server, a request
         replaces what was sent from its first timestamp on."""
+        self._late.note(
+            pending, skipped, self.motion_group_id, self._config.max_expected_latency_ms
+        )
         if request is None:
             skipped = 0
         timestep, start = pending.action_timestep, pending.start_step

@@ -375,6 +375,7 @@ last waypoint and the state stays `RUNNING`.
 
 | symptom | what to do |
 | --- | --- |
+| warning "step(s) were already due when sent and were dropped" | the network or the policy is slower than the lead: raise `ActionChunkConfig(max_expected_latency_ms=...)`, e.g. to 150 over a remote network; at the stop the log counts how many steps were dropped |
 | `JoggingNotSupportedError` when the session opens | upgrade NOVA: action chunk streaming needs api-gateway 26.6 or newer |
 | the robot brakes toward every live target and moves in jerks | add `ServoHorizon` to the pipeline, or send chunks |
 | the robot overshoots and rings when a hand stops in teleoperation | use `ServoHorizon` instead of sending each pose alone |

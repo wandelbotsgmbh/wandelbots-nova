@@ -112,8 +112,14 @@ Tests: `test_an_explicit_start_time_always_wins`, `test_a_chunk_with_its_own_tim
 step due within `MIN_LEAD_MS` (20 ms) of now is not sent; the others keep their times, exactly
 `anchor + int(k·dt)`, and every step's time is still reported. A chunk late entirely is not sent.
 A chunk stamped at the send and the final target of a run always pass. Under T1 in sequential
-execution nothing is ever late.
+execution nothing is ever late. When every step the caller asked for is late, its padding is not
+sent either. The caller's steps dropped as late are warned once per session (the latency exceeds
+`max_expected_latency_ms`) and counted at the stop; a timestep queue's overlap with the running
+plan is not counted.
 Tests: `test_waypoints_already_in_the_past_are_trimmed_before_sending`,
+`test_steps_already_due_when_sent_are_warned_once_and_counted_at_the_stop`,
+`test_a_timestep_queues_overlap_is_not_taken_for_latency`,
+`test_drop_late_sends_no_padding_when_every_caller_step_is_late`,
 `test_a_trimmed_chunk_still_reports_where_each_caller_step_landed`, `test_a_lead_chunk_that_is_late_entirely_is_not_sent_and_not_guarded`.
 
 **T4 One-step chunks in continuous execution** are spaced one policy step apart by a playback

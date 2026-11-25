@@ -428,6 +428,7 @@ refuses fails before the robot moves.
 
 | symptom | what to do |
 | --- | --- |
+| warning "step(s) were already due when sent and were dropped" | the network or the policy is slower than the lead: raise `ActionChunkConfig(max_expected_latency_ms=...)`, e.g. to 150 over a remote network; at the stop the log counts how many steps were dropped |
 | `ValueError` at construction: the policy "requires ContinuousExecution" | use `ContinuousExecution()`, or the policy without `QueuedPolicyClient` |
 | `ValueError` at construction: put the policy's `default_modules` (a `TimestepTimeline`) in the pipeline | build the pipeline from `default_pipeline(execution=..., policy=...)` |
 | a warning that the pipeline is the joggers' default | pass `execution` and `policy` to `default_pipeline` |
