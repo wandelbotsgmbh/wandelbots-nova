@@ -33,7 +33,7 @@ from novapolicy.transport import session as ws
 from novapolicy.types import ActionChunk, ActionChunkConfig
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 START = [0.0, -1.2, 1.4, -1.8, -1.57, 0.0]
 AMPLITUDE_RAD, FREQUENCY_HZ = 0.25, 0.4
@@ -142,9 +142,12 @@ def _schema(mg: Any) -> PolicySchema:
     )
 
 
-def _dummy_vla(mg: Any, steps: int) -> CallbackPolicyClient:
+def _dummy_vla(
+    mg: Any, steps: int, *, timestep: Callable[[], int] | None = None
+) -> CallbackPolicyClient:
     """A VLA stand-in: each call plans ``steps`` steps of the trajectory from now, after 30 ms
-    of "inference"."""
+    of "inference". With ``timestep``, "now" is that policy timestep, as for a policy that
+    predicts from its observation: a stalled state stream stalls it too."""
     t0: list[float] = []
 
     async def policy(_obs: object) -> ActionChunk:
@@ -152,6 +155,8 @@ def _dummy_vla(mg: Any, steps: int) -> CallbackPolicyClient:
             t0.append(time.monotonic())
         now = time.monotonic() - t0[0]
         await asyncio.sleep(0.03)
+        if timestep is not None:
+            now = timestep() * DT_MS / 1000
         plan = [_target(now + k * DT_MS / 1000) for k in range(steps)]
         return ActionChunk(joints={mg.id: plan}, dt_ms=DT_MS)
 
@@ -216,7 +221,11 @@ async def test_a_timestep_queue_keeps_one_timeline(ur10e, recording):
     """The first chunk is bridged; every later one is placed on the first one's timeline by the
     session's TimestepTimeline (not bridged again at "now"), and the queue is told which step
     is executing."""
-    policy = QueuedPolicyClient(_dummy_vla(ur10e, 15))
+    # The queue places each chunk from the executing timestep; a dummy planning by wall clock
+    # would put a later point of the trajectory there whenever the state stream stalls.
+    queue: list[QueuedPolicyClient] = []
+    policy = QueuedPolicyClient(_dummy_vla(ur10e, 15, timestep=lambda: queue[0]._replaceable))
+    queue.append(policy)
     reason = await _run(ur10e, policy, ContinuousExecution(rate_hz=10))
     assert reason == "timeout"
     first, *later = recording.chunks
