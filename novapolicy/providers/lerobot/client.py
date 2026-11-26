@@ -1,0 +1,346 @@
+"""LeRobot asynchronous-inference policy client."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import TYPE_CHECKING, Any, cast
+
+from lerobot.async_inference.helpers import RemotePolicyConfig
+import numpy as np
+
+from novapolicy.providers.base import PolicyClient, resolve_control_freq
+from novapolicy.providers.lerobot.config import try_load_execution_settings
+from novapolicy.providers.lerobot.schema import LeRobotSchema, check_observation_range
+from novapolicy.providers.lerobot.transport import LeRobotGrpcTransport
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from nova.types import RobotState
+    from novapolicy.mapping.schema import PolicySchema
+    from novapolicy.providers.lerobot.config import LeRobotExecutionSettings
+    from novapolicy.types import ActionChunk
+
+logger = logging.getLogger(__name__)
+
+
+class LeRobotPolicyClient(PolicyClient):
+    """Adapt NOVA observations and actions to LeRobot's trusted gRPC protocol (lerobot/README.md).
+
+    Flat actions are joint targets, then TCP targets, then IO values, in schema order.
+    ``policy_type``, ``actions_per_chunk`` and ``n_action_steps`` are read from the checkpoint
+    (which the client must be able to read); an override it cannot satisfy raises, one that
+    differs from it warns.
+    ``connect`` refuses an instruction-conditioned checkpoint without ``task``.
+
+    Args:
+        server_address: LeRobot server address in ``host:port`` form.
+        pretrained_name_or_path: Model path or Hugging Face model id passed to
+            the inference server.
+        config_path: Client-readable checkpoint directory or ``config.json`` to
+            derive settings from. Defaults to ``pretrained_name_or_path``.
+        actions_per_chunk: Override for the actions requested per inference.
+            Defaults to the checkpoint's ``chunk_size``.
+        n_action_steps: Override for the actions executed per chunk. Defaults to
+            the checkpoint's ``n_action_steps``; the executor reads it from here.
+        policy_type: Override for the LeRobot policy type, such as ``"act"``.
+        task: Language instruction sent with every observation, such as
+            ``"pick up the cube"``. Required by instruction-conditioned
+            checkpoints and ignored by the others.
+        control_freq: The policy's step rate in Hz: the dataset's ``fps``. Default 30 Hz.
+        device: Torch device used by the inference server.
+        timeout_s: Deadline for individual gRPC calls.
+
+    For continuous execution wrap it in :class:`~novapolicy.QueuedPolicyClient`.
+
+    Note:
+        LeRobot's protocol uses pickle and must only be used on trusted networks.
+    """
+
+    def __init__(
+        self,
+        server_address: str,
+        pretrained_name_or_path: str,
+        *,
+        config_path: str | Path | None = None,
+        actions_per_chunk: int | None = None,
+        n_action_steps: int | None = None,
+        policy_type: str | None = None,
+        task: str | None = None,
+        control_freq: float | None = None,
+        device: str = "cpu",
+        timeout_s: float = 15.0,
+    ) -> None:
+        if actions_per_chunk is not None and actions_per_chunk <= 0:
+            raise ValueError(f"actions_per_chunk must be positive, got {actions_per_chunk}")
+        if n_action_steps is not None and n_action_steps <= 0:
+            raise ValueError(f"n_action_steps must be positive, got {n_action_steps}")
+        if task is not None and not task.strip():
+            raise ValueError("task must be a non-empty instruction, or None")
+
+        self._task = task
+        self._pretrained_name_or_path = pretrained_name_or_path
+        self._config_path = config_path if config_path is not None else pretrained_name_or_path
+        self._explicit_policy_type = policy_type
+        self._explicit_actions_per_chunk = actions_per_chunk
+        self._explicit_n_action_steps = n_action_steps
+        self._settings: LeRobotExecutionSettings | None = None
+        self._settings_resolved = False
+        self._policy_type = policy_type or ""
+        self._actions_per_chunk = actions_per_chunk or 0
+        self._n_action_steps = n_action_steps
+        self._device = device
+        self._dt_ms = 1000.0 / resolve_control_freq(control_freq, owner="LeRobotPolicyClient")
+        self._transport = LeRobotGrpcTransport(server_address, timeout_s=timeout_s)
+        self._lerobot_schema = LeRobotSchema()
+        self._setup_sent = False
+        self._timestep = 0
+        self._range_checked = False
+
+    @property
+    def dt_ms(self) -> float:
+        """Physical action timestep in milliseconds."""
+        return self._dt_ms
+
+    @property
+    def n_action_steps(self) -> int | None:
+        """Actions to execute per chunk, from the checkpoint or an override."""
+        return self._n_action_steps
+
+    async def connect(self, motion_group_ids: list[str]) -> None:  # ruff: ignore[unused-method-argument]
+        """Read the checkpoint, open the gRPC channel, and reset episode state."""
+        await asyncio.to_thread(self._resolve_settings)
+        await asyncio.to_thread(self._transport.connect)
+        self._setup_sent = False
+        self._range_checked = False
+        self._timestep = 0
+
+    async def validate_schema(self, schema: PolicySchema) -> None:
+        """Validate schema constraints known without remote model metadata."""
+        self._lerobot_schema.validate_schema(schema)
+
+    def _resolve_settings(self) -> None:
+        """Derive execution settings from the checkpoint once, reconciling overrides.
+
+        Blocking (may download from the Hub): run it in a worker thread.
+        """
+        if self._settings_resolved:
+            return
+
+        settings = try_load_execution_settings(self._config_path)
+        if settings is None:
+            self._settings = None
+            missing = [
+                name
+                for name, value in (
+                    ("policy_type", self._explicit_policy_type),
+                    ("actions_per_chunk", self._explicit_actions_per_chunk),
+                )
+                if value is None
+            ]
+            if missing:
+                msg = (
+                    "LeRobotPolicyClient cannot read the checkpoint at "
+                    f"{self._config_path!r}, so {' and '.join(missing)} cannot be derived. "
+                    f"Pass {' and '.join(missing)} explicitly, or set config_path to a "
+                    "client-readable checkpoint directory."
+                )
+                raise ValueError(msg)
+            logger.warning(
+                "LeRobot checkpoint %r is not readable by the client: using explicit "
+                "settings and skipping validation against the checkpoint.",
+                self._config_path,
+            )
+            self._settings_resolved = True
+            return
+
+        # Reconcile before storing: a contradicting override leaves the client unresolved.
+        policy_type = self._resolved_policy_type(settings)
+        if settings.requires_task and self._task is None:
+            msg = (
+                f"The {settings.policy_type!r} checkpoint at {self._config_path!r} is "
+                "conditioned on a language instruction. Pass task='...' to "
+                "LeRobotPolicyClient, phrased like the instructions it was trained on."
+            )
+            raise ValueError(msg)
+        actions_per_chunk = self._resolved_actions_per_chunk(settings)
+        n_action_steps = self._resolved_n_action_steps(settings)
+
+        self._settings = settings
+        self._policy_type = policy_type
+        self._actions_per_chunk = actions_per_chunk
+        self._n_action_steps = n_action_steps
+        self._settings_resolved = True
+
+    def _resolved_policy_type(self, settings: LeRobotExecutionSettings) -> str:
+        explicit = self._explicit_policy_type
+        if explicit is None:
+            return settings.policy_type
+        if explicit != settings.policy_type:
+            msg = (
+                f"policy_type={explicit!r} contradicts the checkpoint, which is "
+                f"{settings.policy_type!r}. Remove the argument to use the checkpoint's type."
+            )
+            raise ValueError(msg)
+        return explicit
+
+    def _resolved_actions_per_chunk(self, settings: LeRobotExecutionSettings) -> int:
+        """Actions to request per inference: the checkpoint's chunk, or an override."""
+        explicit = self._explicit_actions_per_chunk
+        chunk_size = settings.chunk_size
+
+        if chunk_size is None:
+            if explicit is None:
+                msg = (
+                    f"The {settings.policy_type!r} checkpoint declares no action chunk, "
+                    "so actions_per_chunk cannot be derived. Pass it explicitly."
+                )
+                raise ValueError(msg)
+            return explicit
+
+        if explicit is None:
+            return chunk_size
+        if explicit > chunk_size:
+            msg = (
+                f"actions_per_chunk={explicit} exceeds the checkpoint's action chunk of "
+                f"{chunk_size}; the policy cannot predict that many actions."
+            )
+            raise ValueError(msg)
+        if explicit < chunk_size:
+            logger.warning(
+                "actions_per_chunk=%d is below the checkpoint's action chunk of %d; "
+                "requesting a shortened chunk.",
+                explicit,
+                chunk_size,
+            )
+        return explicit
+
+    def _resolved_n_action_steps(self, settings: LeRobotExecutionSettings) -> int | None:
+        """Actions to execute per chunk: the checkpoint's horizon, or an override."""
+        explicit = self._explicit_n_action_steps
+        chunk_size = settings.chunk_size
+
+        if explicit is None:
+            return settings.n_action_steps
+        if chunk_size is not None and explicit > chunk_size:
+            msg = (
+                f"n_action_steps={explicit} exceeds the checkpoint's action chunk of "
+                f"{chunk_size}; there are not that many actions in a chunk."
+            )
+            raise ValueError(msg)
+        if settings.n_action_steps is not None and explicit != settings.n_action_steps:
+            logger.warning(
+                "n_action_steps=%d differs from the checkpoint's %d; executing a "
+                "different horizon than the checkpoint intends.",
+                explicit,
+                settings.n_action_steps,
+            )
+        return explicit
+
+    async def prepare(
+        self,
+        states: dict[str, RobotState],
+        schema: PolicySchema,
+        images: dict[str, Any] | None = None,
+        io_values: dict[str, object] | None = None,  # ruff: ignore[unused-method-argument]
+    ) -> None:
+        """Send policy setup before the executor timeout starts."""
+        if not self._transport.connected:
+            await self.connect([])
+        state_names, columns = self._layout(states, schema)
+        await asyncio.to_thread(self._ensure_policy_setup, schema, state_names, images, columns)
+
+    async def get_actions(
+        self,
+        states: dict[str, RobotState],
+        schema: PolicySchema,
+        images: dict[str, Any] | None = None,
+        io_values: dict[str, object] | None = None,
+    ) -> ActionChunk:
+        """Send one observation and return a decoded action chunk."""
+        if not self._transport.connected:
+            await self.connect([])
+
+        observation = await schema.build_observation(states, io_values)
+        if images:
+            observation.update(images)
+        if self._task is not None:
+            # As LeRobot's robot client does; the server passes it to the tokenizer step.
+            observation["task"] = self._task
+        state_names, columns = self._layout(states, schema)
+        self._check_observation_range(observation, state_names)
+        await asyncio.to_thread(self._ensure_policy_setup, schema, state_names, images, columns)
+
+        actions = await asyncio.to_thread(
+            self._transport.infer,
+            observation,
+            timestep=self._timestep,
+            must_go=True,
+        )
+        self._timestep += len(actions)
+        if not actions:
+            raise ValueError("LeRobot returned no action steps")
+        rows = [_as_row(action.get_action()) for action in actions]
+        outputs = schema.split_actions(rows, columns, source="LeRobot")
+        dof = {mg_id: len(state.joints) for mg_id, state in states.items()}
+        return schema.decode_actions(outputs, dt_ms=self._dt_ms, dof=dof, source="LeRobot")
+
+    async def close(self) -> None:
+        """Close the gRPC channel."""
+        await asyncio.to_thread(self._transport.close)
+        self._setup_sent = False
+
+    def _layout(
+        self, states: dict[str, RobotState], schema: PolicySchema
+    ) -> tuple[list[str], list[tuple[str, int]]]:
+        """The flat state's names and the flat action's columns."""
+        dof = {mg_id: len(state.joints) for mg_id, state in states.items()}
+        return self._lerobot_schema.state_names(states, schema), schema.action_columns(dof)
+
+    def _check_observation_range(
+        self,
+        observation: dict[str, Any],
+        state_names: list[str],
+    ) -> None:
+        """Hold the first live observation of a run against the checkpoint's statistics."""
+        if self._range_checked or self._settings is None:
+            return
+        self._range_checked = True
+        check_observation_range(self._settings, observation, state_names)
+
+    def _ensure_policy_setup(
+        self,
+        schema: PolicySchema,
+        state_names: list[str],
+        images: dict[str, Any] | None,
+        columns: list[tuple[str, int]],
+    ) -> None:
+        if self._setup_sent:
+            return
+        if self._settings is not None:
+            width = sum(n for _, n in columns)
+            self._lerobot_schema.assert_matches(self._settings, schema, state_names, images, width)
+        self._transport.configure_policy(
+            RemotePolicyConfig(
+                policy_type=self._policy_type,
+                pretrained_name_or_path=self._pretrained_name_or_path,
+                lerobot_features=cast(
+                    "dict[str, Any]",
+                    self._lerobot_schema.features(schema, state_names, images),
+                ),
+                actions_per_chunk=self._actions_per_chunk,
+                device=self._device,
+            )
+        )
+        self._setup_sent = True
+
+
+def _as_row(action: object) -> list[float]:
+    """A LeRobot action (a torch tensor or an array) as one flat row."""
+    if hasattr(action, "detach"):
+        action = cast("Any", action).detach().cpu().numpy()
+    return np.asarray(action, dtype=np.float64).reshape(-1).tolist()
+
+
+__all__ = ["LeRobotPolicyClient"]

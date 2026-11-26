@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import math
-from unittest.mock import MagicMock
 
 import pytest
 
-from novapolicy.ops import (
+from novapolicy.mapping.ops import (
     Clamp,
     OpDirection,
     Rad2Deg,
@@ -16,25 +15,11 @@ from novapolicy.ops import (
     apply_ops,
     apply_ops_inverse,
 )
-from novapolicy.schema import Action, Observation, PolicySchema
+from novapolicy.mapping.schema import Action, Observation, PolicySchema
+from novapolicy.tests.doubles import mg as _mg, state as _state
 from novapolicy.types import ActionChunk
 
 MG_ID = "0@cobot"
-
-
-def _mg(mg_id: str = MG_ID) -> MagicMock:
-    mg = MagicMock()
-    mg.id = mg_id
-    mg._controller_id = mg_id.split("@")[1]
-    mg._cell = "cell"
-    return mg
-
-
-def _state(joints: tuple[float, ...]) -> MagicMock:
-    state = MagicMock()
-    state.joints = joints
-    state.pose = None
-    return state
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +93,7 @@ class _ForwardOnly(ValueOp):
 
 @pytest.mark.asyncio
 async def test_joint_observations_are_converted_on_the_way_in() -> None:
-    mg = _mg()
+    mg = _mg(MG_ID)
     schema = PolicySchema(
         observations=[Observation.joint_positions("arm", source=mg, ops=[Rad2Deg()])]
     )
@@ -120,7 +105,7 @@ async def test_joint_observations_are_converted_on_the_way_in() -> None:
 
 
 def test_joint_actions_are_converted_on_the_way_out() -> None:
-    mg = _mg()
+    mg = _mg(MG_ID)
     schema = PolicySchema(
         observations=[Observation.joint_positions("arm", source=mg, ops=[Rad2Deg()])]
     )
@@ -133,14 +118,18 @@ def test_joint_actions_are_converted_on_the_way_out() -> None:
 def test_a_forward_only_operator_is_refused_on_a_writable_channel() -> None:
     with pytest.raises(ValueError, match="must be reversible"):
         PolicySchema(
-            observations=[Observation.joint_positions("arm", source=_mg(), ops=[_ForwardOnly()])]
+            observations=[
+                Observation.joint_positions("arm", source=_mg(MG_ID), ops=[_ForwardOnly()])
+            ]
         )
 
 
 def test_a_forward_only_operator_is_allowed_on_a_read_only_channel() -> None:
     schema = PolicySchema(
         observations=[
-            Observation.joint_positions("arm", source=_mg(), action=False, ops=[_ForwardOnly()])
+            Observation.joint_positions(
+                "arm", source=_mg(MG_ID), action=False, ops=[_ForwardOnly()]
+            )
         ]
     )
 
@@ -149,7 +138,7 @@ def test_a_forward_only_operator_is_allowed_on_a_read_only_channel() -> None:
 
 def test_tcp_position_and_orientation_convert_independently() -> None:
     """Position is millimetres and orientation is radians — one list cannot serve both."""
-    mg = _mg()
+    mg = _mg(MG_ID)
     schema = PolicySchema(
         observations=[
             Observation.tcp(
@@ -172,7 +161,7 @@ def test_tcp_position_and_orientation_convert_independently() -> None:
 
 def test_an_explicit_action_overrides_the_observations_operators() -> None:
     """Explicit-wins, matching how joint_action_keys already resolves duplicates."""
-    mg = _mg()
+    mg = _mg(MG_ID)
     schema = PolicySchema(
         observations=[Observation.joint_positions("arm", source=mg, action=False, ops=[Rad2Deg()])],
         actions=[Action.joint_positions("arm", target=mg, ops=[Scale(2.0)])],
@@ -201,7 +190,7 @@ def test_a_group_without_operators_is_left_alone() -> None:
 
 
 def test_a_schema_without_operators_returns_the_chunk_unchanged() -> None:
-    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=_mg())])
+    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=_mg(MG_ID))])
     chunk = ActionChunk(joints={MG_ID: [[1.0]]})
 
     assert schema.apply_inverse_ops(chunk) is chunk

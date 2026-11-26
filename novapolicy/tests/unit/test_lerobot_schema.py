@@ -1,40 +1,17 @@
-"""Unit tests for LeRobot schema validation and flat action layout."""
+"""Unit tests for LeRobot schema validation and the flat action vector it is decoded from."""
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
-from novapolicy.schema import Observation, PolicySchema
+from novapolicy.mapping.schema import Action, Observation, PolicySchema
+from novapolicy.tests.doubles import mg as _mg, state as _state
 
-schema_module = pytest.importorskip("novapolicy.lerobot.schema")
-FlatActionLayout = schema_module.FlatActionLayout
+schema_module = pytest.importorskip("novapolicy.providers.lerobot.schema")
 LeRobotSchema = schema_module.LeRobotSchema
-
-
-def _mg(mg_id: str = "0@cobot", controller_id: str = "cobot") -> MagicMock:
-    mg = MagicMock()
-    mg.id = mg_id
-    mg._controller_id = controller_id
-    mg._cell = "cell"
-    return mg
-
-
-def _state(joints: tuple[float, ...]) -> MagicMock:
-    state = MagicMock()
-    state.joints = joints
-    state.pose = None
-    state.tcp = None
-    return state
-
-
-def _tcp_state(values: tuple[float, float, float, float, float, float]) -> MagicMock:
-    state = _state((0.0,) * 6)
-    state.pose = SimpleNamespace(position=values[:3], orientation=values[3:])
-    return state
 
 
 def test_flat_action_layout_orders_joints_then_tcp_then_ios() -> None:
@@ -49,30 +26,35 @@ def test_flat_action_layout_orders_joints_then_tcp_then_ios() -> None:
     )
 
     LeRobotSchema.validate_schema(schema)
-    layout = LeRobotSchema(dt_ms=50.0).action_layout(
-        {
-            joint_mg.id: _state((0.0,) * 6),
-            tcp_mg.id: _tcp_state((0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
-        },
-        schema,
+    assert schema.action_columns({joint_mg.id: 6, tcp_mg.id: 6}) == [
+        ("arm", 6),
+        ("eef", 6),
+        ("gripper", 1),
+    ]
+
+
+def test_computed_action_keys_get_a_column_after_the_ios_and_land_in_values() -> None:
+    """An actuator outside NOVA reads its column from chunk.values, one row per step."""
+    mg = _mg("0@cobot")
+
+    async def gripper(_chunk: object) -> None:
+        pass
+
+    schema = PolicySchema(
+        observations=[Observation.joint_positions("arm", source=mg)],
+        actions=[Action.computed(gripper, keys=["gripper"])],
     )
+    columns = schema.action_columns({mg.id: 6})
+    assert columns == [("arm", 6), ("gripper", 1)]
+    steps = [list(np.arange(7.0)), list(np.arange(7.0) + 10)]
+    chunk = schema.decode_actions(schema.split_actions(steps, columns), dt_ms=50.0, dof={mg.id: 6})
+    assert chunk.values == {"gripper": [[6.0], [16.0]]}
+    assert chunk.joints[mg.id][1] == [10.0, 11.0, 12.0, 13.0, 14.0, 15.0]
 
-    assert layout.joints == [(joint_mg.id, slice(0, 6))]
-    assert layout.tcp == [(tcp_mg.id, slice(6, 12))]
-    assert [
-        (group_id, io, action_slice) for group_id, io, _mapping, action_slice in layout.ios
-    ] == [(joint_mg.id, "digital_out[0]", slice(12, 13))]
 
-
-def test_decode_tcp_action_requires_six_values() -> None:
-    schema = LeRobotSchema(dt_ms=50.0)
-    layout = FlatActionLayout(joints=[], tcp=[("0@tcp", slice(0, 6))], ios=[])
-
-    with pytest.raises(ValueError, match="expected 6 values, got 5"):
-        schema.decode_arrays(
-            [np.asarray([1.0, 2.0, 3.0, 0.1, 0.2], dtype=np.float32)],
-            layout,
-        )
+def test_a_row_narrower_than_the_actions_is_refused() -> None:
+    with pytest.raises(ValueError, match="answered 5 values per step, expected 6"):
+        PolicySchema.split_actions([[1.0, 2.0, 3.0, 0.1, 0.2]], [("eef", 6)])
 
 
 def test_validate_schema_accepts_joint_targets_for_different_groups() -> None:
@@ -84,7 +66,7 @@ def test_validate_schema_accepts_joint_targets_for_different_groups() -> None:
 
 
 def test_validate_schema_rejects_duplicate_joint_targets_for_one_group() -> None:
-    mg = _mg()
+    mg = _mg("0@cobot")
     schema = PolicySchema(
         observations=[
             Observation.joint_positions("first", source=mg),
@@ -97,7 +79,7 @@ def test_validate_schema_rejects_duplicate_joint_targets_for_one_group() -> None
 
 
 def test_validate_schema_rejects_duplicate_tcp_targets_for_one_group() -> None:
-    mg = _mg()
+    mg = _mg("0@cobot")
     schema = PolicySchema(
         observations=[
             Observation.tcp("first", source=mg, action=True),
@@ -110,7 +92,7 @@ def test_validate_schema_rejects_duplicate_tcp_targets_for_one_group() -> None:
 
 
 def test_validate_schema_rejects_duplicate_io_targets_for_one_group() -> None:
-    mg = _mg()
+    mg = _mg("0@cobot")
     schema = PolicySchema(
         observations=[
             Observation.joint_positions("arm", source=mg),
@@ -127,7 +109,9 @@ def test_validate_schema_rejects_duplicate_io_targets_for_one_group() -> None:
 # assert_matches: schema against the checkpoint's feature contract
 # ---------------------------------------------------------------------------
 
-LeRobotExecutionSettings = pytest.importorskip("novapolicy.lerobot.config").LeRobotExecutionSettings
+LeRobotExecutionSettings = pytest.importorskip(
+    "novapolicy.providers.lerobot.config"
+).LeRobotExecutionSettings
 _types = pytest.importorskip("lerobot.configs.types")
 FeatureType = _types.FeatureType
 PolicyFeature = _types.PolicyFeature
@@ -165,158 +149,92 @@ def _matching_schema(mg) -> PolicySchema:
     )
 
 
-def _check(schema, settings, *, state_names, images, layout=None) -> None:
-    lerobot_schema = LeRobotSchema(dt_ms=50.0)
-    if layout is None:
-        layout = FlatActionLayout(joints=[("0@cobot", slice(0, 6))], tcp=[], ios=[])
-    lerobot_schema.assert_matches(settings, schema, state_names, images, layout)
+def _check(
+    schema: PolicySchema | None = None,
+    settings: object | None = None,
+    *,
+    joints: int = 6,
+    images: object = ...,
+    action_width: int = 6,
+) -> None:
+    """Check against the 6-DOF one-camera checkpoint; by default everything matches it."""
+    LeRobotSchema().assert_matches(
+        _settings() if settings is None else settings,
+        _matching_schema(_mg("0@cobot")) if schema is None else schema,
+        [f"arm_{i}" for i in range(1, joints + 1)],
+        {"scene": _frame()} if images is ... else images,
+        action_width,
+    )
 
 
 def _frame(height: int = 240, width: int = 320):
     return np.zeros((height, width, 3), dtype=np.uint8)
 
 
-def test_assert_matches_accepts_a_schema_that_matches_the_checkpoint() -> None:
-    mg = _mg()
-    _check(
-        _matching_schema(mg),
-        _settings(),
-        state_names=[f"arm_{i}" for i in range(1, 7)],
-        images={"scene": _frame()},
+def _with_wrist_camera() -> PolicySchema:
+    return PolicySchema(
+        observations=[
+            Observation.joint_positions("arm", source=_mg("0@cobot")),
+            Observation.image("scene", source=MagicMock()),
+            Observation.image("wrist", source=MagicMock()),
+        ]
     )
+
+
+def test_assert_matches_accepts_a_schema_that_matches_the_checkpoint() -> None:
+    _check()
 
 
 def test_assert_matches_rejects_a_wrong_state_width() -> None:
-    mg = _mg()
-
     with pytest.raises(ValueError, match=r"observation\.state.*shape \(7,\).*expects \(6,\)"):
-        _check(
-            _matching_schema(mg),
-            _settings(),
-            state_names=[f"arm_{i}" for i in range(1, 8)],
-            images={"scene": _frame()},
-        )
+        _check(joints=7)
 
 
 def test_assert_matches_reports_a_camera_the_checkpoint_does_not_declare() -> None:
-    mg = _mg()
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.image("scene", source=MagicMock()),
-            Observation.image("wrist", source=MagicMock()),
-        ]
-    )
-
     with pytest.raises(ValueError, match=r"observation\.images\.wrist.*not declared"):
-        _check(
-            schema,
-            _settings(),
-            state_names=[f"arm_{i}" for i in range(1, 7)],
-            images={"scene": _frame(), "wrist": _frame()},
-        )
+        _check(_with_wrist_camera(), images={"scene": _frame(), "wrist": _frame()})
 
 
 def test_assert_matches_reports_a_camera_missing_from_the_schema() -> None:
-    mg = _mg()
-    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=mg)])
+    schema = PolicySchema(observations=[Observation.joint_positions("arm", source=_mg("0@cobot"))])
 
     with pytest.raises(ValueError, match=r"observation\.images\.scene.*is missing"):
-        _check(
-            schema,
-            _settings(),
-            state_names=[f"arm_{i}" for i in range(1, 7)],
-            images=None,
-        )
+        _check(schema, images=None)
 
 
-def test_a_higher_resolution_at_the_same_aspect_warns_about_wasted_pixels(caplog) -> None:
-    """640x480 against a 320x240 checkpoint: both 4:3, so rescaling is clean.
-
-    The comparison is channel-first: our HWC frame against the checkpoint's CHW
-    declaration.
-    """
-    mg = _mg()
-
+@pytest.mark.parametrize(
+    ("height", "width", "says", "never_says"),
+    [
+        # 640x480 against a 320x240 checkpoint: both 4:3, so rescaling is clean. The
+        # comparison is channel-first: our HWC frame against the checkpoint's CHW declaration.
+        (480, 640, ["aspect ratio matches", "640x480", "320x240"], ["stretched"]),
+        # 1920x1080 against a 320x240 checkpoint: 16:9 into 4:3 distorts.
+        (1080, 1920, ["different aspect ratio", "stretched", "1920x1080"], []),
+        # A matching frame size says nothing.
+        (240, 320, [], []),
+    ],
+    ids=["same-aspect", "different-aspect", "matching"],
+)
+def test_a_frame_size_off_the_checkpoints_warns_whether_rescaling_distorts(
+    caplog, height, width, says, never_says
+) -> None:
     with caplog.at_level("WARNING"):
-        _check(
-            _matching_schema(mg),
-            _settings(),
-            state_names=[f"arm_{i}" for i in range(1, 7)],
-            images={"scene": _frame(height=480, width=640)},
-        )
+        _check(images={"scene": _frame(height=height, width=width)})
 
-    assert "aspect ratio matches" in caplog.text
-    assert "640x480" in caplog.text
-    assert "320x240" in caplog.text
-    assert "stretched" not in caplog.text
-
-
-def test_a_different_aspect_ratio_warns_that_rescaling_cannot_fix_it(caplog) -> None:
-    """1920x1080 against a 320x240 checkpoint: 16:9 into 4:3 distorts."""
-    mg = _mg()
-
-    with caplog.at_level("WARNING"):
-        _check(
-            _matching_schema(mg),
-            _settings(),
-            state_names=[f"arm_{i}" for i in range(1, 7)],
-            images={"scene": _frame(height=1080, width=1920)},
-        )
-
-    assert "different aspect ratio" in caplog.text
-    assert "stretched" in caplog.text
-    assert "1920x1080" in caplog.text
-
-
-def test_a_matching_frame_size_says_nothing(caplog) -> None:
-    mg = _mg()
-
-    with caplog.at_level("WARNING"):
-        _check(
-            _matching_schema(mg),
-            _settings(),
-            state_names=[f"arm_{i}" for i in range(1, 7)],
-            images={"scene": _frame()},
-        )
-
-    assert not caplog.text
+    assert all(text in caplog.text for text in says)
+    assert not any(text in caplog.text for text in never_says)
+    if not says:
+        assert not caplog.text
 
 
 def test_assert_matches_rejects_a_wrong_action_width() -> None:
-    mg = _mg()
-
     with pytest.raises(ValueError, match="action width is 7, checkpoint expects 6"):
-        _check(
-            _matching_schema(mg),
-            _settings(),
-            state_names=[f"arm_{i}" for i in range(1, 7)],
-            images={"scene": _frame()},
-            layout=FlatActionLayout(
-                joints=[("0@cobot", slice(0, 6))],
-                tcp=[],
-                ios=[("0@cobot", "digital_out[0]", None, slice(6, 7))],
-            ),
-        )
+        _check(action_width=7)
 
 
 def test_assert_matches_reports_every_structural_problem_at_once() -> None:
-    mg = _mg()
-    schema = PolicySchema(
-        observations=[
-            Observation.joint_positions("arm", source=mg),
-            Observation.image("scene", source=MagicMock()),
-            Observation.image("wrist", source=MagicMock()),
-        ]
-    )
-
     with pytest.raises(ValueError) as excinfo:
-        _check(
-            schema,
-            _settings(),
-            state_names=[f"arm_{i}" for i in range(1, 8)],
-            images={"scene": _frame(), "wrist": _frame()},
-        )
+        _check(_with_wrist_camera(), joints=7, images={"scene": _frame(), "wrist": _frame()})
 
     message = str(excinfo.value)
     assert "observation.state" in message
@@ -325,7 +243,6 @@ def test_assert_matches_reports_every_structural_problem_at_once() -> None:
 
 def test_assert_matches_ignores_language_features_it_cannot_produce() -> None:
     """A task-conditioned checkpoint must not fail on its LANGUAGE feature."""
-    mg = _mg()
     settings = _settings(
         inputs={
             "observation.state": PolicyFeature(type=FeatureType.STATE, shape=(6,)),
@@ -334,37 +251,14 @@ def test_assert_matches_ignores_language_features_it_cannot_produce() -> None:
         }
     )
 
-    _check(
-        _matching_schema(mg),
-        settings,
-        state_names=[f"arm_{i}" for i in range(1, 7)],
-        images={"scene": _frame()},
-    )
+    _check(settings=settings)
 
 
 def test_assert_matches_warns_and_skips_when_the_checkpoint_declares_no_features(caplog) -> None:
-    mg = _mg()
-
     with caplog.at_level("WARNING"):
-        _check(
-            _matching_schema(mg),
-            _settings(inputs={}, outputs={}),
-            state_names=[f"arm_{i}" for i in range(1, 9)],
-            images={"scene": _frame()},
-        )
+        _check(settings=_settings(inputs={}, outputs={}), joints=8)
 
     assert "declares no input features" in caplog.text
-
-
-def test_flat_action_layout_width_spans_every_slice() -> None:
-    layout = FlatActionLayout(
-        joints=[("0@left", slice(0, 6)), ("0@right", slice(6, 12))],
-        tcp=[],
-        ios=[("0@left", "digital_out[0]", None, slice(12, 13))],
-    )
-
-    assert layout.width == 13
-    assert FlatActionLayout(joints=[], tcp=[], ios=[]).width == 0
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +266,7 @@ def test_flat_action_layout_width_spans_every_slice() -> None:
 # ---------------------------------------------------------------------------
 
 check_observation_range = schema_module.check_observation_range
-FeatureStats = pytest.importorskip("novapolicy.lerobot.config").FeatureStats
+FeatureStats = pytest.importorskip("novapolicy.providers.lerobot.config").FeatureStats
 
 
 def _stats_settings(**stats) -> object:
@@ -468,3 +362,31 @@ def test_the_same_pose_in_the_wrong_units_is_still_rejected() -> None:
 
     with pytest.raises(ValueError, match="implausibly far outside"):
         check_observation_range(settings, {"arm_1": 90.0, "arm_2": -90.0}, _NAMES)
+
+
+async def _force(observation):
+    return {"force": 1.5}
+
+
+def test_state_names_include_velocities_and_poses_in_a_fixed_order():
+    """Joint positions, joint velocities, TCP poses, object poses, IOs, computed keys: whatever
+    the declaration order."""
+    from nova.types import Pose
+    from novapolicy.mapping.poses import QUATERNION
+
+    mg = _mg("0@cobot")
+    schema = PolicySchema(
+        observations=[
+            Observation.computed(_force, keys=["force"]),
+            Observation.pose("goal", source=Pose((0, 0, 0, 0, 0, 0)), orientation_type=QUATERNION),
+            Observation.joint_velocities("qd", source=mg),
+            Observation.joint_positions("q", source=mg, action=False),
+        ]
+    )
+    names = LeRobotSchema.state_names({mg.id: _state((0.0,) * 3)}, schema)
+    assert names == [
+        "q_1", "q_2", "q_3",
+        "qd_1", "qd_2", "qd_3",
+        "goal_x", "goal_y", "goal_z", "goal_qx", "goal_qy", "goal_qz", "goal_qw",
+        "force",
+    ]  # fmt: skip

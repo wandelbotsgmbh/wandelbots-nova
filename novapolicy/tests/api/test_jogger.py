@@ -3,22 +3,27 @@
 The jogger lets you stream joint targets to one or more robots and surfaces
 faults through its ``async for`` loop. These tests state that contract through
 the public ``jog_joints()`` API, substituting only the robot transport
-(``WaypointJoggingSession``) — they never reach into the jogger's internals.
+(``ActionChunkSession``) — they never reach into the jogger's internals.
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
-import logging
+from functools import partial
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from novapolicy.jogging import jog_joints, jog_tcp
-from novapolicy.jogging.jogger import LIVE_LEAD_MS, JointJogger, TcpJogger
-from novapolicy.types import MotionError
+from novapolicy.jogging.jogger import JointJogger, TcpJogger
+from novapolicy.pipeline.modules.servo_horizon import ServoHorizon
+from novapolicy.tests.doubles import fake_session as _fake_session, mg as _mg
+from novapolicy.types import ActionChunkConfig, MotionError
 
 _JOGGER = "novapolicy.jogging.jogger"
+_LIFECYCLE = "novapolicy.transport.lifecycle"
 
 _CLOCK_BASE = 1_000.0
 
@@ -53,7 +58,7 @@ def _no_estop_no_rerun():
     estop.start = AsyncMock()
     estop.stop = AsyncMock()
     with (
-        patch(f"{_JOGGER}.EstopMonitor", return_value=estop),
+        patch(f"{_LIFECYCLE}.EstopMonitor", return_value=estop),
         patch("novapolicy.rerun._is_rerun_active", return_value=False),
     ):
         yield
@@ -63,37 +68,12 @@ _JointSetup = tuple[JointJogger, list[MagicMock], dict[object, MagicMock]]
 _TcpSetup = tuple[TcpJogger, MagicMock, dict[object, MagicMock]]
 
 
-def _mg(mg_id: str) -> MagicMock:
-    mg = MagicMock()
-    mg.id = mg_id
-    return mg
-
-
-def _fake_session(num_joints: int = 6, *, mode: str = "joint") -> MagicMock:
-    session = MagicMock()
-    session.num_joints = num_joints
-    session.mode = mode
-    session.has_failed = False
-    session.failure_exception = None
-    session.stop_condition_triggered = None
-    session.estimated_server_timestamp_ms = 0
-    session.session_elapsed_ms = 0.0
-    session.single_step_dt_ms = 50.0
-    session.min_chunk_horizon_ms = 200.0
-    session.current_state = MagicMock(joints=(0.0,) * num_joints)
-    session.update_chunk = MagicMock()
-    session.start = AsyncMock()
-    session.stop = AsyncMock()
-    session.drain = AsyncMock(return_value=True)
-    session.wait_ready = AsyncMock()
-    return session
-
-
 def _build_joint_jogger(
     *mg_ids: str,
     num_joints: int = 6,
-    ease_in_s: float = 0.0,
-    buffer_window_ms: float = 0.0,
+    pipeline: tuple[object, ...] = (),
+    start_joint_position: list[float] | None = None,
+    config: ActionChunkConfig | None = None,
 ) -> _JointSetup:
     """Build a real joint jogger over fake robot transports.
 
@@ -104,15 +84,18 @@ def _build_joint_jogger(
     mgs = [_mg(mid) for mid in mg_ids]
     sessions: dict[object, MagicMock] = {}
 
-    def make_session(*, motion_group: object, **_kw: object) -> MagicMock:
+    def make_session(*, motion_group: object, **kw: object) -> MagicMock:
         sessions[motion_group] = _fake_session(num_joints)
+        sessions[motion_group].motion_group_id = motion_group.id  # type: ignore[attr-defined]
+        sessions[motion_group].pipeline = kw.get("pipeline")
         return sessions[motion_group]
 
-    with patch("novapolicy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
+    with patch("novapolicy.transport.lifecycle.ActionChunkSession", side_effect=make_session):
         jogger = jog_joints(
             mgs if len(mgs) > 1 else mgs[0],
-            ease_in_s=ease_in_s,
-            buffer_window_ms=buffer_window_ms,
+            pipeline=pipeline,
+            start_joint_position=start_joint_position,
+            config=config,
         )
     return jogger, mgs, sessions
 
@@ -122,18 +105,19 @@ def _build_tcp_jogger(
     tcp: str = "Flange",
     *,
     num_joints: int = 6,
-    buffer_window_ms: float = 0.0,
+    pipeline: tuple[object, ...] = (),
 ) -> _TcpSetup:
     """Build a real single-arm TCP jogger over a fake robot transport."""
     mg = _mg(mg_id)
     sessions: dict[object, MagicMock] = {}
 
-    def make_session(*, motion_group: object, **_kw: object) -> MagicMock:
+    def make_session(*, motion_group: object, **kw: object) -> MagicMock:
         sessions[motion_group] = _fake_session(num_joints, mode="cartesian")
+        sessions[motion_group].pipeline = kw.get("pipeline")
         return sessions[motion_group]
 
-    with patch("novapolicy.jogging.jogger.WaypointJoggingSession", side_effect=make_session):
-        jogger = jog_tcp(mg, tcp=tcp, buffer_window_ms=buffer_window_ms)
+    with patch("novapolicy.transport.lifecycle.ActionChunkSession", side_effect=make_session):
+        jogger = jog_tcp(mg, tcp=tcp, pipeline=pipeline)
     return jogger, mg, sessions
 
 
@@ -148,7 +132,7 @@ def _tick(jogger, sessions, elapsed_ms: float) -> None:
     jogger._loop_t0 = _CLOCK_BASE  # type: ignore[attr-defined]
     jogger._ack0_ms = 0.0  # type: ignore[attr-defined]
     for session in sessions.values():
-        session.session_elapsed_ms = elapsed_ms
+        session.estimated_server_timestamp_ms = elapsed_ms
 
 
 def test_setting_a_single_target_streams_it_to_the_robot():
@@ -165,17 +149,32 @@ def test_setting_a_single_target_streams_it_to_the_robot():
     assert jogger.target == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
 
 
-def test_ease_in_starts_motion_from_the_standstill_baseline():
-    """With ease_in_s set, the first target (at elapsed 0) collapses to the
-    robot's start position, so motion begins from a standstill instead of
-    jumping to the target's initial speed. Default (no ease-in) sends the raw
-    target — see test_setting_a_single_target_streams_it_to_the_robot.
-    """
-    # Fake session reports its current position as all zeros (the baseline).
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", ease_in_s=1.0)
+@pytest.mark.parametrize(
+    ("config", "lead_ms"), [(None, 100), (ActionChunkConfig(max_expected_latency_ms=150), 150)]
+)
+def test_targets_and_chunks_are_due_max_expected_latency_ms_after_the_loop_time(config, lead_ms):
+    """The joggers take their lead from ActionChunkConfig, as a policy's chunks do."""
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", config=config)
+    _tick(jogger, sessions, 2_000.0)
+    jogger.set_target([1.0] * 6)
+    jogger.set_chunk([[1.0] * 6, [2.0] * 6], dt_ms=50.0)
+    starts = [c.kwargs["first_timestamp_ms"] for c in sessions[mg].update_chunk.call_args_list]
+    assert starts == [2_000 + lead_ms, 2_000 + lead_ms]
+
+
+def test_the_pipeline_is_handed_to_every_session():
+    """Opt-in modules (e.g. ServoHorizon, EaseIn) run in the sessions; the jogger does not shape
+    targets itself, and a live target goes out unchanged by default."""
+    from novapolicy import EaseIn
+
+    pipeline = (ServoHorizon(), EaseIn(duration_s=1.0))
+    jogger, mgs, sessions = _build_joint_jogger("0@left", "0@right", pipeline=pipeline)
+    assert all(sessions[mg].pipeline == pipeline for mg in mgs)
+    _, tcp_mg, tcp_sessions = _build_tcp_jogger("0@ur10e", pipeline=pipeline)
+    assert tcp_sessions[tcp_mg].pipeline == pipeline
+    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
     jogger.set_target([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
-    sent = sessions[mg].update_chunk.call_args.kwargs["steps"][0]
-    assert sent == [0.0] * 6  # held at the start baseline, not the raw target
+    assert sessions[mg].update_chunk.call_args.kwargs["steps"][0] == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
 
 
 def test_setting_a_chunk_streams_every_step_and_tracks_the_last():
@@ -192,128 +191,6 @@ def test_setting_a_chunk_streams_every_step_and_tracks_the_last():
     assert jogger.target == chunk[-1]
 
 
-def test_buffered_target_sends_a_rolling_window_played_back_from_now():
-    """The recent-target window is played back from the current anchor.
-
-    The samples cannot keep their original slots: those moments have passed, so
-    the whole window would be dropped as unreachable. Playing it back from now
-    is what buys smoothness at the cost of roughly ``buffer_window_ms`` of delay.
-    """
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    _tick(jogger, sessions, 0.0)
-    jogger.set_target([1.0] * 6)
-    _tick(jogger, sessions, 10.0)
-    jogger.set_target([2.0] * 6)
-    _tick(jogger, sessions, 20.0)
-    jogger.set_target([3.0] * 6)
-
-    kwargs = sessions[mg].update_chunk.call_args.kwargs
-    # Every waypoint is a measured sample and nothing follows the newest one:
-    # the window IS the horizon, so there is no predicted continuation.
-    assert kwargs["steps"] == [[1.0] * 6, [2.0] * 6, [3.0] * 6]
-    assert kwargs["dt_ms"] == pytest.approx(10.0)  # measured, not assumed
-    assert kwargs["extend_buffer"] is False
-    # Oldest sample (t=0) played back at a constant buffer_window_ms delay, plus lead.
-    assert kwargs["first_timestamp_ms"] == int(30 + LIVE_LEAD_MS)
-
-
-def test_buffered_target_keeps_streaming_before_the_timeline_starts():
-    """A live target must go out even while `elapsed` is still pinned at zero.
-
-    Waiting for the window to fill on a clock that only starts ticking once a
-    chunk has been sent deadlocks: nothing is sent, so nothing ever ticks.
-    """
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    for value in (1.0, 2.0, 3.0):
-        jogger.set_target([value] * 6)
-
-    assert sessions[mg].update_chunk.call_count == 3
-    assert sessions[mg].update_chunk.call_args.kwargs["steps"] == [[3.0] * 6]
-
-
-def test_buffered_window_drops_samples_older_than_the_buffer():
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    for i, value in enumerate((1.0, 2.0, 3.0, 4.0, 5.0)):
-        _tick(jogger, sessions, i * 10.0)
-        jogger.set_target([value] * 6)
-
-    steps = sessions[mg].update_chunk.call_args.kwargs["steps"]
-    # The window is resampled onto the grid the controller executes best on, so
-    # the recorded samples are interpolated rather than passed through
-    # one-for-one. What must hold is that the replay spans the *retained*
-    # window: it starts at the oldest sample still inside buffer_window_ms (the 1.0
-    # sample has aged out) and reaches the newest.
-    replayed = [step[0] for step in steps]
-    assert replayed[0] >= 2.0, replayed
-    assert max(replayed) >= 5.0, replayed
-    assert replayed == sorted(replayed), replayed
-
-
-def test_explicit_chunk_clears_buffered_live_samples():
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    for i, value in enumerate((1.0, 2.0, 3.0)):
-        _tick(jogger, sessions, i * 10.0)
-        jogger.set_target([value] * 6)
-    jogger.set_chunk([[9.0] * 6, [9.0] * 6], dt_ms=10.0)
-
-    for i, value in enumerate((10.0, 11.0, 12.0)):
-        _tick(jogger, sessions, 30.0 + i * 10.0)
-        jogger.set_target([value] * 6)
-
-    # The window restarted from the first post-chunk sample: nothing from
-    # before the explicit chunk survives into the replay.
-    replayed = [step[0] for step in sessions[mg].update_chunk.call_args.kwargs["steps"]]
-    assert replayed[0] == 10.0, replayed
-    assert max(replayed) >= 12.0, replayed
-    assert all(value >= 10.0 for value in replayed), replayed
-
-
-def test_mixing_target_forms_is_reported_once_per_motion_group(caplog):
-    """Discarding the live buffer is correct, but must not be silent.
-
-    ``buffer_window_ms`` applies only to live targets, so a caller that also sends
-    chunks pays for the buffer without benefiting from it: each chunk empties it,
-    and until it refills the live targets go out alone as terminal waypoints — the
-    halting motion the buffer exists to avoid. That is worth one warning.
-    """
-    jogger, _, sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    for i, value in enumerate((1.0, 2.0, 3.0)):
-        _tick(jogger, sessions, i * 10.0)
-        jogger.set_target([value] * 6)
-
-    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.jogger"):
-        jogger.set_chunk([[9.0] * 6, [9.0] * 6], dt_ms=10.0)
-        first = [r.getMessage() for r in caplog.records]
-
-        # Refill, then push another chunk: the same advice must not repeat.
-        for i, value in enumerate((4.0, 5.0, 6.0)):
-            _tick(jogger, sessions, 40.0 + i * 10.0)
-            jogger.set_target([value] * 6)
-        jogger.set_chunk([[8.0] * 6, [8.0] * 6], dt_ms=10.0)
-        both = [r.getMessage() for r in caplog.records]
-
-    assert len(first) == 1, first
-    assert "0@ur10e" in first[0]
-    assert both == first, "the warning repeated"
-
-
-def test_a_chunk_only_caller_is_never_warned_about_mixing(caplog):
-    """There is nothing to discard, so there is nothing to say."""
-    jogger, _, sessions = _build_joint_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.jogger"):
-        for i in range(3):
-            _tick(jogger, sessions, i * 10.0)
-            jogger.set_chunk([[float(i)] * 6, [float(i)] * 6], dt_ms=10.0)
-
-    assert [r.getMessage() for r in caplog.records] == []
-
-
 def test_each_arm_in_a_dual_setup_receives_its_own_target():
     """With two robots, each motion group is streamed only its own target."""
     jogger, (left, right), sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
@@ -328,63 +205,74 @@ def test_each_arm_in_a_dual_setup_receives_its_own_target():
 # ---------------------------------------------------------------------------
 
 
-def test_a_chunk_handed_to_set_target_is_rejected():
-    """The split exists so a chunk cannot arrive where buffer_window_ms applies.
-
-    Accepting it there meant buffer_window_ms was silently irrelevant for that
-    push, with nothing to tell the caller.
-    """
-    jogger, _, _ = _build_joint_jogger("0@ur10e")
-
-    with pytest.raises(TypeError, match="set_chunk"):
-        jogger.set_target([[1.0] * 6, [2.0] * 6])
+_single = partial(_build_joint_jogger, "0@ur10e")
+_dual = partial(_build_joint_jogger, "0@ur5e-left", "0@ur5e-right")
+_tcp = partial(_build_tcp_jogger, "0@ur10e")
 
 
-def test_a_single_target_handed_to_set_chunk_is_rejected():
-    """And the reverse, so dt_ms is never applied to something without steps."""
-    jogger, _, _ = _build_joint_jogger("0@ur10e")
-
-    with pytest.raises(TypeError, match="set_target"):
-        jogger.set_chunk([1.0] * 6, dt_ms=10.0)
-
-
-def test_set_chunk_requires_a_positive_dt_ms():
-    """dt_ms is the step spacing; there is no meaningful default for it."""
-    jogger, _, _ = _build_joint_jogger("0@ur10e")
-
-    with pytest.raises(ValueError, match="dt_ms"):
-        jogger.set_chunk([[1.0] * 6, [2.0] * 6], dt_ms=0.0)
-
-
-def test_an_empty_chunk_is_rejected_rather_than_sent():
-    """An empty list has no shape to infer and no waypoints to send."""
-    jogger, _, _ = _build_joint_jogger("0@ur10e")
-
-    with pytest.raises(TypeError, match="empty"):
-        jogger.set_chunk([], dt_ms=10.0)
-
-
-def test_a_pose_chunk_handed_to_tcp_set_target_is_rejected():
-    """Same split on the TCP jogger, where the live form is a Pose."""
-    jogger, _, _ = _build_tcp_jogger("0@ur10e")
-
-    with pytest.raises(TypeError, match="set_chunk"):
-        jogger.set_target([[500.0, 200.0, 300.0, 0.0, 3.14, 0.0]])
-
-
-def test_a_target_with_the_wrong_joint_count_is_rejected():
-    """A 3-value target for a 6-joint robot raises before any waypoint is sent."""
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
-    with pytest.raises(ValueError, match="expects 6"):
-        jogger.set_target([1.0, 2.0, 3.0])
-    sessions[mg].update_chunk.assert_not_called()
-
-
-def test_a_bare_list_for_a_dual_setup_is_rejected():
-    """Two robots need a dict target; a bare list is a usage error."""
-    jogger, _mgs, _sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
-    with pytest.raises(TypeError, match="dict"):
-        jogger.set_target([1.0] * 6)
+@pytest.mark.parametrize(
+    ("build", "push", "error", "match"),
+    [
+        # The split exists so a chunk cannot arrive where a live target's path applies:
+        # accepting it there meant the buffer was silently irrelevant for that push.
+        (_single, lambda j: j.set_target([[1.0] * 6, [2.0] * 6]), TypeError, "set_chunk"),
+        # And the reverse, so dt_ms is never applied to something without steps.
+        (_single, lambda j: j.set_chunk([1.0] * 6, dt_ms=10.0), TypeError, "set_target"),
+        # dt_ms is the step spacing; there is no meaningful default for it.
+        (_single, lambda j: j.set_chunk([[1.0] * 6, [2.0] * 6], dt_ms=0.0), ValueError, "dt_ms"),
+        # An empty list has no shape to infer and no waypoints to send.
+        (_single, lambda j: j.set_chunk([], dt_ms=10.0), TypeError, "empty"),
+        # Same split on the TCP jogger, where the live form is a Pose.
+        (
+            _tcp,
+            lambda j: j.set_target([[500.0, 200.0, 300.0, 0.0, 3.14, 0.0]]),
+            TypeError,
+            "set_chunk",
+        ),
+        # A 3-value target for a 6-joint robot.
+        (_single, lambda j: j.set_target([1.0, 2.0, 3.0]), ValueError, "expects 6"),
+        # Two robots need a dict target; a bare list is a usage error.
+        (_dual, lambda j: j.set_target([1.0] * 6), TypeError, "dict"),
+        # A value that is not finite never reaches the robot.
+        (_single, lambda j: j.set_target([float("nan")] * 6), ValueError, "not finite"),
+        # Every arm is checked before any is sent: a bad second arm leaves the first unsent.
+        (
+            _dual,
+            lambda j: j.set_target(dict(zip(j._mg_list, ([0.0] * 6, [0.0] * 5), strict=True))),
+            ValueError,
+            "'0@ur5e-right' expects 6",
+        ),
+        (
+            _dual,
+            lambda j: j.set_chunk(
+                dict(zip(j._mg_list, ([[0.0] * 6], [[0.0] * 5 + [float("inf")]]), strict=True)),
+                dt_ms=10.0,
+            ),
+            ValueError,
+            r"Step 0 for motion group '0@ur5e-right' .*not finite",
+        ),
+        (_single, lambda j: j.set_chunk([[0.0] * 6, [0.0] * 7], dt_ms=10.0), ValueError, "Step 1"),
+    ],
+    ids=[
+        "chunk-as-target",
+        "target-as-chunk",
+        "zero-dt",
+        "empty-chunk",
+        "tcp-chunk-as-target",
+        "wrong-joint-count",
+        "bare-list-for-two-arms",
+        "nan-target",
+        "second-arm-wrong-width",
+        "second-arm-chunk-not-finite",
+        "chunk-step-too-wide",
+    ],
+)
+def test_a_bad_target_is_rejected_before_anything_is_streamed(build, push, error, match):
+    jogger, _, sessions = build()
+    with pytest.raises(error, match=match):
+        push(jogger)
+    for session in sessions.values():
+        session.update_chunk.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -393,23 +281,17 @@ def test_a_bare_list_for_a_dual_setup_is_rejected():
 
 
 @pytest.mark.asyncio
-async def test_a_motion_fault_surfaces_as_an_exception_through_the_loop():
-    """A joint-limit / collision fault on the session is raised to the caller."""
+@pytest.mark.parametrize(
+    ("failure", "match"),
+    [(MotionError("0@ur10e", "joint_limit"), None), (RuntimeError("connection reset"), "reset")],
+    ids=["motion-fault", "lost-connection"],
+)
+async def test_a_session_failure_surfaces_as_an_exception_through_the_loop(failure, match):
+    """A joint-limit / collision fault or a dropped connection is raised, not swallowed."""
     jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
     sessions[mg].has_failed = True
-    sessions[mg].failure_exception = MotionError("0@ur10e", "joint_limit")
-    with pytest.raises(MotionError):
-        async for _ in jogger:
-            break
-
-
-@pytest.mark.asyncio
-async def test_a_lost_connection_surfaces_as_an_exception_through_the_loop():
-    """A dropped jogging connection is raised, not swallowed."""
-    jogger, (mg,), sessions = _build_joint_jogger("0@ur10e")
-    sessions[mg].has_failed = True
-    sessions[mg].failure_exception = RuntimeError("connection reset")
-    with pytest.raises(RuntimeError, match="connection reset"):
+    sessions[mg].failure_exception = failure
+    with pytest.raises(type(failure), match=match):
         async for _ in jogger:
             break
 
@@ -460,25 +342,6 @@ def test_tcp_jogging_streams_a_chunk_of_future_poses():
     )
 
 
-def test_buffered_tcp_target_sends_a_rolling_window_of_poses():
-    from nova.types import Pose
-
-    jogger, mg, sessions = _build_tcp_jogger("0@ur10e", buffer_window_ms=30.0)
-
-    for i, x in enumerate((500, 510, 520)):
-        _tick(jogger, {mg: sessions[mg]}, i * 10.0)
-        jogger.set_target(Pose(x, 200, 300, 0, 3.14, 0))
-
-    kwargs = sessions[mg].update_chunk.call_args.kwargs
-    assert kwargs["steps"][:3] == [
-        [500, 200, 300, 0, 3.14, 0],
-        [510, 200, 300, 0, 3.14, 0],
-        [520, 200, 300, 0, 3.14, 0],
-    ]
-    assert kwargs["dt_ms"] == pytest.approx(10.0)
-    assert kwargs["extend_buffer"] is False
-
-
 # ---------------------------------------------------------------------------
 # Context lifecycle: entering starts the robots, exiting stops them
 # ---------------------------------------------------------------------------
@@ -493,6 +356,47 @@ async def test_context_starts_waits_for_and_stops_every_session():
             for mg in (left, right):
                 sessions[mg].start.assert_awaited_once()
                 sessions[mg].wait_ready.assert_awaited_once()
+    for mg in (left, right):
+        sessions[mg].stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_the_start_move_keeps_the_cells_collision_setups():
+    """The start move is planned like any other move, as in the executor."""
+    jogger, (mg,), _sessions = _build_joint_jogger("0@ur10e", start_joint_position=[0.1] * 6)
+    setup = SimpleNamespace(collision_setups={"cell": object()})
+    collision = setup.collision_setups["cell"]
+    mg.active_tcp_name = AsyncMock(return_value="Flange")
+    mg.get_setup = AsyncMock(return_value=setup)
+    mg.plan = AsyncMock(return_value="trajectory")
+    mg.execute = AsyncMock()
+
+    with _no_estop_no_rerun():
+        async with jogger:
+            pass
+
+    mg.execute.assert_awaited_once()
+    assert mg.plan.await_args.kwargs["motion_group_setup"] is setup
+    assert setup.collision_setups == {"cell": collision}
+
+
+@pytest.mark.asyncio
+async def test_a_failing_rerun_teardown_still_stops_every_session():
+    """With a viewer active, Rerun streams every session; its teardown failing must not leave a
+    robot session running."""
+    jogger, (left, right), sessions = _build_joint_jogger("0@ur5e-left", "0@ur5e-right")
+    rerun = MagicMock(initialize=AsyncMock(), stop_streaming=AsyncMock(side_effect=OSError))
+    estop = MagicMock(start=AsyncMock(), stop=AsyncMock())
+    with (
+        patch(f"{_LIFECYCLE}.EstopMonitor", return_value=estop),
+        patch("novapolicy.rerun._is_rerun_active", return_value=True),
+        patch("novapolicy.rerun.PolicyRerunLogger", return_value=rerun),
+        pytest.raises(OSError),
+    ):
+        async with jogger:
+            pass
+    (streamed,), _ = rerun.start_streaming.call_args
+    assert streamed == {mg.id: sessions[mg] for mg in (left, right)}
     for mg in (left, right):
         sessions[mg].stop.assert_awaited_once()
 
@@ -561,3 +465,31 @@ async def test_a_fired_stop_condition_stops_the_robot_without_draining():
 
     sessions[mg].drain.assert_not_awaited()
     sessions[mg].stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_while_draining_stops_the_sessions_and_reaches_the_caller() -> None:
+    from novapolicy.transport.lifecycle import SessionLifecycle
+
+    drained = asyncio.Event()
+
+    class _Session:
+        stopped = False
+
+        async def drain(self) -> bool:
+            drained.set()
+            await asyncio.sleep(10)
+            return True
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+    session = _Session()
+    lifecycle = SessionLifecycle(config=ActionChunkConfig())
+    lifecycle.sessions["0@ur"] = session  # ty: ignore[invalid-assignment]
+    task = asyncio.create_task(lifecycle.close(drain=True))
+    await drained.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert session.stopped

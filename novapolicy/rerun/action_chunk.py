@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from functools import partial
+from typing import TYPE_CHECKING
 
 from novapolicy.rerun.constants import (
     BRIDGE_COLOR_END,
@@ -19,86 +20,81 @@ from novapolicy.rerun.constants import (
     MIN_TCP_COMPONENTS,
     lerp_color,
 )
-from novapolicy.rerun.logtime import elapsed_since
+from novapolicy.rerun.context import log_points
+from novapolicy.rerun.kinematics import joint_tcp_position
 import rerun as rr
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
     from nova_rerun_bridge.dh_robot import DHRobot
     import numpy as np
 
+    from novapolicy.rerun.context import RerunContext
     from novapolicy.types import ActionChunk
-    from rerun import RecordingStream
+
+    Steps = list[list[float]]
 
 
 def log_action_chunk(
-    chunk: ActionChunk,
-    step: int,
-    *,
-    start_time: float,
-    dh_robots: dict[str, Any],
-    tcp_offsets: dict[str, Any] | None = None,
-    n_action_steps: int = 0,
-    recording: RecordingStream | None = None,
+    ctx: RerunContext, chunk: ActionChunk, step: int, *, n_action_steps: int = 0
 ) -> None:
-    """Log action chunk as TCP path line strips and inspectable text."""
-    _log_joint_chunk(
-        chunk,
-        step,
-        start_time=start_time,
-        dh_robots=dh_robots,
-        tcp_offsets=tcp_offsets or {},
-        n_action_steps=n_action_steps,
-        recording=recording,
-    )
-    _log_tcp_chunk(
-        chunk,
-        step,
-        start_time=start_time,
-        n_action_steps=n_action_steps,
-        recording=recording,
-    )
-    _log_text(
-        chunk,
-        step,
-        start_time=start_time,
-        n_action_steps=n_action_steps,
-        recording=recording,
-    )
+    """Log each motion group's chunk as a TCP path, with its discarded tail, and as text.
 
+    The first ``n_action_steps`` steps are the ones executed (all of them when
+    0); they are drawn as an orange-to-yellow path, the rest as a gray tail.
+    """
+    ctx.set_time(step)
+    for mg_id, suffix, steps, to_positions in _tcp_paths(ctx, chunk):
+        split = n_action_steps if 0 < n_action_steps < len(steps) else len(steps)
+        path = f"policy/{mg_id}/action_chunk{suffix}"
+        executed = to_positions(steps[:split])
+        # A single joint target is drawn as a marker; a single TCP target is not drawn.
+        if suffix != "_tcp" or len(executed) >= MIN_LINE_STEPS:
+            _log_line_strip(ctx, path, executed, width=CHUNK_WIDTH_UI)
 
-def log_bridge_chunk(
-    chunk: ActionChunk,
-    step: int,
-    *,
-    start_time: float,
-    dh_robots: dict[str, Any],
-    tcp_offsets: dict[str, Any] | None = None,
-    recording: RecordingStream | None = None,
-) -> None:
-    """Log an interpolated connector separately from orange policy output."""
-    elapsed = elapsed_since(start_time)
-    rr.set_time("policy_time", duration=elapsed, recording=recording)
-    rr.set_time("policy_step", sequence=step, recording=recording)
-    tcp_offsets = tcp_offsets or {}
-
-    for mg_id, steps in chunk.joints.items():
-        dh_robot = dh_robots.get(mg_id)
-        if dh_robot is None or not steps:
+        discarded = steps[split:]
+        if not discarded:
+            rr.log(f"{path}_tail", rr.Clear(recursive=False), recording=ctx.recording)
             continue
-        tcp_offset = tcp_offsets.get(mg_id)
-        positions = [_step_to_tcp(dh_robot, joints, tcp_offset) for joints in steps]
-        _log_bridge_positions(
-            f"policy/{mg_id}/bridge_chunk",
-            positions,
-            recording=recording,
-        )
+        tail = executed[-1:] + to_positions(discarded)
+        if len(tail) >= MIN_LINE_STEPS:
+            rr.log(
+                f"{path}_tail",
+                rr.LineStrips3D(
+                    [tail],
+                    colors=[CHUNK_TAIL_COLOR],
+                    radii=rr.components.Radius.ui_points(CHUNK_TAIL_WIDTH_UI),
+                ),
+                recording=ctx.recording,
+            )
+    _log_text(ctx, chunk, step, n_action_steps=n_action_steps)
 
-    for mg_id, steps in chunk.tcp.items():
-        positions = [step[:3] for step in steps if len(step) >= MIN_TCP_COMPONENTS]
-        _log_bridge_positions(
-            f"policy/{mg_id}/bridge_chunk_tcp",
+
+def log_bridge_chunk(ctx: RerunContext, chunk: ActionChunk, step: int) -> None:
+    """Log an interpolated connector separately from orange policy output."""
+    ctx.set_time(step)
+    for mg_id, suffix, steps, to_positions in _tcp_paths(ctx, chunk):
+        positions = to_positions(steps)
+        if not positions:
+            continue
+        path = f"policy/{mg_id}/bridge_chunk{suffix}"
+        _log_line_strip(
+            ctx,
+            path,
             positions,
-            recording=recording,
+            width=BRIDGE_WIDTH_UI,
+            color_start=BRIDGE_COLOR_START,
+            color_end=BRIDGE_COLOR_END,
+        )
+        rr.log(
+            f"{path}_endpoint",
+            rr.Points3D(
+                [positions[-1]],
+                colors=[BRIDGE_ENDPOINT_COLOR],
+                radii=rr.components.Radius.ui_points(BRIDGE_ENDPOINT_RADIUS_UI),
+            ),
+            recording=ctx.recording,
         )
 
     rr.log(
@@ -108,175 +104,43 @@ def log_bridge_chunk(
             f"steps={{{', '.join(f'{group}: {len(steps)}' for group, steps in (*chunk.joints.items(), *chunk.tcp.items()))}}}",
             level=rr.TextLogLevel.TRACE,
         ),
-        recording=recording,
+        recording=ctx.recording,
     )
 
 
-def _log_bridge_positions(
-    entity_path: str,
-    positions: list[list[float]],
-    *,
-    recording: RecordingStream | None,
-) -> None:
-    if not positions:
-        return
-    _log_line_strip(
-        entity_path,
-        positions,
-        gradient=True,
-        width=BRIDGE_WIDTH_UI,
-        color_start=BRIDGE_COLOR_START,
-        color_end=BRIDGE_COLOR_END,
-        recording=recording,
-    )
-    rr.log(
-        f"{entity_path}_endpoint",
-        rr.Points3D(
-            [positions[-1]],
-            colors=[BRIDGE_ENDPOINT_COLOR],
-            radii=rr.components.Radius.ui_points(BRIDGE_ENDPOINT_RADIUS_UI),
-        ),
-        recording=recording,
-    )
+def _tcp_paths(
+    ctx: RerunContext, chunk: ActionChunk
+) -> Iterator[tuple[str, str, Steps, Callable[[Steps], Steps]]]:
+    """Each motion group's steps, its entity suffix, and how to turn steps into TCP points.
 
-
-def _log_joint_chunk(
-    chunk: ActionChunk,
-    step: int,
-    *,
-    start_time: float,
-    dh_robots: dict[str, Any],
-    tcp_offsets: dict[str, Any],
-    n_action_steps: int,
-    recording: RecordingStream | None,
-) -> None:
-    elapsed = elapsed_since(start_time)
-    rr.set_time("policy_time", duration=elapsed, recording=recording)
-    rr.set_time("policy_step", sequence=step, recording=recording)
-
+    Joint targets go through forward kinematics to the TCP so the chunk lines
+    up with the live TCP trail; a group without a kinematic model is skipped.
+    TCP targets already are positions.
+    """
     for mg_id, steps in chunk.joints.items():
-        dh_robot = dh_robots.get(mg_id)
-        if dh_robot is None or not steps:
-            continue
-
-        # Split into executed and discarded portions
-        split = n_action_steps if 0 < n_action_steps < len(steps) else len(steps)
-        executed_steps = steps[:split]
-        discarded_steps = steps[split:]
-
-        # Project each joint target to the TCP so the chunk lines up with the
-        # live TCP trail. With the configured flange->TCP offset we apply it in
-        # the flange frame; without it we fall back to the bare flange point.
-        tcp_offset = tcp_offsets.get(mg_id)
-        executed_positions = [_step_to_tcp(dh_robot, j, tcp_offset) for j in executed_steps]
-
-        # Log executed portion with orange→yellow gradient
-        _log_line_strip(
-            f"policy/{mg_id}/action_chunk",
-            executed_positions,
-            gradient=True,
-            width=CHUNK_WIDTH_UI,
-            recording=recording,
-        )
-
-        # Log discarded tail in dim gray
-        _log_discarded_tail(
-            f"policy/{mg_id}/action_chunk_tail",
-            discarded_steps,
-            dh_robot,
-            executed_positions,
-            tcp_offset,
-            recording=recording,
-        )
-
-
-def _step_to_tcp(
-    dh_robot: DHRobot, joint_target: list[float], tcp_offset: np.ndarray | None
-) -> list[float]:
-    """TCP position for a joint target: flange FK, then the TCP offset if known."""
-    from novapolicy.rerun.kinematics import (
-        joint_tcp_position,
-    )
-
-    return joint_tcp_position(dh_robot, joint_target, tcp_offset)
-
-
-def _log_tcp_chunk(
-    chunk: ActionChunk,
-    step: int,
-    *,
-    start_time: float,
-    n_action_steps: int,
-    recording: RecordingStream | None,
-) -> None:
-    elapsed = elapsed_since(start_time)
-    rr.set_time("policy_time", duration=elapsed, recording=recording)
-    rr.set_time("policy_step", sequence=step, recording=recording)
-
+        dh_robot = ctx.dh_robots.get(mg_id)
+        if dh_robot is not None and steps:
+            yield mg_id, "", steps, partial(_joint_positions, dh_robot, ctx.tcp_offsets.get(mg_id))
     for mg_id, steps in chunk.tcp.items():
-        if not steps:
-            continue
-
-        split = n_action_steps if 0 < n_action_steps < len(steps) else len(steps)
-        executed = steps[:split]
-        discarded = steps[split:]
-
-        executed_positions = [[s[0], s[1], s[2]] for s in executed if len(s) >= MIN_TCP_COMPONENTS]
-        if len(executed_positions) >= MIN_LINE_STEPS:
-            n = len(executed_positions)
-            colors = [
-                lerp_color(CHUNK_COLOR_START, CHUNK_COLOR_END, i / max(n - 1, 1)) for i in range(n)
-            ]
-            rr.log(
-                f"policy/{mg_id}/action_chunk_tcp",
-                rr.LineStrips3D(
-                    [executed_positions],
-                    colors=colors,
-                    radii=rr.components.Radius.ui_points(CHUNK_WIDTH_UI),
-                ),
-                recording=recording,
-            )
-
-        if discarded:
-            tail_positions = [[s[0], s[1], s[2]] for s in discarded if len(s) >= MIN_TCP_COMPONENTS]
-            if executed_positions:
-                tail_positions = [executed_positions[-1], *tail_positions]
-            if len(tail_positions) >= MIN_LINE_STEPS:
-                rr.log(
-                    f"policy/{mg_id}/action_chunk_tcp_tail",
-                    rr.LineStrips3D(
-                        [tail_positions],
-                        colors=[CHUNK_TAIL_COLOR],
-                        radii=rr.components.Radius.ui_points(CHUNK_TAIL_WIDTH_UI),
-                    ),
-                    recording=recording,
-                )
-        else:
-            rr.log(
-                f"policy/{mg_id}/action_chunk_tcp_tail",
-                rr.Clear(recursive=False),
-                recording=recording,
-            )
+        if steps:
+            yield mg_id, "_tcp", steps, _tcp_positions
 
 
-def _log_text(
-    chunk: ActionChunk,
-    step: int,
-    *,
-    start_time: float,
-    n_action_steps: int,
-    recording: RecordingStream | None,
-) -> None:
+def _joint_positions(
+    dh_robot: DHRobot, tcp_offset: np.ndarray | None, steps: Steps
+) -> list[list[float]]:
+    return [joint_tcp_position(dh_robot, joints, tcp_offset) for joints in steps]
+
+
+def _tcp_positions(steps: Steps) -> list[list[float]]:
+    return [step[:3] for step in steps if len(step) >= MIN_TCP_COMPONENTS]
+
+
+def _log_text(ctx: RerunContext, chunk: ActionChunk, step: int, *, n_action_steps: int) -> None:
     """Log action chunk as inspectable text for offline review."""
-
-    elapsed = elapsed_since(start_time)
-    rr.set_time("policy_time", duration=elapsed, recording=recording)
-    rr.set_time("policy_step", sequence=step, recording=recording)
-
     lines = [
         f"Step {step} | action_timestep={chunk.action_timestep} | dt_ms={chunk.dt_ms} | "
-        f"first_timestamp_ms={chunk.first_timestamp_ms} | "
-        f"seam_backdate_steps={chunk.seam_backdate_steps}"
+        f"first_timestamp_ms={chunk.first_timestamp_ms}"
     ]
 
     for mg_id, steps in chunk.joints.items():
@@ -305,84 +169,32 @@ def _log_text(
         for mg_id, ios in chunk.ios.items():
             lines.append(f"  {mg_id} IOs: {ios}")
 
-    text = "\n".join(lines)
     rr.log(
         "policy/action_chunks",
-        rr.TextLog(text, level=rr.TextLogLevel.TRACE),
-        recording=recording,
+        rr.TextLog("\n".join(lines), level=rr.TextLogLevel.TRACE),
+        recording=ctx.recording,
     )
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _log_line_strip(
-    entity_path: str,
+    ctx: RerunContext,
+    path: str,
     positions: list[list[float]],
     *,
-    gradient: bool,
     width: float,
     color_start: tuple[int, int, int] = CHUNK_COLOR_START,
     color_end: tuple[int, int, int] = CHUNK_COLOR_END,
-    recording: RecordingStream | None,
 ) -> None:
-    """Log a line strip with gradient or uniform color."""
-
-    if len(positions) >= MIN_LINE_STEPS:
-        n = len(positions)
-        colors = (
-            [lerp_color(color_start, color_end, i / max(n - 1, 1)) for i in range(n)]
-            if gradient
-            else [color_start] * n
-        )
+    """Log a path shaded from ``color_start`` to ``color_end``, or a marker for one point."""
+    n = len(positions)
+    if n >= MIN_LINE_STEPS:
+        colors = [lerp_color(color_start, color_end, i / max(n - 1, 1)) for i in range(n)]
         rr.log(
-            entity_path,
+            path,
             rr.LineStrips3D(
-                [positions],
-                colors=colors,
-                radii=rr.components.Radius.ui_points(width),
+                [positions], colors=colors, radii=rr.components.Radius.ui_points(width)
             ),
-            recording=recording,
+            recording=ctx.recording,
         )
     elif positions:
-        rr.log(
-            entity_path,
-            rr.Points3D(
-                positions,
-                colors=[color_start],
-                radii=rr.components.Radius.ui_points(4.0),
-            ),
-            recording=recording,
-        )
-
-
-def _log_discarded_tail(
-    entity_path: str,
-    discarded_steps: list[list[float]],
-    dh_robot: DHRobot,
-    bridge_from: list[list[float]],
-    tcp_offset: np.ndarray | None = None,
-    *,
-    recording: RecordingStream | None,
-) -> None:
-    """Log discarded chunk tail in dim gray, connected from last executed point."""
-
-    if not discarded_steps:
-        rr.log(entity_path, rr.Clear(recursive=False), recording=recording)
-        return
-
-    tail_positions = [_step_to_tcp(dh_robot, jt, tcp_offset) for jt in discarded_steps]
-    if bridge_from:
-        tail_positions = [bridge_from[-1], *tail_positions]
-    if len(tail_positions) >= MIN_LINE_STEPS:
-        rr.log(
-            entity_path,
-            rr.LineStrips3D(
-                [tail_positions],
-                colors=[CHUNK_TAIL_COLOR],
-                radii=rr.components.Radius.ui_points(CHUNK_TAIL_WIDTH_UI),
-            ),
-            recording=recording,
-        )
+        log_points(ctx, path, positions, color_start)

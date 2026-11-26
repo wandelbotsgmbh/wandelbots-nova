@@ -11,7 +11,7 @@ import msgpack
 import numpy as np
 import pytest
 
-from novapolicy.gr00t import Gr00tMsgSerializer
+from novapolicy.providers.gr00t import Gr00tMsgSerializer
 
 
 def _msgpack_numpy(value: np.ndarray | np.generic, *, bytes_keys: bool = True) -> dict:

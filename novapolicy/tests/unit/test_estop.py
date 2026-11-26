@@ -3,56 +3,90 @@
 These mock the controller-state stream at the SDK boundary and assert the
 observable behaviour: ``EstopMonitor`` raises (via its ``error``) on a
 non-operational safety state and stays clear on operational ones, and the
-``check_*`` helpers re-raise faults. The live counterpart lives in
+session lifecycle's ``check`` re-raises faults. The live counterpart lives in
 ``integration/test_estop_live.py``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import types
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from nova import api
-from novapolicy.estop import EstopMonitor, check_estop, check_sessions
-from novapolicy.types import EmergencyStopError, MotionError
+from novapolicy.tests.doubles import mg as _mg
+from novapolicy.transport.estop import EstopMonitor
+from novapolicy.transport.lifecycle import SessionLifecycle
+from novapolicy.types import ActionChunkConfig, EmergencyStopError, MotionError
 
 _SafetyState = api.models.SafetyStateType
 
 
 # ---------------------------------------------------------------------------
-# check_estop / check_sessions — faults re-raise, healthy state is a no-op
+# SessionLifecycle.check — faults re-raise, healthy state is a no-op
 # ---------------------------------------------------------------------------
 
 
-def test_check_estop_raises_when_error_set():
-    monitor = MagicMock()
-    monitor.error = EmergencyStopError("ur10e", "SAFETY_STATE_PROTECTIVE_STOP")
+def _lifecycle(session: MagicMock | None = None) -> SessionLifecycle:
+    lifecycle = SessionLifecycle(config=ActionChunkConfig())
+    if session is not None:
+        lifecycle.sessions["0@ur10e"] = session
+    return lifecycle
+
+
+async def _monitored(error: EmergencyStopError | None) -> SessionLifecycle:
+    """A lifecycle whose e-stop monitor reports ``error``."""
+    lifecycle = _lifecycle()
+    monitor = MagicMock(start=AsyncMock(), error=error)
+    with (
+        patch("novapolicy.transport.lifecycle.EstopMonitor", return_value=monitor),
+        patch("novapolicy.rerun._is_rerun_active", return_value=False),
+    ):
+        await lifecycle.start_monitoring()
+    return lifecycle
+
+
+@pytest.mark.asyncio
+async def test_check_raises_when_the_estop_monitor_has_an_error():
+    lifecycle = await _monitored(EmergencyStopError("ur10e", "SAFETY_STATE_PROTECTIVE_STOP"))
     with pytest.raises(EmergencyStopError):
-        check_estop(monitor)
+        lifecycle.check()
 
 
-def test_check_estop_noop_when_clear():
-    monitor = MagicMock()
-    monitor.error = None
-    check_estop(monitor)  # no raise
-    check_estop(None)  # no raise
+@pytest.mark.asyncio
+async def test_check_is_a_noop_while_the_estop_monitor_is_clear():
+    assert (await _monitored(None)).check() is None
+    assert _lifecycle().check() is None  # no monitor started yet
 
 
-def test_check_sessions_reraises_failure_exception():
+@pytest.mark.asyncio
+async def test_an_estop_is_reported_before_the_session_failures_it_causes():
+    """An e-stop also ends the sessions' streams; the e-stop is the cause to report."""
+    lifecycle = await _monitored(EmergencyStopError("ur10e", "SAFETY_STATE_PROTECTIVE_STOP"))
+    lifecycle.sessions["0@ur10e"] = MagicMock(
+        has_failed=True, failure_exception=RuntimeError("the server closed the jogging connection")
+    )
+    with pytest.raises(EmergencyStopError):
+        lifecycle.check()
+
+
+def test_check_reraises_a_session_failure():
     session = MagicMock()
     session.has_failed = True
     session.failure_exception = MotionError("ur10e", "joint_limit")
     with pytest.raises(MotionError):
-        check_sessions({"0@ur10e": session})
+        _lifecycle(session).check()
 
 
-def test_check_sessions_ignores_healthy_sessions():
+def test_check_ignores_healthy_sessions():
     session = MagicMock()
     session.has_failed = False
-    check_sessions({"0@ur10e": session})  # no raise
+    session.stop_condition_triggered = None
+    assert _lifecycle(session).check() is None
 
 
 # ---------------------------------------------------------------------------
@@ -79,19 +113,13 @@ class _FakeStream:
         pass
 
 
-def _mg(controller_id: str = "ur10e") -> MagicMock:
-    mg = MagicMock()
-    mg.id = f"0@{controller_id}"
-    return mg
-
-
 def _patched_monitor(states: list[object]) -> EstopMonitor:
     """EstopMonitor whose stream yields the given states."""
     gateway = MagicMock()
     gateway.controller_api.stream_robot_controller_state = lambda **_kw: _FakeStream(states)
     monitor = EstopMonitor([_mg()])
     patcher = patch.multiple(
-        "novapolicy.estop",
+        "novapolicy.transport.estop",
         get_api_gateway=lambda _mg: gateway,
         get_cell=lambda _mg: "cell",
         get_controller_id=lambda mg: mg.id.split("@")[1],
@@ -120,6 +148,71 @@ async def test_monitor_fires_on_non_operational_state():
     assert monitor.error.safety_state == "SAFETY_STATE_PROTECTIVE_STOP"
 
 
+class _UnparseableThenStates(_FakeStream):
+    """First stream raises a ValidationError (as the SDK does on an unknown enum value)."""
+
+    calls = 0
+
+    async def __anext__(self) -> object:
+        _UnparseableThenStates.calls += 1
+        if _UnparseableThenStates.calls == 1:
+            raise _validation_error()
+        return await super().__anext__()
+
+
+def _validation_error() -> Exception:
+    try:
+        api.models.RobotControllerState.model_validate({"mode": "MODE_UNDEFINED"})
+    except ValidationError as e:
+        return e
+    raise AssertionError("expected a ValidationError")
+
+
+@pytest.mark.asyncio
+async def test_monitor_keeps_watching_after_an_unparseable_state():
+    """Regression: an unknown mode (MODE_UNDEFINED) once switched the monitor off for the run."""
+    _UnparseableThenStates.calls = 0
+    estop = types.SimpleNamespace(safety_state=_SafetyState.SAFETY_STATE_ROBOT_EMERGENCY_STOP)
+    gateway = MagicMock()
+    gateway.controller_api.stream_robot_controller_state = lambda **_kw: _UnparseableThenStates([
+        estop
+    ])
+    monitor = _patched_monitor([])
+    with patch("novapolicy.transport.estop.get_api_gateway", lambda _mg: gateway):
+        await _run_monitor_until(monitor)
+    assert isinstance(monitor.error, EmergencyStopError)
+    assert monitor.error.safety_state == "SAFETY_STATE_ROBOT_EMERGENCY_STOP"
+
+
+class _UnparseableTimesThenStates(_FakeStream):
+    unparseable = 3
+
+    async def __anext__(self) -> object:
+        if _UnparseableTimesThenStates.unparseable > 0:
+            _UnparseableTimesThenStates.unparseable -= 1
+            raise _validation_error()
+        return await super().__anext__()
+
+
+@pytest.mark.asyncio
+async def test_a_streak_of_unparseable_states_is_logged_once_and_its_end_too(caplog):
+    _UnparseableTimesThenStates.unparseable = 3
+    estop = types.SimpleNamespace(safety_state=_SafetyState.SAFETY_STATE_ROBOT_EMERGENCY_STOP)
+    gateway = MagicMock()
+    gateway.controller_api.stream_robot_controller_state = lambda **_kw: (
+        _UnparseableTimesThenStates([estop])
+    )
+    monitor = _patched_monitor([])
+    with (
+        caplog.at_level(logging.INFO),
+        patch("novapolicy.transport.estop.get_api_gateway", lambda _mg: gateway),
+    ):
+        await _run_monitor_until(monitor)
+    assert isinstance(monitor.error, EmergencyStopError)
+    assert sum("unparseable controller state" in r.message for r in caplog.records) == 1
+    assert sum("reads controller states again" in r.message for r in caplog.records) == 1
+
+
 @pytest.mark.asyncio
 async def test_monitor_stays_clear_on_operational_states():
     """NORMAL and REDUCED are operational — the monitor never fires."""
@@ -130,3 +223,50 @@ async def test_monitor_stays_clear_on_operational_states():
     monitor = _patched_monitor(states)
     await _run_monitor_until(monitor, timeout_s=0.2)
     assert monitor.error is None
+
+
+class _DroppingThenStates(_FakeStream):
+    """The first stream drops with a connection error; later ones deliver states."""
+
+    drops = 1
+
+    async def __anext__(self) -> object:
+        if _DroppingThenStates.drops > 0:
+            _DroppingThenStates.drops -= 1
+            raise OSError("connection reset")
+        return await super().__anext__()
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_connection_is_reopened_and_an_estop_still_detected():
+    _DroppingThenStates.drops = 1
+    estop = types.SimpleNamespace(safety_state=_SafetyState.SAFETY_STATE_ROBOT_EMERGENCY_STOP)
+    gateway = MagicMock()
+    gateway.controller_api.stream_robot_controller_state = lambda **_kw: _DroppingThenStates([
+        estop
+    ])
+    monitor = _patched_monitor([])
+    with patch("novapolicy.transport.estop.get_api_gateway", lambda _mg: gateway):
+        await _run_monitor_until(monitor)
+    assert isinstance(monitor.error, EmergencyStopError)
+    assert monitor.error.safety_state == "SAFETY_STATE_ROBOT_EMERGENCY_STOP"
+
+
+class _AlwaysDropping(_FakeStream):
+    async def __anext__(self) -> object:
+        raise OSError("no route to host")
+
+
+@pytest.mark.asyncio
+async def test_a_monitor_that_reads_no_state_stops_the_run():
+    """Regression: a connection error used to end the monitor and leave the run unmonitored."""
+    gateway = MagicMock()
+    gateway.controller_api.stream_robot_controller_state = lambda **_kw: _AlwaysDropping([])
+    monitor = _patched_monitor([])
+    with (
+        patch("novapolicy.transport.estop.get_api_gateway", lambda _mg: gateway),
+        patch("novapolicy.transport.estop._BLIND_LIMIT_S", 0.2),
+    ):
+        await _run_monitor_until(monitor, timeout_s=2.0)
+    assert isinstance(monitor.error, EmergencyStopError)
+    assert monitor.error.safety_state == "E-STOP MONITOR BLIND"

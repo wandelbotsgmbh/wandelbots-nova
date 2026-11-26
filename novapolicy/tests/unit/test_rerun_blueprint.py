@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 
 from novapolicy.rerun import target_tracking
 import novapolicy.rerun.blueprint as blueprint_module
+from novapolicy.rerun.context import RerunContext
 import rerun as rr
 import rerun.blueprint as rrb
 
@@ -55,7 +56,11 @@ def _logged_tcp_error_paths(monkeypatch: pytest.MonkeyPatch) -> set[str]:
     pose.position = (1.0, 2.0, 3.0)
     pose.orientation = (0.1, 0.2, 0.3)
     target_tracking.log_tcp_tracking(
-        MG_ID, [1.5, 2.5, 3.5, 0.11, 0.22, 0.33], pose, 0, start_time=0.0, recording=None
+        RerunContext(start_time=0.0, recording=None),
+        MG_ID,
+        [1.5, 2.5, 3.5, 0.11, 0.22, 0.33],
+        pose,
+        0,
     )
 
     return {

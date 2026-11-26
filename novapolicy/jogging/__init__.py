@@ -1,21 +1,49 @@
-"""Jogging — waypoint-based motion control via NOVA action chunk streaming.
+"""Jogging: waypoint motion through NOVA action chunk streaming (docs/jogging.md).
 
-This subpackage owns all jogging functionality: the low-level
-``WaypointJoggingSession`` that streams timestamped waypoints, the
-``JoggingStateTracker`` that detects blocking pauses, and the high-level
-``jog_joints`` / ``jog_tcp`` context managers (plus their ``JointJogger`` /
-``TcpJogger`` implementations) for manual jogging.
+``jog_joints`` / ``jog_tcp`` are the high-level context managers. The other names are
+re-exported from their homes (``novapolicy.pipeline``, ``novapolicy.transport``) so imports
+from here keep working.
 """
 
 from novapolicy.jogging.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp
-from novapolicy.jogging.session import JoggingStateTracker
-from novapolicy.jogging.waypoint_session import WaypointJoggingSession
+from novapolicy.pipeline.base import (
+    ChunkModule,
+    ModuleContext,
+    Timestamps,
+    WaypointFilter,
+    WaypointModule,
+)
+from novapolicy.pipeline.defaults import default_pipeline
+from novapolicy.pipeline.modules.bridge import Bridge
+from novapolicy.pipeline.modules.drop_late import DropLate
+from novapolicy.pipeline.modules.ease_in import EaseIn
+from novapolicy.pipeline.modules.endpoint_ramp import EndpointRamp
+from novapolicy.pipeline.modules.hold_padding import HoldPadding
+from novapolicy.pipeline.modules.joint_clamp import JointClamp
+from novapolicy.pipeline.modules.servo_horizon import ServoHorizon
+from novapolicy.pipeline.modules.smoothing import Smoothing
+from novapolicy.transport.session import ActionChunkSession
+from novapolicy.transport.state import JoggingStateTracker
 
 __all__ = [
+    "ActionChunkSession",
+    "Bridge",
+    "ChunkModule",
+    "DropLate",
+    "EaseIn",
+    "EndpointRamp",
+    "HoldPadding",
     "JoggingStateTracker",
+    "JointClamp",
     "JointJogger",
+    "ModuleContext",
+    "ServoHorizon",
+    "Smoothing",
     "TcpJogger",
-    "WaypointJoggingSession",
+    "Timestamps",
+    "WaypointFilter",
+    "WaypointModule",
+    "default_pipeline",
     "jog_joints",
     "jog_tcp",
 ]

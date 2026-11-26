@@ -1,9 +1,5 @@
-"""Forward-kinematics helpers for action-chunk visualization.
-
-Kept in the policy layer (not in ``nova_rerun_bridge``) so the main package is
-untouched. These compose the *existing* public ``DHRobot`` API
-(:meth:`pose_to_matrix`, :meth:`dh_transform`) rather than adding methods to it.
-"""
+"""Forward-kinematics and frame helpers for the policy overlays, built on the public ``DHRobot``
+API (ADR 0020)."""
 
 from __future__ import annotations
 
@@ -20,12 +16,8 @@ _ROTATION_EPS = 1e-12
 
 
 def flange_matrix(dh_robot: DHRobot, joints: list[float]) -> np.ndarray:
-    """4x4 flange (end-of-chain) transform for the given joints.
-
-    Mirrors ``DHRobot.calculate_joint_positions`` but keeps the full orientation
-    so a TCP offset can be applied in the flange frame. Uses only the existing
-    public ``DHRobot`` surface.
-    """
+    """4x4 flange (end-of-chain) transform for the given joints: ``calculate_joint_positions``
+    with the full orientation kept, so a TCP offset can be applied in the flange frame."""
     matrix = np.asarray(dh_robot.pose_to_matrix(dh_robot.mounting), dtype=float)
     for dh_param, joint in zip(dh_robot.dh_parameters, joints, strict=False):
         matrix @= np.asarray(
@@ -61,3 +53,11 @@ def tcp_offset_matrix(offset: Pose) -> np.ndarray:
     matrix[0:3, 0:3] = rotation
     matrix[0:3, 3] = pos
     return matrix
+
+
+def to_robot_frame(position: list[float], frame: np.ndarray | None) -> list[float]:
+    """Move a reported TCP position, relative to its chain's mount, into the robot's frame."""
+    if frame is None:
+        return position
+    point = np.asarray(frame, dtype=float) @ np.array([*position[:3], 1.0])
+    return [float(value) for value in point[:3]]

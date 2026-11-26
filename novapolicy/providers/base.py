@@ -1,0 +1,123 @@
+"""Strict policy-client interface and local callback adapter."""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+import logging
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from numpy.typing import NDArray
+
+    from nova.types import RobotState
+    from novapolicy.mapping.schema import PolicySchema
+    from novapolicy.types import ActionChunk
+
+
+logger = logging.getLogger(__name__)
+
+
+class PolicyClient(ABC):
+    """Base class for every policy action source; only :meth:`get_actions` is required."""
+
+    async def connect(self, motion_group_ids: list[str]) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
+        """Establish a policy-service connection."""
+
+    async def validate_schema(self, schema: PolicySchema) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
+        """Raise ``ValueError`` when the schema cannot satisfy the policy."""
+
+    async def prepare(  # ruff: ignore[empty-method-without-abstract-decorator]
+        self,
+        states: dict[str, RobotState],
+        schema: PolicySchema,
+        images: dict[str, NDArray[Any]] | None = None,
+        io_values: dict[str, object] | None = None,
+    ) -> None:
+        """Perform optional setup before the execution timeout starts."""
+
+    @abstractmethod
+    async def get_actions(
+        self,
+        states: dict[str, RobotState],
+        schema: PolicySchema,
+        images: dict[str, NDArray[Any]] | None = None,
+        io_values: dict[str, object] | None = None,
+    ) -> ActionChunk:
+        """Return one action chunk for the current observation."""
+
+    async def close(self) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
+        """Release policy-service resources."""
+
+    def synchronize_action_timestep(self, timestep: int) -> None:  # ruff: ignore[empty-method-without-abstract-decorator]
+        """Synchronize an asynchronous queue to the controller timestep."""
+
+    @property
+    def default_modules(self) -> list[object]:
+        """Send-pipeline modules this policy needs first in continuous execution."""
+        return []
+
+    @property
+    def n_action_steps(self) -> int | None:
+        """Steps to execute per chunk when the policy declares its own horizon, else ``None``."""
+        return None
+
+
+DEFAULT_CONTROL_FREQ = 30.0
+"""A policy's control frequency in Hz when a client is given none."""
+
+
+def resolve_control_freq(
+    control_freq: float | None, *, owner: str, recorded: float | None = None
+) -> float:
+    """A policy's control frequency in Hz, the rate of its steps.
+
+    ``control_freq`` (the training data's frame rate) wins over ``recorded`` (a rate the policy
+    states), with a warning when they differ; without either, :data:`DEFAULT_CONTROL_FREQ`, with a
+    warning.
+    """
+    if control_freq is not None and recorded is not None and control_freq != recorded:
+        logger.warning(
+            "%s: control_freq=%s differs from the %s Hz the policy records",
+            owner,
+            control_freq,
+            recorded,
+        )
+    rate = control_freq if control_freq is not None else recorded
+    if rate is None:
+        rate = DEFAULT_CONTROL_FREQ
+        logger.warning(
+            "%s got no control_freq; playing actions at %s Hz. Pass the training data's frame "
+            "rate: a policy recorded at 15 fps would run twice as fast",
+            owner,
+            rate,
+        )
+    if rate <= 0:
+        raise ValueError(f"control_freq must be positive, got {rate}")
+    return float(rate)
+
+
+class CallbackPolicyClient(PolicyClient):
+    """Explicit adapter for a local asynchronous policy callback."""
+
+    def __init__(self, fn: Callable[..., Any], *, control_freq: float | None = None) -> None:
+        """``control_freq``: the callback's step rate in Hz, for chunks that carry no
+        ``dt_ms``. Without it, a chunk keeps its own ``dt_ms`` (``0`` = single step)."""
+        self._fn = fn
+        self._dt_ms = 1000.0 / control_freq if control_freq else 0.0
+
+    async def get_actions(
+        self,
+        states: dict[str, RobotState],
+        schema: PolicySchema,
+        images: dict[str, NDArray[Any]] | None = None,
+        io_values: dict[str, object] | None = None,
+    ) -> ActionChunk:
+        observation: dict[str, Any] = await schema.build_observation(states, io_values)
+        if images:
+            observation.update(images)
+        chunk = await self._fn(observation)
+        if self._dt_ms and chunk.dt_ms <= 0:
+            chunk = chunk.model_copy(update={"dt_ms": self._dt_ms})
+        return chunk

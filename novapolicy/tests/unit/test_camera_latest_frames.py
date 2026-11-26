@@ -11,6 +11,8 @@ from novapolicy.cameras import webrtc as webrtc_module
 from novapolicy.cameras.webrtc import WebRTCCameraConfig, WebRTCDevice
 from novapolicy.rerun import images as images_module
 from novapolicy.rerun.streaming import StateStreamer
+from novapolicy.transport.clock import ServerMs
+from novapolicy.transport.session import Scheduled
 
 rr = pytest.importorskip("rerun")
 
@@ -86,21 +88,23 @@ async def test_state_streamer_logs_latest_camera_frames_between_policy_chunks(
 async def test_state_streamer_logs_controller_and_waypoint_timing_to_rerun(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    waypoint_logged = asyncio.Event()
+    action_chunk_logged = asyncio.Event()
     log = MagicMock()
 
     def capture_log(entity_path: str, *args: object, **kwargs: object) -> None:
         log(entity_path, *args, **kwargs)
-        if entity_path == "policy/waypoint_requests":
-            waypoint_logged.set()
+        if entity_path == "policy/action_chunk_requests":
+            action_chunk_logged.set()
 
     session = MagicMock(
         current_state=None,
         last_server_timestamp_ms=125,
-        scheduled_chunk_count=1,
-        scheduled_waypoint_timestamps=(200, 250, 300),
-        scheduled_action_timestep=7,
-        scheduled_at_server_ms=125,
+        scheduled=Scheduled(
+            chunk_count=1,
+            waypoint_timestamps=(200, 250, 300),
+            action_timestep=7,
+            at_server_ms=ServerMs(125),
+        ),
     )
     streamer = StateStreamer(
         start_time=time.monotonic(),
@@ -114,13 +118,26 @@ async def test_state_streamer_logs_controller_and_waypoint_timing_to_rerun(
 
     streamer.start({"0@ur10e": session})
     try:
-        await asyncio.wait_for(waypoint_logged.wait(), timeout=0.5)
+        await asyncio.wait_for(action_chunk_logged.wait(), timeout=0.5)
     finally:
         await streamer.stop()
 
     logged_paths = [call.args[0] for call in log.call_args_list]
     assert "policy/0@ur10e/controller/server_timestamp_ms" in logged_paths
-    assert "policy/0@ur10e/waypoint_request/action_timestep" in logged_paths
-    assert "policy/0@ur10e/waypoint_request/first_timestamp_ms" in logged_paths
-    assert "policy/0@ur10e/waypoint_request/last_timestamp_ms" in logged_paths
-    assert "policy/waypoint_requests" in logged_paths
+    assert "policy/0@ur10e/action_chunk_request/action_timestep" in logged_paths
+    assert "policy/0@ur10e/action_chunk_request/first_timestamp_ms" in logged_paths
+    assert "policy/0@ur10e/action_chunk_request/last_timestamp_ms" in logged_paths
+    assert "policy/action_chunk_requests" in logged_paths
+
+
+def test_crop_resize_keeps_the_aspect_instead_of_stretching():
+    from novapolicy.cameras.webrtc import _resize_frame
+
+    wide = np.zeros((720, 1280, 3), dtype=np.uint8)
+    wide[:, :160] = 255  # only in the strip a 4:3 centre crop removes
+    cropped = _resize_frame(wide, 320, 240, crop=True)
+    assert cropped.shape == (240, 320, 3)
+    assert cropped.max() == 0
+    stretched = _resize_frame(wide, 320, 240)
+    assert stretched.shape == (240, 320, 3)
+    assert stretched.max() == 255

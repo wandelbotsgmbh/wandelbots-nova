@@ -6,6 +6,7 @@ MIN_LINE_STEPS = 2
 MIN_TCP_COMPONENTS = 3
 TEMPORAL_FRAME_NDIM = 4
 CAMERA_JPEG_QUALITY = 90
+STATE_SAMPLE_PERIOD_S = 1.0 / 30.0  # robot state is drawn at most this often
 TCP_TRAIL_COLOR = (50, 220, 100)  # green — actual TCP path
 TCP_TARGET_TRAIL_COLOR = (255, 180, 40)  # amber — commanded TCP path
 TCP_ERROR_VECTOR_COLOR = (255, 80, 120)  # rose — actual-to-target error

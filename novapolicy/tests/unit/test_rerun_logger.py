@@ -46,13 +46,12 @@ async def test_stop_streaming_disconnects_the_dedicated_recording(
         streamer_factory,
     )
 
-    policy_logger = PolicyRerunLogger([], state_sample_interval_ms=10.0)
+    policy_logger = PolicyRerunLogger([])
     await policy_logger.initialize()
     policy_logger.start_streaming({})
     await policy_logger.stop_streaming()
     await policy_logger.stop_streaming()
 
-    assert streamer_factory.call_args.kwargs["state_sample_interval_ms"] == 10.0
     streamer.start.assert_called_once_with({})
     streamer.stop.assert_awaited_once()
     recording.disconnect.assert_called_once_with()
@@ -84,9 +83,10 @@ async def test_stop_streaming_does_not_wait_for_a_blocked_rerun_disconnect(
 
 def _tracking_logger() -> PolicyRerunLogger:
     """A logger with just enough wired up to reach the tracking snapshot."""
+    from novapolicy.rerun.context import RerunContext  # imports rerun, which may be skipped
+
     policy_logger = PolicyRerunLogger.__new__(PolicyRerunLogger)
-    policy_logger._initialized = True
-    policy_logger._recording = MagicMock()
+    policy_logger._ctx = RerunContext(start_time=0.0, recording=MagicMock())
     policy_logger._tcp_target_trail = {}
     policy_logger._sink = MagicMock()
     return policy_logger

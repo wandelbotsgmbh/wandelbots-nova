@@ -10,19 +10,14 @@ from novapolicy.cameras.protocol import LatestFrameSource
 if TYPE_CHECKING:
     from novapolicy.cameras.protocol import CameraFrame, CameraSource
 
-# Frames feeding the Rerun view are held to a far looser bound than frames
-# feeding the policy. Visualization does not need control-loop freshness, and a
-# stale-frame error raised from the logging task would destabilise a run that is
-# otherwise fine.
+# Frames feeding the Rerun view are held to a far looser bound than the policy's.
 _LOGGING_MAX_AGE_S = 30.0
 
 
 class CameraManager:
     """Connects, reads from, and disconnects a set of camera sources.
 
-    ``max_age_s`` is the default freshness bound for every source. A channel
-    that declares its own — because that camera runs at a different rate —
-    overrides it through ``max_age_s_overrides``.
+    ``max_age_s`` is the default freshness bound; ``max_age_s_overrides`` sets it per channel.
     """
 
     def __init__(self, max_age_s: float) -> None:
@@ -77,11 +72,7 @@ class CameraManager:
         }
 
     def read_latest_frames(self) -> dict[str, CameraFrame]:
-        """Read the latest frame from camera sources that expose one.
-
-        Feeds visualization, so it uses the loose logging bound rather than the
-        control-loop one.
-        """
+        """Read the latest frame from camera sources that expose one, for visualization."""
         return {
             key: source.get_latest_frame(max_age_s=_LOGGING_MAX_AGE_S)
             for key, source in self._sources.items()

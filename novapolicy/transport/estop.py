@@ -1,0 +1,129 @@
+"""E-stop detection."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import logging
+import time
+from typing import TYPE_CHECKING
+
+from pydantic import ValidationError
+
+from nova import api
+from novapolicy._sdk import get_api_gateway, get_cell, get_controller_id
+from novapolicy.types import EmergencyStopError
+
+if TYPE_CHECKING:
+    from nova.cell.motion_group import MotionGroup
+    from nova.core.gateway import ApiGateway
+
+logger = logging.getLogger(__name__)
+
+# Safety states in which the robot is still operational; anything else is a safety stop
+# (as nova's ProgramRunner checks SafetyStateType).
+_OPERATIONAL_SAFETY_STATES = frozenset({
+    api.models.SafetyStateType.SAFETY_STATE_NORMAL,
+    api.models.SafetyStateType.SAFETY_STATE_REDUCED,
+})
+_RECONNECT_DELAY_S = 0.05
+_BLIND_LIMIT_S = 2.0
+"""Seconds the monitor may go without a controller state before it stops the run."""
+
+
+class EstopMonitor:
+    """Streams each controller's state and sets ``error`` on a safety stop."""
+
+    def __init__(self, motion_groups: list[MotionGroup]) -> None:
+        self._motion_groups = motion_groups
+        self._task: asyncio.Task[None] | None = None
+        self.error: EmergencyStopError | None = None
+        self._skipping: set[str] = set()  # controllers whose stream dropped
+        self._last_state: dict[str, float] = {}  # monotonic time of each controller's last state
+
+    async def start(self) -> None:
+        self._task = asyncio.create_task(self._run(), name="estop-monitor")
+
+    async def stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
+            self._task = None
+
+    async def _run(self) -> None:
+        seen: set[str] = set()
+        tasks: list[asyncio.Task[None]] = []
+        for mg in self._motion_groups:
+            ctrl_id = get_controller_id(mg)
+            if ctrl_id not in seen:
+                seen.add(ctrl_id)
+                tasks.append(
+                    asyncio.create_task(
+                        self._watch(ctrl_id, get_api_gateway(mg)),
+                        name=f"estop-watch-{ctrl_id}",
+                    )
+                )
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _watch(self, controller_id: str, api_client: ApiGateway) -> None:
+        # An unparsable state (e.g. MODE_UNDEFINED), a dropped connection or an ended stream
+        # closes the generator: reopen it, and stop the run after _BLIND_LIMIT_S without state.
+        self._last_state[controller_id] = time.monotonic()
+        while True:
+            try:
+                await self._watch_stream(controller_id, api_client)
+                if self.error is not None:
+                    return
+                reason = "the state stream ended"
+            except ValidationError as e:
+                reason = f"unparseable controller state ({str(e).splitlines()[0]})"
+            except (OSError, RuntimeError) as e:
+                reason = f"connection error ({e})"
+            if controller_id not in self._skipping:  # once per streak, not per retry
+                self._skipping.add(controller_id)
+                logger.warning("E-stop monitor for %s: %s, reconnecting", controller_id, reason)
+            blind_s = time.monotonic() - self._last_state[controller_id]
+            if blind_s > _BLIND_LIMIT_S:
+                logger.error(
+                    "E-stop monitor for %s has read no controller state for %.1f s; stopping",
+                    controller_id,
+                    blind_s,
+                )
+                self.error = EmergencyStopError(controller_id, "E-STOP MONITOR BLIND")
+                return
+            await asyncio.sleep(_RECONNECT_DELAY_S)
+
+    async def _watch_stream(self, controller_id: str, api_client: ApiGateway) -> None:
+        cell = get_cell(self._motion_groups[0])
+        stream = None
+        try:
+            stream = api_client.controller_api.stream_robot_controller_state(
+                cell=cell,
+                controller=controller_id,
+                response_rate=100,
+            )
+            async for state in stream:
+                self._last_state[controller_id] = time.monotonic()
+                if controller_id in self._skipping:
+                    self._skipping.discard(controller_id)
+                    logger.info(
+                        "E-stop monitor for %s reads controller states again", controller_id
+                    )
+                safety = getattr(state, "safety_state", None)
+                if safety is None:
+                    continue
+                if safety not in _OPERATIONAL_SAFETY_STATES:
+                    label = getattr(safety, "value", str(safety))
+                    logger.error("E-stop detected on %s: %s", controller_id, label)
+                    self.error = EmergencyStopError(controller_id, label)
+                    return
+        finally:
+            if stream is not None:
+                with contextlib.suppress(asyncio.CancelledError, OSError, RuntimeError):
+                    await stream.aclose()

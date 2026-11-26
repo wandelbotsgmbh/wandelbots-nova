@@ -11,9 +11,7 @@ import time
 import numpy as np
 import pytest
 
-from novapolicy.nats.client import PROPRIO_KEY, NatsPolicyClient, _Block
-from novapolicy.nats.protocol import ActionSpec
-from novapolicy.state_stream import (
+from novapolicy.mapping.state_stream import (
     DEFAULT_STALE_AFTER_S,
     StateStreamVelocities,
     VelocitySource,
@@ -92,77 +90,3 @@ def test_it_satisfies_the_protocol() -> None:
 
 
 # -- the client's choice ----------------------------------------------------
-
-
-class _Source:
-    """A velocity source under the test's control."""
-
-    def __init__(self, values: tuple[float, ...] | None) -> None:
-        self.values = values
-        self.started = False
-        self.stopped = False
-
-    async def start(self) -> None:
-        self.started = True
-
-    async def stop(self) -> None:
-        self.stopped = True
-
-    def velocities(self, motion_group_id: str) -> tuple[float, ...] | None:
-        del motion_group_id
-        return self.values
-
-
-def _client(source: _Source | None) -> tuple[NatsPolicyClient, _Block]:
-    client = NatsPolicyClient(policy_id="p", servers="nats://x", velocities=source)
-    spec = ActionSpec(name="joint_target", dof=DOF, horizon=1, dt_ms=20.0)
-    block = _Block(PROPRIO_KEY, "joint_target", spec)
-    block.motion_group_id = MG_ID
-    return client, block
-
-
-def test_measured_velocities_are_used_when_present() -> None:
-    client, block = _client(_Source(MEASURED))
-    got = client._velocities(block, JOINTS, now=1.0)
-    np.testing.assert_allclose(got, MEASURED, rtol=1e-6)
-
-
-def test_measured_velocities_win_over_a_finite_difference() -> None:
-    """The finite difference is the fallback, not a blend or an average."""
-    client, block = _client(_Source(MEASURED))
-    client._prev_joints[MG_ID] = JOINTS - 1.0
-    client._prev_t[MG_ID] = 0.0
-    got = client._velocities(block, JOINTS, now=0.02)
-    np.testing.assert_allclose(got, MEASURED, rtol=1e-6)
-
-
-def test_without_a_source_it_finite_differences() -> None:
-    client, block = _client(None)
-    client._prev_joints[MG_ID] = JOINTS - 0.02
-    client._prev_t[MG_ID] = 0.0
-    got = client._velocities(block, JOINTS, now=0.02)
-    np.testing.assert_allclose(got, np.ones(DOF, dtype=np.float32), rtol=1e-5)
-
-
-def test_a_source_with_nothing_yet_falls_back() -> None:
-    client, block = _client(_Source(None))
-    client._prev_joints[MG_ID] = JOINTS - 0.02
-    client._prev_t[MG_ID] = 0.0
-    got = client._velocities(block, JOINTS, now=0.02)
-    np.testing.assert_allclose(got, np.ones(DOF, dtype=np.float32), rtol=1e-5)
-
-
-def test_a_width_mismatch_falls_back_rather_than_raising() -> None:
-    """A misconfigured source must not stop a moving robot."""
-    client, block = _client(_Source((0.1, 0.2)))
-    client._prev_joints[MG_ID] = JOINTS
-    client._prev_t[MG_ID] = 0.0
-    got = client._velocities(block, JOINTS, now=0.02)
-    assert got.shape == (DOF,)
-    np.testing.assert_allclose(got, np.zeros(DOF, dtype=np.float32))
-
-
-def test_the_first_step_reports_zero_without_a_source() -> None:
-    client, block = _client(None)
-    got = client._velocities(block, JOINTS, now=0.0)
-    np.testing.assert_allclose(got, np.zeros(DOF, dtype=np.float32))

@@ -14,11 +14,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import time
 
-from novapolicy.jogging.clock import (
+import pytest
+
+from novapolicy.transport.clock import (
     _MAX_DELIVERY_DELAY_MS,
     _STATE_CLOCK_CALIBRATION_SAMPLES,
     JoggingTimeClock,
 )
+from novapolicy.transport.state import jogging_details
 
 
 def test_unsynced_clock_reports_wall_clock_elapsed(manual_time):
@@ -91,8 +94,8 @@ def test_delayed_state_uses_generation_time_not_receipt_time(manual_time):
     assert clock.estimated_server_timestamp_ms in {1_199, 1_200}
 
 
-def test_extract_from_state_walks_execute_details():
-    """extract_from_state reads execute.details.jogger_session_timestamp_ms."""
+def test_jogging_details_walks_execute_details():
+    """jogging_details reads execute.details, where jogger_session_timestamp_ms lives."""
 
     class _Details:
         jogger_session_timestamp_ms = 123
@@ -103,41 +106,41 @@ def test_extract_from_state_walks_execute_details():
     class _State:
         execute = _Execute()
 
-    assert JoggingTimeClock.extract_from_state(_State()) == 123
+    assert getattr(jogging_details(_State()), "jogger_session_timestamp_ms", None) == 123
 
 
-def test_extract_from_state_handles_missing_fields():
+def test_jogging_details_handles_missing_fields():
     """Missing execute/details yields None rather than raising."""
 
     class _Empty:
         execute = None
 
-    assert JoggingTimeClock.extract_from_state(_Empty()) is None
-    assert JoggingTimeClock.extract_from_state(object()) is None
+    assert jogging_details(_Empty()) is None
+    assert jogging_details(object()) is None
 
 
 # ===========================================================================
-# acknowledged_elapsed_ms — "now" must follow the server, not a free-running
+# estimated_server_timestamp_ms — "now" must follow the server, not a free-running
 # wall clock, so a stalled connection can't make targets race ahead.
 # ===========================================================================
 
 
-def test_unsynced_acknowledged_elapsed_falls_back_to_wall_clock(manual_time):
+def test_unsynced_estimate_falls_back_to_wall_clock(manual_time):
     """Before any server timestamp arrives, 'now' is just wall-clock elapsed."""
     clock = JoggingTimeClock()
     clock.start()
     manual_time.advance(0.2)
     assert clock.synced is False
-    assert clock.acknowledged_elapsed_ms in {199, 200}
+    assert clock.estimated_server_timestamp_ms in {199, 200}
 
 
-def test_acknowledged_elapsed_tracks_wall_clock_on_a_healthy_link(manual_time):
+def test_estimate_tracks_wall_clock_on_a_healthy_link(manual_time):
     """With fresh server acks, acknowledged time follows the latest server sample."""
     clock = JoggingTimeClock(max_lookahead_ms=300.0)
     clock.start()
     manual_time.advance(0.5)
     clock.update(500)
-    assert clock.acknowledged_elapsed_ms == 500
+    assert clock.estimated_server_timestamp_ms == 500
 
 
 def test_estimated_time_keeps_advancing_through_a_stall(manual_time):
@@ -153,7 +156,7 @@ def test_estimated_time_keeps_advancing_through_a_stall(manual_time):
     clock.update(300)
     manual_time.advance(5.0)
 
-    assert clock.acknowledged_elapsed_ms == 5_300
+    assert clock.estimated_server_timestamp_ms == 5_300
 
 
 def test_stall_logs_a_warning_once_and_recovers(caplog, manual_time):
@@ -164,41 +167,32 @@ def test_stall_logs_a_warning_once_and_recovers(caplog, manual_time):
     clock.start()
     manual_time.advance(0.3)
     clock.update(300)
+    # A fresh ack within the lookahead window never trips the stall warning.
+    with caplog.at_level(logging.WARNING, logger="novapolicy.transport.clock"):
+        for _ in range(10):
+            _ = clock.estimated_server_timestamp_ms
+    assert not [r for r in caplog.records if "stalled" in r.message]
     manual_time.advance(5.0)
 
-    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
+    with caplog.at_level(logging.WARNING, logger="novapolicy.transport.clock"):
         # Read "now" many times — the operator should see ONE warning, not a flood.
         for _ in range(10):
-            _ = clock.acknowledged_elapsed_ms
+            _ = clock.estimated_server_timestamp_ms
     stall_warnings = [r for r in caplog.records if "stalled" in r.message]
     assert len(stall_warnings) == 1
 
     # A fresh server timestamp resumes the timeline and logs recovery once.
     caplog.clear()
-    with caplog.at_level(logging.INFO, logger="novapolicy.jogging.clock"):
+    with caplog.at_level(logging.INFO, logger="novapolicy.transport.clock"):
         clock.update(360)
     assert any("recovered" in r.message for r in caplog.records)
 
     # After recovery, a renewed stall warns again (edge-triggered, not latched).
     caplog.clear()
     manual_time.advance(5.0)
-    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
-        _ = clock.acknowledged_elapsed_ms
+    with caplog.at_level(logging.WARNING, logger="novapolicy.transport.clock"):
+        _ = clock.estimated_server_timestamp_ms
     assert any("stalled" in r.message for r in caplog.records)
-
-
-def test_healthy_link_does_not_warn(caplog, manual_time):
-    """Fresh acks within the lookahead window must never trip the stall warning."""
-    import logging
-
-    clock = JoggingTimeClock(max_lookahead_ms=300.0)
-    clock.start()
-    manual_time.advance(0.5)
-    clock.update(500)
-    with caplog.at_level(logging.WARNING, logger="novapolicy.jogging.clock"):
-        for _ in range(10):
-            _ = clock.acknowledged_elapsed_ms
-    assert not [r for r in caplog.records if "stalled" in r.message]
 
 
 # ===========================================================================
@@ -287,7 +281,7 @@ def test_a_slow_state_rate_still_finishes_calibrating(manual_time) -> None:
     """Calibration must not be able to outlast the readiness timeout.
 
     The sample count is the real criterion, but the rate those samples arrive at
-    belongs to the caller (``WaypointConfig.state_rate_ms``). At 500ms per packet
+    belongs to the caller (``ActionChunkConfig.state_rate_ms``). At 500ms per packet
     twenty of them take ten seconds — ``wait_ready``'s whole default budget — so a
     healthy session would fail to start. Past the window the estimate is frozen
     with whatever it has: a rougher skew estimate, not a broken one.
@@ -340,3 +334,29 @@ def test_a_wall_clock_step_cannot_shunt_the_estimate_into_the_future(manual_time
     # trajectory clock there for thirty seconds.
     capped = 2_000 + int(_MAX_DELIVERY_DELAY_MS)
     assert clock.estimated_server_timestamp_ms in {capped - 1, capped}
+
+
+def test_a_placeholder_state_timestamp_is_not_read_as_delivery_delay(manual_time) -> None:
+    """Regression: controllers without timestamps send 1970-01-01. A constant stamp looked
+    older with every packet, so the estimate ran 200 ms ahead and one-step waypoints read as
+    late."""
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    clock = JoggingTimeClock()
+    clock.start()
+    for i in range(_STATE_CLOCK_CALIBRATION_SAMPLES + 50):
+        clock.observe_state_timestamp(epoch)
+        clock.update(1_000 + 8 * i, epoch)
+        manual_time.advance(0.008)
+    last = 1_000 + 8 * (_STATE_CLOCK_CALIBRATION_SAMPLES + 49)
+    assert clock.estimated_server_timestamp_ms in {last + 7, last + 8}
+
+
+@pytest.mark.parametrize("stamp", [datetime(1970, 1, 1, tzinfo=UTC), None])
+def test_a_controller_without_state_timestamps_still_calibrates(stamp) -> None:
+    """Regression: placeholder stamps were skipped, so calibration never finished and the
+    session timed out waiting for readiness on controllers that send none."""
+    clock = JoggingTimeClock()
+    clock.start()
+    for _ in range(_STATE_CLOCK_CALIBRATION_SAMPLES):
+        clock.observe_state_timestamp(stamp)
+    assert clock.state_clock_calibrated is True

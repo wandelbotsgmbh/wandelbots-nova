@@ -1,24 +1,31 @@
-# `novapolicy.rerun` — visualization (optional)
+# Rerun visualization
 
-Live [Rerun](https://rerun.io) logging for policy execution. **Entirely optional
-and zero-cost when no viewer is active** — the executor checks `_is_rerun_active()`
-and skips all logging if Rerun isn't initialized, so nothing here runs in production.
+See policy execution and jogging live in [Rerun](https://rerun.io): the robot in 3D, the
+commanded path, camera images, and plots of commanded against actual motion. Use it to check
+what a policy commands and how well the robot follows.
 
-## Usage
+Visualization is optional. It runs only when the program has a Rerun viewer. Without one,
+nothing is logged and nothing is loaded.
 
-Add `viewer=nova.viewers.Rerun()` to the `@nova.program` decorator to get
-real-time 3D visualization of the execution. The executor automatically logs
-robot meshes, action chunk TCP paths, TCP trails, camera images, and joint
-timeseries — zero overhead when no viewer is active.
+## Setup
+
+Install the Rerun extra:
+
+```bash
+pip install "wandelbots-nova[nova-rerun-bridge]"
+```
+
+Add `viewer=nova.viewers.Rerun()` to the `@nova.program` decorator. `PolicyExecutor`,
+`jog_joints` and `jog_tcp` then log to the viewer on their own.
 
 ```python
-from nova import viewers
-from novapolicy import SequentialExecution
+import nova
+from novapolicy import PolicyExecutor, SequentialExecution
 
 
 @nova.program(
     id="my_policy",
-    viewer=viewers.Rerun(),
+    viewer=nova.viewers.Rerun(),
 )
 async def run(ctx):
     ...
@@ -28,81 +35,82 @@ async def run(ctx):
         execution=SequentialExecution(),
         timeout_s=10.0,
     )
-    await executor.run()  # data streams to Rerun viewer automatically
+    await executor.run()  # data streams to the Rerun viewer
 ```
 
-Requires `wandelbots-nova[nova-rerun-bridge]`.
+Jogging works the same way:
 
-## What it logs
+```python
+import nova
+from novapolicy import jog_joints
 
-| Module            | Logs                                                                                                                                                    |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `observation.py`  | Robot joint state per step (drives the 3D robot model).                                                                                                 |
-| `action_chunk.py` | The action chunk as a 3D TCP path (executed steps as a gradient line strip, discarded receding-horizon tail in dim gray) plus an inspectable text dump. |
-| `images.py`       | JPEG-compressed camera frames.                                                                                                                          |
-| `streaming.py`    | Background task that streams robot state at the viewer's configured rate (30 Hz by default) and the latest camera frames at 15 Hz.                       |
-| `target_tracking.py` | Commanded vs. actual joints and TCP pose, the derived position/orientation error, and the target trail. |
-| `kinematics.py`   | Forward kinematics, used to turn a commanded joint target into a TCP position for the error plots.       |
-| `blueprint.py`    | The viewer layout (panels for 3D scene, cameras, plots, action text).                                                                                          |
-| `sink.py`         | `AsyncLogSink` — runs submitted writes on a worker thread so the producing loop does not pay for them.   |
-| `logtime.py`      | Thread-local timestamp pinning, so an entry written off-thread is stamped when it was produced.          |
-| `logger.py`       | `PolicyRerunLogger` — the single entry point the executor talks to; ties the above together.                                                            |
-| `constants.py`    | Colors / widths / thresholds for the chunk visuals.                                                                                                     |
 
-## Enabling it
+@nova.program(id="jog", viewer=nova.viewers.Rerun())
+async def run(ctx):
+    mg = (await ctx.nova.cell().controller("ur10e"))[0]
+    async with jog_joints(mg) as jogger:
+        ...
+```
 
-Start a Rerun viewer before running the executor (e.g. via `nova.viewers`). When a
-viewer is active, `PolicyExecutor` lazily constructs a `PolicyRerunLogger` and streams
-observations, action chunks, and camera frames to it. No viewer → none of this loads.
+The policy data goes to its own recording, `novapolicy`, next to NOVA's planning recording.
 
-Rerun reads the latest WebRTC frames between policy chunks. Other camera backends
-continue to log at policy-observation cadence unless they expose a compatible
-`get_latest_frame(max_age_s=...)` method. Camera images are JPEG-compressed before transport
-to keep the live viewer responsive.
+## What you see
 
-## Writes do not run on the producing loop
+| panel | shows |
+| --- | --- |
+| 3D View | the robot model from the measured state, the TCP marker and trail, and each action chunk as a TCP path: the steps that run as a colored line, the discarded tail of a replaced chunk in dim gray |
+| camera panels | one panel per camera in the schema, JPEG-compressed |
+| Joints target/actual `<motion group>` | commanded and measured joint positions |
+| TCP target/actual `<motion group>` | commanded and measured TCP position and orientation |
+| TCP position error `<motion group>` [mm] | commanded minus measured TCP position, per axis, and its norm `position_norm_mm` |
+| TCP orientation error `<motion group>` [rad] | commanded minus measured TCP orientation, and its norm `orientation_norm_rad` |
+| Action Chunks | a text log of each action chunk and the run status |
 
-Rerun logging is not free: one tick's worth of tracking and action-chunk entries
-costs a meaningful fraction of a 10 ms control tick, and occasionally a multiple of
-one. Paid on a jogging control loop that also has to produce the next waypoint
-chunk, that lengthens ticks well past their budget and costs motion smoothness.
+The plots use the `policy_time` timeline. Camera panels appear only when the schema has cameras.
 
-Writes are therefore submitted to `AsyncLogSink` and executed on a worker thread.
-The Rerun SDK serialises in Rust and releases the GIL, so this moves the cost off
-the producing thread rather than shuffling it around. Two consequences:
+Commanded against measured is logged once per state packet, at the time the packet was
+generated, for the executor and the joggers alike. The robot model moves at most 30 times a
+second. Logging does not change how often the policy runs or targets are sent.
 
-- Entries carry the timestamp measured when they were **submitted**, pinned
-  thread-locally by `logtime.py`, so a backlog on the worker does not stretch the
-  timeline. Rerun's built-in `log_time` is stamped from the same instant, so the
-  timelines agree.
-- The queue is bounded and drops its **oldest** entries on overflow — showing the
-  present matters more than showing everything here. Drops are counted and logged
-  at debug level on close.
+## Reading the tracking plots
 
-The sink is drained before the recording is disconnected, so the tail of a run is
-not lost.
+- Read `position_norm_mm` and `orientation_norm_rad` to judge whether tracking is steady.
+- A constant time lag on a curved path shows as sine-shaped `dx`, `dy` and `dz` with a
+  **constant** `position_norm_mm`. The error vector turns with the path while its size stays the
+  same. That is a steady lag, not a tracking problem.
+- Position and orientation errors are in separate panels because they have different units.
 
-## Tracking error is logged per state packet
+### Which TCP joint targets are drawn at
 
-Commanded-vs-actual is logged once per state packet, at the instant that packet was
-generated, rather than once per control tick. The two run at different rates, and
-state packets can arrive in bursts: sampling the cached pose once per tick re-reads
-the same packet for tens of milliseconds and discards the rest, which draws the
-error as a repeating flat shelf. The commanded value is resolved for *that packet's*
-own server timestamp, so both sides of the difference describe the same instant.
+For a joint-space policy, the commanded joints are converted to a TCP position for the plots:
 
-`tcp_error` is split across two views, `TCP position error [mm]` and
-`TCP orientation error [rad]`. A time-series view shares one Y axis, so plotting
-millimetres and radians together flattens the radian series onto zero, where it
-reads as "no error" whatever its value.
+- `PolicyExecutor` uses the schema's TCP, or the controller's active TCP when the schema names
+  none.
+- `jog_joints` uses the controller's active TCP.
 
-When reading those plots: a constant time lag on a curved path appears as
-sinusoidal `dx`/`dy`/`dz` with a **constant** `position_norm_mm`, because the error
-vector rotates with the path while its magnitude stays put. The norm is the series
-to read for whether tracking is steady.
+If that TCP differs from the one the robot reports, the plots show a constant offset of about
+the tool's size.
 
-`PolicyRerunLogger(state_sample_interval_ms=...)` controls actual robot-state samples used by the 3D mesh,
-TCP trail, and joint plots. It does not change the policy or jogging command cadence;
-configure policy timing or `WaypointConfig` separately when commands themselves need
-a shorter interval. `trajectory_sample_interval_ms` independently controls sampling
-of planned trajectories.
+## Options
+
+| setting | where | meaning |
+| --- | --- | --- |
+| `trajectory_sample_interval_ms` | `nova.viewers.Rerun(...)` | how densely NOVA's viewer samples planned trajectories (default 50 ms) |
+| `show_collision_link_chain`, `show_collision_tool` | `nova.viewers.Rerun(...)` | whether the robot is drawn with its collision geometry |
+
+## Cameras
+
+With `WebRTCCameras`, Rerun shows the latest frames between policy chunks, about 15 times a
+second. Other camera sources are shown at the rate the policy observes them, unless they provide
+a `get_latest_frame(max_age_s=...)` method.
+
+## Troubleshooting
+
+| symptom | what to do |
+| --- | --- |
+| nothing is logged | add `viewer=nova.viewers.Rerun()` to `@nova.program`, and install `wandelbots-nova[nova-rerun-bridge]` |
+| the robot model is missing, but paths and markers are drawn | the robot's model could not be loaded; the run continues without it |
+| a constant error of about the tool's size | the plots use another TCP than the robot reports; see [Which TCP joint targets are drawn at](#which-tcp-joint-targets-are-drawn-at) |
+| a sine-shaped position error | check `position_norm_mm`; if it is constant, the robot follows with a steady lag |
+| some entries are missing when the viewer is busy | expected: under load the oldest pending entries are dropped to keep the view current |
+| camera panels update slowly | use `WebRTCCameras`, or give the camera source a `get_latest_frame(max_age_s=...)` method |

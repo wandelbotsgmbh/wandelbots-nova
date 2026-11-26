@@ -6,13 +6,12 @@ import math
 from typing import TYPE_CHECKING
 
 from novapolicy.rerun.constants import (
-    MIN_LINE_STEPS,
     TCP_ERROR_VECTOR_COLOR,
     TCP_TARGET_TRAIL_COLOR,
     TRAIL_WIDTH_UI,
 )
-from novapolicy.rerun.logtime import elapsed_since
-from novapolicy.rerun.observation import to_robot_frame
+from novapolicy.rerun.context import log_points, log_trail
+from novapolicy.rerun.kinematics import to_robot_frame
 import rerun as rr
 
 _TCP_POSITION_DIMS = 3
@@ -20,17 +19,12 @@ _TCP_DIMS = 6
 
 if TYPE_CHECKING:
     from nova.types import Pose
+    from novapolicy.rerun.context import RerunContext
     from rerun import RecordingStream
 
 
 def log_joint_tracking(
-    mg_id: str,
-    target: list[float],
-    actual: list[float],
-    step: int,
-    *,
-    start_time: float,
-    recording: RecordingStream | None,
+    ctx: RerunContext, mg_id: str, target: list[float], actual: list[float], step: int
 ) -> None:
     """Log commanded joint positions, actual positions, and tracking error."""
     if not target or not actual:
@@ -41,7 +35,8 @@ def log_joint_tracking(
     actual_joints = actual[:n]
     joint_error = [target_joints[i] - actual_joints[i] for i in range(n)]
 
-    _set_time(step, start_time, recording)
+    ctx.set_time(step)
+    recording = ctx.recording
     for i, value in enumerate(target_joints):
         rr.log(f"policy/{mg_id}/joint_target/j{i}", rr.Scalars(value), recording=recording)
     for i, value in enumerate(actual_joints):
@@ -56,77 +51,55 @@ def log_joint_tracking(
 
 
 def log_joint_tcp_tracking(
+    ctx: RerunContext,
     mg_id: str,
     target_position: list[float],
     actual: Pose,
     step: int,
     *,
-    start_time: float,
-    recording: RecordingStream | None,
     target_trail: list[list[float]] | None = None,
-    max_trail_points: int = 500,
-    pose_frame: object | None = None,
 ) -> None:
-    """Log TCP position/error derived from a commanded joint target.
-
-    The target is derived from a ``DHRobot`` based in the robot's frame, while
-    Nova reports the actual pose relative to whatever the chain is mounted on,
-    so *pose_frame* brings the two together. Without it the error vector runs
-    from the TCP to a point a metre below the robot, and the error scalars read
-    that whole offset.
-    """
+    """Log TCP position/error derived from a commanded joint target, both in the robot's frame
+    (the actual pose moved there by the context's pose frame)."""
     if len(target_position) < _TCP_POSITION_DIMS:
         return
 
     target_position = target_position[:_TCP_POSITION_DIMS]
-    actual_position = to_robot_frame(list(actual.position), pose_frame)
+    actual_position = to_robot_frame(list(actual.position), ctx.pose_frames.get(mg_id))
     position_error = [target_position[i] - actual_position[i] for i in range(3)]
 
-    _set_time(step, start_time, recording)
+    ctx.set_time(step)
     _log_tcp_position_series(
         mg_id,
         target_position=target_position,
         actual_position=actual_position,
         position_error=position_error,
-        recording=recording,
+        recording=ctx.recording,
     )
-    _log_tcp_3d(
-        mg_id,
-        target_position,
-        actual_position,
-        recording=recording,
-        target_trail=target_trail,
-        max_trail_points=max_trail_points,
-    )
+    _log_tcp_3d(ctx, mg_id, target_position, actual_position, target_trail)
 
 
 def log_tcp_tracking(
+    ctx: RerunContext,
     mg_id: str,
     target: list[float],
     actual: Pose,
     step: int,
     *,
-    start_time: float,
-    recording: RecordingStream | None,
     target_trail: list[list[float]] | None = None,
-    max_trail_points: int = 500,
-    pose_frame: object | None = None,
 ) -> None:
-    """Log commanded TCP pose, actual TCP pose, and tracking error.
-
-    See :func:`log_joint_tcp_tracking` for what *pose_frame* is for.
-    """
+    """Log commanded TCP pose, actual TCP pose, and tracking error."""
     if len(target) < _TCP_DIMS:
         return
 
     target_position = target[:3]
     target_orientation = target[3:6]
-    actual_position = to_robot_frame(list(actual.position), pose_frame)
+    actual_position = to_robot_frame(list(actual.position), ctx.pose_frames.get(mg_id))
     actual_orientation = list(actual.orientation)
     position_error = [target_position[i] - actual_position[i] for i in range(3)]
     orientation_error = [target_orientation[i] - actual_orientation[i] for i in range(3)]
 
-    _set_time(step, start_time, recording)
+    ctx.set_time(step)
     _log_tcp_scalar_series(
         mg_id,
         target_position=target_position,
@@ -135,16 +108,9 @@ def log_tcp_tracking(
         actual_orientation=actual_orientation,
         position_error=position_error,
         orientation_error=orientation_error,
-        recording=recording,
+        recording=ctx.recording,
     )
-    _log_tcp_3d(
-        mg_id,
-        target_position,
-        actual_position,
-        recording=recording,
-        target_trail=target_trail,
-        max_trail_points=max_trail_points,
-    )
+    _log_tcp_3d(ctx, mg_id, target_position, actual_position, target_trail)
 
 
 def _log_tcp_scalar_series(
@@ -208,39 +174,23 @@ def _log_tcp_position_series(
 
 
 def _log_tcp_3d(
+    ctx: RerunContext,
     mg_id: str,
     target_position: list[float],
     actual_position: list[float],
-    *,
-    recording: RecordingStream | None,
     target_trail: list[list[float]] | None,
-    max_trail_points: int,
 ) -> None:
-    if target_trail is not None:
-        target_trail.append(target_position)
-        if len(target_trail) > max_trail_points:
-            target_trail.pop(0)
-        if len(target_trail) >= MIN_LINE_STEPS:
-            rr.log(
-                f"policy/{mg_id}/tcp_target_trail",
-                rr.LineStrips3D(
-                    [target_trail],
-                    colors=[TCP_TARGET_TRAIL_COLOR],
-                    radii=rr.components.Radius.ui_points(TRAIL_WIDTH_UI),
-                ),
-                recording=recording,
-            )
-        else:
-            rr.log(
-                f"policy/{mg_id}/tcp_target_point",
-                rr.Points3D(
-                    [target_position],
-                    colors=[TCP_TARGET_TRAIL_COLOR],
-                    radii=rr.components.Radius.ui_points(4.0),
-                ),
-                recording=recording,
-            )
-
+    """Draw the commanded path (a marker until it is long enough) and the error vector."""
+    if target_trail is not None and not log_trail(
+        ctx,
+        f"policy/{mg_id}/tcp_target_trail",
+        target_trail,
+        target_position,
+        TCP_TARGET_TRAIL_COLOR,
+    ):
+        log_points(
+            ctx, f"policy/{mg_id}/tcp_target_point", [target_position], TCP_TARGET_TRAIL_COLOR
+        )
     rr.log(
         f"policy/{mg_id}/tcp_error_vector",
         rr.LineStrips3D(
@@ -248,11 +198,5 @@ def _log_tcp_3d(
             colors=[TCP_ERROR_VECTOR_COLOR],
             radii=rr.components.Radius.ui_points(TRAIL_WIDTH_UI),
         ),
-        recording=recording,
+        recording=ctx.recording,
     )
-
-
-def _set_time(step: int, start_time: float, recording: RecordingStream | None) -> None:
-    elapsed = elapsed_since(start_time)
-    rr.set_time("policy_time", duration=elapsed, recording=recording)
-    rr.set_time("policy_step", sequence=step, recording=recording)

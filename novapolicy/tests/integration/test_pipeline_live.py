@@ -1,0 +1,282 @@
+"""The send pipeline end to end on a virtual robot: jogging, a dummy VLA's chunks continuously
+and sequentially, a timestep queue, one-step targets, and a provider written from scratch.
+
+One throwaway virtual UR10e for the module (deleted on teardown). Each test records, per motion
+group, every waypoint the session sends and every state the controller reports (server ms), and
+checks that the arm followed what was commanded: the measured joint against the latest commanded
+value for the same moment. Needs NOVA_API (and NOVA_ACCESS_TOKEN where required); skipped unless
+run with ``-m integration``.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import math
+import time
+from typing import TYPE_CHECKING, Any
+import uuid
+
+import numpy as np
+import pytest
+import pytest_asyncio
+
+from novapolicy import (
+    ContinuousExecution,
+    PolicyExecutor,
+    QueuedPolicyClient,
+    SequentialExecution,
+)
+from novapolicy.mapping.schema import Action, Observation, PolicySchema
+from novapolicy.providers.base import CallbackPolicyClient
+from novapolicy.transport import session as ws
+from novapolicy.types import ActionChunk, ActionChunkConfig
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
+START = [0.0, -1.2, 1.4, -1.8, -1.57, 0.0]
+AMPLITUDE_RAD, FREQUENCY_HZ = 0.25, 0.4
+DT_MS = 1000.0 / 30.0
+LAG_MS = 8.0  # the controller follows its waypoints this much later
+# CI runs far from the NOVA instance; with the dummy's 30 ms of inference, 100 ms left one-step
+# targets reaching NOVA after they were due (it skipped them all and the arm stood still).
+MOTION = ActionChunkConfig(max_expected_latency_ms=200.0)
+
+
+def _target(t_s: float) -> list[float]:
+    """The trajectory every scenario follows: joint 0 swings, the rest hold."""
+    return [START[0] + AMPLITUDE_RAD * math.sin(2 * math.pi * FREQUENCY_HZ * t_s), *START[1:]]
+
+
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def ur10e():
+    from nova import Nova, api
+    from nova.cell import virtual_controller
+
+    name = f"pipeline-itest-{uuid.uuid4().hex[:8]}"
+    async with Nova() as nova_instance, contextlib.AsyncExitStack() as stack:
+        cell = nova_instance.cell()
+        controller = await cell.ensure_controller(
+            virtual_controller(
+                name=name,
+                manufacturer=api.models.Manufacturer.UNIVERSALROBOTS,
+                type="universalrobots-ur10e",
+            )
+        )
+
+        async def _cleanup() -> None:
+            with contextlib.suppress(Exception):
+                await cell.delete_robot_controller(name, timeout=25)
+
+        stack.push_async_callback(_cleanup)
+        yield await stack.enter_async_context(controller[0])
+
+
+class _Recording:
+    """Every waypoint sent and every state reported, on the server's clock."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[int, float]] = []
+        self.states: list[tuple[int, float]] = []
+        self.requests = 0
+        self.spans: list[tuple[int, int]] = []
+        self.at_send: list[tuple[int, float] | None] = []  # the latest state at each request
+        self.final: list[bool] = []  # whether a request is the run's final target at stop
+        self.chunks: list[Any] = []  # every chunk as queued, after the chunk modules
+
+
+@pytest.fixture
+def recording(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Recording]:
+    record = _Recording()
+    schedule, notify = (
+        ws.ActionChunkSession._schedule,
+        ws.ActionChunkSession._notify_state_observer,
+    )
+
+    def recording_schedule(self: Any, pending: Any) -> Any:
+        scheduled = schedule(self, pending)
+        request = scheduled[0]
+        record.chunks.append(pending)
+        if request is not None:
+            record.requests += 1
+            record.at_send.append(record.states[-1] if record.states else None)
+            record.final.append(bool(getattr(pending, "final", False)))
+            waypoints = request.waypoints
+            record.spans.append((waypoints[0].timestamp, waypoints[-1].timestamp))
+            record.sent.extend((w.timestamp, w.waypoint.joints[0]) for w in request.waypoints)
+        return scheduled
+
+    def recording_notify(self: Any, ts_ms: int) -> None:
+        if self._current_joints is not None:
+            record.states.append((ts_ms, self._current_joints[0]))
+        notify(self, ts_ms)
+
+    monkeypatch.setattr(ws.ActionChunkSession, "_schedule", recording_schedule)
+    monkeypatch.setattr(ws.ActionChunkSession, "_notify_state_observer", recording_notify)
+    yield record
+
+
+def _tracking_deg(record: _Recording, *, skip_ms: float = 500.0) -> tuple[float, float]:
+    """RMS and max of the measured joint 0 against the latest value commanded for the same
+    moment (the latest request wins a timestamp), at the moments some request covered, after
+    ``skip_ms``: between sequential chunks nothing is commanded."""
+    latest = dict(record.sent)  # the latest request wins a timestamp
+    times = np.array(sorted(latest), dtype=float)
+    commanded = np.array([latest[int(t)] for t in times])
+    states = np.array(sorted(set(record.states)), dtype=float)
+    at = states[:, 0] - LAG_MS
+    covered = np.zeros(len(at), dtype=bool)
+    for first, last in record.spans:
+        covered |= (at >= first) & (at <= last)
+    window = covered & (at >= times[0] + skip_ms)
+    assert window.sum() > 50, "too few states inside the commanded span"
+    error = np.abs(np.interp(states[window, 0] - LAG_MS, times, commanded) - states[window, 1])
+    return math.degrees(float(np.sqrt(np.mean(error**2)))), math.degrees(float(error.max()))
+
+
+def _schema(mg: Any) -> PolicySchema:
+    return PolicySchema(
+        observations=[Observation.joint_positions("arm", source=mg, action=False)],
+        actions=[Action.joint_positions("arm", target=mg, mode="absolute")],
+    )
+
+
+def _dummy_vla(
+    mg: Any, steps: int, *, timestep: Callable[[], int] | None = None
+) -> CallbackPolicyClient:
+    """A VLA stand-in: each call plans ``steps`` steps of the trajectory from now, after 30 ms
+    of "inference". With ``timestep``, "now" is that policy timestep, as for a policy that
+    predicts from its observation: a stalled state stream stalls it too."""
+    t0: list[float] = []
+
+    async def policy(_obs: object) -> ActionChunk:
+        if not t0:
+            t0.append(time.monotonic())
+        now = time.monotonic() - t0[0]
+        await asyncio.sleep(0.03)
+        if timestep is not None:
+            now = timestep() * DT_MS / 1000
+        plan = [_target(now + k * DT_MS / 1000) for k in range(steps)]
+        return ActionChunk(joints={mg.id: plan}, dt_ms=DT_MS)
+
+    return CallbackPolicyClient(policy)
+
+
+async def _run(mg: Any, policy: Any, execution: Any, duration_s: float = 6.0) -> str:
+    result = await PolicyExecutor(
+        _schema(mg),
+        policy,
+        execution=execution,
+        n_action_steps=0,
+        start_joint_position={mg: START},
+        timeout_s=duration_s,
+        motion=MOTION,
+    ).run()
+    return result.reason
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="module")
+async def test_a_dummy_vla_runs_continuously(ur10e, recording):
+    reason = await _run(ur10e, _dummy_vla(ur10e, 15), ContinuousExecution(rate_hz=10))
+    assert reason == "timeout"
+    rms, peak = _tracking_deg(recording)
+    assert rms < 0.5 and peak < 2.0, (rms, peak)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="module")
+async def test_a_dummy_vla_runs_sequentially(ur10e, recording):
+    """Chunk after chunk, each to standstill. The dummy plans by wall-clock time, so every chunk
+    starts mid-swing from rest: the arm lags while it accelerates, then settles on the target."""
+    reason = await _run(ur10e, _dummy_vla(ur10e, 15), SequentialExecution())
+    assert reason == "timeout"
+    assert recording.requests >= 5
+    rms, peak = _tracking_deg(recording, skip_ms=0.0)
+    assert rms < 1.0 and peak < 5.0, (rms, peak)
+    # Each chunk runs to standstill on its final target (sequential execution holds it
+    # SEQUENTIAL_HOLD_MS past the last step), and the next one starts where the arm rests: its
+    # bridge begins at the measured joints. The rest is read when the next request goes out;
+    # from then on NOVA is already moving towards it. (The timeout can end the last chunk
+    # anywhere, so it is not checked.)
+    latest = dict(recording.sent)
+    for (_, previous_end), (next_start, _), rest, final in zip(
+        recording.spans,
+        recording.spans[1:],
+        recording.at_send[1:],
+        recording.final[1:],
+        strict=False,
+    ):
+        if final:  # the stop's final target: the timeout can cut a chunk anywhere
+            continue
+        assert rest is not None, "no state before a chunk"
+        assert math.degrees(abs(rest[1] - latest[previous_end])) < 0.2, (rest, latest[previous_end])
+        assert math.degrees(abs(latest[next_start] - rest[1])) < 0.1
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="module")
+async def test_a_timestep_queue_keeps_one_timeline(ur10e, recording):
+    """The first chunk is bridged; every later one is placed on the first one's timeline by the
+    session's TimestepTimeline (not bridged again at "now"), and the queue is told which step
+    is executing."""
+    # The queue places each chunk from the executing timestep; a dummy planning by wall clock
+    # would put a later point of the trajectory there whenever the state stream stalls.
+    queue: list[QueuedPolicyClient] = []
+    policy = QueuedPolicyClient(_dummy_vla(ur10e, 15, timestep=lambda: queue[0]._replaceable))
+    queue.append(policy)
+    reason = await _run(ur10e, policy, ContinuousExecution(rate_hz=10))
+    assert reason == "timeout"
+    first, *later = recording.chunks
+    assert first.start_step > 0  # bridged
+    assert later and all(c.first_timestamp_ms is not None and c.start_step == 0 for c in later)
+    assert policy._replaceable > 0
+    rms, peak = _tracking_deg(recording)
+    assert rms < 0.5 and peak < 2.0, (rms, peak)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="module")
+async def test_one_step_targets_run_continuously(ur10e, recording):
+    reason = await _run(ur10e, _dummy_vla(ur10e, 1), ContinuousExecution(rate_hz=30))
+    assert reason == "timeout"
+    rms, peak = _tracking_deg(recording)
+    assert rms < 0.5 and peak < 2.0, (rms, peak)
+
+
+def _load_example(name: str) -> Any:
+    """An example module, loaded by path: examples are not a package."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "examples" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.parametrize("mode", ["continuous", "sequential"])
+async def test_a_new_provider_over_http(ur10e, recording, mode: str):
+    """The provider written from scratch in examples/http_policy.py, against its mock server."""
+    example = _load_example("http_policy")
+    server = example.serve_mock_policy(START, control_freq=30.0)
+    host, port = server.server_address[:2]
+    try:
+        policy = example.HttpPolicyClient(f"http://{host}:{port}/act", control_freq=30)
+        reason = await _run(
+            ur10e,
+            policy,
+            ContinuousExecution(rate_hz=10) if mode == "continuous" else SequentialExecution(),
+        )
+    finally:
+        server.shutdown()
+    assert reason == "timeout"
+    rms, peak = _tracking_deg(recording, skip_ms=0.0 if mode == "sequential" else 500.0)
+    assert rms < (1.0 if mode == "sequential" else 0.5) and peak < (
+        5.0 if mode == "sequential" else 2.0
+    ), (rms, peak)

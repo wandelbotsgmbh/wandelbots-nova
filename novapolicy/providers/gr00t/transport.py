@@ -1,0 +1,223 @@
+"""GR00T ZMQ REQ/REP transport and msgpack serialization with numpy arrays (internal)."""
+
+from __future__ import annotations
+
+import importlib
+import io
+from typing import TYPE_CHECKING, Any, cast
+
+import numpy as np
+
+if TYPE_CHECKING:
+    from types import ModuleType
+
+_msgpack: ModuleType | None
+try:
+    _msgpack = importlib.import_module("msgpack")
+except ImportError:  # pragma: no cover
+    _msgpack = None
+
+_zmq: ModuleType | None
+try:
+    _zmq = importlib.import_module("zmq")
+except ImportError:  # pragma: no cover
+    _zmq = None
+
+
+class Gr00tMsgSerializer:
+    """Msgpack serializer compatible with GR00T's ndarray transport.
+
+    Encodes numpy arrays as ``{__ndarray_class__: True, as_npy: <bytes>}``.
+    Decodes that format and the msgpack-numpy one (``{nd, type, shape, data}``),
+    which newer GR00T servers answer with.
+    """
+
+    @staticmethod
+    def to_bytes(data: object) -> bytes:
+        """Serialize a Python value to msgpack bytes."""
+        msgpack_module = _require_msgpack()
+        return msgpack_module.packb(data, default=Gr00tMsgSerializer._encode_custom_classes)
+
+    @staticmethod
+    def from_bytes(data: bytes) -> object:
+        """Deserialize msgpack bytes into Python values."""
+        msgpack_module = _require_msgpack()
+        return msgpack_module.unpackb(
+            data,
+            object_hook=Gr00tMsgSerializer._decode_custom_classes,
+        )
+
+    @staticmethod
+    def _decode_custom_classes(obj: object) -> object:
+        if not isinstance(obj, dict):
+            return obj
+        if _is_msgpack_numpy(obj):
+            return _decode_msgpack_numpy(obj)
+        if "__ndarray_class__" not in obj:
+            return obj
+        array_bytes = obj.get("as_npy")
+        if not isinstance(array_bytes, bytes):
+            msg = "Invalid ndarray payload in GR00T response"
+            raise TypeError(msg)
+        return np.load(io.BytesIO(array_bytes), allow_pickle=False)
+
+    @staticmethod
+    def _encode_custom_classes(obj: object) -> object:
+        if not isinstance(obj, np.ndarray):
+            return obj
+        output = io.BytesIO()
+        np.save(output, cast("Any", obj), allow_pickle=False)
+        return {"__ndarray_class__": True, "as_npy": output.getvalue()}
+
+
+_MSGPACK_NUMPY_KEYS = ("nd", "type", "data")
+"""Keys every msgpack-numpy array or scalar carries; ``nd`` alone is too common a name."""
+
+
+def _field(obj: dict[Any, Any], name: str) -> object:
+    """A msgpack-numpy field; keys arrive as bytes or str, depending on the packer."""
+    return obj.get(name.encode(), obj.get(name))
+
+
+def _is_msgpack_numpy(obj: dict[Any, Any]) -> bool:
+    return all(_field(obj, key) is not None for key in _MSGPACK_NUMPY_KEYS)
+
+
+def _decode_msgpack_numpy(obj: dict[Any, Any]) -> object:
+    """Array or scalar from msgpack-numpy's ``{nd, type, kind, shape, data}``."""
+
+    def field(name: str) -> object:
+        return _field(obj, name)
+
+    if field("kind") not in {None, b"", ""}:
+        # 'O' would mean pickle.loads on the server's bytes; 'V' is a record array.
+        msg = f"Unsupported msgpack-numpy array kind {field('kind')!r} in GR00T response"
+        raise TypeError(msg)
+    data, dtype = field("data"), field("type")
+    if not isinstance(data, bytes) or not isinstance(dtype, (str, bytes)):
+        msg = "Invalid msgpack-numpy payload in GR00T response"
+        raise TypeError(msg)
+    # A copy: frombuffer is read-only, and the npy path hands out writable arrays.
+    values = np.frombuffer(data, dtype=np.dtype(dtype)).copy()
+    # Truthy, as the server's own check: an array, else a numpy scalar.
+    if field("nd"):
+        shape = field("shape")
+        if not isinstance(shape, (list, tuple)):
+            msg = "Invalid msgpack-numpy payload in GR00T response: no shape"
+            raise TypeError(msg)
+        return values.reshape(tuple(shape))
+    if values.size != 1:
+        msg = f"Invalid msgpack-numpy scalar in GR00T response: {values.size} values"
+        raise TypeError(msg)
+    return values[0]
+
+
+class Gr00tZmqTransport:
+    """A ZMQ REQ socket to a GR00T server, reconnected after a timeout."""
+
+    def __init__(
+        self,
+        host: str,
+        port: int = 5555,
+        timeout_ms: int = 15000,
+        api_token: str | None = None,
+    ) -> None:
+        self._host = host
+        self._port = port
+        self._timeout_ms = timeout_ms
+        self._api_token = api_token
+        self._context: Any | None = None
+        self._socket: Any | None = None
+
+    def connect(self) -> None:
+        """Create or reconnect the ZMQ REQ socket."""
+        zmq_module = _require_zmq()
+        if self._socket is not None:
+            self._socket.close(linger=0)
+        context = self._context
+        if context is None:
+            context = zmq_module.Context()
+            self._context = context
+        socket = context.socket(zmq_module.REQ)
+        socket.setsockopt(zmq_module.RCVTIMEO, self._timeout_ms)
+        socket.setsockopt(zmq_module.SNDTIMEO, self._timeout_ms)
+        socket.connect(f"tcp://{self._host}:{self._port}")
+        self._socket = socket
+
+    def close(self) -> None:
+        """Close the socket and terminate the ZMQ context."""
+        if self._socket is not None:
+            self._socket.close(linger=0)
+            self._socket = None
+        if self._context is not None:
+            self._context.term()
+            self._context = None
+
+    def call(
+        self,
+        endpoint: str,
+        data: dict[str, object] | None = None,
+    ) -> object:
+        """Send a request to the GR00T server and return the response.
+
+        Args:
+            endpoint: GR00T endpoint name (``"ping"``, ``"get_action"``, etc.).
+            data: Optional request payload.
+
+        Returns:
+            Deserialized response (dict, list, or tuple).
+
+        Raises:
+            TimeoutError: If the server doesn't respond within ``timeout_ms``.
+            RuntimeError: If the server returns an error.
+        """
+        zmq_module = _require_zmq()
+        socket = self._socket
+        if socket is None:
+            self.connect()
+            socket = self._socket
+        if socket is None:
+            raise RuntimeError("Failed to create GR00T ZMQ socket")
+
+        request: dict[str, object] = {"endpoint": endpoint}
+        if data is not None:
+            request["data"] = data
+        if self._api_token is not None:
+            request["api_token"] = self._api_token
+
+        try:
+            socket.send(Gr00tMsgSerializer.to_bytes(request))
+            message = socket.recv()
+        except zmq_module.error.Again as exc:
+            self.connect()
+            msg = f"Timed out calling GR00T endpoint '{endpoint}'"
+            raise TimeoutError(msg) from exc
+
+        response = Gr00tMsgSerializer.from_bytes(message)
+        if isinstance(response, dict) and "error" in response:
+            error = cast("dict[str, object]", response)["error"]
+            msg = f"GR00T server error: {error}"
+            raise RuntimeError(msg)
+        return response
+
+
+def require_dict(response: object, *, name: str) -> dict[str, object]:
+    """Validate that a response is a dict."""
+    if not isinstance(response, dict):
+        msg = f"{name} must be a dict"
+        raise TypeError(msg)
+    return cast("dict[str, object]", response)
+
+
+def _require_msgpack() -> ModuleType:
+    if _msgpack is None:
+        msg = "msgpack is required for Gr00tPolicyClient. Install with: wandelbots-nova[novapolicy-gr00t]"
+        raise ModuleNotFoundError(msg)
+    return _msgpack
+
+
+def _require_zmq() -> ModuleType:
+    if _zmq is None:
+        msg = "pyzmq is required for Gr00tPolicyClient. Install with: wandelbots-nova[novapolicy-gr00t]"
+        raise ModuleNotFoundError(msg)
+    return _zmq

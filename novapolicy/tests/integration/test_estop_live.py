@@ -14,7 +14,7 @@ import uuid
 
 import pytest
 
-from novapolicy.estop import EstopMonitor
+from novapolicy.transport.estop import EstopMonitor
 from novapolicy.types import EmergencyStopError
 
 

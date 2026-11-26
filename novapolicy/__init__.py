@@ -1,13 +1,7 @@
-"""policy — real-time robot control from action chunks via waypoint jogging.
+"""novapolicy: run trained robot policies on NOVA through action chunk streaming.
 
 .. warning::
-    **EXPERIMENTAL** — This package is under active development and not ready
-    for production use. The API will have breaking changes between releases.
-    Do not depend on it for stable deployments.
-
-This package enables AI policies to stream joint position targets (+ optional IO commands)
-to one or more motion groups. Timestamped waypoints are sent via NOVA action chunk
-streaming; the server handles velocity profiling, interpolation, and IK internally.
+    **EXPERIMENTAL**: the API will have breaking changes between releases.
 """
 
 from __future__ import annotations
@@ -16,66 +10,80 @@ import importlib
 from typing import TYPE_CHECKING
 
 from novapolicy.cameras import CameraSource, WebRTCCameras
-from novapolicy.chunking import (
-    ConnectedActionChunk,
-    InterpolatedActionChunk,
-    connect_action_chunk,
-    create_bridge_chunk,
-    interpolate_action_chunk_ramps,
-    smooth_action_chunk,
+from novapolicy.executor import (
+    ExecutionResult,
+    ExecutorStatus,
+    Phase,
+    PolicyExecutor,
+    resolve_actions,
 )
-from novapolicy.executor import ExecutionResult, ExecutorStatus, Phase, PolicyExecutor
-from novapolicy.gr00t import Gr00tPolicyClient, RTCConfig
-from novapolicy.jogging import JointJogger, TcpJogger, jog_joints, jog_tcp
-from novapolicy.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
-from novapolicy.policy_client import CallbackPolicyClient, PolicyClient
-from novapolicy.schema import (
+from novapolicy.jogging.jogger import JointJogger, TcpJogger, jog_joints, jog_tcp
+from novapolicy.mapping.ops import Clamp, OpDirection, Rad2Deg, Scale, ValueOp
+from novapolicy.mapping.pose_sources import OmniverseScene, PoseSource
+from novapolicy.mapping.poses import OrientationType
+from novapolicy.mapping.schema import (
     Action,
     BoolMapping,
     Mapping,
     Observation,
     PolicySchema,
 )
+from novapolicy.pipeline import (
+    Bridge,
+    DropLate,
+    EaseIn,
+    EndpointRamp,
+    HoldPadding,
+    JointClamp,
+    ServoHorizon,
+    Smoothing,
+    Timestamps,
+    default_pipeline,
+)
+from novapolicy.providers.base import CallbackPolicyClient, PolicyClient, resolve_control_freq
+from novapolicy.providers.gr00t import Gr00tPolicyClient
+from novapolicy.providers.queued import QueuedPolicyClient
 from novapolicy.types import (
     ActionChunk,
+    ActionChunkConfig,
     ActionMode,
     ContinuousExecution,
     EmergencyStopError,
-    EndpointRamp,
     ExecutionMode,
     JoggingMode,
     JoggingNotSupportedError,
     MotionError,
-    OnStale,
     SequentialExecution,
     StopCondition,
     StopContext,
-    WaypointConfig,
 )
 
 if TYPE_CHECKING:
-    from novapolicy.lerobot import LeRobotPolicyClient
-    from novapolicy.nats import NatsPolicyClient
+    from novapolicy.providers.leapp import LeappPolicyClient
+    from novapolicy.providers.lerobot import LeRobotPolicyClient
 
 
 def __getattr__(name: str) -> object:
     """Load backend-specific clients only when requested."""
     if name == "LeRobotPolicyClient":
         try:
-            return importlib.import_module("novapolicy.lerobot").LeRobotPolicyClient
+            return importlib.import_module("novapolicy.providers.lerobot").LeRobotPolicyClient
         except ModuleNotFoundError as exc:
+            # pip cannot resolve this extra: LeRobot caps Pillow below the version the core needs.
             msg = (
-                "LeRobotPolicyClient requires the LeRobot policy extra. "
-                "Install with `python -m pip install 'wandelbots-nova[novapolicy-lerobot]'`."
+                "LeRobotPolicyClient requires the LeRobot policy extra. Install it with uv: add "
+                '`override-dependencies = ["pillow>=13.0.0"]` under `[tool.uv]` in your '
+                "pyproject.toml, then run `uv add 'wandelbots-nova[novapolicy-lerobot]'` "
+                "(novapolicy/providers/lerobot/README.md)."
             )
             raise ModuleNotFoundError(msg) from exc
-    if name == "NatsPolicyClient":
+    if name == "LeappPolicyClient":
         try:
-            return importlib.import_module("novapolicy.nats").NatsPolicyClient
+            return importlib.import_module("novapolicy.providers.leapp").LeappPolicyClient
         except ModuleNotFoundError as exc:
             msg = (
-                "NatsPolicyClient requires the NATS policy extra. "
-                "Install with `python -m pip install 'wandelbots-nova[novapolicy-nats]'`."
+                "LeappPolicyClient requires the LEAPP policy extra. "
+                "Install with `python -m pip install 'wandelbots-nova[novapolicy-leapp]'`."
             )
             raise ModuleNotFoundError(msg) from exc
     raise AttributeError(name)
@@ -84,47 +92,54 @@ def __getattr__(name: str) -> object:
 __all__ = [
     "Action",
     "ActionChunk",
+    "ActionChunkConfig",
     "ActionMode",
     "BoolMapping",
+    "Bridge",
     "CallbackPolicyClient",
     "CameraSource",
     "Clamp",
-    "ConnectedActionChunk",
     "ContinuousExecution",
+    "DropLate",
+    "EaseIn",
     "EmergencyStopError",
     "EndpointRamp",
     "ExecutionMode",
     "ExecutionResult",
     "ExecutorStatus",
     "Gr00tPolicyClient",
-    "InterpolatedActionChunk",
+    "HoldPadding",
     "JoggingNotSupportedError",
+    "JointClamp",
     "JointJogger",
     "LeRobotPolicyClient",
+    "LeappPolicyClient",
     "Mapping",
     "MotionError",
-    "NatsPolicyClient",
     "Observation",
-    "OnStale",
+    "OmniverseScene",
     "OpDirection",
+    "OrientationType",
     "Phase",
     "PolicyClient",
     "PolicyExecutor",
     "PolicySchema",
-    "RTCConfig",
+    "PoseSource",
+    "QueuedPolicyClient",
     "Rad2Deg",
     "Scale",
     "SequentialExecution",
+    "ServoHorizon",
+    "Smoothing",
     "StopCondition",
     "StopContext",
     "TcpJogger",
+    "Timestamps",
     "ValueOp",
-    "WaypointConfig",
     "WebRTCCameras",
-    "connect_action_chunk",
-    "create_bridge_chunk",
-    "interpolate_action_chunk_ramps",
+    "default_pipeline",
     "jog_joints",
     "jog_tcp",
-    "smooth_action_chunk",
+    "resolve_actions",
+    "resolve_control_freq",
 ]

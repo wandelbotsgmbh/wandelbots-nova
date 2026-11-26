@@ -1,11 +1,7 @@
-"""WebRTC camera implementation.
+"""WebRTC cameras: the ``WebRTCCameras`` factory and its ``WebRTCDevice`` camera sources.
 
-Provides ``WebRTCCameras`` factory and ``WebRTCDevice`` — a ``CameraSource``
-implementation that connects to cameras via WebRTC signaling.
-
-The policy never starts or stops hardware streams — it only creates WebRTC
-sessions to receive frames.  If the stream is not running, an exception is
-raised after the connect timeout.
+Only receives frames; the camera server starts and stops the streams. A stream that is not
+running raises after the connect timeout.
 """
 
 from __future__ import annotations
@@ -17,7 +13,7 @@ import importlib
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import requests
@@ -30,7 +26,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Optional imports — aiortc is heavy and not always needed
+ResizeMode = Literal["stretch", "crop"]
+
+# aiortc is optional
 _aiortc: ModuleType | None
 try:
     _aiortc = importlib.import_module("aiortc")
@@ -38,7 +36,6 @@ try:
 
     av.logging.set_level(av.logging.ERROR)
 except ImportError:
-    # aiortc is an optional dependency; WebRTC camera support stays disabled.
     _aiortc = None
 
 
@@ -76,12 +73,7 @@ class WebRTCCameraConfig:
 
 
 class WebRTCConnection:
-    """Manages a single WebRTC peer connection with background frame reception.
-
-    Only performs WebRTC signaling (offer/answer).  Never calls
-    ``stream/start`` or ``stream/stop`` — the hardware stream is managed
-    externally by the camera server.
-    """
+    """One WebRTC peer connection (signaling only), receiving frames in the background."""
 
     def __init__(self, name: str, config: WebRTCCameraConfig) -> None:
         self._name = name
@@ -218,20 +210,27 @@ class WebRTCConnection:
 # ---------------------------------------------------------------------------
 
 
-def _resize_frame(frame: NDArray[Any], width: int, height: int) -> NDArray[Any]:
-    """Resize a single (H, W, 3) frame using Pillow (no system lib dependencies)."""
+def _resize_frame(
+    frame: NDArray[Any], width: int, height: int, *, crop: bool = False
+) -> NDArray[Any]:
+    """Resize a single (H, W, 3) frame using Pillow (no system lib dependencies).
+
+    ``crop``: first centre-crop to the target aspect ratio, so nothing is stretched.
+    """
     from PIL import Image  # ruff: ignore[import-outside-top-level]
 
+    if crop:
+        h, w = frame.shape[:2]
+        crop_w, crop_h = min(w, round(h * width / height)), min(h, round(w * height / width))
+        x0, y0 = (w - crop_w) // 2, (h - crop_h) // 2
+        frame = frame[y0 : y0 + crop_h, x0 : x0 + crop_w]
     img = Image.fromarray(frame)
     img = img.resize((width, height), Image.Resampling.LANCZOS)
     return np.asarray(img)
 
 
 class WebRTCDevice:
-    """A single WebRTC camera device implementing the CameraSource protocol.
-
-    Created by ``WebRTCCameras.device()``.  Do not instantiate directly.
-    """
+    """One WebRTC camera, a ``CameraSource``; created by ``WebRTCCameras.device()``."""
 
     def __init__(
         self,
@@ -239,10 +238,12 @@ class WebRTCDevice:
         *,
         frame_history: int = 1,
         resize: tuple[int, int] | None = None,
+        resize_mode: ResizeMode = "stretch",
     ) -> None:
         self._config = config
         self._frame_history = frame_history
         self._resize = resize  # (width, height) or None
+        self._crop = resize_mode == "crop"
         self._connection: WebRTCConnection | None = None
         self._buffer: list[NDArray[Any]] = []
 
@@ -293,7 +294,7 @@ class WebRTCDevice:
             raise RuntimeError(msg)
 
         if self._resize is not None:
-            frame = _resize_frame(frame, self._resize[0], self._resize[1])
+            frame = _resize_frame(frame, self._resize[0], self._resize[1], crop=self._crop)
         return frame
 
     async def disconnect(self) -> None:
@@ -310,27 +311,10 @@ class WebRTCDevice:
 
 
 class WebRTCCameras:
-    """Factory for WebRTC camera sources.
+    """Factory for WebRTC camera sources; the camera server sets resolution and fps.
 
-    The camera server controls resolution, fps, and stream lifecycle.
-    This factory only creates WebRTC sessions to receive frames.
-
-    If ``resize`` is set, frames are resized on read using ``cv2.INTER_AREA``
-    (best quality for downscaling).  This adds ~0.3ms per frame.
-
-    Usage::
-
-        cameras = WebRTCCameras(
-            api_url="http://192.168.1.22:9100",
-            resize=(256, 256),
-        )
-
-        schema = PolicySchema(
-            observations=[
-                Observation.image("cam_left", source=cameras.device("315122271048")),
-                Observation.image("cam_right", source=cameras.device("319522063360")),
-            ],
-        )
+    ``resize=(w, h)`` resizes frames on read (Lanczos); ``resize_mode="crop"`` centre-crops to
+    the target aspect ratio first, ``"stretch"`` (default) does not.
     """
 
     def __init__(
@@ -338,10 +322,12 @@ class WebRTCCameras:
         api_url: str,
         *,
         resize: tuple[int, int] | None = None,
+        resize_mode: ResizeMode = "stretch",
         frame_history: int = 1,
     ) -> None:
         self._api_url = api_url
         self._resize = resize
+        self._resize_mode: ResizeMode = resize_mode
         self._frame_history = frame_history
 
     def device(self, device_id: str, *, frame_history: int | None = None) -> WebRTCDevice:
@@ -359,4 +345,5 @@ class WebRTCCameras:
             cfg,
             frame_history=frame_history or self._frame_history,
             resize=self._resize,
+            resize_mode=self._resize_mode,
         )

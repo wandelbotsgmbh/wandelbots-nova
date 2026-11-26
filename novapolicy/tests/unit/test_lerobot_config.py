@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-config_module = pytest.importorskip("novapolicy.lerobot.config")
+config_module = pytest.importorskip("novapolicy.providers.lerobot.config")
 load_execution_settings = config_module.load_execution_settings
 
 

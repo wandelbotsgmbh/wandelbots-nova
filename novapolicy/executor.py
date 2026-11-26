@@ -1,4 +1,4 @@
-"""PolicyExecutor — runs one policy episode via waypoint jogging."""
+"""PolicyExecutor — runs one policy episode via action chunk streaming."""
 
 from __future__ import annotations
 
@@ -6,100 +6,54 @@ import asyncio
 import contextlib
 from dataclasses import dataclass
 from enum import StrEnum
+import gc
 import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from nova.actions import jnt
 from novapolicy.cameras.manager import CameraManager
-from novapolicy.chunking import (
-    ConnectedActionChunk,
-    apply_relative_mode,
-    connect_action_chunk,
-    interpolate_action_chunk_ramps,
-    placement,
-    trim_chunk,
-)
-from novapolicy.estop import (
-    EstopMonitor,
-    check_estop,
-    check_sessions,
-    triggered_stop_condition,
-)
-from novapolicy.io import IOStreamManager
-from novapolicy.jogging.live_buffer import (
-    LIVE_LEAD_MS,
-    append_and_prune,
-    horizon,
-    horizon_end_time_s,
-    timeline_timestamp_ms,
-    trajectory_elapsed_ms,
-)
-from novapolicy.jogging.waypoint_session import WaypointJoggingSession
-from novapolicy.joint_limits import fetch_joint_limits
-from novapolicy.plant import VirtualPlant
-from novapolicy.policy_client import PolicyClient
+from novapolicy.mapping.relative import apply_relative_mode
+from novapolicy.pipeline.base import split_pipeline
+from novapolicy.pipeline.defaults import default_pipeline
+from novapolicy.pipeline.modules.endpoint_ramp import EndpointRamp
+from novapolicy.pipeline.modules.timeline import TimestepTimeline
+from novapolicy.pipeline.placement import is_single_step, placement, trim_chunk
+from novapolicy.providers.base import PolicyClient
+from novapolicy.transport.io import IOStreamManager
+from novapolicy.transport.lifecycle import SessionLifecycle, move_to_start_joint_position
+from novapolicy.transport.state import first_fired
 from novapolicy.types import (
     ActionChunk,
+    ActionChunkConfig,
     ContinuousExecution,
     EmergencyStopError,
     ExecutionMode,
     MotionError,
-    OnStale,
     SequentialExecution,
     StopContext,
-    WaypointConfig,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine, Sequence
+
     from nova.cell.motion_group import MotionGroup
     from nova.types import RobotState
-    from novapolicy.jogging.live_buffer import (
-        TimedPoint,
-    )
-    from novapolicy.joint_limits import JointLimits
+    from novapolicy.mapping.schema import PolicySchema
     from novapolicy.rerun import PolicyRerunLogger
-    from novapolicy.schema import PolicySchema
+    from novapolicy.transport.clock import ServerMs
+    from novapolicy.transport.session import ActionChunkSession
     from novapolicy.types import StopCondition
 
 logger = logging.getLogger(__name__)
 
-_ASYNC_SEAM_STEPS = 4
 _ASYNC_REPLACEMENT_LEAD_STEPS = 1
-_DEFAULT_WAYPOINT_CONFIG = WaypointConfig()
+_DEFAULT_ACTION_CHUNK_CONFIG = ActionChunkConfig()
 _DEFAULT_EXECUTION = SequentialExecution()
 
-# A camera feeding a control loop should be fresh in frame terms, not in tens of
-# seconds. One second is loose enough for a slow stream and tight enough that a
-# frozen feed surfaces before it has driven many chunks of motion.
+# Default freshness bound for the policy's camera frames, and the deadline for one inference
+# (ADR 0018).
 _DEFAULT_CAMERA_MAX_AGE_S = 1.0
-
-# Outer liveness guard on one inference. Generous by design: it exists to catch a
-# hung service, not to police latency. Transports may have tighter deadlines of
-# their own (LeRobot's gRPC calls use 15s).
 _DEFAULT_INFERENCE_TIMEOUT_S = 30.0
-
-# How long OnStale.HOLD may retry before escalating.
-_DEFAULT_HOLD_BUDGET_S = 2.0
-
-# Pause between HOLD retries, so a stale channel cannot spin the loop hot.
-_HOLD_RETRY_PERIOD_S = 0.05
-
-
-class _StaleSignal(Exception):  # ruff: ignore[error-suffix-on-exception-name] - control flow
-    """Base for the two stale-input outcomes that do not raise to the caller."""
-
-    def __init__(self, what: str) -> None:
-        super().__init__(what)
-        self.what = what
-
-
-class _StaleHold(_StaleSignal):
-    """Retry the tick after a pause."""
-
-
-class _StaleStop(_StaleSignal):
-    """End the run normally, running out the waypoints already accepted."""
 
 
 class Phase(StrEnum):
@@ -122,15 +76,6 @@ class ExecutorStatus:
 
 
 @dataclass
-class _PolicyTimeline:
-    """Immutable action anchor in the raw NOVA controller timeline."""
-
-    action_timestep: int
-    policy_dt_ms: float
-    server_timestamp_ms: float
-
-
-@dataclass
 class ExecutionResult:
     """Result of a policy execution run."""
 
@@ -143,27 +88,57 @@ class ExecutionResult:
     """Last observed robot state (per motion group). Useful to know where the robot stopped."""
 
 
-def _check_buffered_mode(
-    buffer_window_ms: float, schema: PolicySchema, plant: VirtualPlant | None
+def _check_execution_mode(
+    execution: ExecutionMode, policy: PolicyClient, pipeline: Sequence[object]
 ) -> None:
-    """Reject a buffered-mode setup before anything moves."""
-    if plant is not None and not isinstance(plant, VirtualPlant):
-        msg = "plant must implement novapolicy.plant.VirtualPlant"
-        raise TypeError(msg)
-    if plant is not None and buffer_window_ms <= 0:
-        msg = "a plant is followed through the ring buffer; set buffer_window_ms > 0"
-        raise ValueError(msg)
-    if buffer_window_ms > 0 and schema.tcp_action_groups():
-        msg = "buffer_window_ms supports joint targets only; this schema has TCP actions."
-        raise ValueError(msg)
+    """Raise ``ValueError`` for a setup the executor would run wrongly (contracts T12); warn
+    for one it runs as asked but rarely as meant."""
+    if [type(m) for m in pipeline] == [type(m) for m in default_pipeline()]:
+        logger.warning(
+            "The pipeline is the joggers' default (default_pipeline() without arguments): no "
+            "Bridge or JointClamp. For the executor use default_pipeline(execution=..., policy=...)"
+        )
+    queue = any(isinstance(m, TimestepTimeline) for m in policy.default_modules)
+    if not isinstance(execution, SequentialExecution):
+        if any(isinstance(m, EndpointRamp) for m in pipeline):
+            logger.warning(
+                "EndpointRamp brings every chunk to rest, so in ContinuousExecution the arm stops "
+                "at each replacement; leave it out unless that is meant"
+            )
+        if queue and not any(isinstance(m, TimestepTimeline) for m in pipeline):
+            raise ValueError(
+                f"{type(policy).__name__} numbers its steps: put its default_modules (a "
+                "TimestepTimeline) in the pipeline, or use default_pipeline(execution=..., "
+                "policy=...)"
+            )
+        return
+    if queue:
+        raise ValueError(
+            f"{type(policy).__name__} replaces its plan step by step and requires "
+            "ContinuousExecution. For SequentialExecution drop the queue: the policy without "
+            "QueuedPolicyClient"
+        )
+
+
+def resolve_actions(
+    schema: PolicySchema, chunk: ActionChunk, states: dict[str, RobotState]
+) -> ActionChunk:
+    """A policy's raw chunk as the executor sends it (contracts M4): inverse operators, relative
+    targets composed with ``states``, TCP targets in the world. For dry runs, after
+    ``await schema.load_coordinate_systems()``."""
+    chunk = schema.apply_inverse_ops(chunk)  # NOVA units, rotation vectors, policy frames
+    chunk = apply_relative_mode(
+        chunk,
+        schema.policy_frame_states(states),
+        schema.relative_motion_groups(),
+        schema.relative_tcp_deltas(),
+    )
+    return schema.tcp_targets_to_world(chunk)
 
 
 class PolicyExecutor:
-    """Runs one policy episode: observe → query policy → send actions → repeat.
-
-    The policy is a pure function: obs → actions. It never signals "done".
-    Execution runs until timeout_s expires or stop() is called externally.
-    """
+    """Runs one policy episode: observe → query policy → send actions → repeat, until the
+    timeout, a stop condition or :meth:`stop`; the policy never signals "done"."""
 
     def __init__(
         self,
@@ -174,15 +149,11 @@ class PolicyExecutor:
         timeout_s: float = 0,
         camera_max_age_s: float = _DEFAULT_CAMERA_MAX_AGE_S,
         inference_timeout_s: float = _DEFAULT_INFERENCE_TIMEOUT_S,
-        on_stale: OnStale = OnStale.ABORT,
-        hold_budget_s: float = _DEFAULT_HOLD_BUDGET_S,
-        motion: WaypointConfig = _DEFAULT_WAYPOINT_CONFIG,
+        motion: ActionChunkConfig = _DEFAULT_ACTION_CHUNK_CONFIG,
         execution: ExecutionMode = _DEFAULT_EXECUTION,
         n_action_steps: int | None = None,
         start_joint_position: dict[MotionGroup, list[float]] | None = None,
-        buffer_window_ms: float = 0.0,
-        clamp_to_joint_limits: bool = True,
-        plant: VirtualPlant | None = None,
+        pipeline: Sequence[object] | None = None,
     ) -> None:
         """Create a policy executor.
 
@@ -191,48 +162,28 @@ class PolicyExecutor:
             policy: PolicyClient that maps observations to actions.
             stop_conditions: Optional checks run each tick; one returning ``True``
                 stops the run normally (its name appears in ``result.reason``).
-            timeout_s: Maximum execution duration in seconds. 0 = no timeout.
-
-            camera_max_age_s: Default freshness bound for camera frames, in
-                seconds. A channel can override it with
-                ``Observation.image(..., max_age_s=...)``. Frames older than the
-                bound are stale; see ``on_stale``. Applies to the policy's
-                frames only — visualization uses a looser bound of its own.
-            inference_timeout_s: Deadline for one ``get_actions`` call, in
-                seconds. 0 = no deadline. This is a liveness guard against a
-                hung policy service, applied uniformly whatever the transport's
-                own timeout is; it is not a real-time guarantee.
-            on_stale: What to do when a camera frame or an inference misses its
-                deadline. ``ABORT`` (default) raises, as the executor did before
-                this was declared. ``CONTROLLED_STOP`` runs out the accepted
-                waypoints and ends the run with a ``stale: ...`` reason.
-                ``HOLD`` retries, and applies to camera staleness only — see
-                :class:`OnStale`.
-            hold_budget_s: How long ``HOLD`` may keep retrying before escalating
-                to ``CONTROLLED_STOP``. Measured from the first stale tick, so
-                it does not depend on how fast the loop spins.
-            motion: Waypoint jogging configuration. Defaults to WaypointConfig().
-            execution: Explicit execution strategy. ``SequentialExecution``
-                completes and settles each chunk before the next inference;
-                ``ContinuousExecution`` replaces the active lookahead either as
-                fast as possible or at its configured fixed rate.
-            n_action_steps: Number of steps from each action chunk to execute.
-                None (default): Use the policy's own horizon when it declares
-                one (a LeRobot client reports its checkpoint's value), else all
-                steps.
-                0: Execute all steps returned by the policy, ignoring any
-                horizon the policy declares.
-                >0: Trim to first N steps (receding horizon). Later steps
-                have higher prediction uncertainty and are discarded.
-                The policy still predicts the full action_horizon (e.g. 16)
-                which remains available to asynchronous policy clients.
-            start_joint_position: Optional mapping of motion group to joint pose
-                to PTP-move to before starting waypoint jogging.
-            plant: Optional :class:`~novapolicy.plant.VirtualPlant` for
-                setpoint policies. The policy then observes the plant, and the
-                robot follows the plant's path through the ring buffer, so
-                ``buffer_window_ms`` must be set.
+            timeout_s: Maximum execution duration [s]; 0 = no timeout.
+            camera_max_age_s: Default freshness bound for the policy's camera frames [s]; a
+                channel overrides it with ``Observation.image(..., max_age_s=...)``. An older
+                frame ends the run with ``RuntimeError``.
+            inference_timeout_s: Deadline for one ``get_actions`` call [s]; 0 = none. A
+                liveness guard, not a real-time bound.
+            motion: Action chunk streaming configuration.
+            execution: ``SequentialExecution`` settles each chunk before the next inference;
+                ``ContinuousExecution`` replaces the lookahead as fast as possible or at its rate.
+            n_action_steps: Steps executed from each chunk: ``None`` the policy's own horizon if
+                it declares one, else all; ``0`` all; ``N > 0`` the first N (contracts M6).
+            start_joint_position: Joint positions per motion group to PTP-move to first.
+            pipeline: The modules between the policy's chunk and NOVA, in order, exactly as
+                given; ``None`` runs :func:`~novapolicy.pipeline.defaults.default_pipeline`. To
+                add one, extend that list with the same execution and policy, e.g.
+                ``[*default_pipeline(execution=execution, policy=policy), EaseIn(duration_s=1.0)]``.
+                Each motion group runs its own copy.
         """
+        if pipeline is None:
+            pipeline = default_pipeline(execution=execution, policy=policy)
+        split_pipeline(pipeline)  # refuse a misordered pipeline before anything moves
+        self._pipeline = tuple(pipeline)
         self._schema = schema
         self._motion_groups = schema.get_motion_groups()
 
@@ -241,45 +192,37 @@ class PolicyExecutor:
             raise TypeError(msg)
         self._policy = policy
 
-        self._motion = motion
         self._start_joint_position = start_joint_position
         self._stop_conditions = stop_conditions or []
         self._timeout_s = timeout_s
         if inference_timeout_s < 0:
             raise ValueError("inference_timeout_s must not be negative")
-        if hold_budget_s < 0:
-            raise ValueError("hold_budget_s must not be negative")
         self._inference_timeout_s = inference_timeout_s
-        self._on_stale = OnStale(on_stale)
-        self._hold_budget_s = hold_budget_s
-        self._stale_since: float | None = None
         if not isinstance(execution, ExecutionMode):
             raise TypeError("execution must be SequentialExecution or ContinuousExecution")
         self._execution = execution
         self._n_action_steps_cfg = n_action_steps
 
-        if isinstance(execution, SequentialExecution) and self._policy.rtc is not None:
-            raise ValueError("RTC requires ContinuousExecution")
+        _check_execution_mode(execution, self._policy, self._pipeline)
 
-        self._sessions: dict[str, WaypointJoggingSession] = {}
+        self._lifecycle = SessionLifecycle(
+            config=motion, stop_conditions=self._stop_conditions, pipeline=self._pipeline
+        )
+        self._sessions: dict[str, ActionChunkSession] = self._lifecycle.sessions
         self._cameras = CameraManager(camera_max_age_s)
         self._stop_event = asyncio.Event()
         self._last_obs: dict[str, Any] | None = None
-        self._estop_monitor: EstopMonitor | None = None
         self._io_streams = IOStreamManager(self._motion_groups, schema.io_keys_by_controller())
         self._io_tasks: set[asyncio.Task[None]] = set()
-        self._policy_timelines: dict[str, _PolicyTimeline] = {}
-        self._buffer_window_ms = max(0.0, buffer_window_ms)
-        _check_buffered_mode(self._buffer_window_ms, schema, plant)
-        self._target_buffers: dict[str, list[TimedPoint]] = {}
-        self._buffer_anchor_ms: float | None = None
-        self._buffer_timeline_ms = 0.0
-        self._clamp_to_joint_limits = clamp_to_joint_limits
-        self._joint_limits: dict[str, JointLimits] = {}
-        self._plant = plant
+        self._effect_error: BaseException | None = None
+        """The first error of an IO write or computed action run without motion; ends the run."""
+        self._observed_at_ms: dict[str, ServerMs | None] = {}
+        self._observed_clock_ms: dict[str, ServerMs] = {}
+        self._gc_frozen = False
+        self._start_time: float | None = None
+        """When the first inference ended, after the policy's preparation; ``None`` before."""
         self._rerun: PolicyRerunLogger | None = None
         self._logged_first_images = False
-        self._reported_missing_motion = False
 
         self.status = ExecutorStatus()
         self.result: ExecutionResult | None = None
@@ -302,12 +245,7 @@ class PolicyExecutor:
         return self._last_obs
 
     async def run(self) -> ExecutionResult:
-        """Run execution, blocking until timeout or stop.
-
-        Public lifecycle shell: resets state, drives the :class:`Phase` state
-        machine (mapping errors to ``Phase.ERROR``), and guarantees
-        :meth:`_cleanup` runs. The actual orchestration lives in
-        :meth:`_run_episode`.
+        """Run one episode, blocking until it ends; an error sets ``Phase.ERROR`` and re-raises.
 
         Returns:
             ExecutionResult on normal termination (timeout, stopped, or a
@@ -319,25 +257,15 @@ class PolicyExecutor:
             RuntimeError: Connection lost or other error.
         """
         self._stop_event.clear()
-        self._policy_timelines.clear()
         self.result = None
-        self._reported_missing_motion = False  # once per run, not per executor
+        self._effect_error = None
         self.status = ExecutorStatus(phase=Phase.CONNECTING, message="Connecting...")
         try:
             await self._run_episode()
-        except (MotionError, EmergencyStopError) as exc:
-            self.status = ExecutorStatus(
-                phase=Phase.ERROR,
-                step=self.status.step,
-                message=str(exc),
-            )
-            raise
         except Exception as exc:
-            self.status = ExecutorStatus(
-                phase=Phase.ERROR,
-                step=self.status.step,
-                message=f"{type(exc).__name__}: {exc}",
-            )
+            typed = isinstance(exc, (MotionError, EmergencyStopError))
+            message = str(exc) if typed else f"{type(exc).__name__}: {exc}"
+            self.status = ExecutorStatus(phase=Phase.ERROR, step=self.status.step, message=message)
             raise
         finally:
             await self._cleanup()
@@ -351,33 +279,8 @@ class PolicyExecutor:
         self._stop_event.set()
 
     async def _cleanup(self) -> None:
-        """Outer teardown — always runs, even if ``_run_episode`` setup throws.
-
-        Owns the resources allocated *before* and *around* ``_run_episode``:
-        the jogging sessions, pending IO write tasks, and the policy
-        connection. Also performs the final status reset and result logging.
-
-        How the run ended decides what happens to motion already accepted by the
-        controller. A run that ended normally — a stop condition, the execution
-        timeout, an external :meth:`stop`, or stale data under
-        ``CONTROLLED_STOP`` — owes the caller the waypoints it accepted, so they
-        are drained first. A run that ended in an error or an e-stop drops them:
-        ``session.stop`` cancels immediately, which is the point.
-        """
-        if self.status.phase is not Phase.ERROR:
-            await self._drain_sessions()
-
-        # In parallel: each stop waits for its server to settle.
-        results = await asyncio.gather(
-            *(session.stop() for session in self._sessions.values()), return_exceptions=True
-        )
-        for result in results:
-            if isinstance(result, BaseException) and not isinstance(
-                result, (MotionError, EmergencyStopError, OSError, RuntimeError)
-            ):
-                raise result
-
-        # Wait for pending IO tasks
+        """Outer teardown, always run: pending IO write tasks, the policy connection, the
+        final status and result logging."""
         if self._io_tasks:
             await asyncio.gather(*self._io_tasks, return_exceptions=True)
             self._io_tasks.clear()
@@ -402,99 +305,88 @@ class PolicyExecutor:
     # Execution lifecycle
     # -------------------------------------------------------------------------
 
-    async def _move_to_start_joint_position(self) -> None:
-        """PTP move configured motion groups before starting waypoint jogging."""
+    async def _run_episode(self) -> None:
+        """Create the sessions, run the observe-act loop and tear down: after a normal end the
+        sessions drain, after an error they stop at once (contracts T10)."""
+        for group_id, session in self._build_sessions().items():
+            session.add_state_observer(
+                lambda state, ts_ms, _generated, group_id=group_id: self._schema.observe_state(
+                    group_id, state.joints, ts_ms / 1000.0
+                )
+            )
 
-        async def ptp(mg: MotionGroup, joints: list[float]) -> None:
-            tcp = await mg.active_tcp_name() or (await mg.tcp_names())[0]
-            setup = await mg.get_setup(tcp)
-            setup.collision_setups = {}
-            target = tuple(joints)
-            trajectory = await mg.plan([jnt(target)], tcp, motion_group_setup=setup)
-            await mg.execute(trajectory, tcp, actions=[jnt(target)])
+        failed = settled = False
+        try:
+            await self._start()
+            result = await self._settle(await self._execute())
+            settled = True
+            self._complete(result)
+        except Exception:
+            failed = True
+            raise
+        finally:
+            if self._gc_frozen:
+                gc.unfreeze()
+                self._gc_frozen = False
+            await self._lifecycle.close(drain=not (failed or settled))  # settled: drained
+            if self._cameras.active:
+                await self._cameras.disconnect()
+            await self._schema.stop_sources()
+            await self._io_streams.stop()
 
-        start_positions = self._start_joint_position
-        if start_positions is None:
-            return
-        await asyncio.gather(*(ptp(mg, joints) for mg, joints in start_positions.items()))
+    async def _settle(self, result: ExecutionResult) -> ExecutionResult:
+        """After a normal end, let the effects already started finish, then the sessions drain:
+        the last chunks' IO and computed actions run meanwhile, and one that raises ends the
+        run with its error after all (contracts T7)."""
+        await self._finish_effects()
+        await self._lifecycle.drain()
+        _ = self._lifecycle.check()
+        return result
 
-    async def _run_episode(self) -> None:  # ruff: ignore[complex-structure]
-        """Orchestrate one episode: create sessions, loop observe→act, tear down.
+    def _complete(self, result: ExecutionResult) -> None:
+        """End a run that ended normally, its effects finished and its sessions drained: keep
+        the result and report completion."""
+        self.result = result
+        if self._rerun is not None:
+            self._rerun.log_completion(result.reason, result.steps, result.duration_s)
+        self.status.phase = Phase.COMPLETED
 
-        The ``finally`` here owns only the resources started *inside* this
-        method (rerun logger, e-stop monitor, cameras, IO streams). Sessions
-        and the policy connection are released by :meth:`_cleanup`, which
-        ``run`` guarantees runs even if this method throws during setup.
-
-        Exceptions (MotionError, EmergencyStopError) propagate
-        to :meth:`run`.
-        """
-        if self._clamp_to_joint_limits and not self._joint_limits:
-            self._joint_limits = await fetch_joint_limits(self._motion_groups)
-
-        # A fresh episode gets a fresh replay window and timeline anchor.
-        self._target_buffers.clear()
-        self._buffer_anchor_ms = None
-        self._buffer_timeline_ms = 0.0
-
-        # Create and start sessions
-        for mg in self._motion_groups:
-            self._sessions[mg.id] = self._create_session(mg)
-
-        if self._start_joint_position:
-            await self._move_to_start_joint_position()
-
+    async def _start(self) -> None:
+        """Connect the policy and let it check the schema, move to the start position, connect
+        cameras, IO and sources, and start the sessions with their monitoring; returns once the
+        server acknowledged them. A schema the policy refuses fails before anything moves
+        (ADR 0014)."""
+        await self._policy.connect(self.mg_ids)
+        await self._policy.validate_schema(self._schema)
+        await move_to_start_joint_position(self._start_joint_position)
         image_sources = self._schema.image_sources
         if image_sources:
             logger.info("Connecting cameras...")
             await self._cameras.connect(image_sources, self._schema.image_max_age_s)
             logger.info("All cameras ready")
-
-        for session in self._sessions.values():
-            await session.start()
-
-        try:
-            await self._io_streams.start()
-            self._io_streams.wire_to_sessions(self._sessions)
-            await self._policy.connect(self.mg_ids)
-            await self._policy.validate_schema(self._schema)
-            self._estop_monitor = EstopMonitor(self._motion_groups)
-            await self._estop_monitor.start()
-            await self._init_rerun()
-            if self._rerun is not None:
-                image_reader = self._cameras.read_latest_frames if self._cameras.active else None
-                self._rerun.start_streaming(self._sessions, image_reader=image_reader)
-            # Wait for sessions to be ready (server acknowledged init)
-            for session in self._sessions.values():
-                await session.wait_ready()
-            self.result = await self._execute()
-            self._log_completion()
-            self.status.phase = Phase.COMPLETED
-        finally:
-            # Release only what this method started; sessions + policy are
-            # handled by _cleanup() in run()'s finally.
-            if self._rerun is not None:
-                await self._rerun.stop_streaming()
-            if self._estop_monitor is not None:
-                await self._estop_monitor.stop()
-                self._estop_monitor = None
-            if self._cameras.active:
-                await self._cameras.disconnect()
-            await self._io_streams.stop()
+        await self._lifecycle.start_sessions()
+        await self._io_streams.start()
+        self._io_streams.wire_to_sessions(self._sessions)
+        await self._schema.load_coordinate_systems()
+        await self._schema.start_sources()
+        self._rerun = await self._lifecycle.start_monitoring(
+            camera_names=self._cameras.names,
+            tcp=self._schema.tcp,
+            image_reader=self._cameras.read_latest_frames if self._cameras.active else None,
+        )
+        await self._lifecycle.wait_ready()
 
     # -------------------------------------------------------------------------
     # Observe → act loop
     # -------------------------------------------------------------------------
 
-    async def _execute(self) -> ExecutionResult:  # ruff: ignore[complex-structure]
+    async def _execute(self) -> ExecutionResult:
         """Run the observe-act loop until termination.
 
         Raises MotionError, EmergencyStopError directly.
         """
-        step = 0
-        start_time: float | None = None
-        last_obs: dict[str, Any] | None = None
-
+        self._start_time = None
+        self._last_obs = None
         self.status.message = "Preparing policy..."
 
         fixed_rate_period = (
@@ -503,654 +395,206 @@ class PolicyExecutor:
             and self._execution.rate_hz is not None
             else 0.0
         )
+        tick_due: float | None = None  # when the current tick was due on the fixed-rate grid
 
         while not self._stop_event.is_set():
-            # Always yield once per iteration so stop()/other tasks make progress
-            # even when the policy and sleeps below complete synchronously
-            # (e.g. dt_ms=0 or a local in-process policy).
+            # Yield every iteration, so stop() runs even when the policy answers synchronously.
             await asyncio.sleep(0)
 
-            termination = self._termination_result(step, start_time, last_obs)
+            self._check_effects()
+            termination = self._termination_result()
             if termination is not None:
                 return termination
 
             tick_start = time.monotonic()
 
-            # Observe
             robot_states = self._observe()
             if not robot_states:
-                await asyncio.sleep(0.01)  # retry shortly
+                await asyncio.sleep(0.01)
                 continue
-            if self._plant is not None:
-                if step == 0:
-                    self._plant.reset(robot_states)
-                robot_states = self._plant.observe(robot_states)
-            observation_time = time.monotonic()
-            try:
-                action, start_time = await self._observe_and_infer(robot_states, step, start_time)
-            except _StaleHold:
-                await asyncio.sleep(_HOLD_RETRY_PERIOD_S)
-                continue
-            except _StaleStop as stale:
-                await self._drain_sessions()
-                return _result(
-                    f"stale: {stale.what}",
-                    step,
-                    start_time or time.monotonic(),
-                    last_obs,
-                )
-            if step == 0:
-                tick_start = start_time
-            last_obs = robot_states
-            self._log_observation_to_first_waypoint(
-                action,
-                robot_states,
-                step=step + 1,
-                observation_time=observation_time,
-            )
-            termination = await self._send_policy_action(
-                action,
-                robot_states,
-                step=step,
-                start_time=start_time,
-                last_obs=last_obs,
-                observation_time=observation_time,
-            )
+            action = await self._observe_and_infer(robot_states)
+            if self.status.step == 0 and self._start_time is not None:
+                tick_start = self._start_time  # the first tick starts after the preparation
+            termination = await self._send_policy_action(action, robot_states)
             if termination is not None:
                 return termination
-            step += 1
-            self.status.step = step
+            self.status.step += 1
 
-            # Check failures — raises directly on error
-            check_sessions(self._sessions)
-            check_estop(self._estop_monitor)
-
-            # A stop condition firing on a session tick ends the run normally.
-            stopped_by = triggered_stop_condition(self._sessions)
+            # Raises on a fault; a stop condition firing on a session tick ends the run normally.
+            self._check_effects()
+            stopped_by = self._lifecycle.check()
             if stopped_by is not None:
-                return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
+                return self._result(f"stop condition: {stopped_by}")
 
-            await self._wait_after_send(tick_start, start_time, fixed_rate_period)
+            tick_due = tick_start if tick_due is None else tick_due
+            tick_due = await self._wait_after_send(tick_due, fixed_rate_period)
 
-        return _result("stopped", step, start_time or time.monotonic(), last_obs)
+        return self._result("stopped")
 
-    async def _get_policy_actions(
-        self,
-        robot_states: dict[str, RobotState],
-        images: dict[str, Any] | None,
-    ) -> ActionChunk:
-        """Synchronize a queue, request its action, and apply relative targets."""
-        self._synchronize_policy_action_timestep()
-        async with asyncio.timeout(self._inference_timeout_s or None):
-            action = await self._policy.get_actions(
-                robot_states,
-                self._schema,
-                images,
-                self._all_io_values or None,
-            )
-        self._report_missing_motion(action)
-        # Units first: a relative target is a delta in the policy's units, and
-        # adding a degree-space delta to a radian state is exactly the error the
-        # operators exist to prevent.
-        action = self._schema.apply_inverse_ops(action)
-        return self._apply_relative_mode(action, robot_states)
-
-    def _report_missing_motion(self, action: ActionChunk) -> None:
-        """Log once when the policy's answer moves none of the expected motion groups.
-
-        A client that cannot decode its server's reply hands back an empty chunk,
-        which otherwise only shows as a robot that never moves until the timeout.
-        """
-        if action.joints or action.tcp or action.ios or self._reported_missing_motion:
-            return
-        expected = self._schema.motion_action_keys
-        if not expected:
-            return
-        self._reported_missing_motion = True
-        logger.error(
-            "The policy returned no motion for any motion group (expected %s). "
-            "Check that the policy client decodes its server's reply.",
-            ", ".join(expected),
+    def _result(self, reason: str) -> ExecutionResult:
+        """The run's result, ending now: its steps, the time since :attr:`_start_time` and the
+        last observation."""
+        now = time.monotonic()
+        start = self._start_time if self._start_time is not None else now
+        return ExecutionResult(
+            reason=reason, steps=self.status.step, duration_s=now - start, last_state=self._last_obs
         )
 
     def _synchronize_policy_action_timestep(self) -> None:
-        """Advance a queue policy to the first safely replaceable NOVA action.
+        """Tell a timestep queue which of its steps it may still replace: the one after the step
+        the sessions are executing now (read from the controller's clock)."""
+        executing = max((s.executing_action_timestep for s in self._sessions.values()), default=-1)
+        if executing >= 0:
+            self._policy.synchronize_action_timestep(executing + _ASYNC_REPLACEMENT_LEAD_STEPS)
 
-        Queue consumption advances to the immediate successor of the action
-        currently due. The async policy client prepends its preceding published
-        action, yielding a retained predecessor/current/two-successor seam even
-        if inference consumes one full policy interval. Queue progress is read from the
-        latest acknowledged raw NOVA controller timestamp, not extrapolated
-        from local policy-loop ticks or a measured transport-delay constant.
-        """
-        if not self._policy_timelines:
-            return
-
-        replaceable_timesteps: list[int] = []
-        for group_id, timeline in self._policy_timelines.items():
-            session = self._sessions.get(group_id)
-            if session is None or timeline.policy_dt_ms <= 0:
-                continue
-            elapsed_ms = max(
-                0.0,
-                session.last_server_timestamp_ms - timeline.server_timestamp_ms,
-            )
-            currently_due_timestep = timeline.action_timestep + int(
-                elapsed_ms // timeline.policy_dt_ms
-            )
-            replaceable_timesteps.append(currently_due_timestep + _ASYNC_REPLACEMENT_LEAD_STEPS)
-        if replaceable_timesteps:
-            self._policy.synchronize_action_timestep(max(replaceable_timesteps))
-
-    def _connected_motion(
-        self,
-        chunk: ActionChunk,
-        robot_states: dict[str, RobotState],
-    ) -> ConnectedActionChunk | None:
-        continuous_bridge = self._policy.requires_first_waypoint_bridge
-        needs_continuous_bridge = continuous_bridge and (
-            chunk.action_timestep < 0 or not self._policy_timelines
-        )
-        if isinstance(self._execution, ContinuousExecution) and not needs_continuous_bridge:
-            return None
-        # Anchor on where the robot is now, not on where it was when the
-        # observation was taken. A bridge's first waypoint is a measured-state
-        # hold, and `robot_states` is one inference old by the time it is sent -
-        # in continuous execution a median 0.37 deg of travel and up to 2.9 deg,
-        # which anchoring on it commands the arm back through. At a settled
-        # standstill the two are the same to 0.004 deg, so this costs sequential
-        # execution nothing.
-        connected = connect_action_chunk(
-            chunk,
-            self._observe() or robot_states,
-            always_anchor=continuous_bridge,
-        )
-        if connected is None:
-            return None
-        return self._apply_connected_endpoint_ramp(connected)
-
-    def _align_seam_to_observation(
-        self, chunk: ActionChunk, observation_time: float
-    ) -> ActionChunk:
-        """Backdate a continuous chunk by the time inference took.
-
-        The chunk's step zero answers the observation, so on the session's
-        timeline it belongs at the moment the observation was taken - not at
-        "now", which is one inference later. Anchoring it at "now" replays the
-        motion the robot made while the policy was thinking, and every
-        replacement visibly pulls the arm back through it.
-
-        `seam_backdate_steps` is the existing seam contract for exactly this
-        (`placement` shifts the anchor, the session skips its discontinuity
-        warning, the server discards the past-stamped head), and a client that
-        computed its own - the RTC path - is left alone.
-        """
-        if (
-            not isinstance(self._execution, ContinuousExecution)
-            or chunk.seam_backdate_steps != 0
-            or chunk.dt_ms <= 0
-            # A chunk on a policy timeline is placed by its own absolute
-            # timestamps; there is no "now" anchor to correct.
-            or chunk.action_timestep >= 0
-        ):
-            return chunk
-        shortest = min(
-            (len(steps) for steps in (*chunk.joints.values(), *chunk.tcp.values())),
-            default=0,
-        )
-        elapsed_steps = int((time.monotonic() - observation_time) * 1000.0 / chunk.dt_ms)
-        backdate = min(elapsed_steps, max(0, shortest - 2))
-        if backdate <= 0:
-            return chunk
-        return chunk.model_copy(update={"seam_backdate_steps": backdate})
-
-    def _apply_endpoint_ramp(self, chunk: ActionChunk) -> ActionChunk:
-        ramp = (
-            self._execution.endpoint_ramp
-            if isinstance(self._execution, SequentialExecution)
-            else None
-        )
-        if ramp is None:
-            return chunk
-        return interpolate_action_chunk_ramps(
-            chunk,
-            interpolation_steps=ramp.interpolation_steps,
-        ).motion
-
-    def _apply_connected_endpoint_ramp(
-        self,
-        connected: ConnectedActionChunk,
-    ) -> ConnectedActionChunk:
-        ramp = (
-            self._execution.endpoint_ramp
-            if isinstance(self._execution, SequentialExecution)
-            else None
-        )
-        if ramp is None:
-            return connected
-        interpolated = interpolate_action_chunk_ramps(
-            connected.motion,
-            interpolation_steps=ramp.interpolation_steps,
-        )
-        policy_start_steps = {
-            group_id: interpolated.original_step_indices[group_id][policy_start_step]
-            for group_id, policy_start_step in connected.policy_start_steps.items()
-        }
-        return ConnectedActionChunk(
-            motion=interpolated.motion,
-            bridge=connected.bridge,
-            policy_start_steps=policy_start_steps,
-        )
-
-    async def _send_connected_policy_chunk(
-        self,
-        connected: ConnectedActionChunk,
-        action: ActionChunk,
-        *,
-        step: int,
-        start_time: float,
-        last_obs: dict[str, Any] | None,
-    ) -> ExecutionResult | None:
-        """Send continuous bridge+policy motion and defer side effects to its boundary."""
-        bridge_steps = {
-            group_id: len(steps)
-            for group_id, steps in (
-                *connected.bridge.joints.items(),
-                *connected.bridge.tcp.items(),
-            )
-        }
-        logger.info(
-            "Policy chunk=%d uses continuous bridge steps=%s policy_start_steps=%s",
-            step + 1,
-            bridge_steps,
-            connected.policy_start_steps,
-        )
-        if self._rerun is not None:
-            self._rerun.log_bridge_chunk(connected.bridge, step)
-        self._log_policy_action(action, step)
-        target_chunks = self._send(connected.motion)
-        termination = await self._run_actions_at_policy_boundary(
-            connected,
-            action,
-            target_chunks,
-            step=step,
-            start_time=start_time,
-            last_obs=last_obs,
-        )
-        if (
-            termination is None
-            and isinstance(self._execution, ContinuousExecution)
-            and action.action_timestep >= 0
-        ):
-            for group_id, policy_start_step in connected.policy_start_steps.items():
-                session = self._sessions.get(group_id)
-                if session is None:
-                    continue
-                # Asked for by this queue's own step index: the session drops
-                # leading waypoints whose moment has passed, so indexing the sent
-                # request shifts this origin by however many it dropped — on every
-                # chunk, compounding.
-                policy_start_ms = session.scheduled_timestamp_for_step(policy_start_step)
-                if policy_start_ms is None:
-                    continue
-                # Policy waypoint zero already has an exact timestamp on NOVA's
-                # jogger timer. Preserve it as the immutable queue origin.
-                self._policy_timelines[group_id] = _PolicyTimeline(
-                    action_timestep=action.action_timestep,
-                    policy_dt_ms=action.dt_ms,
-                    server_timestamp_ms=float(policy_start_ms),
-                )
-            logger.info("Policy action timeline initialized: %s", self._policy_timelines)
-        return termination
-
-    async def _run_actions_at_policy_boundary(
-        self,
-        connected: ConnectedActionChunk,
-        action: ActionChunk,
-        target_chunks: dict[str, int],
-        *,
-        step: int,
-        start_time: float,
-        last_obs: dict[str, Any] | None,
-    ) -> ExecutionResult | None:
-        """Wait on NOVA timestamps, then fire IO and computed policy actions."""
-        pending_ios = dict(action.ios or {})
-        while True:
-            termination = self._termination_result(step, start_time, last_obs)
-            if termination is not None:
-                return termination
-            if self._stop_event.is_set():
-                return _result("stopped", step, start_time, last_obs)
-            check_sessions(self._sessions)
-            check_estop(self._estop_monitor)
-
-            ready_groups = self._policy_boundary_ready_groups(connected, target_chunks)
-            for group_id in list(pending_ios):
-                if group_id in connected.policy_start_steps and group_id not in ready_groups:
-                    continue
-                session = self._sessions.get(group_id)
-                if session is not None:
-                    await session.write_ios(pending_ios[group_id])
-                pending_ios.pop(group_id)
-
-            if ready_groups == set(connected.policy_start_steps):
-                await self._schema.run_computed_actions(action)
-                return None
-            await asyncio.sleep(0.001)
-
-    def _policy_boundary_ready_groups(
-        self,
-        connected: ConnectedActionChunk,
-        target_chunks: dict[str, int],
-    ) -> set[str]:
-        """Return motion groups whose NOVA clock reached policy waypoint zero."""
-        ready: set[str] = set()
-        for group_id, policy_start_step in connected.policy_start_steps.items():
-            session = self._sessions.get(group_id)
-            target_chunk = target_chunks.get(group_id)
-            if session is None or target_chunk is None:
-                continue
-            policy_start_ms = session.scheduled_timestamp_for_step(policy_start_step)
-            if (
-                session.scheduled_chunk_count >= target_chunk
-                and policy_start_ms is not None
-                and session.last_server_timestamp_ms >= policy_start_ms
-            ):
-                ready.add(group_id)
-        return ready
-
-    def _log_policy_action(self, action: ActionChunk, step: int) -> None:
-        """Log a full policy prediction including its retained queue seam."""
-        if self._rerun is None:
-            return
-        if action.action_timestep > 0 and self._policy.requires_first_waypoint_bridge:
-            seam = ActionChunk(
-                joints={
-                    group_id: steps[:_ASYNC_SEAM_STEPS]
-                    for group_id, steps in action.joints.items()
-                    if len(steps) >= _ASYNC_SEAM_STEPS
-                },
-                tcp={
-                    group_id: steps[:_ASYNC_SEAM_STEPS]
-                    for group_id, steps in action.tcp.items()
-                    if len(steps) >= _ASYNC_SEAM_STEPS
-                },
-                dt_ms=action.dt_ms,
-                action_timestep=action.action_timestep,
-            )
-            if seam.joints or seam.tcp:
-                self._rerun.log_bridge_chunk(seam, step)
-        self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
-
-    # -------------------------------------------------------------------------
-    # Stale data
-    # -------------------------------------------------------------------------
+    def _bridges_in_queue(self) -> dict[str, list[list[float]]]:
+        """Each session's bridge in the chunk just queued: its steps up to the policy's first."""
+        bridges: dict[str, list[list[float]]] = {}
+        for group_id, session in self._sessions.items():
+            queued = session.queued_chunk
+            if queued is not None and queued.start_step > 0:
+                bridges[group_id] = queued.steps[: queued.start_step + 1]
+        return bridges
 
     async def _send_policy_action(
-        self,
-        action: ActionChunk,
-        robot_states: dict[str, RobotState],
-        *,
-        step: int,
-        start_time: float,
-        last_obs: dict[str, Any] | None,
-        observation_time: float,
+        self, action: ActionChunk, robot_states: dict[str, RobotState]
     ) -> ExecutionResult | None:
         """Trim, place and send one chunk. Returns a result when the run ends here."""
-        stopped_by = self._check_stop_conditions_pre_send(action, robot_states)
-        if stopped_by is not None:
-            return _result(f"stop condition: {stopped_by}", step, start_time, last_obs)
-
         trimmed = trim_chunk(action, self._n_action_steps)
-        if self._rerun is not None and self._plant is None:
-            self._rerun.log_target_tracking(trimmed, robot_states, step)
+        stopped_by = self._check_stop_conditions_pre_send(trimmed, robot_states)
+        if stopped_by is not None:
+            return self._result(f"stop condition: {stopped_by}")
 
-        # The buffer is its own continuity: a bridge or an endpoint ramp would
-        # hand it several steps for what is one policy target.
-        buffered = self._buffer_window_ms > 0
-        connected = None if buffered else self._connected_motion(trimmed, robot_states)
-        if connected is not None:
-            return await self._send_connected_policy_chunk(
-                connected,
-                action,
-                step=step,
-                start_time=start_time,
-                last_obs=last_obs,
+        step = self.status.step
+        if self._rerun is not None:
+            self._rerun.log_action_chunk(action, step, n_action_steps=self._n_action_steps)
+        self._send(trimmed, action)
+        # The sessions' Bridge module, if any, put a bridge in front of the policy's steps.
+        bridges = self._bridges_in_queue()
+        if bridges and self._rerun is not None:
+            self._rerun.log_bridge_chunk(
+                ActionChunk(
+                    joints={g: b for g, b in bridges.items() if g in trimmed.joints},
+                    tcp={g: b for g, b in bridges.items() if g in trimmed.tcp},
+                    dt_ms=trimmed.dt_ms,
+                ),
+                step,
             )
-
-        sent_chunk = self._align_seam_to_observation(
-            trimmed if buffered else self._apply_endpoint_ramp(trimmed), observation_time
-        )
-        await self._schema.run_computed_actions(action)
-        self._log_policy_action(action, step)
-        self._send(sent_chunk)
-        if self._rerun is not None and self._plant is not None:
-            # robot_states is what the policy saw: the plant. The robot is
-            # tracked against it, and the raw setpoint is shown beside both.
-            self._rerun.log_plant_tracking(trimmed, robot_states, self._observe(), step)
         return None
 
-    async def _observe_and_infer(
-        self,
-        robot_states: dict[str, RobotState],
-        step: int,
-        start_time: float | None,
-    ) -> tuple[ActionChunk, float]:
+    async def _observe_and_infer(self, robot_states: dict[str, RobotState]) -> ActionChunk:
         """Read the cameras, prepare on the first tick, and query the policy.
 
-        Returns ``(action, start_time)``; ``start_time`` is set on the
-        first tick, after policy preparation, so model loading is excluded from
-        the execution timeout.
+        Sets :attr:`_start_time` on the first tick, after policy preparation, so model loading
+        is excluded from the execution timeout.
 
         Raises:
-            _StaleHold: An input missed its deadline and the run should retry.
-            _StaleStop: An input missed its deadline and the run should end.
+            RuntimeError: A camera frame or the inference missed its deadline.
         """
-        images = self._read_policy_images()
-        self._log_first_image_shapes(images)
+        images = None
+        if self._cameras.active:
+            try:
+                images = self._cameras.read()
+            except RuntimeError as exc:
+                msg = f"Stale policy input (camera: {exc})"
+                raise RuntimeError(msg) from exc
+        if images and not self._logged_first_images:
+            shapes = {key: getattr(image, "shape", None) for key, image in images.items()}
+            logger.info("First policy camera frames: %s", shapes)
+            self._logged_first_images = True
         self._last_obs = robot_states
-        self._log_policy_observation(robot_states, images, step)
+        if self._rerun is not None:
+            self._rerun.log_observation(robot_states, self.status.step)
+            if images:
+                self._rerun.log_images(images)
 
-        if start_time is None:
-            await self._prepare_policy(robot_states, images)
-            start_time = time.monotonic()
+        if self._start_time is None:
+            await self._policy.prepare(
+                robot_states, self._schema, images, self._io_streams.all_values or None
+            )
+            self._freeze_setup_objects()
+            self._start_time = time.monotonic()
             self.status.phase = Phase.EXECUTING
             self.status.message = "Running policy..."
 
-        return await self._infer(robot_states, images), start_time
+        return await self._infer(robot_states, images)
 
-    def _read_policy_images(self) -> dict[str, Any] | None:
-        """Read one frame per camera, or report the channel as stale."""
-        if not self._cameras.active:
-            return None
-        try:
-            images = self._cameras.read()
-        except RuntimeError as exc:
-            self._on_stale_input(f"camera: {exc}", allow_hold=True)
-            raise  # unreachable: _on_stale_input always raises
-        self._stale_since = None
-        return images
+    def _freeze_setup_objects(self) -> None:
+        """Collect, then freeze everything allocated so far out of garbage collection until
+        :meth:`_run_episode` unfreezes it (ADR 0007)."""
+        gc.collect()
+        gc.freeze()
+        self._gc_frozen = True
 
     async def _infer(
         self,
         robot_states: dict[str, RobotState],
         images: dict[str, Any] | None,
     ) -> ActionChunk:
-        """Query the policy under the executor's inference deadline."""
+        """Synchronize a queue, request its action under the executor's inference deadline, and
+        apply relative targets."""
         try:
-            action = await self._get_policy_actions(robot_states, images)
-        except TimeoutError:
-            # The timed-out call is still running on a worker thread, so
-            # retrying would re-enter a client whose previous call may still
-            # complete and advance its timestep. HOLD is refused here; see
-            # OnStale.
-            self._on_stale_input(
-                f"inference exceeded {self._inference_timeout_s:.0f}s", allow_hold=False
-            )
-            raise  # unreachable: _on_stale_input always raises
-        self._stale_since = None
-        return action
-
-    def _on_stale_input(self, what: str, *, allow_hold: bool) -> None:
-        """Turn a missed deadline into the declared response. Never returns.
-
-        Args:
-            what: Human-readable description, carried into the result reason.
-            allow_hold: Whether ``HOLD`` is meaningful for this trigger. False
-                for an inference deadline, whose timed-out call is still in
-                flight on a worker thread.
-
-        Raises:
-            RuntimeError: ``on_stale`` is ``ABORT``.
-            _StaleHold: Retry after a pause.
-            _StaleStop: End the run, running out the accepted waypoints.
-        """
-        now = time.monotonic()
-        if self._stale_since is None:
-            self._stale_since = now
-
-        if self._on_stale is OnStale.ABORT:
-            msg = f"Stale policy input ({what})"
-            raise RuntimeError(msg)
-
-        if self._on_stale is OnStale.HOLD:
-            if not allow_hold:
-                logger.warning("Stale policy input (%s) cannot be held through; stopping.", what)
-                raise _StaleStop(what)
-            held_for = now - self._stale_since
-            if held_for < self._hold_budget_s:
-                logger.warning(
-                    "Holding: stale policy input (%s), %.1fs of %.1fs budget used.",
-                    what,
-                    held_for,
-                    self._hold_budget_s,
+            self._synchronize_policy_action_timestep()
+            async with asyncio.timeout(self._inference_timeout_s or None):
+                action = await self._policy.get_actions(
+                    robot_states, self._schema, images, self._io_streams.all_values or None
                 )
-                raise _StaleHold(what)
-            logger.warning(
-                "Stale policy input (%s) outlasted the %.1fs hold budget; stopping.",
-                what,
-                self._hold_budget_s,
-            )
+            if action.resolved:
+                return action
+            return resolve_actions(self._schema, action, robot_states)
+        except TimeoutError as exc:
+            msg = f"Stale policy input (inference exceeded {self._inference_timeout_s:.0f}s)"
+            raise RuntimeError(msg) from exc
 
-        raise _StaleStop(what)
-
-    async def _drain_sessions(self) -> None:
-        """Let the waypoints already accepted run out before the sessions stop."""
-        for session in self._sessions.values():
-            with contextlib.suppress(MotionError, EmergencyStopError, OSError, RuntimeError):
-                await session.drain()
-
-    def _termination_result(
-        self,
-        step: int,
-        start_time: float | None,
-        last_obs: dict[str, Any] | None,
-    ) -> ExecutionResult | None:
-        if (
-            start_time is not None
-            and self._timeout_s > 0
-            and (time.monotonic() - start_time) >= self._timeout_s
-        ):
-            return _result("timeout", step, start_time, last_obs)
-        stopped_by = triggered_stop_condition(self._sessions)
+    def _termination_result(self) -> ExecutionResult | None:
+        if self._timed_out():
+            return self._result("timeout")
+        stopped_by = self._lifecycle.stop_condition
         if stopped_by is not None:
-            return _result(
-                f"stop condition: {stopped_by}",
-                step,
-                start_time or time.monotonic(),
-                last_obs,
-            )
+            return self._result(f"stop condition: {stopped_by}")
         return None
 
-    async def _prepare_policy(
-        self,
-        robot_states: dict[str, RobotState],
-        images: dict[str, Any] | None,
-    ) -> None:
-        """Run policy setup before the execution timeout starts."""
-        self._log_first_image_shapes(images)
-        await self._policy.prepare(
-            robot_states,
-            self._schema,
-            images,
-            self._all_io_values or None,
-        )
+    def _timed_out(self) -> bool:
+        """Whether the run has used up ``timeout_s`` since :attr:`_start_time`."""
+        start = self._start_time
+        return start is not None and 0 < self._timeout_s <= time.monotonic() - start
 
-    def _log_policy_observation(
-        self,
-        robot_states: dict[str, RobotState],
-        images: dict[str, Any] | None,
-        step: int,
-    ) -> None:
-        """Log one policy observation to Rerun when visualization is active."""
-        if self._rerun is None:
-            return
-        if self._plant is not None:
-            # The policy saw the plant; the robot's own state is streamed by the
-            # logger in the background and must not be overwritten with it.
-            self._rerun.log_plant_observation(robot_states, step)
-        else:
-            self._rerun.log_observation(robot_states, step)
-        if images:
-            self._rerun.log_images(images)
+    async def _wait_after_send(self, tick_due: float, fixed_rate_period: float) -> float:
+        """Pace the loop after a send; returns when the next tick is due.
 
-    def _log_first_image_shapes(self, images: dict[str, Any] | None) -> None:
-        """Log camera keys/shapes once, when first frames enter the policy loop."""
-        if self._logged_first_images or not images:
-            return
-        summary = {key: getattr(image, "shape", None) for key, image in images.items()}
-        logger.info("First policy camera frames: %s", summary)
-        self._logged_first_images = True
-
-    async def _wait_after_send(
-        self,
-        tick_start: float,
-        start_time: float,
-        fixed_rate_period: float,
-    ) -> None:
-        """Pace the loop after a chunk is sent, per the configured timing mode."""
-        if isinstance(self._execution, SequentialExecution):
-            await self._wait_until_sessions_settled(start_time)
-        elif fixed_rate_period > 0:
-            # Fixed-rate continuous execution sleeps for the remainder of the period.
-            elapsed = time.monotonic() - tick_start
-            sleep_time = fixed_rate_period - elapsed
-            if sleep_time > 0:
-                await asyncio.sleep(sleep_time)
-
-    async def _wait_until_sessions_settled(self, exec_start: float) -> None:
-        """Wait until every submitted chunk has run out *and* the robot has stopped.
-
-        Both halves are needed. The server clock passing a chunk's last commanded
-        timestamp says the deadline elapsed, not that the robot came to rest — it
-        is still braking through the hold padding that follows. Standstill alone
-        is just as insufficient: before a chunk's waypoints are reached the robot
-        is legitimately still, so it would end the wait before any motion began.
-
-        Standstill is measured from the joint positions
-        (:attr:`WaypointJoggingSession.is_at_standstill`) rather than taken from
-        the jogging state stream. NOVA reports no "commanded waypoints ran out"
-        state: since 26.6 ``PAUSED_BY_USER`` follows a Pause/Stop *request* only,
-        and this executor never sends one, so a drained queue reports ``RUNNING``
-        indefinitely. It is still accepted here when it does appear, which is a
-        genuine standstill by any other route.
+        Sequential execution waits for the sessions to settle. A fixed rate sleeps until the next
+        tick on an absolute grid, which restarts when more than a period behind (ADR 0006).
         """
+        if isinstance(self._execution, SequentialExecution):
+            await self._wait_until_sessions_settled()
+            return time.monotonic()
+        if fixed_rate_period <= 0:
+            return time.monotonic()
+        next_due = tick_due + fixed_rate_period
+        delay = next_due - time.monotonic()
+        if delay > 0:
+            await asyncio.sleep(delay)
+        elif delay < -fixed_rate_period:
+            return time.monotonic()
+        return next_due
+
+    async def _wait_until_sessions_settled(self) -> None:
+        """Wait until every queued chunk was sent, its last step is past and the robot stands
+        still (or reports ``PAUSED_BY_USER``); see executor.md, "Detecting standstill"."""
         target_chunks = {
             group_id: session.queued_chunk_count for group_id, session in self._sessions.items()
         }
         while True:
             if self._stop_event.is_set():
                 return
-            if self._timeout_s > 0 and (time.monotonic() - exec_start) >= self._timeout_s:
+            if self._timed_out():
                 return
-            check_sessions(self._sessions)
-            check_estop(self._estop_monitor)
-            if triggered_stop_condition(self._sessions) is not None:
+            if self._effect_error is not None or self._lifecycle.check() is not None:
                 return
 
             if all(
-                session.scheduled_chunk_count >= target_chunks[group_id]
-                and session.last_server_timestamp_ms >= session.scheduled_until_server_ms
+                session.scheduled.chunk_count >= target_chunks[group_id]
+                and session.last_server_timestamp_ms >= session.scheduled.until_server_ms
                 and (session.is_at_standstill or session.jogging_state == "PAUSED_BY_USER")
                 for group_id, session in self._sessions.items()
             ):
@@ -1158,7 +602,7 @@ class PolicyExecutor:
             await asyncio.sleep(0.01)
 
     # -------------------------------------------------------------------------
-    # Session operations (inlined from former PolicyRunner)
+    # Session operations
     # -------------------------------------------------------------------------
 
     def _observe(self) -> dict[str, Any]:
@@ -1168,62 +612,22 @@ class PolicyExecutor:
             state = session.current_state
             if state is not None:
                 result[group_id] = state
+                # When the observation was taken on the session clock: the clock estimate for
+                # multi-step chunks, the state's own timestamp for one-step ones (ADR 0003).
+                self._observed_clock_ms[group_id] = session.estimated_server_timestamp_ms
+                measured_ms = session.current_state_server_ms
+                self._observed_at_ms[group_id] = (
+                    measured_ms
+                    if measured_ms is not None
+                    else session.estimated_server_timestamp_ms
+                )
         return result
-
-    def _log_observation_to_first_waypoint(
-        self,
-        chunk: ActionChunk,
-        robot_states: dict[str, RobotState],
-        *,
-        step: int,
-        observation_time: float,
-    ) -> None:
-        """Log the exact observation, live pre-send state, and first joint target."""
-        inference_ms = (time.monotonic() - observation_time) * 1000.0
-        for group_id, steps in chunk.joints.items():
-            observed_state = robot_states.get(group_id)
-            session = self._sessions.get(group_id)
-            live_state = session.current_state if session is not None else None
-            if observed_state is None or live_state is None or not steps:
-                continue
-
-            observed = list(observed_state.joints)
-            live = list(live_state.joints)
-            first = steps[0]
-            if len(observed) != len(live) or len(observed) != len(first):
-                continue
-
-            observed_to_first_deg = [
-                abs(target - state) * 57.2958 for state, target in zip(observed, first, strict=True)
-            ]
-            observed_to_live_deg = [
-                abs(current - state) * 57.2958
-                for state, current in zip(observed, live, strict=True)
-            ]
-            logger.info(
-                "%s policy chunk=%d observation-to-first max=%.2fdeg per_joint=%s "
-                "observation-to-presend max=%.3fdeg inference=%.1fms "
-                "observation=%s presend=%s first=%s",
-                group_id,
-                step,
-                max(observed_to_first_deg, default=0.0),
-                _format_values(observed_to_first_deg, digits=2),
-                max(observed_to_live_deg, default=0.0),
-                inference_ms,
-                _format_values(observed),
-                _format_values(live),
-                _format_values(first),
-            )
 
     def _check_stop_conditions_pre_send(
         self, chunk: ActionChunk, robot_states: dict[str, RobotState]
     ) -> str | None:
-        """Evaluate stop conditions against the intended action before sending.
-
-        Gives conditions visibility into what the policy intends to do (target
-        positions + IO writes) so they can stop before execution. Returns the
-        name of the first condition that fired (``True``), or ``None``.
-        """
+        """Evaluate stop conditions against the chunk's targets and IO before it is sent; returns
+        the name of the first condition that fired, or ``None``."""
         if not self._stop_conditions:
             return None
 
@@ -1244,293 +648,125 @@ class PolicyExecutor:
                 prev_state=None,
                 dt=0.0,
                 motion_group_id=group_id,
-                io_values=self._all_io_values,
+                io_values=self._io_streams.all_values,
                 target_joints=target_joints,
                 target_ios=target_ios,
             )
-            for condition in self._stop_conditions:
-                if condition(ctx):
-                    return getattr(condition, "__name__", repr(condition))
+            fired = first_fired(self._stop_conditions, ctx)
+            if fired is not None:
+                return fired
         return None
 
-    def _send(self, chunk: ActionChunk) -> dict[str, int]:
-        """Send an action chunk to the motion groups.
+    def _send(self, chunk: ActionChunk, effects: ActionChunk) -> None:
+        """Hand an action chunk to each motion group's session, placed by
+        :func:`novapolicy.pipeline.placement.placement` (the session's modules may still move it).
 
-        Placement (relative vs. absolute, with optional overlap backdate) is
-        decided per session by :func:`novapolicy.chunking.placement`; the "now"
-        component is resolved at yield time inside the session. For overlapping
-        mode to keep the robot moving, ``(horizon - seam_backdate_steps) *
-        dt_ms`` must exceed the inference latency (increase dt_ms or cut latency
-        otherwise).
+        The IO and computed actions of ``effects`` (the policy's chunk) run when the policy's
+        first step is due: a moving group's IO with its own step, the computed actions with the
+        first moving group's; the rest at once (contracts T7). IO is written before the
+        computed actions.
         """
-        if self._plant is not None:
-            chunk = self._plant.shape(chunk)
-        chunk = self._clamp_chunk(chunk)
-        if self._buffer_window_ms > 0:
-            target_chunks = self._send_buffered(chunk)
-            self._schedule_ios(chunk)
-            return target_chunks
-
         place = placement(chunk, execution=self._execution)
-        server_dt_ms = (
-            chunk.dt_ms
-            if isinstance(self._execution, ContinuousExecution)
-            and self._policy.requires_first_waypoint_bridge
-            else None
-        )
-        target_chunks: dict[str, int] = {}
-        for group_id, steps in chunk.joints.items():
+        moving = [*chunk.joints, *chunk.tcp]
+        # Every group's steps first: a bad one must not leave another group's chunk queued.
+        for group_id, steps in [*chunk.joints.items(), *chunk.tcp.items()]:
+            session = self._sessions.get(group_id)
+            if session is not None:
+                session.check_steps(steps)
+        for group_id, steps in [*chunk.joints.items(), *chunk.tcp.items()]:
             session = self._sessions.get(group_id)
             if session is None:
                 logger.warning("Unknown motion group in chunk: %s", group_id)
                 continue
-            server_timestamp_ms = self._policy_server_timestamp_ms(chunk, group_id)
+            run = self._effects(effects, [group_id], computed=group_id == moving[0])
             session.update_chunk(
                 steps=steps,
                 dt_ms=chunk.dt_ms,
-                first_timestamp_ms=(
-                    server_timestamp_ms
-                    if server_timestamp_ms is not None
-                    else place.first_timestamp_ms
-                ),
-                timestamp_offset_steps=(
-                    0 if server_timestamp_ms is not None else place.timestamp_offset_steps
-                ),
-                server_dt_ms=server_dt_ms,
+                first_timestamp_ms=place.first_timestamp_ms,
                 action_timestep=chunk.action_timestep,
+                extend_buffer=place.hold,
+                lead=place.lead,
+                observed_at_ms=self._observed_ms(group_id, chunk) if place.lead else None,
+                when_due=None if run is None else (0, run),
+                retained_prefix_steps=chunk.retained_prefix_steps,
             )
-            target_chunks[group_id] = session.queued_chunk_count
-
-        for group_id, raw_tcp_steps in chunk.tcp.items():
-            session = self._sessions.get(group_id)
-            if session is None:
-                logger.warning("Unknown motion group in TCP chunk: %s", group_id)
-                continue
-            server_timestamp_ms = self._policy_server_timestamp_ms(chunk, group_id)
-            session.update_chunk(
-                steps=raw_tcp_steps,
-                dt_ms=chunk.dt_ms,
-                first_timestamp_ms=(
-                    server_timestamp_ms
-                    if server_timestamp_ms is not None
-                    else place.first_timestamp_ms
-                ),
-                timestamp_offset_steps=(
-                    0 if server_timestamp_ms is not None else place.timestamp_offset_steps
-                ),
-                server_dt_ms=server_dt_ms,
-                action_timestep=chunk.action_timestep,
-            )
-            target_chunks[group_id] = session.queued_chunk_count
-        self._schedule_ios(chunk)
-        return target_chunks
-
-    def _schedule_ios(self, chunk: ActionChunk) -> None:
-        """Write the chunk's IO actions, alongside the motion in either send path."""
-        for group_id, ios in (chunk.ios or {}).items():
-            session = self._sessions.get(group_id)
-            if session is None:
-                continue
-            task = asyncio.create_task(session.write_ios(ios))
+        idle = [group_id for group_id in effects.ios or {} if group_id not in moving]
+        run = self._effects(effects, idle, computed=not moving)
+        if run is not None:
+            task = asyncio.create_task(run())
             self._io_tasks.add(task)
-            task.add_done_callback(self._io_tasks.discard)
+            task.add_done_callback(self._effect_done)
 
-    def _clamp_chunk(self, chunk: ActionChunk) -> ActionChunk:
-        """Hold every joint target inside the robot's limits before it is sent.
+    def _effect_done(self, task: asyncio.Task[None]) -> None:
+        """Forget a finished effects task, keeping its error, the first one only, for
+        :meth:`_check_effects` (contracts T7: a hook that raises ends the run)."""
+        self._io_tasks.discard(task)
+        if task.cancelled() or self._effect_error is not None:
+            return
+        self._effect_error = task.exception()
 
-        NOVA pauses the motion on an out-of-range waypoint, so an unclamped
-        target that a policy only slightly overshoots ends the episode. See
-        :mod:`novapolicy.joint_limits`. TCP targets are left alone: their limits
-        are the robot's workspace, which is not a per-axis bound.
-        """
-        if not self._joint_limits or not chunk.joints:
-            return chunk
-        held: dict[str, list[list[float]]] = {}
-        changed = False
-        for group_id, steps in chunk.joints.items():
-            limits = self._joint_limits.get(group_id)
-            if limits is None:
-                held[group_id] = steps
-                continue
-            clamped = [limits.clamp(step, group_id) for step in steps]
-            changed = changed or clamped != steps
-            held[group_id] = clamped
-        if not changed:
-            return chunk
-        return chunk.model_copy(update={"joints": held})
+    def _check_effects(self) -> None:
+        """Raise the error of an IO write or computed action that ran without motion."""
+        if self._effect_error is not None:
+            raise self._effect_error
 
-    def _send_buffered(self, chunk: ActionChunk) -> dict[str, int]:
-        """Send each target through the rolling buffer instead of as a chunk.
+    async def _finish_effects(self) -> None:
+        """At a normal end, let the effects already started finish and raise the first error,
+        so one of the last tick ends the run like any other."""
+        tasks = list(self._io_tasks)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        for task in tasks:
+            self._effect_done(task)
+        self._check_effects()
 
-        The buffered mode for horizon-1 policies, sharing its mechanism with the
-        joggers' live-target path (see :mod:`novapolicy.jogging.live_buffer`).
-        Each policy target is held and replayed ``buffer_window_ms`` late as part
-        of a continuous horizon of *measured* targets, so the server always has
-        somewhere to be going next and never plans a decelerate-to-standstill.
-
-        The chunk path instead re-derives each send's anchor from server "now",
-        which lands the same target on a slightly different absolute timestamp in
-        every send; a moving joint's target therefore wobbles while a held
-        joint's does not, which the robot executes as vibration. Here a given
-        target maps to one fixed timestamp however often the window is re-sent.
-
-        The cost is latency: the robot trails the live target by about the
-        window, so the tracking plots show a roughly constant lag. That is the
-        design, not a fault. It also means the mode suits moderate rates and
-        debugging rather than a policy running at its full trained rate, where
-        that lag is a large part of the tracking error.
-        """
-        # The trajectory clock is the SERVER's, taken from the slowest-
-        # acknowledged session so the shared timeline only advances as fast as
-        # the arm furthest behind. Wall time drifts from the jogger session
-        # timer the robot actually executes against, and using it stalls the
-        # motion; see trajectory_elapsed_ms.
-        elapsed = [s.session_elapsed_ms for s in self._sessions.values()]
-        now_ms = min(elapsed) if elapsed else 0.0
-        if self._buffer_anchor_ms is None:
-            self._buffer_anchor_ms = now_ms
-        self._buffer_timeline_ms = trajectory_elapsed_ms(
-            now_ms, self._buffer_anchor_ms, self._buffer_timeline_ms
-        )
-        now = self._buffer_timeline_ms / 1000.0
-
-        if chunk.tcp:
-            msg = "buffer_window_ms supports joint targets only; this chunk carries TCP poses."
-            raise ValueError(msg)
-        target_chunks: dict[str, int] = {}
-        for group_id, steps in chunk.joints.items():
-            session = self._sessions.get(group_id)
-            if session is None:
-                logger.warning("Unknown motion group in chunk: %s", group_id)
-                continue
-            if len(steps) != 1:
-                msg = (
-                    f"buffer_window_ms is for horizon-1 policies; '{group_id}' "
-                    f"returned {len(steps)} steps. A chunk already carries its own "
-                    "horizon, so leave buffer_window_ms at 0 for it."
-                )
-                raise ValueError(msg)
-
-            buffer = self._target_buffers.setdefault(group_id, [])
-            append_and_prune(buffer, now, steps[0], window_ms=self._buffer_window_ms)
-            replay = horizon(buffer, single_step_dt_ms=session.single_step_dt_ms)
-            if replay is None:
-                # Too little history to define a spacing. Send the bare target
-                # rather than wait for the window to fill, which would never
-                # move at all; it is a terminal waypoint, so motion is halting
-                # for the first window of a run.
-                session.update_chunk(steps=list(steps), dt_ms=0.0, extend_buffer=False)
-                target_chunks[group_id] = session.queued_chunk_count
-                continue
-
-            replayed, grid_start, step_dt_ms = replay
-            session.update_chunk(
-                steps=replayed,
-                dt_ms=step_dt_ms,
-                first_timestamp_ms=timeline_timestamp_ms(
-                    self._buffer_anchor_ms or 0.0,
-                    horizon_end_time_s(grid_start, self._buffer_window_ms),
-                    lead_ms=LIVE_LEAD_MS,
-                ),
-                extend_buffer=False,
-                action_timestep=chunk.action_timestep,
-            )
-            target_chunks[group_id] = session.queued_chunk_count
-        return target_chunks
-
-    def _policy_server_timestamp_ms(
-        self,
-        chunk: ActionChunk,
-        group_id: str,
-    ) -> int | None:
-        """Map a policy action timestep onto its immutable NOVA timeline."""
-        timeline = self._policy_timelines.get(group_id)
-        if chunk.action_timestep < 0 or timeline is None:
+    def _observed_ms(self, group_id: str, chunk: ActionChunk) -> ServerMs | None:
+        """When the observation behind ``chunk`` was taken, on the server's clock; ``None`` in
+        sequential execution, where the send is the reference (the robot was at rest)."""
+        if isinstance(self._execution, SequentialExecution):
             return None
-        elapsed_steps = chunk.action_timestep - timeline.action_timestep
-        return int(timeline.server_timestamp_ms + elapsed_steps * timeline.policy_dt_ms)
+        if is_single_step(chunk):
+            return self._observed_at_ms.get(group_id)
+        return self._observed_clock_ms.get(group_id)
 
-    def _create_session(self, mg: MotionGroup) -> WaypointJoggingSession:
-        """Create a waypoint jogging session for a motion group."""
+    def _effects(
+        self, effects: ActionChunk, group_ids: list[str], *, computed: bool
+    ) -> Callable[[], Coroutine[Any, Any, None]] | None:
+        """Write the IO of ``group_ids``, then, if ``computed``, run the chunk's computed
+        actions (interim, ADR 0005); ``None`` when there is nothing to run."""
+        writes = [
+            (self._sessions[group_id], ios)
+            for group_id in group_ids
+            if group_id in self._sessions and (ios := (effects.ios or {}).get(group_id))
+        ]
+        computed = computed and self._schema.has_computed_actions
+        if not writes and not computed:
+            return None
+
+        async def run() -> None:
+            for session, ios in writes:
+                await session.write_ios(ios)
+            if computed:
+                await self._schema.run_computed_actions(effects)
+
+        return run
+
+    def _build_sessions(self) -> dict[str, ActionChunkSession]:
+        """A fresh session per motion group: TCP poses for the schema's TCP action groups,
+        joints for the rest."""
         tcp_groups = self._schema.tcp_action_groups()
-        mode = "cartesian" if mg.id in tcp_groups else "joint"
-        tcp = self._schema.tcp
-        if mode == "cartesian":
-            tcp = tcp_groups.get(mg.id) or self._schema.tcp
-
-        return WaypointJoggingSession(
-            motion_group=mg,
-            config=self._motion,
-            tcp=tcp,
-            stop_conditions=self._stop_conditions,
-            mode=mode,
-        )
+        return self._lifecycle.build({
+            mg: (
+                "cartesian" if mg.id in tcp_groups else "joint",
+                tcp_groups.get(mg.id) or self._schema.tcp,
+            )
+            for mg in self._motion_groups
+        })
 
     @property
     def _n_action_steps(self) -> int:
-        """Number of action steps to execute from each chunk (0 = all).
-
-        An explicit executor argument always wins, including an explicit ``0``
-        that keeps the full horizon for an asynchronous queue. Only when none
-        was given does the policy's own declared horizon apply.
-        """
+        """Steps executed from each chunk (0 = all): the executor's argument, ``0`` included,
+        else the policy's own horizon."""
         if self._n_action_steps_cfg is not None:
             return self._n_action_steps_cfg
         return self._policy.n_action_steps or 0
-
-    def _apply_relative_mode(self, chunk: ActionChunk, states: dict[str, Any]) -> ActionChunk:
-        """Convert relative (delta) action targets to absolute (see chunking)."""
-        return apply_relative_mode(chunk, states, self._schema.relative_motion_groups())
-
-    @property
-    def _all_io_values(self) -> dict[str, object]:
-        """Merged IO values across all controller streams."""
-        return self._io_streams.all_values
-
-    # -------------------------------------------------------------------------
-    # Rerun visualization (lazy, zero-cost when viewer not active)
-    # -------------------------------------------------------------------------
-
-    async def _init_rerun(self) -> None:
-        """Initialize Rerun logger if a viewer is active."""
-        from novapolicy.rerun import _is_rerun_active  # ruff: ignore[import-outside-top-level]
-
-        if not _is_rerun_active():
-            return
-
-        from novapolicy.rerun import PolicyRerunLogger  # ruff: ignore[import-outside-top-level]
-
-        self._rerun = PolicyRerunLogger(
-            self._motion_groups,
-            camera_names=self._cameras.names,
-            use_tcp_offset_for_joint_actions=True,
-            tcp=self._schema.tcp,
-        )
-        await self._rerun.initialize()
-
-    def _log_completion(self) -> None:
-        """Log execution result to Rerun."""
-        if self._rerun is not None and self.result is not None:
-            self._rerun.log_completion(
-                self.result.reason,
-                self.result.steps,
-                self.result.duration_s,
-            )
-
-
-def _format_values(values: list[float], *, digits: int = 4) -> str:
-    return "[" + ",".join(f"{value:.{digits}f}" for value in values) + "]"
-
-
-def _result(
-    reason: str,
-    step: int,
-    start_time: float,
-    last_obs: dict[str, Any] | None = None,
-) -> ExecutionResult:
-    return ExecutionResult(
-        reason=reason,
-        steps=step,
-        duration_s=time.monotonic() - start_time,
-        last_state=last_obs,
-    )

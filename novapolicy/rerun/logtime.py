@@ -1,14 +1,7 @@
-"""Timestamping for Rerun entries that are written off the producing thread.
+"""Timestamping for Rerun entries written off the producing thread (ADR 0020).
 
-Rerun entries are stamped with ``time.monotonic() - start_time``. Read at the
-moment the entry is written, that is the right answer only when the writer is
-also the producer. When a worker thread does the writing the read happens
-whenever the worker got round to it, so a backlog stretches the timeline and
-shows up in the viewer as data drifting later than it happened.
-
-The producer therefore pins the elapsed time it measured, and the writer stamps
-with that instead of re-reading the clock. The pin is thread-local, so it can
-only ever affect the writer that set it.
+Entries are stamped with ``time.monotonic() - start_time``, or with the elapsed time the producer
+pinned; the pin is thread-local.
 """
 
 from __future__ import annotations

@@ -2,34 +2,16 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
-from novapolicy.schema import (
+from novapolicy.mapping.schema import (
     Action,
     BoolMapping,
     Observation,
     PolicySchema,
 )
+from novapolicy.tests.doubles import mg as _mg, state as _state
 from novapolicy.types import ActionChunk
-
-
-def _mg(mg_id: str = "0@ur10e", controller_id: str = "ur10e") -> MagicMock:
-    mg = MagicMock()
-    mg.id = mg_id
-    mg._controller_id = controller_id
-    mg._cell = "cell"
-    return mg
-
-
-def _state(joints: tuple[float, ...]) -> MagicMock:
-    s = MagicMock()
-    s.joints = joints
-    s.pose = None
-    s.tcp = None
-    return s
-
 
 # ---------------------------------------------------------------------------
 # Observation building
