@@ -14,6 +14,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import time
 
+import pytest
+
 from novapolicy.transport.clock import (
     _MAX_DELIVERY_DELAY_MS,
     _STATE_CLOCK_CALIBRATION_SAMPLES,
@@ -347,3 +349,14 @@ def test_a_placeholder_state_timestamp_is_not_read_as_delivery_delay(manual_time
         manual_time.advance(0.008)
     last = 1_000 + 8 * (_STATE_CLOCK_CALIBRATION_SAMPLES + 49)
     assert clock.estimated_server_timestamp_ms in {last + 7, last + 8}
+
+
+@pytest.mark.parametrize("stamp", [datetime(1970, 1, 1, tzinfo=UTC), None])
+def test_a_controller_without_state_timestamps_still_calibrates(stamp) -> None:
+    """Regression: placeholder stamps were skipped, so calibration never finished and the
+    session timed out waiting for readiness on controllers that send none."""
+    clock = JoggingTimeClock()
+    clock.start()
+    for _ in range(_STATE_CLOCK_CALIBRATION_SAMPLES):
+        clock.observe_state_timestamp(stamp)
+    assert clock.state_clock_calibrated is True

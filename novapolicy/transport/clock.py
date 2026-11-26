@@ -78,17 +78,24 @@ class JoggingTimeClock:
         return time.monotonic() - self._first_state_age_wall >= _STATE_CLOCK_CALIBRATION_WINDOW_S
 
     def observe_state_timestamp(self, state_timestamp: datetime | None) -> None:
-        """Observe a state generation timestamp during startup calibration."""
+        """Observe a state generation timestamp during startup calibration.
+
+        Placeholder or missing timestamps count as samples too, so controllers that send none
+        calibrate (without a delivery-delay baseline)."""
+        if self.state_clock_calibrated:
+            return
+        if self._first_state_age_wall is None:
+            self._first_state_age_wall = time.monotonic()
+        self._state_age_samples += 1
         state_timestamp = _usable(state_timestamp)
-        if state_timestamp is None or self.state_clock_calibrated:
+        if state_timestamp is None:
+            # A controller without timestamps: the sample counts, no delivery delay is measured.
             return
         observed_age_ms = time.time() * 1000.0 - state_timestamp.timestamp() * 1000.0
         if self._best_state_age_ms is None:
             self._best_state_age_ms = observed_age_ms
-            self._first_state_age_wall = time.monotonic()
         else:
             self._best_state_age_ms = min(self._best_state_age_ms, observed_age_ms)
-        self._state_age_samples += 1
 
     @property
     def last_sample_wall(self) -> float | None:
