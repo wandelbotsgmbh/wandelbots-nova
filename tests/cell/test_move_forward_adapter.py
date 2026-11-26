@@ -195,7 +195,7 @@ async def test_empty_context_set_outputs_is_not_treated_as_missing():
 
 
 # ---------------------------------------------------------------------------
-# Controller-side IO pause
+# Controller-side IO pause: execute() must block through it and finish
 # ---------------------------------------------------------------------------
 
 
@@ -204,7 +204,7 @@ def _paused_on_io(location: float) -> api.models.Execute:
 
 
 class _FedStates:
-    """A state stream fed by the test; stays open until the cursor detaches."""
+    """A state stream fed by the test; ends when ``close()`` is called."""
 
     def __init__(self):
         self._queue: asyncio.Queue = asyncio.Queue()
@@ -213,36 +213,191 @@ class _FedStates:
         for state in states:
             self._queue.put_nowait(state)
 
+    def close(self):
+        self._queue.put_nowait(None)
+
     def gen(self):
         async def _gen():
-            while True:
-                yield await self._queue.get()
+            while (state := await self._queue.get()) is not None:
+                yield state
 
         return _gen
 
 
-async def test_io_pause_ends_the_one_shot_execution_early_with_a_warning(caplog):
-    """An IO pause leaves the cursor attached and resumable, but move_forward has no
-    way to observe the signal yet: it ends the execution there (the behaviour before
-    IO pauses became pauses) instead of waiting forever — and says so."""
-    states = _FedStates()
-    pause_on_io = api.models.PauseOnIO(
+def _pause_condition() -> api.models.PauseOnIO:
+    return api.models.PauseOnIO(
         io=api.models.IOBooleanValue(io="hold", value=True),
         comparator=api.models.Comparator.COMPARATOR_EQUALS,
         io_origin=api.models.IOOrigin.BUS_IO,
     )
-    context = _context(motion_group_state_stream_gen=states.gen(), pause_on_io=pause_on_io)
+
+
+async def _collect(controller_fn, requests: list) -> None:
+    async for request in controller_fn(_responses()):
+        requests.append(request)
+
+
+async def _wait_for(predicate, timeout: float = 5.0) -> None:
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await asyncio.sleep(0)
+
+
+async def test_io_pause_is_resumed_once_the_signal_clears():
+    """The controller holds an IO pause until a new start arrives after the
+    condition cleared (measured). move_forward waits for the release and starts
+    again, so the one-shot execution completes at the target — with the pause
+    condition and the IO overlay re-attached to the resume."""
+    states = _FedStates()
+    release_requested = asyncio.Event()
+    release = asyncio.Event()
+
+    async def wait_for_release():
+        release_requested.set()
+        await release.wait()
+
+    context = _context(
+        motion_group_state_stream_gen=states.gen(),
+        pause_on_io=_pause_condition(),
+        set_outputs=[
+            api.models.SetIO(
+                io=api.models.IOBooleanValue(io="OUT#1", value=True),
+                location=1.5,
+                io_origin=api.models.IOOrigin.CONTROLLER,
+            )
+        ],
+        wait_for_pause_on_io_release=wait_for_release,
+    )
     requests: list = []
+    run = asyncio.create_task(_collect(move_forward(context), requests))
 
-    async def collect():
-        async for request in move_forward(context)(_responses()):
-            requests.append(request)
+    states.feed(_state(True), _state(False, _execute(0.5)), _state(True, _paused_on_io(1.0)))
+    await _wait_for(release_requested.is_set)
+    assert not run.done(), "execute() must not end on a controller-side IO pause"
+    starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
+    assert len(starts) == 1
 
-    run = asyncio.create_task(collect())
+    release.set()
+    await _wait_for(
+        lambda: sum(isinstance(r, api.models.StartMovementRequest) for r in requests) == 2
+    )
+    # Stale pause frames right after the resume, then the motion, then the end.
+    states.feed(
+        _state(True, _paused_on_io(1.0)),
+        _state(False, _execute(1.5)),
+        _state(True, _execute(2.0, api.models.TrajectoryEnded())),
+        _state(True),
+    )
+    async with asyncio.timeout(5):
+        await run
+
+    starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
+    assert len(starts) == 2
+    assert all(s.pause_on_io == _pause_condition() for s in starts)
+    assert all(s.set_outputs == context.set_outputs for s in starts)
+
+
+async def test_io_pause_without_a_release_waiter_ends_the_execution_early(caplog):
+    """A hand-built context has no way to observe the signal; the adapter then
+    keeps the previous contract (end early) rather than hanging forever."""
+    states = _FedStates()
+    context = _context(motion_group_state_stream_gen=states.gen(), pause_on_io=_pause_condition())
+    requests: list = []
+    run = asyncio.create_task(_collect(move_forward(context), requests))
+
     states.feed(_state(True), _state(False, _execute(0.5)), _state(True, _paused_on_io(1.0)))
     async with asyncio.timeout(5):
         await run
 
     starts = [r for r in requests if isinstance(r, api.models.StartMovementRequest)]
     assert len(starts) == 1
-    assert "pause_on_io paused the trajectory at location 1.0" in caplog.text
+    assert "no release waiter" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Loss of the signal source: the SDK pauses in the controller's place
+# ---------------------------------------------------------------------------
+
+
+def _paused_by_user(location: float) -> api.models.Execute:
+    return _execute(location, api.models.TrajectoryPausedByUser())
+
+
+async def test_signal_source_loss_pauses_from_the_sdk_and_resumes_after_release():
+    """The controller stops evaluating a bus-IO condition when the bus is gone and
+    keeps moving (measured). The adapter must then send a PauseMovementRequest itself
+    and, once the release waiter returns (bus back, signal allows), start again."""
+    states = _FedStates()
+    loss = asyncio.Event()
+    release_requested = asyncio.Event()
+    release = asyncio.Event()
+
+    async def wait_for_signal_loss():
+        # Like the real waiter after the bus came back: one loss event, then it
+        # waits for the next one rather than reporting the same loss again.
+        await loss.wait()
+        loss.clear()
+
+    async def wait_for_release():
+        release_requested.set()
+        await release.wait()
+
+    context = _context(
+        motion_group_state_stream_gen=states.gen(),
+        pause_on_io=_pause_condition(),
+        wait_for_pause_on_io_release=wait_for_release,
+        wait_for_pause_signal_loss=wait_for_signal_loss,
+    )
+    requests: list = []
+    run = asyncio.create_task(_collect(move_forward(context), requests))
+
+    states.feed(_state(True), _state(False, _execute(0.5)))
+    await _wait_for(
+        lambda: sum(isinstance(r, api.models.StartMovementRequest) for r in requests) == 1
+    )
+    loss.set()  # the bus-IO service went away while the robot is moving
+    await _wait_for(lambda: any(isinstance(r, api.models.PauseMovementRequest) for r in requests))
+    # The controller pauses on our request and holds the level-based pause state.
+    states.feed(_state(False, _paused_by_user(0.8)), _state(True, _paused_by_user(0.8)))
+    await _wait_for(release_requested.is_set)
+    assert not run.done(), "execute() must not end while waiting for the signal to return"
+
+    release.set()  # bus back and the signal allows motion again
+    await _wait_for(
+        lambda: sum(isinstance(r, api.models.StartMovementRequest) for r in requests) == 2
+    )
+    states.feed(
+        _state(True, _paused_by_user(0.8)),  # stale re-publish
+        _state(False, _execute(1.5)),
+        _state(True, _execute(2.0, api.models.TrajectoryEnded())),
+        _state(True),
+    )
+    async with asyncio.timeout(5):
+        await run
+
+    kinds = [type(r).__name__ for r in requests]
+    assert kinds.count("StartMovementRequest") == 2
+    assert kinds.count("PauseMovementRequest") == 1
+    assert kinds.index("PauseMovementRequest") < len(kinds) - 1
+
+
+async def test_a_failing_release_waiter_ends_the_execution_with_its_error():
+    """No polling fallback: when the signal source cannot be observed the wait fails,
+    and execute() must surface that instead of pausing forever."""
+    states = _FedStates()
+
+    async def wait_for_release():
+        raise RuntimeError("bus IO conditions need a connected NATS client")
+
+    context = _context(
+        motion_group_state_stream_gen=states.gen(),
+        pause_on_io=_pause_condition(),
+        wait_for_pause_on_io_release=wait_for_release,
+    )
+    requests: list = []
+    run = asyncio.create_task(_collect(move_forward(context), requests))
+    states.feed(_state(True), _state(False, _execute(0.5)), _state(True, _paused_on_io(1.0)))
+
+    with pytest.raises(RuntimeError, match="NATS"):
+        async with asyncio.timeout(5):
+            await run

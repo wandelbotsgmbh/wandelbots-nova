@@ -74,6 +74,7 @@ class Cell:
                 config=self._api_client.config,
             ),
             api_gateway=self._api_client,
+            nats_client=self._nats_client,
         )
 
     def _create_controller_from_config(
