@@ -71,13 +71,18 @@ def serve_mock_policy(
 ) -> ThreadingHTTPServer:
     """Serve on a free local port (``server.server_address``) in a background thread: every
     POST answers with ``steps`` steps of joint 0 swinging 0.25 rad around ``center``, planned
-    from the server's clock. ``server.shutdown()`` stops it."""
-    t0 = time.monotonic()
+    from the server's clock, which starts at the first request: the swing starts at ``center``,
+    where the robot is. ``server.shutdown()`` stops it."""
+    t0: list[float] = []
+    first_request = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
             self.rfile.read(int(self.headers["Content-Length"]))
-            now = time.monotonic() - t0
+            with first_request:
+                if not t0:
+                    t0.append(time.monotonic())
+            now = time.monotonic() - t0[0]
             plan = [
                 [
                     center[0] + 0.25 * math.sin(2 * math.pi * 0.4 * (now + k / control_freq)),
