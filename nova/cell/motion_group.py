@@ -28,7 +28,6 @@ from nova.utils.collision_setup import (
 from nova.utils.joint_trajectory import combine_trajectories
 from nova.utils.motion_group_setup import (
     clamp_limit_set_to_max,
-    get_coordinate_system_pose,
     get_joint_position_limits_from_motion_group_setup,
     motion_group_setup_from_motion_group_description,
     update_motion_group_setup_with_motion_settings,
@@ -254,11 +253,6 @@ class MotionGroup(AbstractRobot):
             cell=self._cell, controller=self._controller_id, motion_group=self.id
         )
 
-    async def _fetch_coordinate_systems(self) -> list[api.models.CoordinateSystem]:
-        return await self._api_client.controller_api.list_coordinate_systems(
-            cell=self._cell, controller=self._controller_id
-        )
-
     async def get_description(self) -> api.models.MotionGroupDescription:
         """Get the motion group description.
 
@@ -277,10 +271,7 @@ class MotionGroup(AbstractRobot):
         return motion_group_description.motion_group_model
 
     async def get_setup(
-        self,
-        tcp_name: str | None = None,
-        payload_override: str | api.models.Payload | None = None,
-        external_tool_coordinate_system_name: str | None = None,
+        self, tcp_name: str | None = None, payload_override: str | api.models.Payload | None = None
     ) -> api.models.MotionGroupSetup:
         """Get the motion group setup.
 
@@ -323,20 +314,15 @@ class MotionGroup(AbstractRobot):
                 ``description.payloads``.
         """
         motion_group_description = await self._fetch_motion_group_description()
-        coordinate_systems = await self._fetch_coordinate_systems()
-
         resolved_payload = await self._resolve_payload(
             payload_override=payload_override,
             tcp_name=tcp_name,
             motion_group_description=motion_group_description,
         )
-
         return motion_group_setup_from_motion_group_description(
             motion_group_description=motion_group_description,
             tcp_name=tcp_name,
             payload=resolved_payload,
-            external_tool_coordinate_system_name=external_tool_coordinate_system_name,
-            coordinate_systems=coordinate_systems,
         )
 
     @staticmethod
@@ -778,19 +764,13 @@ class MotionGroup(AbstractRobot):
         )
 
     async def _load_planned_motion(
-        self,
-        joint_trajectory: api.models.JointTrajectory,
-        tcp: str | None,
-        external_tool_coordinate_system: str | None = None,
+        self, joint_trajectory: api.models.JointTrajectory, tcp: str | None
     ) -> str:
         load_plan_response = await self._api_client.trajectory_caching_api.add_trajectory(
             cell=self._cell,
             controller=self._controller_id,
             add_trajectory_request=api.models.AddTrajectoryRequest(
-                motion_group=self.id,
-                trajectory=joint_trajectory,
-                tcp=tcp,
-                external_tool_coordinate_system=external_tool_coordinate_system,
+                motion_group=self.id, trajectory=joint_trajectory, tcp=tcp
             ),
         )
 
@@ -986,7 +966,6 @@ class MotionGroup(AbstractRobot):
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
-        external_tool_coordinate_system: str | None = None,
     ) -> api.models.JointTrajectory:
         if not actions:
             raise ValueError("No actions provided")
@@ -1007,10 +986,7 @@ class MotionGroup(AbstractRobot):
 
         current_joints = start_joint_position or await self.joints()
         motion_group_setup = await self._resolve_setup_for_plan(
-            tcp=tcp,
-            motion_group_setup=motion_group_setup,
-            payload_override=payload_override,
-            external_tool_coordinate_system=external_tool_coordinate_system,
+            tcp=tcp, motion_group_setup=motion_group_setup, payload_override=payload_override
         )
 
         # TODO: can be done in parallel, would be a big performance boost
@@ -1057,38 +1033,28 @@ class MotionGroup(AbstractRobot):
         tcp: str | None,
         motion_group_setup: api.models.MotionGroupSetup | None,
         payload_override: str | api.models.Payload | None,
-        external_tool_coordinate_system: str | None,
     ) -> api.models.MotionGroupSetup:
         """Return the motion group setup to plan with, applying any payload override."""
         if motion_group_setup is None:
-            return await self.get_setup(
-                tcp_name=tcp,
-                payload_override=payload_override,
-                external_tool_coordinate_system_name=external_tool_coordinate_system,
-            )
+            return await self.get_setup(tcp_name=tcp, payload_override=payload_override)
 
-        # Do not mutate the caller's setup.
+        if payload_override is None:
+            return motion_group_setup
+
+        # Caller supplied both an explicit setup and a payload override;
+        # the explicit payload wins. Do not mutate the caller's setup.
         motion_group_setup = motion_group_setup.model_copy(deep=True)
-
-        if payload_override is not None:
-            if isinstance(payload_override, api.models.Payload):
-                # Already a concrete Payload — no need to fetch the description.
-                self._log_payload_override(payload_override.name)
-                motion_group_setup.payload = payload_override
-            else:
-                description = await self._fetch_motion_group_description()
-                motion_group_setup.payload = await self._resolve_payload(
-                    payload_override=payload_override,
-                    tcp_name=tcp,
-                    motion_group_description=description,
-                )
-
-        if external_tool_coordinate_system is not None:
-            coordinate_systems = await self._fetch_coordinate_systems()
-            motion_group_setup.external_tool_coordinate_system = get_coordinate_system_pose(
-                external_tool_coordinate_system, coordinate_systems
+        if isinstance(payload_override, api.models.Payload):
+            # Already a concrete Payload — no need to fetch the description.
+            self._log_payload_override(payload_override.name)
+            motion_group_setup.payload = payload_override
+        else:
+            description = await self._fetch_motion_group_description()
+            motion_group_setup.payload = await self._resolve_payload(
+                payload_override=payload_override,
+                tcp_name=tcp,
+                motion_group_description=description,
             )
-
         return motion_group_setup
 
     @staticmethod
@@ -1159,7 +1125,6 @@ class MotionGroup(AbstractRobot):
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
-        external_tool_coordinate_system: str | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         state_stream_rate = self._resolve_state_stream_rate(state_stream_rate_msecs)
         # This is the entrypoint for the trajectory tuning mode
@@ -1167,11 +1132,7 @@ class MotionGroup(AbstractRobot):
             logger.info("Entering trajectory tuning mode...")
             try:
                 async for motion_group_state in self._tune_trajectory(
-                    joint_trajectory,
-                    tcp,
-                    actions,
-                    state_stream_rate_msecs=state_stream_rate,
-                    external_tool_coordinate_system=external_tool_coordinate_system,
+                    joint_trajectory, tcp, actions, state_stream_rate_msecs=state_stream_rate
                 ):
                     yield motion_group_state_to_motion_state(motion_group_state)
             except (Exception, BaseException) as e:
@@ -1183,11 +1144,7 @@ class MotionGroup(AbstractRobot):
             movement_controller = move_forward
 
         # Load planned trajectory
-        trajectory_id = await self._load_planned_motion(
-            joint_trajectory=joint_trajectory,
-            tcp=tcp,
-            external_tool_coordinate_system=external_tool_coordinate_system,
-        )
+        trajectory_id = await self._load_planned_motion(joint_trajectory, tcp)
 
         combined_actions = CombinedActions(items=tuple(actions))  # ty: ignore[invalid-argument-type]
         set_outputs = await self._resolve_set_outputs(combined_actions, joint_trajectory, tcp)
@@ -1262,7 +1219,6 @@ class MotionGroup(AbstractRobot):
         actions: list[Action],
         *,
         state_stream_rate_msecs: int | None = None,
-        external_tool_coordinate_system: str | None,
     ) -> AsyncGenerator[api.models.MotionGroupState, None]:
         start_joints = await self.joints()
 
@@ -1270,15 +1226,8 @@ class MotionGroup(AbstractRobot):
             # we fix the start joints here because the tuner might call plan multiple times whilst tuning
             # and the start joints would change to the respective joint positions at the time of planning
             # which is not what we want
-            joint_trajectory = await self._plan(
-                actions=actions,
-                tcp=tcp,
-                start_joint_position=start_joints,
-                external_tool_coordinate_system=external_tool_coordinate_system,
-            )
-            load_planned_motion_response = await self._load_planned_motion(
-                joint_trajectory, tcp, external_tool_coordinate_system
-            )
+            joint_trajectory = await self._plan(actions, tcp, start_joints)
+            load_planned_motion_response = await self._load_planned_motion(joint_trajectory, tcp)
             return load_planned_motion_response, joint_trajectory
 
         execute_fn = partial(
