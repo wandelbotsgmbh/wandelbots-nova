@@ -1196,7 +1196,13 @@ class MotionGroup(AbstractRobot):
                     state_stream_rate_msecs=state_stream_rate,
                     external_tool_coordinate_system=external_tool_coordinate_system,
                 ):
-                    yield motion_group_state_to_motion_state(motion_group_state)
+                    # The controller reports ``execute`` without ``details`` while it
+                    # swaps trajectories; there is no path parameter to report then.
+                    if (
+                        motion_group_state.execute
+                        and motion_group_state.execute.details is not None
+                    ):
+                        yield motion_group_state_to_motion_state(motion_group_state)
             except (Exception, BaseException) as e:
                 logger.error(f"Trajectory tuning failed: {e}")
                 raise e
