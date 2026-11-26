@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+# Waits before each reconnect attempt after the stream ended unexpectedly; a
+# connection that stays up for _STABLE_CONNECTION_SECS resets the budget.
+_RECONNECT_DELAYS_SECS = (0.1, 0.2, 0.5, 1.0, 1.0, 2.0)
+_STABLE_CONNECTION_SECS = 5.0
+
 # ``response_rate=None`` means the controller's own step rate server-side —
 # the fastest the server emits (measured ~3-12 ms depending on controller) —
 # so for rate ordering ``None`` counts as faster than any explicit rate.
@@ -187,6 +192,9 @@ class _PumpGeneration:
     # The one pending linger countdown; rescheduled whenever the last
     # subscriber leaves again, so an earlier countdown cannot fire early.
     linger_task: asyncio.Task | None = None
+    reconnect_attempts: int = 0
+    # Why and after how long the last connection ended, for the reconnect log.
+    drop_detail: str = ""
 
 
 class SharedMotionGroupStateStream:
@@ -313,36 +321,97 @@ class SharedMotionGroupStateStream:
         """
         error: BaseException | None = None
         try:
-            stream = self._open_stream(generation.rate_msecs)
+            while await self._pump_connection(generation):
+                delay = _RECONNECT_DELAYS_SECS[generation.reconnect_attempts]
+                generation.reconnect_attempts += 1
+                logger.warning(
+                    f"Motion group state stream '{self._name}' ended unexpectedly "
+                    f"({generation.drop_detail}); reconnecting in {delay} s "
+                    f"(attempt {generation.reconnect_attempts}/{len(_RECONNECT_DELAYS_SECS)}, "
+                    f"{len(generation.queues)} subscriber(s))"
+                )
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(generation.close_requested.wait(), delay)
+                if generation.close_requested.is_set():
+                    break
+        except StopAsyncIteration:
+            if generation.reconnect_attempts > 0:
+                logger.warning(
+                    f"Motion group state stream '{self._name}' could not be restored after "
+                    f"{generation.reconnect_attempts} reconnect attempt(s) "
+                    f"({generation.drop_detail}); ending {len(generation.queues)} subscriber(s)"
+                )
+        except Exception as e:
+            error = e
+        finally:
+            self._finish(generation, error)
+
+    async def _pump_connection(self, generation: _PumpGeneration) -> bool:
+        """Drain one websocket into the subscriber queues and close it.
+
+        Returns True when the stream ended unexpectedly and should be reopened.
+        """
+        reconnect = False
+        loop = asyncio.get_running_loop()
+        opened_at = loop.time()
+        states = 0
+        logger.warning(
+            f"Opening motion group state stream '{self._name}' (rate={generation.rate_msecs})"
+        )
+        stream = self._open_stream(generation.rate_msecs)
+        try:
+            iterator = stream.__aiter__()
+            close_wait = asyncio.ensure_future(generation.close_requested.wait())
             try:
-                iterator = stream.__aiter__()
-                close_wait = asyncio.ensure_future(generation.close_requested.wait())
-                try:
-                    while True:
-                        next_frame = asyncio.ensure_future(iterator.__anext__())
-                        await asyncio.wait(
-                            {next_frame, close_wait}, return_when=asyncio.FIRST_COMPLETED
+                while True:
+                    next_frame = asyncio.ensure_future(iterator.__anext__())
+                    await asyncio.wait(
+                        {next_frame, close_wait}, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if generation.close_requested.is_set():
+                        next_frame.cancel()
+                        await asyncio.gather(next_frame, return_exceptions=True)
+                        break
+                    self._broadcast(generation, next_frame.result())
+                    if states == 0 and generation.reconnect_attempts > 0:
+                        logger.warning(
+                            f"Motion group state stream '{self._name}' reconnected after "
+                            f"{generation.reconnect_attempts} attempt(s)"
                         )
-                        if generation.close_requested.is_set():
-                            next_frame.cancel()
-                            await asyncio.gather(next_frame, return_exceptions=True)
-                            break
-                        self._broadcast(generation, next_frame.result())
-                finally:
-                    close_wait.cancel()
+                    states += 1
+            except Exception as e:
+                uptime = loop.time() - opened_at
+                cause = "closed" if isinstance(e, StopAsyncIteration) else repr(e)
+                generation.drop_detail = f"{cause} after {uptime:.1f} s and {states} state(s)"
+                if uptime >= _STABLE_CONNECTION_SECS:
+                    generation.reconnect_attempts = 0
+                reconnect = self._should_reconnect(generation, e)
+                if not reconnect:
+                    raise
+            finally:
+                close_wait.cancel()
+                if not reconnect:
                     # This generation stops serving here, but closing the
                     # websocket below is an await point: a subscribe() landing
                     # in that window must open a fresh generation instead of
                     # joining this one moments before its queues are flushed.
                     generation.close_requested.set()
-            finally:
-                await stream.aclose()
-        except StopAsyncIteration:
-            pass  # upstream ended gracefully
-        except Exception as e:
-            error = e
         finally:
-            self._finish(generation, error)
+            await stream.aclose()
+        return reconnect
+
+    @staticmethod
+    def _should_reconnect(generation: _PumpGeneration, error: Exception) -> bool:
+        # The generated client ends the stream silently on any close (network
+        # loss, server close), so an end nobody requested is a dropped stream.
+        # While reconnecting, failures to reopen are retried as well.
+        retryable = isinstance(error, StopAsyncIteration) or generation.reconnect_attempts > 0
+        return (
+            retryable
+            and bool(generation.queues)
+            and not generation.close_requested.is_set()
+            and generation.reconnect_attempts < len(_RECONNECT_DELAYS_SECS)
+        )
 
     def _broadcast(self, generation: _PumpGeneration, state: api.models.MotionGroupState) -> None:
         for queue in generation.queues.values():
