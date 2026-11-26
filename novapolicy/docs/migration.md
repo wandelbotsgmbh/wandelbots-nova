@@ -96,6 +96,13 @@ the service's subjects and decodes the reply with `schema.decode_actions`. See
 
 ## Schema and actions
 
+### A stale Omniverse prim pose ends the run
+
+`OmniverseScene(...).prim(...)` takes `max_age_s` (default 1.0 s). When polling keeps failing and
+the latest pose is older than that, `read()` raises `RuntimeError` and the run ends, as for a stale
+camera frame. It used to return the last good pose for the rest of the run. Pass a larger
+`max_age_s` for a scene that answers slowly.
+
 ### Relative TCP rotations are composed
 
 `Action.tcp(..., mode="relative")` used to add the rotation offset to the current rotation vector
@@ -196,6 +203,12 @@ to 300 ms longer; pass your own `pipeline=[...]` with `HoldPadding()` for the ol
 - **A failed IO write or computed action of a chunk without motion ends the run with its
   error**, also on the run's last tick, and the sessions stop instead of draining. The error used
   to be swallowed.
+- **A failed IO write raises**, for a moving group's IO and in the joggers too: the session
+  fails, and the run or the jogger's next check raises the write's error (its note names the IO).
+  It used to be logged as a warning while the run went on without it.
+- **The last chunks' effects are awaited.** The sessions drain before the run counts as
+  completed, so an IO write or computed action due during the drain that raises ends the run with
+  its error instead of a result.
 - **Action values are checked when queued.** `WaypointJoggingSession.update_chunk`
   raises `ValueError` for a value that is not finite (NaN, infinity) or a step whose width is not
   the session's (the joint count once known, 6 for TCP poses), naming the motion group, the step

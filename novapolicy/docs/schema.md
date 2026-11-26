@@ -50,12 +50,14 @@ Observation.pose(
 | `Pose(...)` | a fixed target |
 | async callable returning a `Pose` | an estimator fast enough to ask on every step, such as a CNN |
 | `PoseSource`: `async start()`, `async stop()`, `read() -> Pose` | a detector running at its own rate: started with the run, its latest pose read on every step |
-| `OmniverseScene(api_url).prim(path, relative_to=None)` | a prim of an Isaac Sim scene, through the Wandelbots NOVA extension API |
+| `OmniverseScene(api_url).prim(path, relative_to=None, max_age_s=1.0)` | a prim of an Isaac Sim scene, through the Wandelbots NOVA extension API |
 
 `OmniverseScene` takes the extension's full base URL, so Isaac Sim can run on another machine:
 `OmniverseScene("http://isaac-host:8011/omniservice/api/v2")`. A prim is polled in the background
 (`poll_hz`, default 60). With `relative_to`, the pose is expressed in that prim's frame, for
-example the robot's base prim. `read()` returns the latest polled pose.
+example the robot's base prim. `read()` returns the latest polled pose. When polling keeps
+failing and that pose is older than `max_age_s`, `read()` raises `RuntimeError`, which ends the run,
+as for a stale camera frame.
 
 A `PoseSource` is any object with these three methods. It does not subclass anything:
 

@@ -105,6 +105,24 @@ async def test_relative_to_asks_for_the_prim_in_the_reference_prims_frame():
 
 
 @pytest.mark.asyncio
+async def test_a_prim_whose_polling_keeps_failing_is_refused_once_too_old():
+    """Regression: a dead pose stream fed the last good pose on forever; like a stale camera
+    frame, a pose older than ``max_age_s`` ends the run."""
+    answers = iter([httpx.Response(200, json={"pose": [1, 2, 3, 0, 0, 0]})])
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return next(answers, httpx.Response(503))
+
+    prim = _scene(handler, poll_hz=200.0).prim("/World/Cube", max_age_s=0.05)
+    await prim.start()
+    assert prim.read().position.x == 1.0  # fresh
+    await asyncio.sleep(0.1)
+    with pytest.raises(RuntimeError, match="old"):
+        prim.read()
+    await prim.stop()
+
+
+@pytest.mark.asyncio
 async def test_a_prim_that_cannot_be_read_fails_at_start():
     prim = _scene(lambda _r: httpx.Response(404)).prim("/World/Missing")
     with pytest.raises(httpx.HTTPStatusError):

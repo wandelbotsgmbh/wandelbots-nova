@@ -14,6 +14,8 @@ from nova.types import Pose
 logger = logging.getLogger(__name__)
 
 DEFAULT_POLL_HZ = 60.0
+DEFAULT_MAX_AGE_S = 1.0
+"""How old the latest polled pose may get before ``read()`` refuses it, as for cameras."""
 _POSE_WIDTH = 6
 
 
@@ -58,9 +60,16 @@ class OmniverseScene:
         self._owns_client = client is None
         self._users = 0
 
-    def prim(self, prim_path: str, *, relative_to: str | None = None) -> OmniversePrimPose:
-        """A pose source for ``prim_path``, in world or relative to prim ``relative_to``."""
-        return OmniversePrimPose(self, prim_path, relative_to=relative_to)
+    def prim(
+        self,
+        prim_path: str,
+        *,
+        relative_to: str | None = None,
+        max_age_s: float = DEFAULT_MAX_AGE_S,
+    ) -> OmniversePrimPose:
+        """A pose source for ``prim_path``, in world or relative to prim ``relative_to``;
+        ``read()`` raises once its latest pose is older than ``max_age_s``."""
+        return OmniversePrimPose(self, prim_path, relative_to=relative_to, max_age_s=max_age_s)
 
     async def get_pose(self, prim_path: str, *, relative_to: str | None = None) -> Pose:
         """One pose request."""
@@ -100,8 +109,19 @@ class OmniverseScene:
 class OmniversePrimPose:
     """The pose of one prim of an :class:`OmniverseScene`, polled in the background."""
 
-    def __init__(self, scene: OmniverseScene, prim_path: str, *, relative_to: str | None) -> None:
+    def __init__(
+        self,
+        scene: OmniverseScene,
+        prim_path: str,
+        *,
+        relative_to: str | None,
+        max_age_s: float = DEFAULT_MAX_AGE_S,
+    ) -> None:
+        if not max_age_s > 0:
+            msg = "max_age_s must be positive"
+            raise ValueError(msg)
         self.scene = scene
+        self.max_age_s = max_age_s
         self.prim_path = prim_path
         self.relative_to = relative_to
         self._latest: tuple[float, Pose] | None = None
@@ -134,7 +154,15 @@ class OmniversePrimPose:
         if self._latest is None:
             msg = f"No pose of {self.prim_path!r} yet: the source is not started"
             raise RuntimeError(msg)
-        return self._latest[1]
+        read_at, pose = self._latest
+        age_s = time.monotonic() - read_at
+        if age_s > self.max_age_s:
+            msg = (
+                f"The pose of {self.prim_path!r} is {age_s:.1f} s old (max_age_s "
+                f"{self.max_age_s:g}): reading it from {self.scene.api_url} keeps failing"
+            )
+            raise RuntimeError(msg)
+        return pose
 
     async def _poll(self) -> None:
         period = 1.0 / self.scene.poll_hz
