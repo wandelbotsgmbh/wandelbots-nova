@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bot8ehtqt</task-id>
+<tool-use-id>toolu_01DJkbzSZrKLDTNvem91T4t1</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/a7d5adb5-e4f7-4c8c-bc56-5c9b3b0003ec/tasks/bot8ehtqt.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for free queue, rerun #562 integration" completed (exit code 0)</summary>
+</task-notification>
