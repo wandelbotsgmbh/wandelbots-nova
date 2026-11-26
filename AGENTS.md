@@ -117,3 +117,36 @@ for working on this repository.
   Cover new scanner checks in `tests/nova/agent_skills/test_scan.py`.
 - When you change the `nova-skills` command or its options, update the `README.md` section and the
   hint in `docs/programs.md`.
+
+## Jira
+
+This section is for Wandelbots maintainers; external contributors can skip it.
+
+Tickets live on `wandelbots.atlassian.net`, project `NDX`. Never use another site the account can
+reach.
+
+Access Jira with [jira-cli](https://github.com/ankitpokhrel/jira-cli) and the API token in the root
+`.env` (`JIRA_EMAIL`, `JIRA_API_TOKEN`; gitignored) by default. Fall back to the Atlassian MCP
+server (`.mcp.json`, `.vscode/mcp.json`; SSO, hostname as `cloudId`) only when the token is missing
+or rejected. Never print or commit the token. The `ticket` skill (`.agents/skills/ticket/SKILL.md`)
+has the setup and commands.
+
+Every new request that changes the repo needs a ticket. Before implementing, search `NDX` for an
+existing ticket that covers it (JQL on summary/text, open statuses first); reuse it if found,
+otherwise create one with the `ticket` skill. Put its key in the branch name and PR title scope
+(`feat(NDX-123): …`).
+
+Keep the ticket's status in step with the work. Move it as part of the step that triggers it, not
+afterwards:
+
+| Event | Status |
+|---|---|
+| You start implementing a ticket | `Ready`/`Open` → `In Progress` |
+| Its PR is opened or marked ready for review (not draft) | → `In Test` |
+| Its PR is merged | → `Done` (`Closed` in NDX) |
+
+Move with `jira issue move <KEY> "<transition>"`; in NDX each transition is named after its target
+status. Only move tickets you are working on, and never backwards. A ticket in `In Progress` or
+later is assigned to the account running the agent (`jira me`); `Open`/`Ready` tickets may stay
+unassigned. Never take over a ticket someone else owns without asking. If Jira is unreachable, say
+in the reply which ticket is still in which state — never skip the update silently.
