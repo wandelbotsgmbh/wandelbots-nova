@@ -30,7 +30,7 @@ from novapolicy import (
 from novapolicy.mapping.schema import Action, Observation, PolicySchema
 from novapolicy.providers.base import CallbackPolicyClient
 from novapolicy.transport import session as ws
-from novapolicy.types import ActionChunk
+from novapolicy.types import ActionChunk, ActionChunkConfig
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -39,6 +39,9 @@ START = [0.0, -1.2, 1.4, -1.8, -1.57, 0.0]
 AMPLITUDE_RAD, FREQUENCY_HZ = 0.25, 0.4
 DT_MS = 1000.0 / 30.0
 LAG_MS = 8.0  # the controller follows its waypoints this much later
+# CI runs far from the NOVA instance; with the dummy's 30 ms of inference, 100 ms left one-step
+# targets reaching NOVA after they were due (it skipped them all and the arm stood still).
+MOTION = ActionChunkConfig(max_expected_latency_ms=200.0)
 
 
 def _target(t_s: float) -> list[float]:
@@ -163,6 +166,7 @@ async def _run(mg: Any, policy: Any, execution: Any, duration_s: float = 6.0) ->
         n_action_steps=0,
         start_joint_position={mg: START},
         timeout_s=duration_s,
+        motion=MOTION,
     ).run()
     return result.reason
 
