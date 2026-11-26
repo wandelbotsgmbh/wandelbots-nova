@@ -235,6 +235,7 @@ class AbstractRobot(Device):
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
+        external_tool_coordinate_system: str | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions
 
@@ -248,6 +249,8 @@ class AbstractRobot(Device):
                 Only use this when you are certain the physical controller is configured with the same payload.
             singularity_handling (api.models.SingularityHandling | None): Strategy for handling wrist singularities
                 along a cartesian path. If None, the API default (NONE) is used. Experimental.
+            external_tool_coordinate_system (str | None): If set, the (moving) coordinate system defined by the root's kinematic chain
+                is used as reference and the fixed tool is moving relative to it
 
         Returns:
             api.models.JointTrajectory: The planned joint trajectory
@@ -261,6 +264,7 @@ class AbstractRobot(Device):
         motion_group_setup: api.models.MotionGroupSetup | None = None,
         payload_override: str | api.models.Payload | None = None,
         singularity_handling: api.models.SingularityHandling | None = None,
+        external_tool_coordinate_system: str | None = None,
     ) -> api.models.JointTrajectory:
         """Plan a trajectory for the given actions.
 
@@ -307,6 +311,7 @@ class AbstractRobot(Device):
                 motion_group_setup=motion_group_setup,
                 payload_override=payload_override,
                 singularity_handling=singularity_handling,
+                external_tool_coordinate_system=external_tool_coordinate_system,
             )
 
             # Automatic viewer integration - log planning results if viewers are active
@@ -363,6 +368,7 @@ class AbstractRobot(Device):
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tool_coordinate_system: str | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -389,6 +395,7 @@ class AbstractRobot(Device):
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tool_coordinate_system: str | None = None,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -417,6 +424,7 @@ class AbstractRobot(Device):
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            external_tool_coordinate_system=external_tool_coordinate_system,
         )
 
         async with aclosing(motion_state_stream) as motion_state_stream:
@@ -433,6 +441,7 @@ class AbstractRobot(Device):
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tool_coordinate_system: str | None = None,
     ) -> None:
         """Execute a planned motion
 
@@ -457,6 +466,7 @@ class AbstractRobot(Device):
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            external_tool_coordinate_system=external_tool_coordinate_system,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for _ in motion_state_stream:
@@ -474,6 +484,7 @@ class AbstractRobot(Device):
         singularity_handling: api.models.SingularityHandling | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tool_coordinate_system: str | None = None,
     ) -> AsyncIterable[MotionState]:
         """Plan and execute a trajectory for the given actions.
 
@@ -506,6 +517,7 @@ class AbstractRobot(Device):
             start_joint_position=start_joint_position,
             payload_override=payload_override,
             singularity_handling=singularity_handling,
+            external_tool_coordinate_system=external_tool_coordinate_system,
         )
         motion_state_stream = self.stream_execute(
             joint_trajectory,
@@ -515,6 +527,7 @@ class AbstractRobot(Device):
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            external_tool_coordinate_system=external_tool_coordinate_system,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for motion_state in motion_state_stream:
@@ -532,6 +545,7 @@ class AbstractRobot(Device):
         singularity_handling: api.models.SingularityHandling | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        external_tool_coordinate_system: str | None = None,
     ) -> None:
         """Plan and execute a trajectory for the given actions.
 
@@ -563,20 +577,22 @@ class AbstractRobot(Device):
             return
 
         joint_trajectory = await self.plan(
-            actions_list,
-            tcp,
+            actions=actions_list,
+            tcp=tcp,
             start_joint_position=start_joint_position,
             payload_override=payload_override,
             singularity_handling=singularity_handling,
+            external_tool_coordinate_system=external_tool_coordinate_system,
         )
         await self.execute(
-            joint_trajectory,
-            tcp,
-            actions_list,
+            joint_trajectory=joint_trajectory,
+            tcp=tcp,
+            actions=actions_list,
             movement_controller=movement_controller,
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            external_tool_coordinate_system=external_tool_coordinate_system,
         )
 
     @abstractmethod

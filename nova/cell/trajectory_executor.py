@@ -148,6 +148,7 @@ class TrajectoryExecutor:
         tcp: Mapping[str, str | None] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
         actions: ActionsLike | None = None,
+        external_tool_coordinate_system: Mapping[str, str | None] | None = None,
     ) -> None:
         """Execute the trajectory front to end, synchronized through the barrier.
 
@@ -158,7 +159,13 @@ class TrajectoryExecutor:
         :meth:`MultiMotionGroupPlanner.plan`; its :class:`WriteAction` entries
         become the location-anchored IO overlay fired during execution (see
         :meth:`attach`)."""
-        async with self.attach(trajectory, tcp=tcp, actions=actions, groups=groups) as cursor:
+        async with self.attach(
+            trajectory,
+            tcp=tcp,
+            actions=actions,
+            groups=groups,
+            external_tool_coordinate_system=external_tool_coordinate_system,
+        ) as cursor:
             await cursor.forward()
 
     @asynccontextmanager
@@ -168,6 +175,7 @@ class TrajectoryExecutor:
         tcp: Mapping[str, str | None] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
         actions: ActionsLike | None = None,
+        external_tool_coordinate_system: Mapping[str, str | None] | None = None,
     ) -> AsyncGenerator[MultiTrajectoryCursor, None]:
         """Open a session for interactive control: load the trajectory, open the
         sockets, initialize — but do not move. Starting is the caller's call
@@ -196,7 +204,14 @@ class TrajectoryExecutor:
             motion_group = self._motion_groups[name]
             group_args = (groups or {}).get(name) or GroupArgs()
             group_tcp = tcp.get(name) if tcp is not None else None
-            trajectory_id = await motion_group._load_planned_motion(joint_trajectory, group_tcp)
+            group_external_tool = (
+                external_tool_coordinate_system.get(name)
+                if external_tool_coordinate_system is not None
+                else None
+            )
+            trajectory_id = await motion_group._load_planned_motion(
+                joint_trajectory, group_tcp, group_external_tool
+            )
             # Bind the rate so the cursor still receives a zero-arg stream
             # factory; with no rate the bare bound method already is one.
             state_stream_source = (

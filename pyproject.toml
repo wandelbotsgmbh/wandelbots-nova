@@ -228,26 +228,6 @@ missing-argument = "ignore"
 [tool.ruff.lint.isort]
 known-first-party = ["nova", "nova_rerun_bridge", "novapolicy", "novax"]
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

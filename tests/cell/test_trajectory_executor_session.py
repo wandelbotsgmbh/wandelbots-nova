@@ -130,10 +130,13 @@ class TestTrajectorySplitting:
             pass
 
         for group in motion_groups.values():
-            loaded_trajectory, tcp = group._load_planned_motion.await_args.args
+            loaded_trajectory, tcp, external_tool_coordinate_system = (
+                group._load_planned_motion.await_args.args
+            )
             assert loaded_trajectory.times == [0.0, 1.0, 2.0]
             assert list(loaded_trajectory.locations) == [0.0, 1.0, 2.0]
             assert tcp is None
+            assert external_tool_coordinate_system is None
 
 
 class TestExecutorAddressing:
