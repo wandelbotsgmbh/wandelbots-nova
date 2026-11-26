@@ -106,3 +106,20 @@ async def test_concurrent_writes_are_serialized_not_interleaved():
     )
 
     assert max_in_flight == 1  # writes were serialized, never overlapping
+
+
+@pytest.mark.asyncio
+async def test_a_failed_write_raises_and_is_retried_next_time():
+    """Contracts T7: a failed IO write ends the run, so it raises instead of only logging."""
+    mg = _mock_mg({"digital_out[0]": _BOOL})
+    mg._api_client.controller_ios_api.set_output_values = AsyncMock(
+        side_effect=[RuntimeError("rejected"), None]
+    )
+    writer = IOWriter(mg)
+
+    with pytest.raises(RuntimeError, match="rejected") as raised:
+        await writer.write({"digital_out[0]": True})
+    assert "digital_out[0]=True" in "".join(raised.value.__notes__)
+
+    await writer.write({"digital_out[0]": True})  # not taken as written
+    assert mg._api_client.controller_ios_api.set_output_values.call_count == 2

@@ -152,13 +152,15 @@ class IOWriter:
         self._lock = asyncio.Lock()
 
     async def write(self, ios: Mapping[str, ValueType]) -> None:
-        """Write IO values, skipping unchanged ones."""
+        """Write IO values, skipping unchanged ones. A failed write raises (contracts T7: it ends
+        the run) and skips the values after it."""
         async with self._lock:
             for key, value in ios.items():
                 if self._last_written.get(key) == value:
                     continue
                 try:
                     await self._io.write(key, value)
-                    self._last_written[key] = value
-                except (OSError, RuntimeError, TypeError, ValueError, KeyError) as e:
-                    logger.warning("Failed to write IO %s=%s: %s", key, value, e)
+                except Exception as e:
+                    e.add_note(f"while writing IO {key}={value!r}")
+                    raise
+                self._last_written[key] = value

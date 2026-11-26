@@ -1419,6 +1419,25 @@ async def test_a_failed_io_write_without_motion_ends_the_run_with_its_error(
 
 
 @pytest.mark.asyncio
+async def test_a_hook_that_raises_while_the_last_chunk_drains_ends_the_run(robot: _Robot):
+    """Contract T7: the last chunk's IO and computed actions are due during the drain; one that
+    raises there ends the run with its error, not with a normal result."""
+    failure = RuntimeError("gripper did not answer")
+
+    async def hook_fails_while_draining() -> bool:
+        robot.session.has_failed = True
+        robot.session.failure_exception = failure
+        return False
+
+    robot.session.drain = AsyncMock(side_effect=hook_fails_while_draining)
+    executor = PolicyExecutor(_schema(), _callback(_hold_action), timeout_s=0.1)
+    with pytest.raises(RuntimeError, match="gripper did not answer"):
+        await executor.run()
+    assert executor.phase is Phase.ERROR
+    assert executor.result is None
+
+
+@pytest.mark.asyncio
 async def test_a_failed_computed_action_without_motion_ends_the_run_with_its_error(
     robot: _Robot,
 ):

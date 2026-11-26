@@ -318,7 +318,7 @@ class PolicyExecutor:
         failed = False
         try:
             await self._start()
-            await self._complete(await self._execute())
+            self._complete(await self._settle(await self._execute()))
         except Exception:
             failed = True
             raise
@@ -332,11 +332,18 @@ class PolicyExecutor:
             await self._schema.stop_sources()
             await self._io_streams.stop()
 
-    async def _complete(self, result: ExecutionResult) -> None:
-        """End a run that ended normally: let the effects already started finish (one that
-        raises ends the run with its error after all, and no result), then keep the result and
-        report completion."""
+    async def _settle(self, result: ExecutionResult) -> ExecutionResult:
+        """After a normal end, let the effects already started finish, then the sessions drain:
+        the last chunks' IO and computed actions run meanwhile, and one that raises ends the
+        run with its error after all (contracts T7)."""
         await self._finish_effects()
+        await self._lifecycle.drain()
+        _ = self._lifecycle.check()
+        return result
+
+    def _complete(self, result: ExecutionResult) -> None:
+        """End a run that ended normally, its effects finished and its sessions drained: keep
+        the result and report completion."""
         self.result = result
         if self._rerun is not None:
             self._rerun.log_completion(result.reason, result.steps, result.duration_s)

@@ -134,6 +134,13 @@ class SessionLifecycle:
                 )
         return self.stop_condition
 
+    async def drain(self) -> None:
+        """Let every session's accepted waypoints run out (a session that cannot returns early);
+        a failure meanwhile is left for :meth:`check`."""
+        _ = await asyncio.gather(
+            *(session.drain() for session in self.sessions.values()), return_exceptions=True
+        )
+
     async def close(self, *, drain: bool) -> None:
         """Stop Rerun, the e-stop monitor and every session; with ``drain``, let the accepted
         waypoints run out first (a fault or e-stop wants the robot stopped now). A cancel that
