@@ -1,6 +1,39 @@
 # CHANGELOG
 
 
+## [6.2.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v6.1.0...v6.2.0) (2026-11-26)
+
+
+### Features
+
+* add external tool coordinate system ([#562](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/562)) ([2d3769e](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/2d3769eac2fbcf8a1778987c2aa1c1af13e9076f))
+* **agent-skills:** ship nova-app-review skill and installer CLI ([#532](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/532)) ([f29a206](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/f29a206103d72d7f264e94785464fe11d1bdd2b7))
+* direction constraint ([#441](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/441)) ([e038b7f](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e038b7fa8259b9e0b43127987adf7c387dfe2b17))
+* **interlock:** NATS-backed robot-robot interlock ([#544](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/544)) ([9b966cf](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9b966cf8dbb808b332a25893c63a57d4967964bb))
+* **novapolicy:** add continuous LeRobot policy execution ([#449](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/449)) ([9c61fbf](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/9c61fbf4af69e6010ccfe24c42f62b0c010da492))
+* **rerun:** wall-clock timeline option for multi-robot programs ([#547](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/547)) ([fbe6c1a](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/fbe6c1a80a71e2e32a8a43949973c8414ced3ced))
+* support AnchoredPose dataset poses (api client 26.9) ([#548](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/548)) ([02a92f8](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/02a92f84b549996999c88881bbb874ff920e0e2d))
+
+
+### Bug Fixes
+
+* **cell:** ignore frames of another trajectory after a cancelled execution ([#569](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/569)) ([274f07b](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/274f07b519189b9d8cc73032149ce60a47561544))
+* **cell:** only commanded progress proves a start was taken up ([#574](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/574)) ([015902e](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/015902e28448a6e430dd133ce930b748a6897f4f))
+* **deps:** bump dnspython from 2.9.0 to 2.9.2 ([#564](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/564)) ([23ffc01](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/23ffc01277b43086c25ade0ef981b47b1ba31bc9))
+* **deps:** bump msgpack and dnspython for open advisories ([#553](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/553)) ([801661b](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/801661bd94c8cde3a1c5db0274790eb3fdbd9e77))
+* **deps:** bump packages with open advisories, run uv-audit on 3.12 ([#546](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/546)) ([41afe1a](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/41afe1a6dd877bda02da1768411f8866cc017568))
+* **deps:** require urllib3&gt;=2.8.0 for security advisories ([#534](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/534)) ([7c4cfef](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/7c4cfef3c87e5ee6ad10cdd1400bee71d3db2266))
+* **NDX-944:** model armed/transient/rest trajectory states and fail on contradicting frames ([#516](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/516)) ([e4a7f3f](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e4a7f3f3f127ed433716d0f2eb67a9523efa9c05))
+* **novapolicy:** decode msgpack-numpy arrays from GR00T servers ([#560](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/560)) ([e513c0f](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/e513c0fb0e65fe53bd6c73375802c5ba98bed2b3))
+* **nova:** survive the NATS server expiring the login of a connection ([#552](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/552)) ([c717493](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/c717493e31605c1d49381ab19d36109aca499fe8))
+* **viewers:** visualize every run of a program, not only the first ([#551](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/551)) ([a4704de](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/a4704de899d9bff6f777d8670cf43eb5d3b4cfd2))
+
+
+### Chores
+
+* **ci:** pass job secrets with a local gpg action instead of Docker ([#545](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/545)) ([377f0ae](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/377f0ae2ccd944f143af54cac3db01bf30f79b22))
+* **ci:** wait for the instance certificate before connecting NATS in CI setup ([#571](https://github.com/wandelbotsgmbh/wandelbots-nova/issues/571)) ([765d280](https://github.com/wandelbotsgmbh/wandelbots-nova/commit/765d2802c75bd790a02229bc79bcf51d6cc8a401))
+
 ## [6.1.0](https://github.com/wandelbotsgmbh/wandelbots-nova/compare/v6.0.0...v6.1.0) (2026-09-25)
 
 
