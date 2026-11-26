@@ -107,3 +107,18 @@ def test_joint_targets_use_the_angular_limits_per_joint() -> None:
 def test_servo_horizon_refuses_settings_it_cannot_run(settings: dict) -> None:
     with pytest.raises(ValueError, match="ServoHorizon needs"):
         ServoHorizon(**settings)
+
+
+def test_the_first_target_starts_from_the_measured_position_within_the_limits() -> None:
+    """Regression: the spring started at the first target itself, so a target far from the arm
+    was sent raw, without the speed and acceleration limits."""
+    module = ServoHorizon(linear_speed=200.0)
+    here = [0.0, 0.0, 500.0, -(math.pi - 0.02), 0.0, 0.0]  # the same tool, other rotvec sign
+    context = ModuleContext(now_ms=ServerMs(900), position=here, step_ms=50.0, mode="cartesian")
+    out = module.on_chunk(_live([200.0, *START[1:]], 1_000), context)
+    assert out.first_timestamp_ms == 1_000
+    # 100 ms of spring from rest at 200 mm/s at most.
+    assert 0.0 < out.steps[0][0] <= 200.0 * 0.1 + 1e-6
+    assert math.dist(out.steps[0][3:6], START[3:6]) < 0.1  # no swing the long way round
+    for a, b in pairwise(out.steps):
+        assert abs(b[0] - a[0]) / (out.dt_ms / 1000.0) <= 200.0 + 1e-6

@@ -32,7 +32,8 @@ class ServoHorizon:
     limits scale the whole step down, keeping its direction. The waypoints are
     ``step_ms`` apart for ``horizon_ms``, the first on NOVA's 8 ms cycle (ADR 0021).
 
-    For live targets (``set_target``) only: a chunk of several steps, or one without its own
+    The spring starts at rest where the robot is measured, so the first target is limited
+    too. For live targets (``set_target``) only: a chunk of several steps, or one without its own
     start time, passes through and resets the state. TCP poses are ``[x, y, z, rx, ry, rz]`` in
     mm and rad; a rotation vector is taken as the equivalent closest to the spring's, so a tool
     turning through a half-turn does not swing the long way. Joint targets use the angular limits
@@ -82,14 +83,16 @@ class ServoHorizon:
         cartesian = context.mode == "cartesian"
         ref = list(chunk.steps[0])
         start_ms = float(math.ceil(chunk.first_timestamp_ms / CYCLE_MS) * CYCLE_MS)
-        if self._t_ms is None or len(self._q) != len(ref):
-            self._t_ms, self._q, self._qd = start_ms, list(ref), [0.0] * len(ref)
+        t_ms = self._t_ms
+        if t_ms is None or len(self._q) != len(ref):
+            t_ms = self._start(ref, start_ms, context)
         if cartesian:
             ref[3:6] = _closest_rotation_vector(ref[3:6], self._q[3:6])
         groups = self._groups(context.mode, len(ref))
-        while self._t_ms + 1e-9 < start_ms:  # the spring until the target is due
+        while t_ms + 1e-9 < start_ms:  # the spring until the target is due
             self._q, self._qd = self._tick(self._q, self._qd, ref, groups)
-            self._t_ms += TICK_MS
+            t_ms += TICK_MS
+        self._t_ms = t_ms
         steps, q, qd = [list(self._q)], list(self._q), list(self._qd)
         every = round(self.step_ms / TICK_MS)
         for tick in range(1, round(self.horizon_ms / TICK_MS) + 1):  # then the target held
@@ -100,7 +103,7 @@ class ServoHorizon:
             chunk,
             steps=steps,
             dt_ms=every * TICK_MS,
-            first_timestamp_ms=ServerMs(round(self._t_ms)),
+            first_timestamp_ms=ServerMs(round(t_ms)),
             timestamp_offset_steps=0,
             lead=False,
             observed_at_ms=None,
@@ -109,6 +112,19 @@ class ServoHorizon:
             # The spring's position now is the first step: the target's IO and hooks go with it.
             when_due=None if chunk.when_due is None else (0, chunk.when_due[1]),
         )
+
+    def _start(self, ref: list[float], start_ms: float, context: ModuleContext) -> float:
+        """Rest the spring where the robot is now, so the first target is limited too; at the
+        target itself when no measured position of its form is known. Returns its time."""
+        self._qd = [0.0] * len(ref)
+        position = context.position
+        if position is None or len(position) != len(ref):
+            self._q = list(ref)
+            return start_ms
+        self._q = list(position)
+        if context.mode == "cartesian":
+            self._q[3:6] = _closest_rotation_vector(self._q[3:6], ref[3:6])
+        return min(float(math.ceil(context.now_ms / CYCLE_MS) * CYCLE_MS), start_ms)
 
     def _groups(self, mode: str, width: int) -> list[tuple[range, float, float]]:
         """The axes limited together: TCP position, TCP rotation, or each joint."""
