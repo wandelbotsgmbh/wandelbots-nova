@@ -188,6 +188,42 @@ class TestArmed:
         assert machine.pause_reason is PauseReason.USER
         assert result.state_changed
 
+    def test_standstill_flicker_on_the_parked_frame_is_not_motion(self):
+        """CI on NOVA 26.8.1 (and the real cell, 2026-09-30): the standstill flag
+        drops for a frame while the robot waits parked for its start. Only commanded
+        progress proves the start was taken up, so the parked frame that follows must
+        not conclude a user pause."""
+        machine = _armed()
+        machine.process_motion_state(_paused_by_user(0.0))
+        machine.process_motion_state(_paused_by_user(0.0, standstill=False))
+        machine.process_motion_state(_paused_by_user(0.0))
+        assert machine.is_armed
+        assert machine.pause_reason is None
+        machine.process_motion_state(_running(0.01))
+        assert machine.is_executing
+
+    def test_progress_is_measured_from_where_the_start_found_the_trajectory(self):
+        """A resume from mid-trajectory starts at a location other than 0: being
+        there is not progress, leaving it is."""
+        machine = _armed()
+        machine.process_motion_state(_paused_by_user(0.4))
+        machine.process_motion_state(_paused_by_user(0.4, standstill=False))
+        machine.process_motion_state(_paused_by_user(0.4))
+        assert machine.is_armed
+
+        machine.process_motion_state(_paused_by_user(0.41))
+        assert machine.is_paused
+        assert machine.pause_reason is PauseReason.USER
+
+    def test_a_frame_of_another_trajectory_re_anchors_instead_of_counting_as_progress(self):
+        """Without a tracked trajectory id every frame is read, so the previous
+        trajectory's location must not make the new one look advanced."""
+        machine = _armed()
+        machine.process_motion_state(_of_trajectory(_paused_by_user(0.7), "previous"))
+        machine.process_motion_state(_paused_by_user(0.0))
+        machine.process_motion_state(_paused_by_user(0.0))
+        assert machine.is_armed
+
     def test_requested_pause_concludes_on_the_parked_frame(self):
         """A pause the owner asked for before the robot moved is the same frame as
         the parked shape; request_pause() tells them apart."""
