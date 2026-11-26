@@ -315,10 +315,12 @@ class PolicyExecutor:
                 )
             )
 
-        failed = False
+        failed = settled = False
         try:
             await self._start()
-            self._complete(await self._settle(await self._execute()))
+            result = await self._settle(await self._execute())
+            settled = True
+            self._complete(result)
         except Exception:
             failed = True
             raise
@@ -326,7 +328,7 @@ class PolicyExecutor:
             if self._gc_frozen:
                 gc.unfreeze()
                 self._gc_frozen = False
-            await self._lifecycle.close(drain=not failed)
+            await self._lifecycle.close(drain=not (failed or settled))  # settled: drained
             if self._cameras.active:
                 await self._cameras.disconnect()
             await self._schema.stop_sources()

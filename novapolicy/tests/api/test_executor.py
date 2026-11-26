@@ -1243,11 +1243,14 @@ async def test_an_error_drops_the_accepted_waypoints_instead_of_draining(robot: 
 
 
 @pytest.mark.asyncio
-async def test_a_normal_end_drains_before_stopping(robot: _Robot):
+async def test_a_normal_end_drains_once_before_stopping(robot: _Robot):
+    """Once: a second drain would send the final target again and wait out another timeout."""
+    order: list[str] = []
+    robot.session.drain = AsyncMock(side_effect=lambda: order.append("drain") or True)
+    robot.session.stop = AsyncMock(side_effect=lambda: order.append("stop"))
     await PolicyExecutor(_schema(), _hold, timeout_s=0.2).run()
 
-    assert robot.session.drain.await_count >= 1
-    assert robot.session.stop.await_count >= 1
+    assert order == ["drain", "stop"]
 
 
 def test_a_negative_inference_timeout_is_rejected():
