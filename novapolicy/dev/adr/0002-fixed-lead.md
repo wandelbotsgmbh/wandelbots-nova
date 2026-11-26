@@ -20,3 +20,11 @@ robot streaming interfaces) avoid the same way.
 with that delay. 100 ms fits a policy running on the NOVA instance (93 ms left on arrival). Over
 a VPN 250 ms was needed at first; with the playback clock (ADR 0017), 150 ms is enough (RL reach,
 2026-11-24: path max 19 mm and lag 95 mm at 100 ms, 9 mm and 41 mm at 150 ms, no better at 200 ms).
+
+**Update 2026-11-26.** Without the guard a late link went unnoticed: CI's one-step integration
+test (30 ms of inference, GitHub runner to a cloud instance) had every target reach NOVA after
+it was due. NOVA skipped them all, the arm overshot once and stood still (16-17 deg rms against
+the commanded path). Reproduced on a virtual UR10e by delaying each request 60 ms on its way out.
+The session now times each request against NOVA's acknowledgement (`ACTION_CHUNK_RECEIVED`, one
+per request) and warns once when a caller step was already due at it, counting them at the
+stop. A warning, not a stop, like the warning for steps already due at the send.

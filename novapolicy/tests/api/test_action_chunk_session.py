@@ -725,8 +725,33 @@ async def test_steps_already_due_when_sent_are_warned_once_and_counted_at_the_st
         warned = [r for r in caplog.records if "already due when sent" in r.getMessage()]
         assert len(warned) == 1
         assert "max_expected_latency_ms" in warned[0].getMessage()
-    summary = [r for r in caplog.records if "of 12 steps were already due" in r.getMessage()]
+    summary = [r for r in caplog.records if "of 12 steps, 2 were already due" in r.getMessage()]
     assert len(summary) == 1
+
+
+@pytest.mark.asyncio
+async def test_steps_acknowledged_only_after_they_were_due_are_warned(caplog):
+    """Regression: on a slow link every one-step target was sent in time by the client's clock
+    but reached NOVA after it was due; NOVA skipped them all and the arm stood still, without a
+    word. The acknowledgement shows it: a step already due when NOVA acknowledged it is late."""
+    caplog.set_level(logging.WARNING, logger="novapolicy.transport.session")
+
+    async def acknowledgements() -> AsyncGenerator[object, None]:
+        yield api.models.ActionChunkResponse(kind="ACTION_CHUNK_RECEIVED")
+
+    with _built(pipeline=_unpadded()) as (session, _server), _server_now(session) as now:
+        now.return_value = 1_000
+        pending = PendingChunk(steps=[[0.0] * 6], dt_ms=33.0, lead=True)
+        request, stamps, skipped = session._schedule(pending)
+        session._record(pending, stamps, request, skipped)
+        assert request is not None and stamps[0] > 1_000  # in time when sent
+        now.return_value = stamps[0] + 20  # ...but acknowledged after it was due
+        session._running = True
+        await session._consume_jogging_responses(acknowledgements())
+        session._running = False
+    warned = [r for r in caplog.records if "acknowledged by NOVA only after" in r.getMessage()]
+    assert len(warned) == 1
+    assert "max_expected_latency_ms" in warned[0].getMessage()
 
 
 def test_a_timestep_queues_overlap_is_not_taken_for_latency(caplog):

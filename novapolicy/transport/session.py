@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import asyncio
 import bisect
+from collections import deque
 import contextlib
 import copy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import logging
 import math
 import time
@@ -137,19 +138,25 @@ class _PlaybackClock:
 
 @dataclass
 class _LateSteps:
-    """The caller's steps that were already due when their chunk was sent, so the filters
-    dropped them: the latency exceeds ``max_expected_latency_ms``. Warned at the first one and
-    counted for the session's stop; the run goes on.
+    """The caller's steps that were late: already due when their chunk was sent (the filters
+    dropped them), or only acknowledged by NOVA after they were due (NOVA got them too late to
+    run them). Either way the latency exceeds ``max_expected_latency_ms``. Warned at the first
+    one of each kind and counted for the session's stop; the run goes on.
+
+    The send cannot see the way to NOVA, which can make every one-step target late while the
+    client still sends each one in time; the acknowledgement does.
 
     A chunk on a policy's own timestep timeline (a timestep queue) is not counted: each
     replacement starts with the timesteps already running, and dropping those is its design."""
 
     late: int = 0
+    arrived_late: int = 0
     total: int = 0
+    _in_flight: deque[list[int]] = field(default_factory=deque)
 
     def note(self, pending: PendingChunk, dropped: int, group: str, lead_ms: float) -> None:
         """Count a sent chunk; ``dropped`` steps from its start were filtered out as late."""
-        if pending.action_timestep >= 0 and not pending.lead:
+        if not self._counted(pending):
             return
         first, last = pending.start_step, pending.last_caller_step
         late = max(0, min(dropped, last + 1) - first)
@@ -165,17 +172,45 @@ class _LateSteps:
             )
         self.late += late
 
-    def report(self, group: str, lead_ms: float) -> None:
-        """At the stop: how many of the caller's steps were dropped as late."""
-        if self.late:
+    def sent(self, pending: PendingChunk, stamps: list[int], dropped: int) -> None:
+        """Keep the due times of a request's caller steps until NOVA acknowledges it."""
+        first = max(pending.start_step, dropped)
+        caller = stamps[first : pending.last_caller_step + 1] if self._counted(pending) else []
+        self._in_flight.append(caller)
+
+    def acknowledged(self, now_ms: float, group: str, lead_ms: float) -> None:
+        """NOVA acknowledged the oldest request in flight at ``now_ms``, the session clock."""
+        if not self._in_flight:
+            return
+        late = sum(1 for due_ms in self._in_flight.popleft() if due_ms < now_ms)
+        if late and not self.arrived_late:
             logger.warning(
-                "%s: %d of %d steps were already due when sent and were dropped "
-                "(max_expected_latency_ms %.0f ms).",
+                "%s: %d step(s) were acknowledged by NOVA only after they were due, so NOVA "
+                "received them too late to run them. The latency to NOVA exceeds "
+                "max_expected_latency_ms (%.0f ms); raise it, e.g. "
+                "ActionChunkConfig(max_expected_latency_ms=150) over a remote network.",
                 group,
-                self.late,
-                self.total,
+                late,
                 lead_ms,
             )
+        self.arrived_late += late
+
+    def report(self, group: str, lead_ms: float) -> None:
+        """At the stop: how many of the caller's steps were late."""
+        if self.late or self.arrived_late:
+            logger.warning(
+                "%s: of %d steps, %d were already due when sent and %d when NOVA acknowledged "
+                "them (max_expected_latency_ms %.0f ms).",
+                group,
+                self.total,
+                self.late,
+                self.arrived_late,
+                lead_ms,
+            )
+
+    @staticmethod
+    def _counted(pending: PendingChunk) -> bool:
+        return pending.action_timestep < 0 or pending.lead
 
 
 class ActionChunkSession:  # ruff: ignore[too-many-public-methods]
@@ -739,6 +774,12 @@ class ActionChunkSession:  # ruff: ignore[too-many-public-methods]
                 return
             if not self._ready.is_set():
                 self._ready.set()
+            if isinstance(response, api.models.ActionChunkResponse):
+                self._late.acknowledged(
+                    self._clock.estimated_server_timestamp_ms,
+                    self.motion_group_id,
+                    self._config.max_expected_latency_ms,
+                )
             if hasattr(response, "kind") and response.kind == "MOTION_ERROR":
                 msg = getattr(response, "message", "unknown motion error")
                 raise MotionError(self.motion_group_id, msg)
@@ -853,6 +894,8 @@ class ActionChunkSession:  # ruff: ignore[too-many-public-methods]
         )
         if request is None:
             skipped = 0
+        else:
+            self._late.sent(pending, stamps, skipped)
         timestep, start = pending.action_timestep, pending.start_step
         if timestep >= 0 and start < len(stamps):
             self._scheduled_start = (timestep, ServerMs(stamps[start]), pending.dt_ms)
