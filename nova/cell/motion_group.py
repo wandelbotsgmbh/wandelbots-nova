@@ -1048,6 +1048,7 @@ class MotionGroup(AbstractRobot):
                     tcp=tcp,
                     start_joint_position=current_joints,
                     motion_group_setup=motion_group_setup,
+                    external_tool_coordinate_system=external_tool_coordinate_system,
                 )
                 all_trajectories.append(trajectory)
                 # the last joint position of this trajectory is the starting point for the next one
