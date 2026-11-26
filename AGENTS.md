@@ -164,7 +164,13 @@ uv run --no-project --with "rerun-sdk[catalog]==0.43.2" python
 from rerun.server import Server
 
 srv = Server(datasets={"run": ["run.rrd"]})
-df = srv.client().get_dataset("run").filter_contents(["/policy/**"]).reader(index="log_time").to_pandas()
+df = (
+    srv.client()
+    .get_dataset("run")
+    .filter_contents(["/policy/**"])
+    .reader(index="log_time")
+    .to_pandas()
+)
 # columns are "<entity path>:<archetype>:<component>"; a scalar cell is a list of one value
 ```
 
