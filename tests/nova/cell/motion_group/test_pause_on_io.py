@@ -245,3 +245,77 @@ async def test_pause_on_io_pauses_the_motion_and_resumes_when_the_signal_clears(
                 await kuka.write("OUT#900", False)
                 if not motion_task.done():
                     motion_task.cancel()
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_pause_on_io_as_a_stop_condition_returns_where_the_robot_stopped():
+    """
+    plan_and_execute(pause_on_io=..., resume_on_io_release=False) is a stop condition
+    (move until a sensor fires): execute() returns where the robot stopped, and clearing
+    the IO afterwards does not move the robot on.
+    """
+    initial_joint_positions = [0.0, -pi / 2, -pi / 2, 0.0, 0.0, 0.0, 0.0]
+    controller_name = "kuka-pause-behavior-test"
+
+    async with Nova() as nova:
+        cell = nova.cell()
+        await cell.ensure_controller(
+            virtual_controller(
+                name=controller_name,
+                manufacturer=api.models.Manufacturer.KUKA,
+                type="kuka-kr6_r700_sixx",
+                position=initial_joint_positions,
+            )
+        )
+        kuka = await cell.controller(controller_name)
+
+        async with kuka[0] as mg:
+            await kuka.write("OUT#900", False)
+            await mg.plan_and_execute([jnt(initial_joint_positions[:6])], tcp="Flange")
+            start_joints = await mg.joints()
+            target_joints = [start_joints[0] + 1.5, *start_joints[1:]]
+            contact = api.models.PauseOnIO(
+                io=api.models.IOBooleanValue(io="OUT#900", value=True),
+                comparator=api.models.Comparator.COMPARATOR_EQUALS,
+                io_origin=api.models.IOOrigin.CONTROLLER,
+            )
+
+            motion_task = asyncio.create_task(
+                mg.plan_and_execute(
+                    [jnt(target_joints, settings=MotionSettings(tcp_velocity_limit=30))],
+                    tcp="Flange",
+                    pause_on_io=contact,
+                    resume_on_io_release=False,
+                )
+            )
+
+            async def running() -> None:
+                async for state in mg.stream_state(None):
+                    details = state.execute.details if state.execute else None
+                    if (
+                        isinstance(details, api.models.TrajectoryDetails)
+                        and isinstance(details.state, api.models.TrajectoryRunning)
+                        and not state.standstill
+                    ):
+                        return
+
+            try:
+                await asyncio.wait_for(running(), timeout=20.0)
+                await asyncio.sleep(0.5)
+                assert not motion_task.done(), "execute() ended before the condition fired"
+                await kuka.write("OUT#900", True)  # the "sensor" fires
+                await asyncio.wait_for(motion_task, timeout=10.0)
+
+                stopped_joints = await mg.joints()
+                assert abs(stopped_joints[0] - start_joints[0]) > 0.01, "robot didn't move"
+                assert abs(stopped_joints[0] - target_joints[0]) > 0.5, "returned at the target"
+
+                # Clearing the condition must not move the robot on.
+                await kuka.write("OUT#900", False)
+                await asyncio.sleep(1.0)
+                assert abs((await mg.joints())[0] - stopped_joints[0]) < 0.001
+            finally:
+                await kuka.write("OUT#900", False)
+                if not motion_task.done():
+                    motion_task.cancel()

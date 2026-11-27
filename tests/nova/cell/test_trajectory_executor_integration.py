@@ -201,3 +201,55 @@ async def test_pause_then_forward_rearms_the_barrier(synchronized_groups):
     for name, group in groups.items():
         reached = tuple(await group.joints())
         assert max(abs(a - b) for a, b in zip(reached, ends[name])) < 1e-3
+
+
+@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.integration
+async def test_execute_pauses_both_groups_on_one_signal_and_resumes_them_together(
+    synchronized_groups,
+):
+    """One pause_on_io for the ensemble: both groups pause while it holds, execute()
+    waits, and once it clears both resume through the barrier and reach the end."""
+    controller, groups = synchronized_groups
+    pause_io = "OUT#900"
+    await controller.write(pause_io, False)
+    # A slower ramp than _ramp_from_here, so there is time to pause mid-way.
+    samples, span, delta = 41, 6.0, 0.3
+    parameter = [span * i / (samples - 1) for i in range(samples)]
+    joints = {name: tuple(await group.joints()) for name, group in groups.items()}
+    trajectory = api.models.MultiJointTrajectory(
+        joint_positions_by_motion_group_key={
+            name: [[*start[:-1], start[-1] + delta * p / span] for p in parameter]
+            for name, start in joints.items()
+        },
+        times=parameter,
+        locations=parameter,
+    )
+    condition = api.models.PauseOnIO(
+        io=api.models.IOBooleanValue(io=pause_io, value=True),
+        comparator=api.models.Comparator.COMPARATOR_EQUALS,
+        io_origin=api.models.IOOrigin.CONTROLLER,
+    )
+
+    execution = asyncio.create_task(
+        _ensemble(groups).execute(trajectory, tcp=TCPS, pause_on_io=condition)
+    )
+    try:
+        await asyncio.sleep(2.0)
+        await controller.write(pause_io, True)
+        await asyncio.sleep(2.0)
+        paused = {name: (await group.joints())[-1] for name, group in groups.items()}
+        await asyncio.sleep(1.0)
+        assert not execution.done(), "execute() returned during the pause"
+        for name, group in groups.items():
+            assert abs((await group.joints())[-1] - paused[name]) < 1e-4, f"{name} kept moving"
+            assert abs(paused[name] - joints[name][-1] - delta) > 0.05, f"{name} was not paused"
+
+        await controller.write(pause_io, False)
+        await asyncio.wait_for(execution, timeout=30)
+        for name, group in groups.items():
+            assert abs((await group.joints())[-1] - (joints[name][-1] + delta)) < 1e-3
+    finally:
+        await controller.write(pause_io, False)
+        if not execution.done():
+            execution.cancel()
