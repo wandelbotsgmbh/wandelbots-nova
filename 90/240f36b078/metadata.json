@@ -1,0 +1,56 @@
+{
+  "cli_version": "0.11.3",
+  "checkpoint_id": "90240f36b078",
+  "strategy": "manual-commit",
+  "branch": "feat/pause-on-io",
+  "checkpoints_count": 11,
+  "files_touched": [
+    "docs/architecture/adr/002-io-pause-is-resumable.md",
+    "examples/pause_on_signal.py",
+    "nova/actions/container.py",
+    "nova/agent_skills/nova-app-review/SKILL.md",
+    "nova/agent_skills/nova-app-review/references/nova-sdk-mapping.md",
+    "nova/agent_skills/nova-app-review/references/rules/devices.md",
+    "nova/agent_skills/nova-app-review/references/rules/io.md",
+    "nova/agent_skills/nova-app-review/references/rules/safety.md",
+    "nova/cell/io_condition.py",
+    "nova/cell/motion_group.py",
+    "nova/cell/movement_controller/io_pause_driver.py",
+    "nova/cell/movement_controller/move_forward.py",
+    "nova/cell/movement_controller/trajectory_cursor.py",
+    "nova/cell/multi_motion_group.py",
+    "nova/cell/robot_cell.py",
+    "nova/cell/simulation.py",
+    "nova/cell/trajectory_executor.py",
+    "tests/cell/test_execute_pause_on_io.py",
+    "tests/cell/test_io_condition.py",
+    "tests/cell/test_move_forward_adapter.py",
+    "tests/cell/test_multi_motion_group.py",
+    "tests/cell/test_trajectory_executor_pause_on_io.py",
+    "tests/nova/cell/motion_group/test_pause_on_bus_io.py",
+    "tests/nova/cell/motion_group/test_pause_on_io.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/90/240f36b078/0/metadata.json",
+      "transcript": "/90/240f36b078/0/full.jsonl",
+      "compact_transcript": "/90/240f36b078/0/transcript.jsonl",
+      "content_hash": "/90/240f36b078/0/content_hash.txt",
+      "prompt": "/90/240f36b078/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 217,
+    "cache_creation_tokens": 320265,
+    "cache_read_tokens": 19320488,
+    "output_tokens": 73828,
+    "api_call_count": 100,
+    "subagent_tokens": {
+      "input_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cache_read_tokens": 0,
+      "output_tokens": 0,
+      "api_call_count": 0
+    }
+  }
+}

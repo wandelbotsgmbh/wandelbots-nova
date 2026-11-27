@@ -1,0 +1,22 @@
+<task-notification>
+<task-id>bncdgd3ih</task-id>
+<tool-use-id>toolu_01CSbontkyH2w5hSVTS1WZXY</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-q-0code-nova-python-sdk/a7d5adb5-e4f7-4c8c-bc56-5c9b3b0003ec/tasks/bncdgd3ih.output</output-file>
+<status>completed</status>
+<summary>Background command "Run pause integration tests on live instance" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+the PR https://github.com/wandelbotsgmbh/wandelbots-nova/pull/562 is CI red because of an issue another PR https://github.com/wandelbotsgmbh/wandelbots-nova/pull/548 was maybe supposed to fix, please check!
+
+---
+
+<task-notification>
+plannotator: its classic.PermissionRequest hook was skipped. "cc-plugin-sec-default" runs first and sent the event on past it.
+</task-notification>
+
+---
+
+opt-out flag, and yes build multi-group that way
+but also update the skill files with information about this use case here
