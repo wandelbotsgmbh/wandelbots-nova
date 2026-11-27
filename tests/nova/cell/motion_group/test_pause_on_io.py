@@ -196,6 +196,7 @@ async def test_pause_on_io_pauses_the_motion_and_resumes_when_the_signal_clears(
                     ):
                         if standstill is None or state.standstill == standstill:
                             return state
+                raise RuntimeError(f"the state stream ended before a {kind.__name__} state")
 
             motion_task = asyncio.create_task(
                 mg.plan_and_execute(actions=actions, tcp="Flange", pause_on_io=pause_io)

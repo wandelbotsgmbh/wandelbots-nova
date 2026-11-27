@@ -1097,6 +1097,7 @@ class MotionGroup(AbstractRobot):
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        resume_on_io_release: bool = True,
     ) -> AsyncGenerator[MotionState, None]:
         state_stream_rate = self._resolve_state_stream_rate(state_stream_rate_msecs)
         # This is the entrypoint for the trajectory tuning mode
@@ -1127,13 +1128,21 @@ class MotionGroup(AbstractRobot):
         # A bus-IO condition additionally gets a way to notice the bus itself
         # going away: the controller stops evaluating the condition then and
         # would keep moving (measured), so the SDK pauses in its place.
+        # With resume_on_io_release=False the condition is a stop condition: no
+        # release waiter, so the movement controller ends the execution where
+        # the robot stopped.
         wait_for_pause_on_io_release = None
+        wait_for_pause_on_io_hold = None
         wait_for_pause_signal_loss = None
         if pause_on_io is not None:
             watcher = IOConditionWatcher(
                 self._api_client, self._cell, self._controller_id, nats_client=self._nats_client
             )
-            wait_for_pause_on_io_release = partial(watcher.wait_until_released, pause_on_io)
+            # Fail before the robot moves, not once it is under way.
+            watcher.require_observable(pause_on_io)
+            if resume_on_io_release:
+                wait_for_pause_on_io_release = partial(watcher.wait_until_released, pause_on_io)
+                wait_for_pause_on_io_hold = partial(watcher.wait_until, pause_on_io, holds=True)
             if pause_on_io.io_origin == api.models.IOOrigin.BUS_IO:
                 wait_for_pause_signal_loss = watcher.wait_until_bus_io_lost
 
@@ -1145,6 +1154,7 @@ class MotionGroup(AbstractRobot):
                 start_on_io=start_on_io,
                 pause_on_io=pause_on_io,
                 wait_for_pause_on_io_release=wait_for_pause_on_io_release,
+                wait_for_pause_on_io_hold=wait_for_pause_on_io_hold,
                 wait_for_pause_signal_loss=wait_for_pause_signal_loss,
                 # The cursor subscribes to the same shared stream this relay
                 # reads from: one state websocket per motion group, however many

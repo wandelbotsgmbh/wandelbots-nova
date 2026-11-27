@@ -110,8 +110,9 @@ def motion_enable_signal(
     on path as soon as the signal reads ``False`` — because the PLC dropped it, or because
     the signal path itself is gone (a lost Profinet connection or a broken wire reads
     ``False``, never ``True``). It resumes once the signal reads ``True`` again. Pass it to
-    ``execute()`` / ``plan_and_execute()`` as ``pause_on_io``; one signal per motion group,
-    or the same signal for every group that must stop together.
+    ``execute()`` / ``plan_and_execute()`` as ``pause_on_io``; one signal per motion group
+    that moves on its own. A synchronized multi-group motion pauses on one signal, given
+    once to ``MultiMotionGroup.execute()``.
     """
     return api.models.PauseOnIO(
         io=api.models.IOBooleanValue(io=io, value=False),
@@ -166,6 +167,18 @@ class IOConditionWatcher:
         """Whether ``condition`` is currently true."""
         measured = await self.read(io_name(condition.io), condition.io_origin)
         return condition_holds(measured, condition.comparator, io_scalar(condition.io))
+
+    def require_observable(self, condition: IOCondition) -> None:
+        """Raise unless ``condition``'s source can be watched — before anything moves.
+
+        Only a bus-IO condition has a precondition the SDK can check without a request:
+        a usable NATS client. A controller IO's value stream is checked when it opens.
+
+        Raises:
+            IOConditionUnavailable: A bus-IO condition and no usable NATS client.
+        """
+        if condition.io_origin == api.models.IOOrigin.BUS_IO:
+            self._require_nats()
 
     # -- waits ------------------------------------------------------------------
 
@@ -238,12 +251,16 @@ class IOConditionWatcher:
     async def _wait_until_streamed(self, condition: IOCondition, *, holds: bool) -> None:
         io = io_name(condition.io)
         expected = io_scalar(condition.io)
+        # Consecutive opens that delivered nothing: a stream that delivered values
+        # and then closed (idle timeout, token refresh) is routine during a long
+        # pause and starts the count afresh.
         failures = 0
         while True:
             try:
                 async for response in self._api_client.controller_ios_api.stream_io_values(
                     cell=self._cell, controller=self._controller_id, ios=[io]
                 ):
+                    failures = 0
                     for value in response.io_values:
                         if io_name(value) != io:
                             continue
@@ -256,12 +273,14 @@ class IOConditionWatcher:
                 raise
             except Exception as error:  # noqa: BLE001 — reopened, then given up below
                 logger.debug(f"IO value stream failed: {error!r}")
-            # The generated stream returns silently when the socket closes; reopen a
-            # few times, then fail rather than fall back to polling.
+            # The generated stream returns silently when the socket closes; reopen,
+            # and fail after a few opens in a row without data rather than fall back
+            # to polling.
             failures += 1
             if failures >= _MAX_STREAM_REOPENS:
                 raise IOConditionUnavailable(
-                    f"IO value stream for {io!r} on {self._controller_id!r} keeps closing"
+                    f"IO value stream for {io!r} on {self._controller_id!r} keeps closing "
+                    "without delivering values"
                 )
             await asyncio.sleep(_STREAM_REOPEN_DELAY_SECS)
 

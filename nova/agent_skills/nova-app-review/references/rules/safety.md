@@ -204,6 +204,10 @@ model), it must log that explicitly and tests must cover the real path separatel
 **Observed.** A force-guided move dropped its `pause_on_io` stop condition in virtual mode, so the
 virtual test passed on a path that would crash into the part on hardware.
 
+NOVA: `SimulatedRobot` (the SDK's in-process simulation) ignores `pause_on_io` entirely; a
+virtual controller (`virtual_controller(...)`) evaluates it like hardware. Test IO pauses and stop
+conditions against a virtual controller, not the simulation.
+
 ---
 
 ## SAF-012 · Stubbed safety checks must be visible

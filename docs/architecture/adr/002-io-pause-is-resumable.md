@@ -49,13 +49,25 @@ Profinet bus-IO service (full method and numbers in the local research note
    when the operation resolves `paused_on_io`, it awaits
    `MovementControllerContext.wait_for_pause_on_io_release` and calls `forward()` again.
    `MotionGroup._execute` provides that waiter from `nova.cell.io_condition.IOConditionWatcher`,
-   which polls the IO (both origins, tolerant of the controller-IO endpoint's transient 429)
-   and returns once the condition no longer holds. A context without a waiter keeps the old
-   early-return behaviour, with a warning.
-4. Resume is automatic when the condition clears. Pausing is per motion group: the same
-   condition may be attached to several groups to pause them all. `GroupArgs.pause_on_io`
-   exposes it for synchronized multi-group execution.
-5. The intended wiring is a **motion-enable signal**: the IO reads `True` while the robot is
+   which observes the IO without polling (see Consequences) and returns once the condition no
+   longer holds. After every resume the driver also watches for the condition to hold again: a
+   start that reaches the controller while it holds is accepted but leaves the robot paused at
+   the same location, frames the stale-terminal guard of point 2 drops, so the operation alone
+   would never resolve. The driver then waits for the next release and starts again. The loop
+   lives in `nova/cell/movement_controller/io_pause_driver.py`.
+4. Resume is automatic when the condition clears — the default. `resume_on_io_release=False`
+   on `execute()` / `plan_and_execute()` keeps the earlier meaning: `pause_on_io` is a **stop
+   condition** (move until a contact sensor fires) and the call returns where the robot stopped.
+   Apps used it that way before this decision (the bundled review skill's DEV-003 / SAF-011 /
+   IO-008 describe it); resuming would drive such a move on into the part once the sensor
+   reading drops.
+5. Pausing is per motion group. A synchronized multi-group motion pauses as a whole on **one**
+   signal: `TrajectoryExecutor.execute()` / `attach()` take a single `pause_on_io` for every
+   group, and `execute()` resumes all groups together through the start barrier, which
+   re-synchronizes them; they drift apart only by their own braking ramps. A controller-IO
+   condition is rejected when the groups span controllers, since it would name a different
+   signal on each.
+6. The intended wiring is a **motion-enable signal**: the IO reads `True` while the robot is
    allowed to move and the robot pauses as soon as it reads `False`. This is fail-safe with
    respect to the signal path — a broken wire or a lost fieldbus connection reads `False`,
    never `True` — whereas a "pause while high" signal would silently stop working when the
@@ -75,14 +87,22 @@ Profinet bus-IO service (full method and numbers in the local research note
   release path once the bus is back and the signal allows motion (`E10`: stopped ~1 s into the
   service removal, resumed ~60 ms after the enable signal returned). This holds only while the
   SDK process and its NATS connection are alive; the controller-side fix (evaluate an
-  unreadable IO as "pause") is reported to the RAE/bus-IO team.
+  unreadable IO as "pause") is reported to the RAE/bus-IO team. The guard is watched like the
+  movement itself: if it cannot watch (no NATS client, a failing subscription), the SDK pauses
+  the robot and ends the execution with that error at once. A bus-IO condition without a usable
+  NATS client fails before the robot moves. Under a stop condition a lost bus pauses the robot
+  and raises `IOConditionUnavailable` rather than returning as if the condition fired.
 - **No polling of the API.** Controller IOs are observed on the `stream_io_values` websocket
   (the controller-IO REST endpoint returns 429 to a write while a read is in flight), bus IOs
   and the bus state over NATS with a single initial read after subscribing. When a source cannot
   be observed, `execute()` fails with `IOConditionUnavailable` instead of degrading to polling.
+  The controller-IO value stream is reopened when it closes; only opens in a row that deliver no
+  value count towards giving up, so a long pause survives routine socket closes.
 
 - `execute()` blocks through IO pauses and returns at the target; programs need no code to
-  handle the pause itself.
+  handle the pause itself. An `asyncio.timeout` around it also bounds the pause.
+- Breaking for callers that relied on `execute()` returning at an IO pause: they must pass
+  `resume_on_io_release=False`.
 - Cursor callers must check `OperationResult.paused_on_io`: `final_location` no longer implies
   the target was reached.
 - The SDK depends on the controller not auto-resuming. If a future controller resumes on its

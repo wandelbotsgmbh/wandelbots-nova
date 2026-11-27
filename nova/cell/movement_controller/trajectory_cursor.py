@@ -1172,12 +1172,12 @@ class TrajectoryCursor:
                 | OperationType.BACKWARD_TO_PREVIOUS_ACTION
             ):
                 return location > 0.0 if target_location is None else target_location < location
-            case _:
-                if target_location is not None:
-                    return target_location > location
-                if self.joint_trajectory is None:
-                    return True
-                return location < self.joint_trajectory.locations[-1]
+        # Every other operation moves forward.
+        if target_location is not None:
+            return target_location > location
+        if self.joint_trajectory is None:
+            return True
+        return location < self.joint_trajectory.locations[-1]
 
     def _complete_operation(self, error: Optional[Exception] = None, *, paused_on_io: bool = False):
         """Complete the current operation with the given status."""

@@ -67,7 +67,7 @@ SDK symbol to use, known SDK gaps and the recommended workaround for this SDK ve
 |---|---|
 | `references/rules/safety.md` | SAF-001 … SAF-014 |
 | `references/rules/motion.md` | MOT-001 … MOT-013 |
-| `references/rules/io.md` | IO-001 … IO-007 |
+| `references/rules/io.md` | IO-001 … IO-008 |
 | `references/rules/async.md` | ASY-001 … ASY-009 |
 | `references/rules/performance.md` | PERF-001 … PERF-012 |
 | `references/rules/lifecycle.md` | LIFE-001 … LIFE-008 |

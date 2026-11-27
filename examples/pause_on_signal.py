@@ -30,8 +30,7 @@ Prerequisites:
 import asyncio
 from math import pi
 
-import nova
-from nova import api, run_program
+from nova import ProgramContext, api, program, run_program
 from nova.actions import jnt
 from nova.cell import motion_enable_signal, virtual_controller
 from nova.program import ProgramPreconditions
@@ -58,7 +57,7 @@ async def operator(kuka, ur) -> None:
     await ur.write(ENABLE_IO[UR], True)
 
 
-@nova.program(
+@program(
     name="pause_on_signal",
     preconditions=ProgramPreconditions(
         controllers=[
@@ -78,7 +77,7 @@ async def operator(kuka, ur) -> None:
         cleanup_controllers=False,
     ),
 )
-async def main(ctx: nova.ProgramContext):
+async def main(ctx: ProgramContext):
     cell = ctx.cell
     kuka = await cell.controller(KUKA)
     ur = await cell.controller(UR)

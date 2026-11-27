@@ -69,6 +69,7 @@ async def _wait_for_state(mg, kind: type, *, standstill: bool | None = None):
         if isinstance(details, api.models.TrajectoryDetails) and isinstance(details.state, kind):
             if standstill is None or state.standstill == standstill:
                 return state
+    raise RuntimeError(f"the state stream ended before a {kind.__name__} state")
 
 
 async def _observe(mg, kind: type, *, standstill: bool, timeout: float, task: asyncio.Task):

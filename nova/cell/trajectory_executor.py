@@ -44,8 +44,10 @@ from nova.actions.base import Action
 from nova.actions.container import located_writes, write_to_set_io
 from nova.actions.io import WriteAction
 from nova.actions.mock import WaitAction
+from nova.cell.io_condition import IOConditionWatcher
 from nova.cell.motion_group import MotionGroup
-from nova.cell.movement_controller.trajectory_cursor import TrajectoryCursor
+from nova.cell.movement_controller.io_pause_driver import IOPauseDriver
+from nova.cell.movement_controller.trajectory_cursor import OperationResult, TrajectoryCursor
 from nova.cell.multi_trajectory_cursor import MultiTrajectoryCursor, SyncDriver
 from nova.cell.robot_cell import ActionsLike, _normalize_actions
 from nova.cell.session_monitor import SessionMonitor
@@ -80,17 +82,10 @@ class GroupArgs:
             rate — the fastest the server emits. The shared stream is opened
             at the rate of its first subscriber; see
             :meth:`MotionGroup.stream_state`.
-        pause_on_io: This group's pause signal, attached to every start the
-            group's cursor emits. The controller pauses the group on path while
-            the condition holds; the others keep running. Resume is the
-            caller's call (:meth:`MultiTrajectoryCursor.forward` once the
-            signal cleared) — the controller does not resume by itself. The
-            same condition may be given to several groups to pause them all.
     """
 
     ignore_controller_limits: bool = True
     state_stream_rate_msecs: int | None = None
-    pause_on_io: api.models.PauseOnIO | None = None
 
 
 class TrajectoryExecutor:
@@ -155,6 +150,9 @@ class TrajectoryExecutor:
         tcp: Mapping[str, str | None] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
         actions: ActionsLike | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
+        *,
+        resume_on_io_release: bool = True,
     ) -> None:
         """Execute the trajectory front to end, synchronized through the barrier.
 
@@ -164,9 +162,71 @@ class TrajectoryExecutor:
         ``actions`` is the same ensemble action list passed to
         :meth:`MultiMotionGroupPlanner.plan`; its :class:`WriteAction` entries
         become the location-anchored IO overlay fired during execution (see
-        :meth:`attach`)."""
-        async with self.attach(trajectory, tcp=tcp, actions=actions, groups=groups) as cursor:
-            await cursor.forward()
+        :meth:`attach`).
+
+        ``pause_on_io`` is one condition for the whole ensemble (see :meth:`attach`).
+        With ``resume_on_io_release`` (the default) the call waits while it holds and
+        then starts every group again through the barrier, so the groups set off
+        together from where they stopped; it returns at the end of the trajectory.
+        Like :meth:`MotionGroup.execute`, a bus-IO condition is also guarded against
+        the bus-IO service going away: the SDK then pauses the groups itself. With
+        ``resume_on_io_release=False`` the condition is a stop condition: the call
+        returns where the groups stopped.
+
+        Raises:
+            IOConditionUnavailable: The condition's source cannot be observed.
+        """
+        watcher = self._io_condition_watcher(pause_on_io)
+        async with self.attach(
+            trajectory, tcp=tcp, actions=actions, groups=groups, pause_on_io=pause_on_io
+        ) as cursor:
+            if pause_on_io is None or watcher is None:
+                await cursor.forward()
+                return
+            resume = resume_on_io_release
+            driver: IOPauseDriver[dict[str, OperationResult]] = IOPauseDriver(
+                cursor.forward(),
+                start=cursor.forward,
+                pause=cursor.pause,
+                paused_on_io=lambda results: any(r.paused_on_io for r in results.values()),
+                location=lambda: cursor.current_location,
+                wait_for_release=(
+                    functools.partial(watcher.wait_until_released, pause_on_io) if resume else None
+                ),
+                wait_for_hold=(
+                    functools.partial(watcher.wait_until, pause_on_io, holds=True)
+                    if resume
+                    else None
+                ),
+                wait_for_signal_loss=(
+                    watcher.wait_until_bus_io_lost
+                    if pause_on_io.io_origin == api.models.IOOrigin.BUS_IO
+                    else None
+                ),
+            )
+            await driver.run()
+
+    def _io_condition_watcher(
+        self, pause_on_io: api.models.PauseOnIO | None
+    ) -> IOConditionWatcher | None:
+        """A watcher for the ensemble's pause condition, checked before anything moves."""
+        if pause_on_io is None:
+            return None
+        if (
+            pause_on_io.io_origin == api.models.IOOrigin.CONTROLLER
+            and len(self._motion_groups_by_controller) > 1
+        ):
+            raise ValueError(
+                "A controller-IO pause_on_io names an IO of each group's own controller, "
+                f"but the groups span {sorted(self._motion_groups_by_controller)}; the ensemble "
+                "must pause on one signal. Use a bus IO."
+            )
+        first = self._motion_groups[min(self._motion_groups)]
+        watcher = IOConditionWatcher(
+            first._api_client, first._cell, first._controller_id, nats_client=first._nats_client
+        )
+        watcher.require_observable(pause_on_io)
+        return watcher
 
     @asynccontextmanager
     async def attach(
@@ -175,11 +235,21 @@ class TrajectoryExecutor:
         tcp: Mapping[str, str | None] | None = None,
         groups: Mapping[str, GroupArgs] | None = None,
         actions: ActionsLike | None = None,
+        pause_on_io: api.models.PauseOnIO | None = None,
     ) -> AsyncGenerator[MultiTrajectoryCursor, None]:
         """Open a session for interactive control: load the trajectory, open the
         sockets, initialize — but do not move. Starting is the caller's call
         (:meth:`MultiTrajectoryCursor.forward`); exiting the context detaches
         every cursor and closes every socket.
+
+        ``pause_on_io`` is attached to every start of every group: the controllers
+        pause the groups on path while it holds, all on the same signal (a
+        multi-group motion pauses as a whole; the groups drift apart only by their
+        own braking ramps). The controllers never resume by themselves: once the
+        signal cleared, the next :meth:`MultiTrajectoryCursor.forward` starts all
+        groups again through the barrier, which re-synchronizes them; its results
+        report ``paused_on_io`` for the groups the condition stopped.
+        :meth:`execute` does that loop itself.
 
         ``actions`` mirrors the list given to
         :meth:`MultiMotionGroupPlanner.plan`. It is not baked into the loaded
@@ -219,7 +289,7 @@ class TrajectoryExecutor:
                 emit_motion_events=False,
                 ignore_controller_limits=group_args.ignore_controller_limits,
                 set_outputs=overlay[name] or None,
-                pause_on_io=group_args.pause_on_io,
+                pause_on_io=pause_on_io,
             )
 
         cursor = MultiTrajectoryCursor(cursors, self._sync, actions=action_list)

@@ -187,10 +187,16 @@ class MovementControllerContext(pydantic.BaseModel):
     # uses it to resume a controller-side IO pause, since the controller never
     # resumes by itself. Without it an IO pause ends the execution early.
     wait_for_pause_on_io_release: Callable[[], Awaitable[None]] | None = None
+    # Awaits until the ``pause_on_io`` condition holds. Watched after every resume:
+    # a start the controller receives while the condition holds again is accepted
+    # but leaves the robot paused at the same location, which the state stream
+    # cannot tell apart from the pause that preceded it.
+    wait_for_pause_on_io_hold: Callable[[], Awaitable[None]] | None = None
     # Awaits until the source of the ``pause_on_io`` signal is gone (e.g. the bus-IO
     # service is not connected). The controller stops evaluating the condition in
     # that case and would keep moving; the one-shot movement controller pauses the
-    # robot itself instead and resumes through ``wait_for_pause_on_io_release``.
+    # robot itself instead and resumes through ``wait_for_pause_on_io_release`` —
+    # or, without a release waiter, ends the execution with an error.
     wait_for_pause_signal_loss: Callable[[], Awaitable[None]] | None = None
     motion_group_state_stream_gen: Callable[[], AsyncIterator[api.models.MotionGroupState]]
     # The planned trajectory being executed. Optional: only location-bounded

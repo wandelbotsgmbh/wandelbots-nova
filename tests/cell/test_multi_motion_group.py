@@ -83,15 +83,20 @@ class TestDelegation:
         await ensemble.execute("TRAJ", tcp={"a": "flange"}, actions=actions, groups=group_args)
 
         executor.execute.assert_awaited_once_with(
-            "TRAJ", tcp={"a": "flange"}, actions=actions, groups=group_args
+            "TRAJ",
+            tcp={"a": "flange"},
+            actions=actions,
+            groups=group_args,
+            pause_on_io=None,
+            resume_on_io_release=True,
         )
 
     async def test_attach_delegates_to_the_executor(self):
         executor = _fake_executor()
 
         @asynccontextmanager
-        async def fake_attach(trajectory, tcp=None, actions=None, groups=None):
-            fake_attach.args = (trajectory, tcp, actions, groups)
+        async def fake_attach(trajectory, tcp=None, actions=None, groups=None, pause_on_io=None):
+            fake_attach.args = (trajectory, tcp, actions, groups, pause_on_io)
             yield "CURSOR"
 
         executor.attach = fake_attach
@@ -100,7 +105,7 @@ class TestDelegation:
 
         async with ensemble.attach("TRAJ", tcp={"a": "flange"}, actions=actions) as cursor:
             assert cursor == "CURSOR"
-        assert fake_attach.args == ("TRAJ", {"a": "flange"}, actions, None)
+        assert fake_attach.args == ("TRAJ", {"a": "flange"}, actions, None, None)
 
     async def test_plan_and_execute_chains_the_same_actions_into_both_halves(self):
         executor = _fake_executor()
@@ -112,7 +117,12 @@ class TestDelegation:
 
         planner.plan.assert_awaited_once_with(actions, {"a": "flange"}, None)
         executor.execute.assert_awaited_once_with(
-            "TRAJ", tcp={"a": "flange"}, groups=None, actions=actions
+            "TRAJ",
+            tcp={"a": "flange"},
+            groups=None,
+            actions=actions,
+            pause_on_io=None,
+            resume_on_io_release=True,
         )
 
     async def test_plan_and_execute_forwards_tcp_and_groups_orthogonally(self):
@@ -128,7 +138,14 @@ class TestDelegation:
         await ensemble.plan_and_execute(actions, tcp=tcp, groups=groups)
 
         planner.plan.assert_awaited_once_with(actions, tcp, None)
-        executor.execute.assert_awaited_once_with("TRAJ", tcp=tcp, groups=groups, actions=actions)
+        executor.execute.assert_awaited_once_with(
+            "TRAJ",
+            tcp=tcp,
+            groups=groups,
+            actions=actions,
+            pause_on_io=None,
+            resume_on_io_release=True,
+        )
 
     async def test_execute_does_not_touch_the_planner(self):
         # An execute-only workflow drives the executor without planning.

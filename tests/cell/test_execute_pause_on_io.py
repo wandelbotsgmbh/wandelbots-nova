@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nova import api
+from nova.cell.io_condition import IOConditionUnavailable
 from nova.cell.motion_group import MotionGroup
 from nova.cell.state_stream import MotionGroupStateStreamRegistry
 from nova.core.gateway import ApiGateway
@@ -79,10 +80,12 @@ async def test_execute_blocks_through_an_io_pause_and_completes_after_the_signal
     gateway.motion_group_state_stream = registry.stream
     gateway.trajectory_execution_api = MagicMock()
     gateway.trajectory_execution_api.execute_trajectory = fake
-    # The one initial read says "hold"; the release arrives as a NATS push.
+    # The first read says "hold"; the release arrives as a NATS push, and reads
+    # after it see the released value.
+    signal = {"hold": True}
     gateway.bus_ios_api = MagicMock()
     gateway.bus_ios_api.get_bus_io_values = AsyncMock(
-        return_value=[api.models.IOBooleanValue(io="hold", value=True)]
+        side_effect=lambda **_: [api.models.IOBooleanValue(io="hold", value=signal["hold"])]
     )
     gateway.bus_ios_api.get_bus_io_state = AsyncMock(
         return_value=api.models.BusIOsState(
@@ -104,6 +107,7 @@ async def test_execute_blocks_through_an_io_pause_and_completes_after_the_signal
         while "nova.v2.cells.cell.bus-ios.ios" not in nats.subjects():
             await asyncio.sleep(0)
         await asyncio.sleep(0)
+        signal["hold"] = False
         await nats.publish(
             "nova.v2.cells.cell.bus-ios.ios",
             json.dumps([{"io": "hold", "value": False, "value_type": "boolean"}]).encode(),
@@ -118,5 +122,75 @@ async def test_execute_blocks_through_an_io_pause_and_completes_after_the_signal
 
     assert len(fake.starts) == 2, "one start, then one resume after the signal cleared"
     assert all(s.pause_on_io == _pause_condition() for s in fake.starts)
-    assert gateway.bus_ios_api.get_bus_io_values.await_count == 1, "one initial read, no polling"
+    # One initial read per wait — the release wait, and the hold watch after the
+    # resume — and nothing else: no polling.
+    assert gateway.bus_ios_api.get_bus_io_values.await_count == 2
     await asyncio.wait_for(upstream.closed.wait(), 1.0)
+
+
+def _motion_group(gateway, nats) -> MotionGroup:
+    motion_group = MotionGroup(
+        api_client=gateway,
+        cell="cell",
+        controller_id="ctrl",
+        motion_group_id="0@ctrl",
+        nats_client=nats,
+    )
+    motion_group._load_planned_motion = AsyncMock(return_value="traj-1")
+    return motion_group
+
+
+def _gateway(upstream: FakeUpstream, fake) -> MagicMock:
+    gateway = MagicMock(spec=ApiGateway)
+    registry = MotionGroupStateStreamRegistry(
+        open_stream=lambda cell, controller_id, motion_group_id, rate: upstream.open(rate)
+    )
+    gateway.motion_group_state_stream = registry.stream
+    gateway.trajectory_execution_api = MagicMock()
+    gateway.trajectory_execution_api.execute_trajectory = fake
+    gateway.bus_ios_api = MagicMock()
+    gateway.bus_ios_api.get_bus_io_values = AsyncMock(
+        return_value=[api.models.IOBooleanValue(io="hold", value=True)]
+    )
+    gateway.bus_ios_api.get_bus_io_state = AsyncMock(
+        return_value=api.models.BusIOsState(
+            state=api.models.BusIOsStateEnum.BUS_IOS_STATE_CONNECTED
+        )
+    )
+    return gateway
+
+
+async def test_execute_with_a_stop_condition_returns_where_the_robot_stopped():
+    """``resume_on_io_release=False``: move until the condition fires, e.g. a contact
+    sensor, and give control back there — the behaviour before IO pauses became
+    resumable."""
+    upstream = FakeUpstream()
+    fake = _PausingController(upstream)
+    gateway = _gateway(upstream, fake)
+    motion_group = _motion_group(gateway, FakeNats())
+
+    async with asyncio.timeout(5):
+        await motion_group.execute(
+            _joint_trajectory(),
+            tcp=None,
+            actions=[],
+            pause_on_io=_pause_condition(),
+            resume_on_io_release=False,
+        )
+
+    assert len(fake.starts) == 1, "a stop condition is not resumed"
+    gateway.bus_ios_api.get_bus_io_values.assert_not_awaited()
+
+
+async def test_execute_with_a_bus_io_condition_and_no_nats_fails_before_the_robot_moves():
+    upstream = FakeUpstream()
+    fake = _PausingController(upstream)
+    motion_group = _motion_group(_gateway(upstream, fake), FakeNats(connected=False))
+
+    with pytest.raises(IOConditionUnavailable):
+        async with asyncio.timeout(5):
+            await motion_group.execute(
+                _joint_trajectory(), tcp=None, actions=[], pause_on_io=_pause_condition()
+            )
+
+    assert fake.starts == []

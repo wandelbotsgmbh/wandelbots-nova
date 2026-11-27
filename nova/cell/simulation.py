@@ -257,6 +257,7 @@ class SimulatedRobot(ConfigurablePeriphery, AbstractRobot):
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        resume_on_io_release: bool = True,
     ) -> AsyncGenerator[MotionState, None]:
         """
         Executes the given joint_trajectory by simulating the robot's motion.

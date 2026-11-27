@@ -363,6 +363,7 @@ class AbstractRobot(Device):
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        resume_on_io_release: bool = True,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -377,6 +378,11 @@ class AbstractRobot(Device):
                 execution progress, in milliseconds. None falls back to
                 NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
                 rate (the server's behavior when no rate is requested).
+            resume_on_io_release (bool): What a ``pause_on_io`` pause means. True (default): it is a
+                pause — the call waits while the condition holds and drives on to the target once
+                it clears (a motion-enable signal, see ``nova.cell.motion_enable_signal``). False:
+                it is a stop condition — the call returns at the location where the robot stopped
+                (e.g. move until a contact sensor fires), and the program decides what follows.
         """
 
     async def stream_execute(
@@ -389,6 +395,7 @@ class AbstractRobot(Device):
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        resume_on_io_release: bool = True,
     ) -> AsyncGenerator[MotionState, None]:
         """Execute a planned motion
 
@@ -406,6 +413,11 @@ class AbstractRobot(Device):
                 execution progress, in milliseconds. None falls back to
                 NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
                 rate (the server's behavior when no rate is requested).
+            resume_on_io_release (bool): What a ``pause_on_io`` pause means. True (default): it is a
+                pause — the call waits while the condition holds and drives on to the target once
+                it clears (a motion-enable signal, see ``nova.cell.motion_enable_signal``). False:
+                it is a stop condition — the call returns at the location where the robot stopped
+                (e.g. move until a contact sensor fires), and the program decides what follows.
         """
         actions_list = _normalize_actions(actions)
 
@@ -417,6 +429,7 @@ class AbstractRobot(Device):
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            resume_on_io_release=resume_on_io_release,
         )
 
         async with aclosing(motion_state_stream) as motion_state_stream:
@@ -433,6 +446,7 @@ class AbstractRobot(Device):
         pause_on_io: api.models.PauseOnIO | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        resume_on_io_release: bool = True,
     ) -> None:
         """Execute a planned motion
 
@@ -447,6 +461,11 @@ class AbstractRobot(Device):
                 execution progress, in milliseconds. None falls back to
                 NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
                 rate (the server's behavior when no rate is requested).
+            resume_on_io_release (bool): What a ``pause_on_io`` pause means. True (default): it is a
+                pause — the call waits while the condition holds and drives on to the target once
+                it clears (a motion-enable signal, see ``nova.cell.motion_enable_signal``). False:
+                it is a stop condition — the call returns at the location where the robot stopped
+                (e.g. move until a contact sensor fires), and the program decides what follows.
         """
 
         motion_state_stream = self.stream_execute(
@@ -457,6 +476,7 @@ class AbstractRobot(Device):
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            resume_on_io_release=resume_on_io_release,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for _ in motion_state_stream:
@@ -474,6 +494,7 @@ class AbstractRobot(Device):
         singularity_handling: api.models.SingularityHandling | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        resume_on_io_release: bool = True,
     ) -> AsyncIterable[MotionState]:
         """Plan and execute a trajectory for the given actions.
 
@@ -493,6 +514,11 @@ class AbstractRobot(Device):
                 execution progress, in milliseconds. None falls back to
                 NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
                 rate (the server's behavior when no rate is requested).
+            resume_on_io_release (bool): What a ``pause_on_io`` pause means. True (default): it is a
+                pause — the call waits while the condition holds and drives on to the target once
+                it clears (a motion-enable signal, see ``nova.cell.motion_enable_signal``). False:
+                it is a stop condition — the call returns at the location where the robot stopped
+                (e.g. move until a contact sensor fires), and the program decides what follows.
         """
         actions_list = _normalize_actions(actions)
 
@@ -515,6 +541,7 @@ class AbstractRobot(Device):
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            resume_on_io_release=resume_on_io_release,
         )
         async with aclosing(motion_state_stream) as motion_state_stream:
             async for motion_state in motion_state_stream:
@@ -532,6 +559,7 @@ class AbstractRobot(Device):
         singularity_handling: api.models.SingularityHandling | None = None,
         *,
         state_stream_rate_msecs: int | None = None,
+        resume_on_io_release: bool = True,
     ) -> None:
         """Plan and execute a trajectory for the given actions.
 
@@ -551,6 +579,11 @@ class AbstractRobot(Device):
                 execution progress, in milliseconds. None falls back to
                 NovaConfig.motion_group_state_rate_msecs, then to the controller's own step
                 rate (the server's behavior when no rate is requested).
+            resume_on_io_release (bool): What a ``pause_on_io`` pause means. True (default): it is a
+                pause — the call waits while the condition holds and drives on to the target once
+                it clears (a motion-enable signal, see ``nova.cell.motion_enable_signal``). False:
+                it is a stop condition — the call returns at the location where the robot stopped
+                (e.g. move until a contact sensor fires), and the program decides what follows.
 
         Raises:
             NoInverseKinematicsSolutionFound: When inverse kinematics cannot find a solution for a target
@@ -577,6 +610,7 @@ class AbstractRobot(Device):
             start_on_io=start_on_io,
             pause_on_io=pause_on_io,
             state_stream_rate_msecs=state_stream_rate_msecs,
+            resume_on_io_release=resume_on_io_release,
         )
 
     @abstractmethod

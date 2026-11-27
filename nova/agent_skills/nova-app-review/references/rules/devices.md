@@ -26,7 +26,8 @@ transformed into the correct frame (camera→robot calibration applied once, cen
 timeout, and the action taken on abort (stop, retract). Direction mappings are explicit constants.
 
 NOVA: an IO-driven stop condition can be passed as `execute(..., pause_on_io=...)`. Check that it
-is not dropped in simulation (SAF-011).
+is not dropped in simulation (SAF-011), and that the call returns at the stop instead of resuming
+the motion once the sensor reading drops (IO-008, `resume_on_io_release=False`).
 
 ---
 

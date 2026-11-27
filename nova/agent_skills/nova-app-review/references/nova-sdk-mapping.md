@@ -19,6 +19,7 @@ Source: <https://github.com/wandelbotsgmbh/wandelbots-nova> (`nova/` package, `e
 | `nova.utils.io.wait_for_bus_io` and controller `wait_for_bool_io` have no timeout | IO-002, ASY-002 | Wrap in `asyncio.timeout` (below) |
 | `Nova()` / `cell.controller()` have no connect timeout or retry | LIFE-003 | Wrap in `asyncio.timeout` + bounded retry (below) |
 | `@nova.program` registry silently replaces duplicate ids | STR-001 | Give every program an explicit unique `id=` |
+| Before `resume_on_io_release` exists, `execute(..., pause_on_io=...)` returns at an IO pause and nothing resumes it | IO-008 | Stop conditions: fine as is. Motion enable: upgrade the SDK |
 
 Report the workaround as the fix and mention the gap in one line. Do not invent SDK parameters.
 
@@ -51,6 +52,11 @@ async def execute(mg, trajectory, tcp, actions):
 
 Cancelling (or timing out) the task that awaits `execute` / `plan_and_execute` stops the robot.
 Treat a `TimeoutError` from `execute` as a fault: the robot stopped mid-path.
+
+An execute with a resuming `pause_on_io` (IO-008) blocks for as long as the signal withholds
+motion, so this timeout also bounds the pause. Size it for the longest pause the cell accepts
+without operator action (it ends the motion as a fault), or keep the timeout per motion and
+bound the pause separately in the cell logic.
 
 Symbols: `nova.MotionGroup.plan`, `.execute`, `.plan_and_execute` (`nova/cell/motion_group.py`,
 `nova/cell/robot_cell.py`).
@@ -160,6 +166,66 @@ async def wait_for_signal(io: str, expected: bool, timeout_s: float) -> None:
 `wait_for_bus_io` checks the current state first, so it returns immediately if the condition
 already holds. It needs a connected NATS client (`nova.nats`). Controller IO equivalent:
 `wait_for_bool_io(io, value)`, same wrapping.
+
+### IO-008 · IO pause vs. stop condition
+
+Check the installed SDK first; the meaning of `pause_on_io` depends on it:
+
+```bash
+uv run python -c "import inspect, nova; print('resume_on_io_release' in str(inspect.signature(nova.cell.MotionGroup.execute)))"
+```
+
+- `True`: `pause_on_io` **resumes** by default — `execute()` waits while the condition holds and
+  continues to the target once it clears. A stop condition must pass
+  `resume_on_io_release=False`, or it drives on into the part.
+- `False`: `execute()` returns at the IO pause and nothing resumes it — a stop condition. A
+  motion-enable signal does not work as intended there; the robot stays at the pause location.
+
+Motion enable (the robot moves only while the PLC signal is `True`; a lost bus reads `False`):
+
+```python
+from nova.cell import motion_enable_signal
+
+enable = motion_enable_signal(cfg.SIG_MOTION_ENABLE)  # bus IO by default
+await mg.plan_and_execute(actions, tcp, pause_on_io=enable)
+```
+
+For a bus-IO condition the SDK also pauses the robot itself if the bus-IO service goes away (the
+controller then stops evaluating the condition), and raises `IOConditionUnavailable` if the
+signal cannot be observed at all (no NATS connection) — before the robot moves.
+
+Stop condition (move until contact, then decide):
+
+```python
+from nova import api
+from nova.actions import linear
+from nova.utils.io import get_bus_io_value
+
+contact = api.models.PauseOnIO(
+    io=api.models.IOBooleanValue(io=cfg.SIG_CONTACT, value=True),
+    comparator=api.models.Comparator.COMPARATOR_EQUALS,
+    io_origin=api.models.IOOrigin.BUS_IO,
+)
+await mg.plan_and_execute(
+    [linear(probe_end, settings=SLOW)], tcp, pause_on_io=contact, resume_on_io_release=False
+)
+# Returned where the robot stopped: contact, or the end of the probe path. Check which.
+if not (await get_bus_io_value([cfg.SIG_CONTACT])).get(cfg.SIG_CONTACT):
+    raise RuntimeError("No contact within the probe distance")
+```
+
+A lost bus under a stop condition pauses the robot and raises `IOConditionUnavailable` rather
+than returning as if the condition fired.
+
+Several motion groups that move together pause on **one** signal:
+`MultiMotionGroup.execute(trajectory, pause_on_io=enable)` attaches it to every group and resumes
+them together through the start barrier; a controller-IO condition is rejected when the groups
+span controllers. Per-group signals are for groups that move independently.
+
+Symbols: `nova.cell.motion_enable_signal`, `nova.cell.IOConditionWatcher` (gate non-motion steps
+on the same signal), `nova.cell.io_condition.IOConditionUnavailable`, `resume_on_io_release` on
+`MotionGroup.execute` / `plan_and_execute` / `MultiMotionGroup.execute`. Example:
+`examples/pause_on_signal.py`.
 
 ### IO-003 / SAF-009 · Bulk IO
 

@@ -177,6 +177,38 @@ async def test_controller_io_stream_that_keeps_closing_fails_instead_of_polling(
     gateway.controller_ios_api.list_io_values.assert_not_awaited()
 
 
+async def test_controller_io_stream_closing_after_values_is_reopened_without_limit(monkeypatch):
+    """A long pause outlives routine socket closes (proxy idle timeout, token refresh).
+    Only opens in a row that deliver nothing count towards giving up."""
+    monkeypatch.setattr("nova.cell.io_condition._STREAM_REOPEN_DELAY_SECS", 0)
+    opens = 0
+
+    def stream_io_values(cell, controller, ios):
+        nonlocal opens
+        opens += 1
+        value = opens > 10  # held through ten streams, released in the eleventh
+
+        async def gen():
+            yield SimpleNamespace(io_values=_value("OUT#1", not value))
+
+        return gen()
+
+    watcher = IOConditionWatcher(_gateway(stream=stream_io_values), "cell", "ctrl")
+
+    await watcher.wait_until_released(_pause_on("OUT#1", api.models.IOOrigin.CONTROLLER))
+
+    assert opens == 11
+
+
+async def test_require_observable_rejects_a_bus_io_condition_without_nats():
+    watcher = IOConditionWatcher(_gateway(), "cell", "ctrl", nats_client=FakeNats(connected=False))
+
+    with pytest.raises(IOConditionUnavailable):
+        watcher.require_observable(motion_enable_signal("enable"))
+    # A controller IO is observed on its own value stream; nothing to check up front.
+    watcher.require_observable(motion_enable_signal("enable", api.models.IOOrigin.CONTROLLER))
+
+
 # -- bus IOs: NATS push -------------------------------------------------------------
 
 

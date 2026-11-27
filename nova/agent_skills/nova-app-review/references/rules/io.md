@@ -87,3 +87,31 @@ enqueue the same job again while it is pending or running. Duplicates are reject
 **Rule.** Example convention: `<Dir>.<Domain>[.<Station>].<Signal>`, with `Dir ∈ {In, Out}` from the
 robot's view, `Domain ∈ {Sys, Grp, App}`, PascalCase signals and semantic suffixes (`Rdy`, `Act`,
 `Done`, `HS`, `Ok`).
+
+---
+
+## IO-008 · An IO-driven motion pause says whether it resumes
+`severity: error` · `scope: robotics` · `detect: static+review`
+
+**Rule.** A motion gated by an IO condition (`pause_on_io`) states which of the two meanings it
+has, and the code around it matches that meaning:
+
+- **Pause (motion enable).** A PLC or safety signal allows motion. The robot stops on path while the
+  signal withholds the permission and continues to the target once it returns. The program waits
+  inside the motion call; nothing after it runs early. Wire it fail-safe: the signal reads `True`
+  while motion is allowed, so a lost fieldbus or a broken wire stops the robot.
+- **Stop condition.** A sensor ends the motion: move until contact, until a part is detected,
+  until a force limit trips. The call returns where the robot stopped, and the program decides
+  what follows (retract, measure, fault). It must never drive on into the part when the sensor
+  reading drops after the stop.
+
+**Detect.** `pause_on_io=` passed to `execute(` / `plan_and_execute(`. Then read: is the signal a
+permission (enable, release, door closed) or a sensor (contact, part present, force)? Flag a
+contact/sensor condition that would resume, a permission signal that ends the motion, and a
+"pause while high" permission wiring that a lost bus silently disables.
+
+NOVA: see `nova-sdk-mapping.md`, IO-008 — the SDK default changed between versions.
+
+**Observed.** A force-guided move used `pause_on_io` as its stop-on-contact condition (see
+SAF-011). An SDK that resumes IO pauses would drive that move on into the part once the contact
+signal dropped.
